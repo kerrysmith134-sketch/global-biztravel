@@ -9,6 +9,7 @@ from __future__ import annotations
 from app.models.approval import ApprovalPolicy
 from app.models.base import Base
 from app.models.devices import DeviceToken
+from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.expenses import TripExpense
 from app.models.geo import Customer, CustomerPlace, Place
 from app.models.identity import Membership, Organization, User
@@ -54,6 +55,8 @@ __all__ = [
     "DeviceToken",
     "EntryAssessment",
     "Evidence",
+    "ExpenseReport",
+    "ExpenseReportItem",
     "ExternalAction",
     "IntegrationConnection",
     "ExternalSignal",

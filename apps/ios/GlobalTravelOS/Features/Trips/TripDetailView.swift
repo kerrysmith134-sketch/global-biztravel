@@ -9,6 +9,7 @@ final class TripDetailViewModel: ObservableObject {
     @Published private(set) var entryAssessments: [EntryAssessment] = []
     @Published private(set) var expenses: [TripExpense] = []
     @Published private(set) var budget: BudgetSummary?
+    @Published private(set) var expenseReports: [ExpenseReport] = []
     @Published private(set) var isLoading = false
     @Published private(set) var generating = false
     @Published var errorMessage: String?
@@ -43,7 +44,29 @@ final class TripDetailViewModel: ObservableObject {
             ?? entryAssessments
         expenses = (try? await environment.tripRepository.expenses(tripId: tripId)) ?? expenses
         budget = try? await environment.tripRepository.budgetSummary(tripId: tripId)
+        expenseReports = (try? await environment.tripRepository.expenseReports(tripId: tripId))
+            ?? expenseReports
         environment.refreshOfflineSummary()
+    }
+
+    func createExpenseReport() async {
+        errorMessage = nil
+        do {
+            let report = try await environment.tripRepository.createExpenseReport(tripId: tripId)
+            expenseReports.insert(report, at: 0)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    func submitExpenseReport(_ report: ExpenseReport) async {
+        errorMessage = nil
+        do {
+            _ = try await environment.tripRepository.submitExpenseReport(id: report.id)
+            expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
     }
 
     func createVisaCases() async {
@@ -261,6 +284,37 @@ struct TripDetailView: View {
                                 .font(.caption.monospacedDigit())
                         }
                     }
+                }
+            }
+
+            Section("报销单") {
+                if viewModel.expenseReports.isEmpty {
+                    Text("还没有报销单。可从当前费用记录生成草稿。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(viewModel.expenseReports) { report in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(report.status.label) · \(report.itemList.count) 项")
+                                .font(.subheadline)
+                            Text(report.totalsLabel)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if report.canSubmit {
+                            Button("提交") {
+                                Task { await viewModel.submitExpenseReport(report) }
+                            }
+                            .font(.caption)
+                        }
+                    }
+                }
+                Button {
+                    Task { await viewModel.createExpenseReport() }
+                } label: {
+                    Label("从费用记录生成报销单", systemImage: "doc.text")
                 }
             }
 

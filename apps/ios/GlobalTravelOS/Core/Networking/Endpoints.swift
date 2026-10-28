@@ -179,6 +179,27 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/budget")
     }
 
+    static func expenseReports(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/expense-reports")
+    }
+
+    static func createExpenseReport(tripId: String) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/trips/\(tripId)/expense-reports",
+            body: try DateCoding.encode(ExpenseReportCreateRequest(notes: nil, expenseIds: nil)),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func submitExpenseReport(id: String) -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/expense-reports/\(id):submit",
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     // MARK: - Visa
 
     static func visaCases(tripId: String) -> APIRequest {

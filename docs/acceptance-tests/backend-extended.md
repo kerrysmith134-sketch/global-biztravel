@@ -58,6 +58,8 @@ make ios-test
 | 差旅政策 | `services/api/tests/test_policies.py` | CRUD、预算/费用/提前天数/目的国违规、严格政策激活 409 |
 | iOS 政策展示 | `PolicyViolation` + PlanDetail | 计划详情展示违规码与说明 |
 | 多人会签 | `services/api/tests/test_approval_policy.py` | 2 人阈值：首人 PENDING、同一人重批不计数、第二人 EXECUTED |
+| 报销单 | `services/api/tests/test_expense_reports.py` | 快照明细、多币种合计、提交/审批/驳回、源费用删除不影响快照、跨租户 404 |
+| iOS 报销单 UI | `ExpenseReport.swift` + TripDetail | 建单、提交、状态与分币种合计展示 |
 | MS-6 真实启动 | 模拟器 + `make api` | Today 页从真实后端加载签证建议与每日打扰额度 |
 
 ## 已知边界

@@ -1094,3 +1094,42 @@ class PolicyCheckRead(BaseModel):
     strict: bool = False
     violations: list[PolicyViolationRead] = Field(default_factory=list)
     checked_at: datetime
+
+
+# --------------------------------------------------------- expense reports
+ExpenseReportStatus = Literal["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"]
+
+
+class ExpenseReportCreate(BaseModel):
+    notes: str | None = None
+    expense_ids: list[UUID] | None = None
+
+
+class ExpenseReportItemRead(ORMModel):
+    id: UUID
+    report_id: UUID
+    expense_id: UUID | None = None
+    category: ExpenseCategory
+    amount: Decimal
+    currency: str
+    occurred_on: date
+    note: str | None = None
+    receipt_ref: str | None = None
+
+
+class ExpenseReportRead(BaseModel):
+    id: UUID
+    trip_id: UUID
+    status: ExpenseReportStatus
+    notes: str | None = None
+    submitted_at: datetime | None = None
+    decided_at: datetime | None = None
+    decided_by_user_id: UUID | None = None
+    items: list[ExpenseReportItemRead] = Field(default_factory=list)
+    totals: list[CurrencyTotalRead] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExpenseReportDecisionRequest(BaseModel):
+    note: str | None = None

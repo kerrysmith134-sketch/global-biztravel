@@ -40,6 +40,9 @@ protocol TripRepository {
     func updateVisaCase(id: String, status: VisaCaseStatus) async throws -> VisaCase
     func expenses(tripId: String) async throws -> [TripExpense]
     func budgetSummary(tripId: String) async throws -> BudgetSummary
+    func expenseReports(tripId: String) async throws -> [ExpenseReport]
+    func createExpenseReport(tripId: String) async throws -> ExpenseReport
+    func submitExpenseReport(id: String) async throws -> ExpenseReport
     func entryAssessments(tripId: String) async throws -> [EntryAssessment]
     func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment]
     func createTrip(_ request: CreateTripRequest) async throws -> Trip
@@ -99,6 +102,24 @@ final class RemoteTripRepository: TripRepository {
 
     func budgetSummary(tripId: String) async throws -> BudgetSummary {
         try await client.send(Endpoints.tripBudget(tripId: tripId), as: BudgetSummary.self)
+    }
+
+    func expenseReports(tripId: String) async throws -> [ExpenseReport] {
+        try await client.send(Endpoints.expenseReports(tripId: tripId), as: [ExpenseReport].self)
+    }
+
+    func createExpenseReport(tripId: String) async throws -> ExpenseReport {
+        try await client.send(
+            try Endpoints.createExpenseReport(tripId: tripId),
+            as: ExpenseReport.self
+        )
+    }
+
+    func submitExpenseReport(id: String) async throws -> ExpenseReport {
+        try await client.send(
+            Endpoints.submitExpenseReport(id: id),
+            as: ExpenseReport.self
+        )
     }
 
     func entryAssessments(tripId: String) async throws -> [EntryAssessment] {
@@ -253,6 +274,18 @@ final class OfflineTripRepository: TripRepository {
 
     func budgetSummary(tripId: String) async throws -> BudgetSummary {
         try await remote.budgetSummary(tripId: tripId)
+    }
+
+    func expenseReports(tripId: String) async throws -> [ExpenseReport] {
+        try await remote.expenseReports(tripId: tripId)
+    }
+
+    func createExpenseReport(tripId: String) async throws -> ExpenseReport {
+        try await remote.createExpenseReport(tripId: tripId)
+    }
+
+    func submitExpenseReport(id: String) async throws -> ExpenseReport {
+        try await remote.submitExpenseReport(id: id)
     }
 
     func entryAssessments(tripId: String) async throws -> [EntryAssessment] {
