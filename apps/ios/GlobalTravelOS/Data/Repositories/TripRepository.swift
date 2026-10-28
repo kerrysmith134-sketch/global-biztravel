@@ -39,6 +39,7 @@ protocol TripRepository {
     func createVisaCases(tripId: String, countries: [String]?) async throws -> [VisaCase]
     func updateVisaCase(id: String, status: VisaCaseStatus) async throws -> VisaCase
     func expenses(tripId: String) async throws -> [TripExpense]
+    func createExpense(tripId: String, body: TripExpenseCreateRequest) async throws -> TripExpense
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary
     func expenseReports(tripId: String) async throws -> [ExpenseReport]
     func createExpenseReport(tripId: String) async throws -> ExpenseReport
@@ -98,6 +99,16 @@ final class RemoteTripRepository: TripRepository {
 
     func expenses(tripId: String) async throws -> [TripExpense] {
         try await client.send(Endpoints.tripExpenses(tripId: tripId), as: [TripExpense].self)
+    }
+
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest
+    ) async throws -> TripExpense {
+        try await client.send(
+            try Endpoints.createTripExpense(tripId: tripId, body: body),
+            as: TripExpense.self
+        )
     }
 
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary {
@@ -273,6 +284,13 @@ final class OfflineTripRepository: TripRepository {
 
     func expenses(tripId: String) async throws -> [TripExpense] {
         try await remote.expenses(tripId: tripId)
+    }
+
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest
+    ) async throws -> TripExpense {
+        try await remote.createExpense(tripId: tripId, body: body)
     }
 
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary {

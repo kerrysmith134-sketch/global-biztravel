@@ -40,6 +40,45 @@ struct TripExpense: Codable, Equatable, Identifiable {
     }
 }
 
+enum TripExpenseCategory: String, Codable, CaseIterable, Identifiable {
+    case transport = "TRANSPORT"
+    case lodging = "LODGING"
+    case meals = "MEALS"
+    case other = "OTHER"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .transport: return "交通"
+        case .lodging: return "住宿"
+        case .meals: return "餐饮"
+        case .other: return "其他"
+        }
+    }
+}
+
+struct TripExpenseCreateRequest: Encodable, Equatable {
+    var category: TripExpenseCategory
+    var amount: Decimal
+    var currency: String
+    var occurredOn: String
+    var note: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case category, amount, currency, occurredOn, note
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(category, forKey: .category)
+        try container.encode(amount, forKey: .amount)
+        try container.encode(currency, forKey: .currency)
+        try container.encode(occurredOn, forKey: .occurredOn)
+        try container.encodeIfPresent(note, forKey: .note)
+    }
+}
+
 struct CurrencyTotal: Codable, Equatable, Identifiable {
     var currency: String
     var amount: Double

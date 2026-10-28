@@ -226,6 +226,18 @@ enum Endpoints {
         )
     }
 
+    static func createTripExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/trips/\(tripId)/expenses",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func expenseReports(tripId: String) -> APIRequest {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/expense-reports")
     }

@@ -52,6 +52,35 @@ final class TripDetailViewModel: ObservableObject {
         environment.refreshOfflineSummary()
     }
 
+    func addExpense(
+        category: TripExpenseCategory,
+        amountText: String,
+        currency: String,
+        occurredOn: Date,
+        note: String
+    ) async -> Bool {
+        let normalized = amountText.replacingOccurrences(of: ",", with: ".")
+        guard let amount = Decimal(string: normalized), amount > 0 else {
+            errorMessage = "费用金额必须是大于 0 的数字"
+            return false
+        }
+        let body = TripExpenseCreateRequest(
+            category: category,
+            amount: amount,
+            currency: currency.uppercased(),
+            occurredOn: ISO8601.dayString(from: occurredOn),
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        do {
+            _ = try await environment.tripRepository.createExpense(tripId: tripId, body: body)
+            await load()
+            return true
+        } catch {
+            errorMessage = environment.errorMessage(error)
+            return false
+        }
+    }
+
     func createExpenseReport() async {
         errorMessage = nil
         do {
@@ -160,6 +189,7 @@ struct TripDetailView: View {
     @State private var selectedVisit: TripVisit?
     @State private var briefingVisit: TripVisit?
     @State private var showsImport = false
+    @State private var showsExpense = false
 
     init(tripId: String, environment: AppEnvironment) {
         _viewModel = StateObject(
@@ -296,6 +326,11 @@ struct TripDetailView: View {
                                 .font(.caption.monospacedDigit())
                         }
                     }
+                    Button {
+                        showsExpense = true
+                    } label: {
+                        Label("记一笔费用", systemImage: "plus.circle")
+                    }
                 }
             }
 
@@ -418,6 +453,19 @@ struct TripDetailView: View {
         .sheet(isPresented: $showsImport) {
             ImportSheet(tripId: viewModel.tripId) {
                 await viewModel.load()
+            }
+        }
+        .sheet(isPresented: $showsExpense) {
+            ExpenseEntrySheet(
+                defaultCurrency: viewModel.trip?.currency ?? viewModel.budget?.budgetCurrency ?? "EUR"
+            ) { category, amount, currency, date, note in
+                await viewModel.addExpense(
+                    category: category,
+                    amountText: amount,
+                    currency: currency,
+                    occurredOn: date,
+                    note: note
+                )
             }
         }
     }

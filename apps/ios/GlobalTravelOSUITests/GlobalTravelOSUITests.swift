@@ -106,6 +106,43 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
     }
 
+    func testExpenseEntryFlow() throws {
+        let setup = try makeBriefingTrip()
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        app.buttons["出行"].tap()
+        let trip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(trip.waitForExistence(timeout: 15))
+        trip.tap()
+        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+
+        let addExpense = app.buttons["记一笔费用"]
+        for _ in 0 ..< 8 where !addExpense.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(addExpense.isHittable, "未找到记一笔费用入口")
+        addExpense.tap()
+        XCTAssertTrue(app.navigationBars["记一笔费用"].waitForExistence(timeout: 10))
+
+        let amount = app.textFields["金额（如 88.50）"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        amount.tap()
+        amount.typeText("88.50")
+        app.buttons["保存"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS '88.5'")).firstMatch
+                .waitForExistence(timeout: 20),
+            "新费用未出现在费用列表"
+        )
+    }
+
     func testCreateTripFlow() throws {
         let app = XCUIApplication()
         app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"

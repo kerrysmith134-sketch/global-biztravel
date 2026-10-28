@@ -7,6 +7,7 @@
 | `testLaunchBrowseSeedTripAndSyncCenter` | Today → 行动中心 → 出行列表 → 详情 → 同步页 | 验证真实网络加载与基本导航 |
 | `testPreparedTripBriefing` | 准备数据 → 详情 → 拜访简报 | 测试内用真实 HTTP 创建地点/出行/拜访，再用启动参数打开，避免依赖列表分页顺序 |
 | `testCreateTripFlow` | 出行列表 → 新建表单 → 创建 | 创建后断言新出行立即出现在列表顶部 |
+| `testExpenseEntryFlow` | 详情 → 记一笔费用 → 保存 | 真实 POST 费用，断言金额出现在费用列表 |
 
 运行：
 
@@ -19,4 +20,4 @@ xcodebuild test -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelO
 
 - UI 用例会在真实数据库留下"UI 简报出行/UI 自动化出行"记录；开发库可定期重建。
 - 不使用假 API 或预置页面；测试通过 `GBT_UI_TEST_*` 启动参数覆盖身份与上次出行，不写回磁盘。
-- 尚未覆盖 Excel 文件选择器（原生文档选择器）与计划激活/费用录入的逐按钮流程。
+- 尚未覆盖 Excel 文件选择器（原生文档选择器）、计划生成/激活与现场记录提交的逐按钮流程。
