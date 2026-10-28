@@ -372,6 +372,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/visits/{visit_id}/briefing:
+    get:
+      tags:
+      - visits
+      summary: 拜访前简报：客户、地点、目标、历史、跟进与记忆
+      operationId: get_visit_briefing_v1_visits__visit_id__briefing_get
+      parameters:
+      - name: visit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Visit Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisitBriefingRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/visits/{visit_id}:
     patch:
       tags:
@@ -3224,6 +3251,256 @@ components:
       required:
       - file
       title: Body_parse_import_v1_trips__trip_id__imports_parse_post
+    BriefingCustomerRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        external_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: External Ref
+        tier:
+          type: string
+          enum:
+          - A
+          - B
+          - C
+          title: Tier
+        country_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Country Code
+        industry:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Industry
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - INACTIVE
+          - PROSPECT
+          title: Status
+        primary_contact_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Contact Name
+        primary_contact_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Contact Email
+        primary_contact_phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Contact Phone
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+      type: object
+      required:
+      - id
+      - name
+      - tier
+      - status
+      title: BriefingCustomerRead
+    BriefingFollowUpRead:
+      properties:
+        title:
+          type: string
+          title: Title
+        due_date:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Due Date
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        trip_name:
+          type: string
+          title: Trip Name
+        visit_id:
+          type: string
+          format: uuid
+          title: Visit Id
+      type: object
+      required:
+      - title
+      - trip_id
+      - trip_name
+      - visit_id
+      title: BriefingFollowUpRead
+    BriefingGapRead:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - code
+      - message
+      title: BriefingGapRead
+    BriefingHistoryRead:
+      properties:
+        visit_id:
+          type: string
+          format: uuid
+          title: Visit Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        trip_name:
+          type: string
+          title: Trip Name
+        date:
+          type: string
+          format: date
+          title: Date
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        status:
+          type: string
+          enum:
+          - PLANNED
+          - SCHEDULED
+          - DONE
+          - MISSED
+          - CANCELLED
+          title: Status
+        outcome:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Outcome
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+      type: object
+      required:
+      - visit_id
+      - trip_id
+      - trip_name
+      - date
+      - status
+      title: BriefingHistoryRead
+    BriefingMemoryRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          title: Kind
+        summary:
+          type: string
+          title: Summary
+        decisions:
+          items:
+            type: string
+          type: array
+          title: Decisions
+        follow_ups:
+          items:
+            type: string
+          type: array
+          title: Follow Ups
+        lessons:
+          items:
+            type: string
+          type: array
+          title: Lessons
+        confidence:
+          type: number
+          title: Confidence
+        valid_from:
+          type: string
+          format: date-time
+          title: Valid From
+      type: object
+      required:
+      - id
+      - kind
+      - summary
+      - confidence
+      - valid_from
+      title: BriefingMemoryRead
+    BriefingPlaceRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        address_line:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address Line
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        region:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Region
+        country_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Country Code
+        timezone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timezone
+        lat:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lat
+        lon:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lon
+        geocode_status:
+          type: string
+          title: Geocode Status
+      type: object
+      required:
+      - id
+      - name
+      - geocode_status
+      title: BriefingPlaceRead
     BudgetSummaryRead:
       properties:
         budget_amount:
@@ -7160,6 +7437,42 @@ components:
       - key
       - label
       title: VisaChecklistItem
+    VisitBriefingRead:
+      properties:
+        visit:
+          $ref: '#/components/schemas/VisitRead'
+        customer:
+          anyOf:
+          - $ref: '#/components/schemas/BriefingCustomerRead'
+          - type: 'null'
+        place:
+          anyOf:
+          - $ref: '#/components/schemas/BriefingPlaceRead'
+          - type: 'null'
+        history:
+          items:
+            $ref: '#/components/schemas/BriefingHistoryRead'
+          type: array
+          title: History
+        follow_ups:
+          items:
+            $ref: '#/components/schemas/BriefingFollowUpRead'
+          type: array
+          title: Follow Ups
+        memories:
+          items:
+            $ref: '#/components/schemas/BriefingMemoryRead'
+          type: array
+          title: Memories
+        data_gaps:
+          items:
+            $ref: '#/components/schemas/BriefingGapRead'
+          type: array
+          title: Data Gaps
+      type: object
+      required:
+      - visit
+      title: VisitBriefingRead
     VisitCreate:
       properties:
         place_id:
@@ -7177,6 +7490,12 @@ components:
           - type: string
           - type: 'null'
           title: Title
+        objective:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Objective
         service_minutes:
           type: integer
           maximum: 1440.0
@@ -7250,6 +7569,11 @@ components:
           - type: string
           - type: 'null'
           title: Title
+        objective:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Objective
         service_minutes:
           type: integer
           title: Service Minutes
@@ -7429,6 +7753,12 @@ components:
           - type: string
           - type: 'null'
           title: Title
+        objective:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Objective
         service_minutes:
           anyOf:
           - type: integer

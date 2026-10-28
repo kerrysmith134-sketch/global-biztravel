@@ -177,6 +177,19 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/crm-sync-jobs")
     }
 
+    static func visitBriefing(visitId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/visits/\(visitId)/briefing")
+    }
+
+    static func updateVisitObjective(visitId: String, objective: String?) throws -> APIRequest {
+        APIRequest(
+            method: .patch,
+            path: "/v1/visits/\(visitId)",
+            body: try DateCoding.encode(VisitObjectiveUpdate(objective: objective)),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func draftMinutes(visitId: String) -> APIRequest {
         APIRequest(
             method: .post,

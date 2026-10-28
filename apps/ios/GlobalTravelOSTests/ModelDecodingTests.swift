@@ -176,6 +176,53 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(job.status.isTerminal)
     }
 
+    func testVisitBriefingDecodesHistoryAndGaps() throws {
+        let json = """
+        {
+          "visit": {
+            "id": "v1", "trip_id": "t1", "place_id": "p1", "title": "续约沟通",
+            "objective": "确认续约条款", "service_minutes": 90,
+            "priority": 2, "business_value": "0", "movement_mode": "GROUND",
+            "is_immovable": false, "status": "PLANNED"
+          },
+          "customer": {
+            "id": "c1", "name": "ACME", "tier": "A", "status": "ACTIVE",
+            "industry": "新能源", "primary_contact_name": "Maria",
+            "primary_contact_email": "maria@example.com"
+          },
+          "place": {
+            "id": "p1", "name": "柏林办公室", "city": "Berlin",
+            "country_code": "DE", "timezone": "Europe/Berlin", "geocode_status": "RESOLVED"
+          },
+          "history": [{
+            "visit_id": "v0", "trip_id": "t0", "trip_name": "上次出行",
+            "date": "2026-08-01", "title": "上次拜访", "status": "DONE",
+            "outcome": "MET", "notes": "关注交付周期"
+          }],
+          "follow_ups": [{
+            "title": "补充产能证明", "due_date": "2026-11-15",
+            "trip_id": "t0", "trip_name": "上次出行", "visit_id": "v0"
+          }],
+          "memories": [{
+            "id": "m1", "kind": "CUSTOMER_NOTE", "summary": "重视交付确定性",
+            "decisions": ["优先提供产能证明"], "follow_ups": [], "lessons": [],
+            "confidence": 0.9, "valid_from": "2026-10-01T00:00:00+00:00"
+          }],
+          "data_gaps": [{
+            "code": "CRM_OPPORTUNITY_NOT_CONNECTED",
+            "message": "尚未连接 CRM"
+          }]
+        }
+        """
+        let briefing = try DateCoding.decode(VisitBriefing.self, fromJSON: json)
+        XCTAssertEqual(briefing.objective, "确认续约条款")
+        XCTAssertEqual(briefing.customer?.contactLine, "Maria · maria@example.com")
+        XCTAssertEqual(briefing.historyList.first?.outcomeLabel, "已会面")
+        XCTAssertEqual(briefing.followUpList.first?.title, "补充产能证明")
+        XCTAssertEqual(briefing.memoryList.first?.decisions, ["优先提供产能证明"])
+        XCTAssertEqual(briefing.gapList.first?.code, "CRM_OPPORTUNITY_NOT_CONNECTED")
+    }
+
     func testActionCenterDecodesSectionsAndActions() throws {
         let json = """
         {

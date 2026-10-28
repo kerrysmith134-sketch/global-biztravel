@@ -70,6 +70,7 @@ def create_visit(
         customer_id=payload.customer_id,
         place_id=payload.place_id,
         title=payload.title,
+        objective=payload.objective,
         service_minutes=payload.service_minutes,
         time_window_start=payload.time_window_start,
         time_window_end=payload.time_window_end,

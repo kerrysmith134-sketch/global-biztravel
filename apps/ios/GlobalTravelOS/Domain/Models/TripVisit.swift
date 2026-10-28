@@ -11,6 +11,7 @@ struct TripVisit: Codable, Equatable, Identifiable {
     var placeId: String?
     var customerId: String?
     var title: String?
+    var objective: String?
     var serviceMinutes: Int?
     var timeWindowStart: Date?
     var timeWindowEnd: Date?
@@ -25,6 +26,7 @@ struct TripVisit: Codable, Equatable, Identifiable {
         placeId: String? = nil,
         customerId: String? = nil,
         title: String? = nil,
+        objective: String? = nil,
         serviceMinutes: Int? = nil,
         timeWindowStart: Date? = nil,
         timeWindowEnd: Date? = nil,
@@ -38,6 +40,7 @@ struct TripVisit: Codable, Equatable, Identifiable {
         self.placeId = placeId
         self.customerId = customerId
         self.title = title
+        self.objective = objective
         self.serviceMinutes = serviceMinutes
         self.timeWindowStart = timeWindowStart
         self.timeWindowEnd = timeWindowEnd

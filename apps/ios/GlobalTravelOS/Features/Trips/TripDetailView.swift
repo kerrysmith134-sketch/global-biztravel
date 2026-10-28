@@ -158,6 +158,7 @@ struct TripDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: TripDetailViewModel
     @State private var selectedVisit: TripVisit?
+    @State private var briefingVisit: TripVisit?
     @State private var showsImport = false
 
     init(tripId: String, environment: AppEnvironment) {
@@ -351,6 +352,8 @@ struct TripDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
+                        Button("简报") { briefingVisit = visit }
+                            .buttonStyle(.bordered)
                         Button("记录") { selectedVisit = visit }
                             .buttonStyle(.bordered)
                     }
@@ -408,6 +411,9 @@ struct TripDetailView: View {
         .task { await viewModel.load() }
         .sheet(item: $selectedVisit) { visit in
             VisitRecordSheet(visit: visit)
+        }
+        .sheet(item: $briefingVisit) { visit in
+            VisitBriefingView(visitId: visit.id, environment: environment)
         }
         .sheet(isPresented: $showsImport) {
             ImportSheet(tripId: viewModel.tripId) {

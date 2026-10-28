@@ -10,6 +10,8 @@ protocol VisitRepository {
     func draftMinutes(visitId: String) async throws -> MinutesDraft
     func syncToCRM(recordId: String) async throws -> CrmSyncJob
     func crmSyncJob(id: String) async throws -> CrmSyncJob
+    func briefing(visitId: String) async throws -> VisitBriefing
+    func updateObjective(visitId: String, objective: String?) async throws -> TripVisit
 }
 
 final class RemoteVisitRepository: VisitRepository {
@@ -40,6 +42,17 @@ final class RemoteVisitRepository: VisitRepository {
 
     func crmSyncJob(id: String) async throws -> CrmSyncJob {
         try await client.send(Endpoints.crmSyncJob(id: id), as: CrmSyncJob.self)
+    }
+
+    func briefing(visitId: String) async throws -> VisitBriefing {
+        try await client.send(Endpoints.visitBriefing(visitId: visitId), as: VisitBriefing.self)
+    }
+
+    func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {
+        try await client.send(
+            try Endpoints.updateVisitObjective(visitId: visitId, objective: objective),
+            as: TripVisit.self
+        )
     }
 }
 
@@ -131,6 +144,18 @@ final class OfflineVisitRepository: VisitRepository {
 
     func crmSyncJob(id: String) async throws -> CrmSyncJob {
         try await remote.crmSyncJob(id: id)
+    }
+
+    func briefing(visitId: String) async throws -> VisitBriefing {
+        try await remote.briefing(visitId: visitId)
+    }
+
+    func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {
+        let visit = try await remote.updateObjective(visitId: visitId, objective: objective)
+        // 列表缓存里是旧目标；清空让下一次读取重新取服务端版本。
+        listCache.save([:])
+        indicator.markServedFromServer()
+        return visit
     }
 
     func cachedRecordCount() -> Int {

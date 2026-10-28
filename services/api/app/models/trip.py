@@ -124,6 +124,7 @@ class Visit(Base):
         PGUUID(as_uuid=True), ForeignKey("places.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     title: Mapped[str | None] = mapped_column(Text)
+    objective: Mapped[str | None] = mapped_column(Text)
     service_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="60")
     time_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     time_window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

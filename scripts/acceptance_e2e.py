@@ -211,6 +211,15 @@ def main() -> int:
         check(detail_body["validation"]["feasible"] is True, "独立验证器判定可行")
         check(len(detail_body.get("stops", [])) > 0, "计划包含停靠")
 
+        briefing = client.get(f"/v1/visits/{visit_id}/briefing", headers=headers())
+        briefing.raise_for_status()
+        briefing_body = briefing.json()
+        check(bool(briefing_body["place"]["name"]), "拜访简报返回地点")
+        check(
+            any(gap["code"] == "CRM_OPPORTUNITY_NOT_CONNECTED" for gap in briefing_body["data_gaps"]),
+            "拜访简报显式标注 CRM 商机缺口",
+        )
+
         print("5) 激活计划（If-Match 乐观并发）")
         current = client.get(f"/v1/trips/{trip_id}", headers=headers())
         current.raise_for_status()

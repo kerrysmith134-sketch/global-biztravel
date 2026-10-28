@@ -17,6 +17,7 @@ from fastapi import APIRouter, status
 
 from app.api.deps import (
     ROLE_TRAVELER,
+    ROLE_VIEWER,
     ContextDep,
     IdempotencyKeyDep,
     SessionDep,
@@ -31,12 +32,19 @@ from app.api.schemas import (
     MinutesFollowUpRead,
     MinutesJobAcceptedRead,
     TripRead,
+    VisitBriefingRead,
     VisitRead,
     VisitRecordCreate,
     VisitRecordRead,
     VisitUpdate,
 )
-from app.services import job_service, minutes_service, record_service, visit_service
+from app.services import (
+    job_service,
+    minutes_service,
+    record_service,
+    visit_briefing_service,
+    visit_service,
+)
 
 router = APIRouter(tags=["visits"])
 
@@ -58,6 +66,18 @@ def record_read(outcome: record_service.RecordOutcome) -> VisitRecordRead:
         applied=record.applied,
         conflict=conflict,
         created_at=record.created_at,
+    )
+
+
+@router.get(
+    "/visits/{visit_id}/briefing",
+    response_model=VisitBriefingRead,
+    summary="拜访前简报：客户、地点、目标、历史、跟进与记忆",
+)
+def get_visit_briefing(visit_id: UUID, context: ContextDep, session: SessionDep):
+    require_role(context, ROLE_VIEWER)
+    return visit_briefing_service.build_briefing(
+        session, context.organization_id, visit_id
     )
 
 

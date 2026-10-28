@@ -166,6 +166,7 @@ class VisitCreate(BaseModel):
     place_id: UUID
     customer_id: UUID | None = None
     title: str | None = None
+    objective: str | None = Field(default=None, max_length=2000)
     service_minutes: int = Field(default=60, gt=0, le=24 * 60)
     time_window_start: datetime | None = None
     time_window_end: datetime | None = None
@@ -188,6 +189,7 @@ class VisitCreate(BaseModel):
 class VisitUpdate(BaseModel):
     customer_id: UUID | None = None
     title: str | None = None
+    objective: str | None = Field(default=None, max_length=2000)
     service_minutes: int | None = Field(default=None, gt=0, le=24 * 60)
     time_window_start: datetime | None = None
     time_window_end: datetime | None = None
@@ -204,6 +206,7 @@ class VisitRead(ORMModel):
     customer_id: UUID | None
     place_id: UUID
     title: str | None
+    objective: str | None = None
     service_minutes: int
     time_window_start: datetime | None
     time_window_end: datetime | None
@@ -215,6 +218,78 @@ class VisitRead(ORMModel):
     client_updated_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class BriefingCustomerRead(BaseModel):
+    id: UUID
+    name: str
+    external_ref: str | None = None
+    tier: Tier
+    country_code: str | None = None
+    industry: str | None = None
+    status: CustomerStatus
+    primary_contact_name: str | None = None
+    primary_contact_email: str | None = None
+    primary_contact_phone: str | None = None
+    notes: str | None = None
+
+
+class BriefingPlaceRead(BaseModel):
+    id: UUID
+    name: str
+    address_line: str | None = None
+    city: str | None = None
+    region: str | None = None
+    country_code: str | None = None
+    timezone: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    geocode_status: str
+
+
+class BriefingHistoryRead(BaseModel):
+    visit_id: UUID
+    trip_id: UUID
+    trip_name: str
+    date: date
+    title: str | None = None
+    status: VisitStatus
+    outcome: str | None = None
+    notes: str | None = None
+
+
+class BriefingFollowUpRead(BaseModel):
+    title: str
+    due_date: str | None = None
+    trip_id: UUID
+    trip_name: str
+    visit_id: UUID
+
+
+class BriefingMemoryRead(BaseModel):
+    id: UUID
+    kind: str
+    summary: str
+    decisions: list[str] = Field(default_factory=list)
+    follow_ups: list[str] = Field(default_factory=list)
+    lessons: list[str] = Field(default_factory=list)
+    confidence: float
+    valid_from: datetime
+
+
+class BriefingGapRead(BaseModel):
+    code: str
+    message: str
+
+
+class VisitBriefingRead(BaseModel):
+    visit: VisitRead
+    customer: BriefingCustomerRead | None = None
+    place: BriefingPlaceRead | None = None
+    history: list[BriefingHistoryRead] = Field(default_factory=list)
+    follow_ups: list[BriefingFollowUpRead] = Field(default_factory=list)
+    memories: list[BriefingMemoryRead] = Field(default_factory=list)
+    data_gaps: list[BriefingGapRead] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------ excel imports
