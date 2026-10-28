@@ -261,7 +261,16 @@ struct Trip: Codable, Equatable, Identifiable {
     }
 
     var statusLabel: String {
-        status ?? "UNKNOWN"
+        switch (status ?? "").uppercased() {
+        case "DRAFT": return "草稿"
+        case "PLANNING": return "规划中"
+        case "READY": return "待激活"
+        case "ACTIVE": return "进行中"
+        case "HOLD": return "已暂停"
+        case "COMPLETED": return "已完成"
+        case "CANCELLED": return "已取消"
+        default: return status ?? "未知"
+        }
     }
 
     var windowLabel: String {

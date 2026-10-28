@@ -8,8 +8,8 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from app.api.deps import ROLE_VIEWER, ContextDep, SessionDep, require_role
-from app.api.schemas import AuditEventRead
-from app.services import audit_service, trip_service
+from app.api.schemas import AuditEventRead, EvidenceRead
+from app.services import audit_service, evidence_service, trip_service
 
 router = APIRouter(tags=["audit"])
 
@@ -34,3 +34,24 @@ def trip_audit(
         AuditEventRead(at=event.at, kind=event.kind, action=event.action, actor=event.actor, detail=event.detail)
         for event in events
     ]
+
+
+@router.get(
+    "/evidence",
+    response_model=list[EvidenceRead],
+    summary="按对象查看证据条目",
+)
+def list_evidence(
+    context: ContextDep,
+    session: SessionDep,
+    subject_type: Annotated[str, Query(min_length=1)],
+    subject_id: Annotated[UUID, Query()],
+):
+    require_role(context, ROLE_VIEWER)
+    rows = evidence_service.list_for_subject(
+        session,
+        context.organization_id,
+        subject_type=subject_type,
+        subject_id=subject_id,
+    )
+    return [EvidenceRead.model_validate(row) for row in rows]

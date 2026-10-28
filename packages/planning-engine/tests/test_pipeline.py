@@ -16,6 +16,7 @@ from travel_planner.contracts import (
     RULE_STOP_COVERAGE,
     VALIDATION_RULES,
     CheckStatus,
+    SolutionStatus,
     SolverKind,
     TimeWindow,
     UnplacedReason,
@@ -109,6 +110,27 @@ def test_explicit_heuristic_is_not_degraded():
     assert result.solver is SolverKind.HEURISTIC
     assert result.degraded is False
     assert len(result.placed_visit_ids) == 4
+
+
+def test_result_exposes_status_and_travel_legs() -> None:
+    result = plan_trip(four_city_problem())
+    assert result.status is SolutionStatus.FEASIBLE
+    assert len(result.legs) == 4
+    assert result.legs[0].from_visit_id is None
+    assert all(leg.distance_km >= 0 and leg.travel_minutes >= 0 for leg in result.legs)
+    assert all(leg.cost_amount is None for leg in result.legs)  # 未知费用不是 0
+
+
+def test_precheck_removals_mark_result_partial() -> None:
+    problem = make_problem(
+        four_city_problem().stops,
+        start=at(9, 9, 0),
+        end=at(9, 18, 0),
+        max_stops_per_day=1,
+        origin=CITIES["amsterdam"],
+    )
+    result = plan_trip(problem)
+    assert result.status is SolutionStatus.PARTIAL
 
 
 def test_empty_stop_set_is_feasible_with_no_unplaced():

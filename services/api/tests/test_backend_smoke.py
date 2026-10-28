@@ -124,6 +124,12 @@ def drop_visits(client: TestClient, hdrs: dict[str, str], ids: set[str]) -> None
 
 
 # ------------------------------------------------------------------ 健康检查
+def test_prd_api_prefix_alias_is_supported(client: TestClient) -> None:
+    resp = client.get("/api/v1/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+
+
 def test_health_reports_database_up(client: TestClient) -> None:
     resp = client.get("/v1/health")
     assert resp.status_code == 200

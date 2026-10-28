@@ -53,7 +53,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, created_at, updated_at, uuid_pk
 
-JOB_STATUSES = ("PENDING", "RUNNING", "SUCCEEDED", "FAILED", "DEAD")
+JOB_STATUSES = ("PENDING", "RUNNING", "SUCCEEDED", "FAILED", "DEAD", "CANCELLED")
 OUTBOX_EVENT_STATUSES = ("PENDING", "PROCESSING", "DONE", "DEAD")
 OUTBOX_DELIVERY_STATUSES = ("PENDING", "DONE", "FAILED")
 
@@ -85,7 +85,7 @@ class BackgroundJob(Base):
     __tablename__ = "background_jobs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('PENDING','RUNNING','SUCCEEDED','FAILED','DEAD')", name="status_allowed"
+            "status IN ('PENDING','RUNNING','SUCCEEDED','FAILED','DEAD','CANCELLED')", name="status_allowed"
         ),
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         CheckConstraint("max_attempts >= 1", name="max_attempts_positive"),

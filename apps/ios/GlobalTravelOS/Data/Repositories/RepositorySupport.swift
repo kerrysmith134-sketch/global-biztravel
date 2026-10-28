@@ -8,7 +8,7 @@ import Foundation
 final class OfflineIndicator {
     private let lock = NSLock()
     private var servingCache = false
-    private var messages: [String: String] = [:]
+    private var messages: [String: Date] = [:]
 
     func markServedFromServer() {
         lock.lock()
@@ -21,7 +21,7 @@ final class OfflineIndicator {
         lock.lock()
         defer { lock.unlock() }
         servingCache = true
-        messages[source] = ISO8601.shortDisplay(from: Date())
+        messages[source] = Date()
     }
 
     func reset() {
@@ -47,7 +47,9 @@ final class OfflineIndicator {
         lock.lock()
         defer { lock.unlock() }
         guard servingCache, !messages.isEmpty else { return "数据来自服务端" }
-        return "离线缓存：" + messages.keys.sorted().joined(separator: "、")
+        let sources = messages.keys.sorted().joined(separator: "、")
+        guard let latest = messages.values.max() else { return "离线缓存：" + sources }
+        return "离线缓存：\(sources) · 更新于 \(ISO8601.shortDisplay(from: latest))"
     }
 }
 

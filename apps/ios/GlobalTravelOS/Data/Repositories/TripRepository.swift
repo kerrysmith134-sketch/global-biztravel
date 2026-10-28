@@ -32,6 +32,9 @@ private struct PlaceCreated: Decodable {
 protocol TripRepository {
     func listTrips(page: PageRequest) async throws -> Page<Trip>
     func trip(id: String) async throws -> Trip
+    func holdTrip(id: String, version: Int) async throws -> Trip
+    func resumeTrip(id: String, version: Int) async throws -> Trip
+    func completeTrip(id: String, version: Int) async throws -> Trip
     func createTrip(_ request: CreateTripRequest) async throws -> Trip
     func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult
     func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult
@@ -51,6 +54,18 @@ final class RemoteTripRepository: TripRepository {
 
     func trip(id: String) async throws -> Trip {
         try await client.send(Endpoints.tripDetail(id: id), as: Trip.self)
+    }
+
+    func holdTrip(id: String, version: Int) async throws -> Trip {
+        try await client.send(Endpoints.holdTrip(id: id, version: version), as: Trip.self)
+    }
+
+    func resumeTrip(id: String, version: Int) async throws -> Trip {
+        try await client.send(Endpoints.resumeTrip(id: id, version: version), as: Trip.self)
+    }
+
+    func completeTrip(id: String, version: Int) async throws -> Trip {
+        try await client.send(Endpoints.completeTrip(id: id, version: version), as: Trip.self)
     }
 
     func createTrip(_ request: CreateTripRequest) async throws -> Trip {
@@ -159,6 +174,18 @@ final class OfflineTripRepository: TripRepository {
             indicator.markServedFromCache("行程详情")
             return cached
         }
+    }
+
+    func holdTrip(id: String, version: Int) async throws -> Trip {
+        try await remote.holdTrip(id: id, version: version)
+    }
+
+    func resumeTrip(id: String, version: Int) async throws -> Trip {
+        try await remote.resumeTrip(id: id, version: version)
+    }
+
+    func completeTrip(id: String, version: Int) async throws -> Trip {
+        try await remote.completeTrip(id: id, version: version)
     }
 
     /// Creates always require the server; there is no offline path for a trip that does not exist yet.

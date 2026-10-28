@@ -37,7 +37,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, created_at, updated_at, uuid_pk
 
-TRIP_STATUSES = ("DRAFT", "PLANNING", "READY", "ACTIVE", "COMPLETED", "CANCELLED")
+TRIP_STATUSES = ("DRAFT", "PLANNING", "READY", "ACTIVE", "HOLD", "COMPLETED", "CANCELLED")
 VISIT_STATUSES = ("PLANNED", "SCHEDULED", "DONE", "MISSED", "CANCELLED")
 MOVEMENT_MODES = ("GROUND", "RAIL", "AIR", "SEA")
 IMPORT_BATCH_STATUSES = ("PARSED", "CONFIRMED", "DISCARDED", "FAILED")
@@ -49,7 +49,7 @@ class Trip(Base):
     __table_args__ = (
         CheckConstraint("window_end > window_start", name="window_order"),
         CheckConstraint(
-            "status IN ('DRAFT','PLANNING','READY','ACTIVE','COMPLETED','CANCELLED')",
+            "status IN ('DRAFT','PLANNING','READY','ACTIVE','HOLD','COMPLETED','CANCELLED')",
             name="status_allowed",
         ),
         CheckConstraint("version >= 1", name="version_positive"),

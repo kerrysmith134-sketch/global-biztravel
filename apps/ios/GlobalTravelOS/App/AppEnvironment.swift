@@ -95,6 +95,15 @@ final class AppEnvironment: ObservableObject {
         offlineSummary = indicator.summary
     }
 
+    /// Remember the last opened trip without rebuilding the repositories.
+    func rememberTrip(_ tripId: String) {
+        guard settings.lastTripId != tripId else { return }
+        var next = settings
+        next.lastTripId = tripId
+        settingsStore.save(next)
+        settings = next
+    }
+
     func updateSettings(_ mutate: (inout AppSettings) -> Void) {
         var next = settings
         mutate(&next)

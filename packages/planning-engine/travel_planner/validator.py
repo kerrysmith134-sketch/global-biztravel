@@ -186,21 +186,32 @@ def validate(
     # 因此这里按日期升序迭代**整条**路径，`prev` 变量跨天保持；空天不重置位置
     # （空天没有任何停靠，自然不触碰 `prev`，于是自动回溯到最近有停靠的一天）。
     travel_issues: list[str] = []
+    estimates = {
+        (item.from_visit_id, item.to_visit_id, item.mode): item
+        for item in problem.travel_estimates
+    }
     prev_lat, prev_lon = problem.origin.lat, problem.origin.lon
+    prev_visit_id = None
     for day in sorted(days, key=lambda item: item.date):
         for stop in day.stops:
             source = by_id.get(stop.visit_id)
             if source is None:
                 travel_issues.append(f"{stop.visit_id}:unknown-stop")
                 continue
-            expected = travel_minutes(
-                prev_lat, prev_lon, source.lat, source.lon, source.movement_mode
+            estimate = estimates.get((prev_visit_id, source.visit_id, source.movement_mode))
+            expected = (
+                estimate.travel_minutes
+                if estimate is not None
+                else travel_minutes(
+                    prev_lat, prev_lon, source.lat, source.lon, source.movement_mode
+                )
             )
             if stop.travel_minutes != expected:
                 travel_issues.append(
                     f"{stop.visit_id}:expected={expected} actual={stop.travel_minutes}"
                 )
             prev_lat, prev_lon = source.lat, source.lon
+            prev_visit_id = source.visit_id
     checks.append(
         _check(
             RULE_TRAVEL_TIME_CONSISTENCY,

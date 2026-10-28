@@ -82,7 +82,7 @@ class SMTPPushProvider:
 
     def __init__(self) -> None:
         settings = get_settings()
-        self.host = settings.smtp_host
+        self.host = settings.smtp_host or ""
         self.port = settings.smtp_port
         self.username = settings.smtp_username
         self.password = settings.smtp_password

@@ -8,11 +8,20 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Query, status
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.api.deps import ROLE_ADMIN, ROLE_VIEWER, ContextDep, SessionDep, require_role
-from app.api.schemas import ExternalSignalCreate, ExternalSignalRead
+from app.api.schemas import (
+    ExternalSignalCreate,
+    ExternalSignalRead,
+    IntegrationConnectionCreate,
+    IntegrationConnectionRead,
+)
+from app.models.workflow import IntegrationConnection
 from app.services import external_service
 
 router = APIRouter(tags=["integrations"])
@@ -53,3 +62,63 @@ def list_signals(
         limit=limit,
     )
     return [ExternalSignalRead.model_validate(item) for item in signals]
+
+
+@router.get(
+    "/integrations/connections",
+    response_model=list[IntegrationConnectionRead],
+    summary="外部集成连接与能力状态",
+)
+def list_connections(context: ContextDep, session: SessionDep):
+    require_role(context, ROLE_VIEWER)
+    rows = session.scalars(
+        select(IntegrationConnection)
+        .where(IntegrationConnection.organization_id == str(context.organization_id))
+        .order_by(IntegrationConnection.provider, IntegrationConnection.capability)
+    )
+    return [IntegrationConnectionRead.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/integrations/connections",
+    response_model=IntegrationConnectionRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="注册/更新外部集成连接（ADMIN）",
+)
+def upsert_connection(
+    payload: IntegrationConnectionCreate, context: ContextDep, session: SessionDep
+):
+    require_role(context, ROLE_ADMIN)
+    statement = (
+        pg_insert(IntegrationConnection.__table__)
+        .values(
+            organization_id=str(context.organization_id),
+            provider=payload.provider,
+            capability=payload.capability,
+            status=payload.status,
+            config=payload.config,
+        )
+        .on_conflict_do_update(
+            constraint="uq_integration_connections_org_provider_capability",
+            set_={"status": payload.status, "config": payload.config},
+        )
+        .returning(IntegrationConnection.__table__.c.id)
+    )
+    connection_id = session.execute(statement).scalar_one()
+    row = session.get(IntegrationConnection, connection_id)
+    return IntegrationConnectionRead.model_validate(row)
+
+
+@router.delete(
+    "/integrations/connections/{connection_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除外部集成连接（ADMIN）",
+)
+def delete_connection(connection_id: UUID, context: ContextDep, session: SessionDep):
+    require_role(context, ROLE_ADMIN)
+    session.execute(
+        delete(IntegrationConnection).where(
+            IntegrationConnection.organization_id == str(context.organization_id),
+            IntegrationConnection.id == str(connection_id),
+        )
+    )

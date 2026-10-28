@@ -22,9 +22,12 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
+    CHAR,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -52,6 +55,11 @@ class PlanVersion(Base):
         CheckConstraint("solver IN ('ortools','heuristic')", name="solver_allowed"),
         CheckConstraint("version_number >= 1", name="version_number_positive"),
         CheckConstraint("trip_version >= 1", name="trip_version_positive"),
+        CheckConstraint(
+            "solution_status IN ('OPTIMAL','FEASIBLE','PARTIAL','INFEASIBLE','UNKNOWN','ERROR')",
+            name="solution_status_allowed",
+        ),
+        CheckConstraint("cost_unknown_count >= 0", name="cost_unknown_count_non_negative"),
         # 每个出行至多一份生效计划：并发激活由数据库说了算。
         Index(
             "uq_plan_versions_trip_id_active",
@@ -76,6 +84,10 @@ class PlanVersion(Base):
     problem_hash: Mapped[str] = mapped_column(Text, nullable=False)
     solver: Mapped[str] = mapped_column(Text, nullable=False)
     objective_value: Mapped[float] = mapped_column(nullable=False, server_default="0")
+    solution_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="FEASIBLE")
+    cost_total: Mapped[float | None] = mapped_column(Float)
+    cost_currency: Mapped[str | None] = mapped_column(CHAR(3))
+    cost_unknown_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     degraded: Mapped[bool] = mapped_column(nullable=False, server_default="false")
     trip_version: Mapped[int] = mapped_column(Integer, nullable=False)
     validation: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
@@ -128,6 +140,54 @@ class PlanStop(Base):
     depart_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     travel_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     service_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    distance_km: Mapped[float | None] = mapped_column(Float)
+    cost_amount: Mapped[float | None] = mapped_column(Float)
+    cost_currency: Mapped[str | None] = mapped_column(CHAR(3))
+    travel_source: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="haversine-estimate"
+    )
+    travel_stale: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_at: Mapped[datetime] = created_at()
+
+
+class PlanTravelLeg(Base):
+    """一段交通；起点/终点是 `plan_stops` 的真实外键（PRD DDL §4.3）。"""
+
+    __tablename__ = "plan_travel_legs"
+    __table_args__ = (
+        CheckConstraint("day_index >= 0", name="day_index_non_negative"),
+        CheckConstraint("travel_minutes >= 0", name="travel_minutes_non_negative"),
+        CheckConstraint("distance_km >= 0", name="distance_non_negative"),
+        CheckConstraint("mode IN ('GROUND','RAIL','AIR','SEA')", name="mode_allowed"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    plan_version_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("plan_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    from_stop_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("plan_stops.id", ondelete="CASCADE")
+    )
+    to_stop_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("plan_stops.id", ondelete="CASCADE"), index=True
+    )
+    day_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    mode: Mapped[str] = mapped_column(Text, nullable=False)
+    travel_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    distance_km: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    cost_amount: Mapped[float | None] = mapped_column(Float)
+    cost_currency: Mapped[str | None] = mapped_column(CHAR(3))
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="haversine-estimate")
+    stale: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = created_at()
 
 
@@ -157,6 +217,10 @@ PLAN_VERSION_CONTENT_FIELDS: tuple[str, ...] = (
     "problem_hash",
     "solver",
     "objective_value",
+    "solution_status",
+    "cost_total",
+    "cost_currency",
+    "cost_unknown_count",
     "degraded",
     "trip_version",
     "validation",
@@ -198,9 +262,17 @@ def _guard_plan_immutability(session: Session, flush_context: object, instances:
                 raise PlanVersionImmutable(
                     f"计划停靠不可改写（plan_stop_id={obj.id}）：{', '.join(changed)}"
                 )
+        elif isinstance(obj, PlanTravelLeg):
+            changed = _changed_fields(obj)
+            if changed:
+                raise PlanVersionImmutable(
+                    f"计划交通段不可改写（plan_travel_leg_id={obj.id}）：{', '.join(changed)}"
+                )
 
     for obj in session.deleted:
         if isinstance(obj, PlanStop):
             raise PlanVersionImmutable(f"计划停靠不可删除（plan_stop_id={obj.id}）")
+        if isinstance(obj, PlanTravelLeg):
+            raise PlanVersionImmutable(f"计划交通段不可删除（plan_travel_leg_id={obj.id}）")
         if isinstance(obj, PlanVersion):
             raise PlanVersionImmutable(f"计划版本不可删除（plan_version_id={obj.id}）")

@@ -182,6 +182,12 @@ def main() -> int:
         job_id = generated.json()["job_id"]
         run_worker_once()
         job = poll_job(client, job_id)
+        if job["status"] == "PENDING":
+            # 单轮 Worker 可能在其启动瞬间还没看到刚提交的任务；真实 Worker 是循环的，
+            # 这里再跑一轮等价于"下一轮轮询"。
+            time.sleep(0.5)
+            run_worker_once()
+            job = poll_job(client, job_id)
         check(job["status"] == "SUCCEEDED", f"求解任务完成（{job['status']}）")
 
         plans = client.get(f"/v1/trips/{trip_id}/plans", headers=headers())

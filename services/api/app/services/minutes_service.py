@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.llm.contracts import LLMRequest
@@ -28,6 +29,7 @@ from app.llm.prompts import (
 from app.models.geo import Customer, Place
 from app.models.records import VisitRecord
 from app.models.trip import Trip
+from app.models.workflow import AgentRun
 from app.services import record_service, visit_service
 
 
@@ -119,8 +121,27 @@ def draft_minutes(
         fallback=fallback,
         system=MEETING_MINUTES_SYSTEM,
     )
-    response = get_gateway().complete(session, organization_id, request)
+    run = AgentRun(
+        organization_id=str(organization_id),
+        agent_type="MEETING_MINUTES_DRAFT",
+        status="RUNNING",
+        input=variables,
+    )
+    session.add(run)
+    session.flush()
+    try:
+        response = get_gateway().complete(session, organization_id, request)
+    except Exception as exc:
+        run.status = "FAILED"
+        run.error = f"{type(exc).__name__}: {exc}"
+        run.finished_at = session.scalar(select(func.clock_timestamp()))
+        session.flush()
+        raise
     output = response.output or fallback
+    run.status = "SUCCEEDED"
+    run.output = output
+    run.finished_at = session.scalar(select(func.clock_timestamp()))
+    session.flush()
 
     title = str(output.get("title") or fallback["title"])
     summary = str(output.get("summary") or fallback["summary"])

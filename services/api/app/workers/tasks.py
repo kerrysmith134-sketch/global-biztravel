@@ -27,7 +27,13 @@ from app.api.errors import ApiError
 from app.config import get_settings
 from app.models.reliability import BackgroundJob
 from app.models.trip import Trip
-from app.services import job_service, memory_service, outbox_service, planning_service
+from app.services import (
+    job_service,
+    memory_service,
+    minutes_service,
+    outbox_service,
+    planning_service,
+)
 
 
 class TaskFailed(RuntimeError):
@@ -173,11 +179,38 @@ def _reject(session: Session, trip: Trip, *, reason: str, code: str) -> None:
     session.flush()
 
 
+def handle_draft_minutes(session: Session, job: BackgroundJob) -> dict[str, Any]:
+    """为一条现场记录生成会议纪要草稿（异步任务，PRD §4.1 summary-jobs）。"""
+    visit_id = (job.payload or {}).get("visit_id")
+    if not visit_id:
+        raise TaskFailed("任务载荷缺少 visit_id", retryable=False)
+    try:
+        draft = minutes_service.draft_minutes(session, job.organization_id, visit_id)
+    except ApiError as exc:
+        raise TaskFailed(exc.message, retryable=False) from exc
+    return {
+        "draft_id": str(draft.invocation_id),
+        "llm_invocation_id": str(draft.invocation_id),
+        "title": draft.title,
+        "summary": draft.summary,
+        "decisions": draft.decisions,
+        "follow_up_tasks": draft.follow_up_tasks,
+        "degraded": draft.degraded,
+    }
+
+
 #: 任务处理器注册表。新增 ``job_type`` 时必须同时在这里登记，否则任务会以
 #: "没有注册处理器"直接终态失败（这是刻意的：静默丢弃任务比报错更糟）。
 TASK_HANDLERS: Mapping[str, TaskHandler] = {
     job_service.JOB_TYPE_PLAN_TRIP: handle_plan_trip,
+    job_service.JOB_TYPE_DRAFT_MINUTES: handle_draft_minutes,
 }
 
 
-__all__ = ["TASK_HANDLERS", "TaskFailed", "TaskHandler", "handle_plan_trip"]
+__all__ = [
+    "TASK_HANDLERS",
+    "TaskFailed",
+    "TaskHandler",
+    "handle_draft_minutes",
+    "handle_plan_trip",
+]

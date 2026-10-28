@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     # 每日停靠上限。默认值取自设计文档第 6.4 章示例的 `constraints.max_stops_per_day`。
     # 必须走配置而不是硬编码（红线 RL-05）：它是业务约束，不是实现细节。
     max_stops_per_day: int = 4
+    # 交通估算 provider（PRD §5.1 / AT-003）：offline-haversine | unavailable（验证降级）
+    travel_provider: str = "offline"
 
     # 主动式运行时（第 8.4 章）
     suggestion_cooldown_hours: int = 24

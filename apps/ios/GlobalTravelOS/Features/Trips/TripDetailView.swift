@@ -23,7 +23,9 @@ final class TripDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            trip = try await environment.tripRepository.trip(id: tripId)
+            let loaded = try await environment.tripRepository.trip(id: tripId)
+            trip = loaded
+            environment.rememberTrip(tripId)
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -33,6 +35,32 @@ final class TripDetailViewModel: ObservableObject {
             page: PageRequest(limit: 50, cursor: nil)
         ).items) ?? plans
         environment.refreshOfflineSummary()
+    }
+
+    func hold() async {
+        await transition { try await environment.tripRepository.holdTrip(id: tripId, version: $0) }
+    }
+
+    func resume() async {
+        await transition { try await environment.tripRepository.resumeTrip(id: tripId, version: $0) }
+    }
+
+    func complete() async {
+        await transition { try await environment.tripRepository.completeTrip(id: tripId, version: $0) }
+    }
+
+    private func transition(
+        _ action: (Int) async throws -> Trip
+    ) async {
+        guard let current = trip else { return }
+        errorMessage = nil
+        do {
+            _ = try await action(current.version)
+            statusMessage = "状态已更新"
+            await load()
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
     }
 
     func generatePlan() async {
@@ -89,6 +117,33 @@ struct TripDetailView: View {
                     LabeledContent("时间窗口", value: trip.windowLabel)
                     LabeledContent("出发地", value: trip.originLabel)
                     LabeledContent("版本", value: "v\(trip.version)")
+                }
+            }
+
+            if let trip = viewModel.trip {
+                Section("出行状态") {
+                    let status = (trip.status ?? "").uppercased()
+                    if ["DRAFT", "PLANNING", "READY", "ACTIVE"].contains(status) {
+                        Button(role: .destructive) {
+                            Task { await viewModel.hold() }
+                        } label: {
+                            Label("暂停出行", systemImage: "pause.circle")
+                        }
+                    }
+                    if status == "HOLD" {
+                        Button {
+                            Task { await viewModel.resume() }
+                        } label: {
+                            Label("恢复出行", systemImage: "play.circle")
+                        }
+                    }
+                    if status != "COMPLETED" && status != "CANCELLED" {
+                        Button {
+                            Task { await viewModel.complete() }
+                        } label: {
+                            Label("标记完成", systemImage: "checkmark.circle")
+                        }
+                    }
                 }
             }
 

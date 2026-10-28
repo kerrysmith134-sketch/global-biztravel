@@ -21,7 +21,12 @@ from __future__ import annotations
 from dataclasses import replace
 from uuid import UUID
 
-from travel_planner.contracts import PlanningProblem, PlanningResult, SolverKind
+from travel_planner.contracts import (
+    PlanningProblem,
+    PlanningResult,
+    SolutionStatus,
+    SolverKind,
+)
 from travel_planner.feasibility import check_feasibility
 from travel_planner.outcome import SolveOutcome, SolverFailed, SolverUnavailable, merge_unplaced
 from travel_planner.solvers import heuristic, is_available, ortools_solver
@@ -124,15 +129,23 @@ def plan_trip(
         unplaced=unplaced,
         objective_value=outcome.objective_value,
     )
+    if not report.feasible:
+        status = SolutionStatus.INFEASIBLE
+    elif unplaced:
+        status = SolutionStatus.PARTIAL
+    else:
+        status = SolutionStatus.FEASIBLE
 
     return PlanningResult(
         trip_id=problem.trip_id,
         problem_hash=problem.problem_hash(),
         solver=outcome.solver,
         days=outcome.days,
+        legs=outcome.legs,
         objective_value=outcome.objective_value,
         validation=report,
         unplaced=unplaced,
+        status=status,
         degraded=outcome.degraded,
         explanation_ref=explanation_ref,
     )

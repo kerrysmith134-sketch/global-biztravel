@@ -25,3 +25,10 @@ markers = [
     "integration: 需要本地 PostgreSQL 实例（docker compose 起 zhi-tu-pg）",
     "acceptance: 对应设计文档第 16.3 章 AT 编号的验收场景",
 ]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+follow_imports = "skip"
+check_untyped_defs = false
+exclude = ["services/api/migrations/versions/", "services/api/tests/", "scripts/"]

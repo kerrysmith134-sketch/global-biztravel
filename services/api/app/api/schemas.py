@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 T = TypeVar("T")
 
-TripStatus = Literal["DRAFT", "PLANNING", "READY", "ACTIVE", "COMPLETED", "CANCELLED"]
+TripStatus = Literal["DRAFT", "PLANNING", "READY", "ACTIVE", "HOLD", "COMPLETED", "CANCELLED"]
 VisitStatus = Literal["PLANNED", "SCHEDULED", "DONE", "MISSED", "CANCELLED"]
 MovementMode = Literal["GROUND", "RAIL", "AIR", "SEA"]
 GeocodeStatus = Literal["MISSING", "RESOLVED", "FAILED"]
@@ -271,9 +271,10 @@ class ImportConfirmRead(BaseModel):
 
 # ------------------------------------------------------------------- plans
 PlanVersionStatus = Literal["DRAFT", "ACTIVE", "SUPERSEDED"]
+PlanSolutionStatus = Literal["OPTIMAL", "FEASIBLE", "PARTIAL", "INFEASIBLE", "UNKNOWN", "ERROR"]
 PlanSolver = Literal["ortools", "heuristic"]
 JobType = Literal["plan_trip"]
-JobStatus = Literal["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "DEAD"]
+JobStatus = Literal["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "DEAD", "CANCELLED"]
 
 
 class PlanGenerateRead(BaseModel):
@@ -318,6 +319,31 @@ class PlanStopRead(ORMModel):
     depart_at: datetime
     travel_minutes: int
     service_minutes: int
+    distance_km: float | None = None
+    cost_amount: float | None = None
+    cost_currency: str | None = None
+    travel_source: str = "haversine-estimate"
+    travel_stale: bool = False
+    place_id: UUID | None = None
+    place_name: str | None = None
+    city: str | None = None
+    country_code: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class PlanTravelLegRead(ORMModel):
+    id: UUID
+    from_stop_id: UUID | None = None
+    to_stop_id: UUID
+    day_index: int
+    mode: MovementMode
+    travel_minutes: int
+    distance_km: float
+    cost_amount: float | None = None
+    cost_currency: str | None = None
+    source: str
+    stale: bool
 
 
 class PlanVersionRead(ORMModel):
@@ -328,6 +354,10 @@ class PlanVersionRead(ORMModel):
     problem_hash: str
     solver: PlanSolver
     objective_value: float
+    solution_status: PlanSolutionStatus = "FEASIBLE"
+    cost_total: float | None = None
+    cost_currency: str | None = None
+    cost_unknown_count: int = 0
     degraded: bool
     trip_version: int
     validation: dict[str, Any] = Field(default_factory=dict)
@@ -344,6 +374,7 @@ class PlanVersionRead(ORMModel):
 
 class PlanVersionDetailRead(PlanVersionRead):
     stops: list[PlanStopRead] = Field(default_factory=list)
+    legs: list[PlanTravelLegRead] = Field(default_factory=list)
 
 
 # --------------------------------------------- plan versions: activate & diff
@@ -848,3 +879,67 @@ class DeviceTokenRead(ORMModel):
     enabled: bool
     last_seen_at: datetime | None = None
     created_at: datetime
+
+
+# ------------------------------------------------------------ plan changes
+PlanChangeOperation = Literal[
+    "CHANGE_VISIT_TIME",
+    "CHANGE_VISIT_DURATION",
+    "CANCEL_VISIT",
+    "ADD_VISIT",
+    "REMOVE_VISIT",
+]
+
+
+class PlanChangeCreate(BaseModel):
+    base_plan_version_id: UUID
+    base_trip_version: int = Field(ge=1)
+    source: str = "MAP"
+    operation_type: PlanChangeOperation
+    payload: dict[str, Any] = Field(default_factory=dict)
+    reason: str | None = None
+
+
+class PlanChangeRead(BaseModel):
+    change_request_id: UUID
+    status: str
+    optimization_job_id: UUID
+    trip_version: int
+
+
+class EvidenceRead(ORMModel):
+    id: UUID
+    subject_type: str
+    subject_id: UUID
+    kind: str
+    ref: str
+    source: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    retrieved_at: datetime | None = None
+    created_at: datetime
+
+
+IntegrationStatus = Literal["ACTIVE", "DISABLED", "DEGRADED"]
+
+
+class IntegrationConnectionCreate(BaseModel):
+    provider: str = Field(min_length=1, max_length=100)
+    capability: str = Field(min_length=1, max_length=100)
+    status: IntegrationStatus = "DISABLED"
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class IntegrationConnectionRead(ORMModel):
+    id: UUID
+    provider: str
+    capability: str
+    status: IntegrationStatus
+    config: dict[str, Any] = Field(default_factory=dict)
+    last_synced_at: datetime | None = None
+    created_at: datetime
+
+
+class MinutesJobAcceptedRead(BaseModel):
+    job_id: UUID
+    visit_id: UUID
+    status: JobStatus

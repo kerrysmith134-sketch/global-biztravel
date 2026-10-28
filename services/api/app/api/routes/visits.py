@@ -29,13 +29,14 @@ from app.api.schemas import (
     MinutesDraftRead,
     MinutesDraftRequest,
     MinutesFollowUpRead,
+    MinutesJobAcceptedRead,
     TripRead,
     VisitRead,
     VisitRecordCreate,
     VisitRecordRead,
     VisitUpdate,
 )
-from app.services import minutes_service, record_service, visit_service
+from app.services import job_service, minutes_service, record_service, visit_service
 
 router = APIRouter(tags=["visits"])
 
@@ -150,3 +151,38 @@ def draft_meeting_minutes(
         degraded=draft.degraded,
     )
     return guard.finish(status_code=status.HTTP_200_OK, body=body)
+
+
+@router.post(
+    "/visits/{visit_id}/minutes:jobs",
+    response_model=MinutesJobAcceptedRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="异步生成会议纪要草稿（返回 job_id 轮询）",
+)
+def create_minutes_job(
+    visit_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint="POST /v1/visits/{visit_id}/minutes:jobs",
+        key=idempotency_key,
+        payload={"visit_id": str(visit_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    visit = record_service.ensure_visit_exists(session, context.organization_id, visit_id)
+    job = job_service.enqueue(
+        session,
+        context.organization_id,
+        job_type=job_service.JOB_TYPE_DRAFT_MINUTES,
+        payload={"visit_id": str(visit.id)},
+        dedupe_key=f"draft_minutes:{visit.id}",
+        created_by_user_id=context.user_id,
+    )
+    body = MinutesJobAcceptedRead(job_id=job.id, visit_id=visit.id, status=job.status)
+    return guard.finish(status_code=status.HTTP_202_ACCEPTED, body=body)

@@ -10,6 +10,7 @@ enum JobStatus: String, Codable, Equatable {
     case succeeded = "SUCCEEDED"
     case failed = "FAILED"
     case dead = "DEAD"
+    case cancelled = "CANCELLED"
     case unknown = "UNKNOWN"
 
     init(from decoder: Decoder) throws {
@@ -19,7 +20,7 @@ enum JobStatus: String, Codable, Equatable {
 
     var isTerminal: Bool {
         switch self {
-        case .succeeded, .failed, .dead: return true
+        case .succeeded, .failed, .dead, .cancelled: return true
         case .pending, .running, .unknown: return false
         }
     }
@@ -33,6 +34,7 @@ enum JobStatus: String, Codable, Equatable {
         case .succeeded: return "已完成"
         case .failed: return "失败"
         case .dead: return "已终止"
+        case .cancelled: return "已取消"
         case .unknown: return "未知"
         }
     }

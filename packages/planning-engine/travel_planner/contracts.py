@@ -69,6 +69,17 @@ class CheckStatus(StrEnum):
     FAIL = "FAIL"
 
 
+class SolutionStatus(StrEnum):
+    """求解结果状态（PRD §5.3）。"""
+
+    OPTIMAL = "OPTIMAL"
+    FEASIBLE = "FEASIBLE"
+    PARTIAL = "PARTIAL"
+    INFEASIBLE = "INFEASIBLE"
+    UNKNOWN = "UNKNOWN"
+    ERROR = "ERROR"
+
+
 class UnplacedReason(StrEnum):
     """未排入行程的原因。契约冻结为三种。"""
 
@@ -164,6 +175,7 @@ class PlanningProblem(BaseModel):
     stops: tuple[StopInput, ...]
     objective: Objective = Objective()
     constraints: Constraints = Constraints()
+    travel_estimates: tuple[TravelEstimate, ...] = ()
     solver_budget_seconds: int = Field(default=10, ge=1)
 
     @model_validator(mode="after")
@@ -195,6 +207,18 @@ class PlanningProblem(BaseModel):
         `solver_budget_seconds` 计入哈希，因为它会改变求解搜索预算、进而可能改变输出。
         """
         return compute_problem_hash(self)
+
+    def travel_estimate(
+        self, from_visit_id: UUID | None, to_visit_id: UUID, mode: MovementMode
+    ) -> TravelEstimate | None:
+        for estimate in self.travel_estimates:
+            if (
+                estimate.from_visit_id == from_visit_id
+                and estimate.to_visit_id == to_visit_id
+                and estimate.mode is mode
+            ):
+                return estimate
+        return None
 
     def stop_by_id(self, visit_id: UUID) -> StopInput:
         for stop in self.stops:
@@ -236,6 +260,39 @@ class DayPlan(BaseModel):
     stops: tuple[StopPlan, ...] = ()
 
 
+class TravelLegPlan(BaseModel):
+    """一段交通。``from_visit_id=None`` 表示本段从出行起点（origin）出发。"""
+
+    model_config = STRICT
+
+    from_visit_id: UUID | None = None
+    to_visit_id: UUID
+    day_index: int = Field(ge=0)
+    mode: MovementMode
+    travel_minutes: int = Field(ge=0)
+    distance_km: float = Field(ge=0)
+    cost_amount: float | None = None
+    cost_currency: str | None = None
+    source: str = "haversine-estimate"
+    stale: bool = False
+
+
+class TravelEstimate(BaseModel):
+    """Provider 提供的逐段行程估算。`from_visit_id=None` 表示从 origin 出发。"""
+
+    model_config = STRICT
+
+    from_visit_id: UUID | None = None
+    to_visit_id: UUID
+    mode: MovementMode
+    travel_minutes: int = Field(ge=0)
+    distance_km: float = Field(ge=0)
+    cost_amount: float | None = None
+    cost_currency: str | None = None
+    source: str = "offline-haversine"
+    stale: bool = False
+
+
 class UnplacedStop(BaseModel):
     model_config = STRICT
 
@@ -271,9 +328,11 @@ class PlanningResult(BaseModel):
     problem_hash: str
     solver: SolverKind
     days: tuple[DayPlan, ...] = ()
+    legs: tuple[TravelLegPlan, ...] = ()
     objective_value: float
     validation: ValidationReport
     unplaced: tuple[UnplacedStop, ...] = ()
+    status: SolutionStatus = SolutionStatus.FEASIBLE
     degraded: bool = False
     explanation_ref: str | None = None
 

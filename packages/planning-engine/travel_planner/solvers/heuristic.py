@@ -85,6 +85,7 @@ def solve(problem: PlanningProblem, eligible: tuple[UUID, ...]) -> SolveOutcome:
     return SolveOutcome(
         solver=SolverKind.HEURISTIC,
         days=best_outcome.days,
+        legs=best_outcome.legs,
         unplaced=best_outcome.unplaced,
         travel_minutes_total=best_outcome.travel_minutes_total,
         value_placed=best_outcome.value_placed,

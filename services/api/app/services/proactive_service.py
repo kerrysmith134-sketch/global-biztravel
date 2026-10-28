@@ -51,7 +51,12 @@ from app.models.proactive import (
     SuggestionAudit,
 )
 from app.models.trip import Trip, Visit
-from app.services import approval_policy_service, external_service, outbox_service
+from app.services import (
+    approval_policy_service,
+    evidence_service,
+    external_service,
+    outbox_service,
+)
 
 #: 建议类型。集中登记，避免规则、执行器与测试各写一套字符串。
 SUGGESTION_VISA_REMINDER = "VISA_REQUIREMENT_REMINDER"
@@ -574,6 +579,14 @@ def _record_candidate(
     )
     session.add(suggestion)
     session.flush()
+    evidence_service.record_many(
+        session,
+        organization_id,
+        subject_type="proactive_suggestion",
+        subject_id=suggestion.id,
+        items=candidate.evidence,
+        source=f"proactive:{candidate.rule_id}",
+    )
 
     _audit(
         session,
@@ -910,6 +923,22 @@ def approve(
     suggestion.execution_result = result
     suggestion.executed_at = current
     suggestion.status = "EXECUTED"
+    from app.models.workflow import ExternalAction
+
+    session.add(
+        ExternalAction(
+            organization_id=str(organization_id),
+            subject_type="proactive_suggestion",
+            subject_id=suggestion.id,
+            action_type=str((suggestion.proposed_action or {}).get("kind") or suggestion.suggestion_type),
+            status="PREPARED",
+            request=dict(suggestion.proposed_action or {}),
+            response=result,
+            requires_approval=suggestion.requires_approval,
+            approved_by_user_id=str(actor_user_id) if actor_user_id is not None else None,
+            executed_at=current,
+        )
+    )
     _audit(
         session,
         organization_id,
@@ -986,7 +1015,7 @@ def dismiss(
 # ---------------------------------------------------------------------------
 # 执行器：只准备，不对外
 # ---------------------------------------------------------------------------
-Executor = Callable[[Session, ProactiveSuggestion, Trip | None, datetime], dict[str, Any]]
+Executor = Callable[..., dict[str, Any]]
 
 
 def _execute_visa(

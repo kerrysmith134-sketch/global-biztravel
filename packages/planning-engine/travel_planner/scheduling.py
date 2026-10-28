@@ -43,11 +43,12 @@ from travel_planner.contracts import (
     PlanningProblem,
     StopInput,
     StopPlan,
+    TravelLegPlan,
     UnplacedReason,
     UnplacedStop,
 )
 from travel_planner.days import DayWindow, enumerate_days
-from travel_planner.geometry import travel_minutes
+from travel_planner.geometry import haversine_km, travel_minutes
 
 
 @dataclass
@@ -63,6 +64,7 @@ class _DayState:
 @dataclass(frozen=True)
 class ScheduleOutcome:
     days: tuple[DayPlan, ...]
+    legs: tuple[TravelLegPlan, ...]
     unplaced: tuple[UnplacedStop, ...]
     travel_minutes_total: int
     value_placed: float
@@ -96,6 +98,10 @@ def build_schedule(
     位置在**天与天之间连续传递**（见模块 docstring 的"多天连续性语义"）。
     """
     by_id = {stop.visit_id: stop for stop in problem.stops}
+    estimates = {
+        (item.from_visit_id, item.to_visit_id, item.mode): item
+        for item in problem.travel_estimates
+    }
     day_windows = enumerate_days(problem.window, problem.timezone_home)
 
     states = [_DayState(window=day) for day in day_windows]
@@ -103,6 +109,7 @@ def build_schedule(
     max_per_day = problem.constraints.max_stops_per_day
     travel_total = 0
     value_placed = 0.0
+    legs: list[TravelLegPlan] = []
     unplaced: list[UnplacedStop] = []
     seen: set[UUID] = set()
 
@@ -110,7 +117,7 @@ def build_schedule(
         stop = by_id[visit_id]
         return stop.lat, stop.lon
 
-    def _day_start(index: int) -> tuple[float, float]:
+    def _day_start(index: int) -> tuple[float, float, UUID | None]:
         """第 `index` 天的出发位置：回溯到最近一个"有停靠的日子"。
 
         空日不缓存结果——它取决于调用时刻已排入的停靠。
@@ -118,10 +125,12 @@ def build_schedule(
         for earlier in range(index - 1, -1, -1):
             earlier_stops = states[earlier].stops
             if earlier_stops:
-                return _coords(earlier_stops[-1].visit_id)
-        return problem.origin.lat, problem.origin.lon
+                last = earlier_stops[-1].visit_id
+                lat, lon = _coords(last)
+                return lat, lon, last
+        return problem.origin.lat, problem.origin.lon, None
 
-    def _departure(index: int) -> tuple[datetime, float, float]:
+    def _departure(index: int) -> tuple[datetime, float, float, UUID | None]:
         """当天续排的出发时刻与位置。
 
         - 该日已有停靠：接续最后一个停靠的 `depart` 与坐标（同日链续）；
@@ -131,9 +140,9 @@ def build_schedule(
         if placed:
             last = placed[-1]
             lat, lon = _coords(last.visit_id)
-            return last.depart, lat, lon
-        lat, lon = _day_start(index)
-        return states[index].window.open, lat, lon
+            return last.depart, lat, lon, last.visit_id
+        lat, lon, from_visit = _day_start(index)
+        return states[index].window.open, lat, lon, from_visit
 
     #: 天指针：只增不减，指向"最后一个已排入停靠的日子"。
     pointer = 0
@@ -152,8 +161,22 @@ def build_schedule(
             if state.full_at >= max_per_day:
                 continue
 
-            depart_time, lat, lon = _departure(index)
-            travel = travel_minutes(lat, lon, stop.lat, stop.lon, stop.movement_mode)
+            depart_time, lat, lon, from_visit = _departure(index)
+            estimate = estimates.get((from_visit, stop.visit_id, stop.movement_mode))
+            if estimate is not None:
+                distance = estimate.distance_km
+                travel = estimate.travel_minutes
+                cost_amount = estimate.cost_amount
+                cost_currency = estimate.cost_currency
+                source = estimate.source
+                stale = estimate.stale
+            else:
+                distance = haversine_km(lat, lon, stop.lat, stop.lon)
+                travel = travel_minutes(lat, lon, stop.lat, stop.lon, stop.movement_mode)
+                cost_amount = None
+                cost_currency = None
+                source = "haversine-estimate"
+                stale = False
             earliest = depart_time + timedelta(minutes=travel)
             arrive = resolve_arrival(earliest, stop, window_conflict=window_conflict)
             if arrive is None:
@@ -170,6 +193,20 @@ def build_schedule(
                     arrive=arrive,
                     depart=depart,
                     travel_minutes=travel,
+                )
+            )
+            legs.append(
+                TravelLegPlan(
+                    from_visit_id=from_visit,
+                    to_visit_id=stop.visit_id,
+                    day_index=index,
+                    mode=stop.movement_mode,
+                    travel_minutes=travel,
+                    distance_km=round(distance, 3),
+                    cost_amount=cost_amount,
+                    cost_currency=cost_currency,
+                    source=source,
+                    stale=stale,
                 )
             )
             travel_total += travel
@@ -193,6 +230,7 @@ def build_schedule(
     days = tuple(DayPlan(date=state.window.date, stops=tuple(state.stops)) for state in states)
     return ScheduleOutcome(
         days=days,
+        legs=tuple(legs),
         unplaced=tuple(unplaced),
         travel_minutes_total=travel_total,
         value_placed=value_placed,

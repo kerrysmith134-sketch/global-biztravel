@@ -25,6 +25,10 @@ struct PlanVersion: Codable, Equatable, Identifiable {
     var feasible: Bool?
     var degraded: Bool?
     var objectiveValue: Double?
+    var solutionStatus: String?
+    var costTotal: Double?
+    var costCurrency: String?
+    var costUnknownCount: Int?
     var stopCount: Int?
     var dayCount: Int?
     var createdAt: Date?
@@ -37,6 +41,10 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         feasible: Bool? = nil,
         degraded: Bool? = nil,
         objectiveValue: Double? = nil,
+        solutionStatus: String? = nil,
+        costTotal: Double? = nil,
+        costCurrency: String? = nil,
+        costUnknownCount: Int? = nil,
         stopCount: Int? = nil,
         dayCount: Int? = nil,
         createdAt: Date? = nil
@@ -48,6 +56,10 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         self.feasible = feasible
         self.degraded = degraded
         self.objectiveValue = objectiveValue
+        self.solutionStatus = solutionStatus
+        self.costTotal = costTotal
+        self.costCurrency = costCurrency
+        self.costUnknownCount = costUnknownCount
         self.stopCount = stopCount
         self.dayCount = dayCount
         self.createdAt = createdAt
@@ -61,6 +73,10 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         case feasible
         case degraded
         case objectiveValue
+        case solutionStatus
+        case costTotal
+        case costCurrency
+        case costUnknownCount
         case stopCount
         case dayCount
         case createdAt
@@ -75,6 +91,10 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         self.solver = try container.decodeIfPresent(String.self, forKey: .solver)
         self.degraded = try container.decodeIfPresent(Bool.self, forKey: .degraded)
         self.objectiveValue = try container.decodeIfPresent(Double.self, forKey: .objectiveValue)
+        self.solutionStatus = try container.decodeIfPresent(String.self, forKey: .solutionStatus)
+        self.costTotal = try container.decodeIfPresent(Double.self, forKey: .costTotal)
+        self.costCurrency = try container.decodeIfPresent(String.self, forKey: .costCurrency)
+        self.costUnknownCount = try container.decodeIfPresent(Int.self, forKey: .costUnknownCount)
         self.stopCount = try container.decodeIfPresent(Int.self, forKey: .stopCount)
         self.dayCount = try container.decodeIfPresent(Int.self, forKey: .dayCount)
         self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
@@ -92,6 +112,10 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(feasible, forKey: .feasible)
         try container.encodeIfPresent(degraded, forKey: .degraded)
         try container.encodeIfPresent(objectiveValue, forKey: .objectiveValue)
+        try container.encodeIfPresent(solutionStatus, forKey: .solutionStatus)
+        try container.encodeIfPresent(costTotal, forKey: .costTotal)
+        try container.encodeIfPresent(costCurrency, forKey: .costCurrency)
+        try container.encodeIfPresent(costUnknownCount, forKey: .costUnknownCount)
         try container.encodeIfPresent(stopCount, forKey: .stopCount)
         try container.encodeIfPresent(dayCount, forKey: .dayCount)
         try container.encodeIfPresent(createdAt, forKey: .createdAt)
@@ -128,6 +152,11 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
     var validation: ValidationReport?
     var unplaced: [UnplacedVisit]?
     var days: [PlanDay]?
+    var legs: [PlanTravelLeg]?
+    var solutionStatus: String?
+    var costTotal: Double?
+    var costCurrency: String?
+    var costUnknownCount: Int?
 
     init(
         id: String,
@@ -142,7 +171,12 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         createdAt: Date? = nil,
         validation: ValidationReport? = nil,
         unplaced: [UnplacedVisit]? = nil,
-        days: [PlanDay]? = nil
+        days: [PlanDay]? = nil,
+        legs: [PlanTravelLeg]? = nil,
+        solutionStatus: String? = nil,
+        costTotal: Double? = nil,
+        costCurrency: String? = nil,
+        costUnknownCount: Int? = nil
     ) {
         self.id = id
         self.tripId = tripId
@@ -157,6 +191,11 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         self.validation = validation
         self.unplaced = unplaced
         self.days = days
+        self.legs = legs
+        self.solutionStatus = solutionStatus
+        self.costTotal = costTotal
+        self.costCurrency = costCurrency
+        self.costUnknownCount = costUnknownCount
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -174,6 +213,11 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         case unplaced
         case days
         case stops
+        case legs
+        case solutionStatus
+        case costTotal
+        case costCurrency
+        case costUnknownCount
     }
 
     /// The backend returns `stops` as a flat, day-indexed list; the domain wants `days` for the
@@ -187,6 +231,17 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         var departAt: Date?
         var travelMinutes: Int?
         var serviceMinutes: Int?
+        var distanceKm: Double?
+        var costAmount: Double?
+        var costCurrency: String?
+        var travelSource: String?
+        var travelStale: Bool?
+        var placeId: String?
+        var placeName: String?
+        var city: String?
+        var countryCode: String?
+        var latitude: Double?
+        var longitude: Double?
     }
 
     init(from decoder: Decoder) throws {
@@ -204,6 +259,11 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         self.unplaced = try container.decodeIfPresent([UnplacedVisit].self, forKey: .unplaced)
         self.feasible = try container.decodeIfPresent(Bool.self, forKey: .feasible)
             ?? self.validation?.feasible
+        self.solutionStatus = try container.decodeIfPresent(String.self, forKey: .solutionStatus)
+        self.costTotal = try container.decodeIfPresent(Double.self, forKey: .costTotal)
+        self.costCurrency = try container.decodeIfPresent(String.self, forKey: .costCurrency)
+        self.costUnknownCount = try container.decodeIfPresent(Int.self, forKey: .costUnknownCount)
+        self.legs = try container.decodeIfPresent([PlanTravelLeg].self, forKey: .legs)
 
         if let decodedDays = try container.decodeIfPresent([PlanDay].self, forKey: .days) {
             self.days = decodedDays
@@ -219,10 +279,21 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
                         PlanStop(
                             visitId: stop.visitId,
                             sequence: stop.sequence,
+                            placeId: stop.placeId,
+                            placeName: stop.placeName,
+                            city: stop.city,
+                            countryCode: stop.countryCode,
+                            latitude: stop.latitude,
+                            longitude: stop.longitude,
                             arrive: stop.arriveAt,
                             depart: stop.departAt,
                             travelMinutes: stop.travelMinutes,
-                            serviceMinutes: stop.serviceMinutes
+                            distanceKm: stop.distanceKm,
+                            serviceMinutes: stop.serviceMinutes,
+                            costAmount: stop.costAmount,
+                            costCurrency: stop.costCurrency,
+                            travelSource: stop.travelSource,
+                            stale: stop.travelStale
                         )
                     }
                 )
@@ -245,6 +316,11 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(validation, forKey: .validation)
         try container.encodeIfPresent(unplaced, forKey: .unplaced)
         try container.encodeIfPresent(days, forKey: .days)
+        try container.encodeIfPresent(legs, forKey: .legs)
+        try container.encodeIfPresent(solutionStatus, forKey: .solutionStatus)
+        try container.encodeIfPresent(costTotal, forKey: .costTotal)
+        try container.encodeIfPresent(costCurrency, forKey: .costCurrency)
+        try container.encodeIfPresent(costUnknownCount, forKey: .costUnknownCount)
     }
 
     var dayList: [PlanDay] { days ?? [] }
@@ -272,6 +348,25 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         dayList.reduce(0) { partial, day in
             partial + day.stops.reduce(0) { $0 + ($1.travelMinutes ?? 0) }
         }
+    }
+
+    var solutionStatusLabel: String {
+        switch (solutionStatus ?? "FEASIBLE").uppercased() {
+        case "OPTIMAL": return "最优"
+        case "FEASIBLE": return "可行（未证明最优）"
+        case "PARTIAL": return "部分完成"
+        case "INFEASIBLE": return "不可行"
+        case "UNKNOWN": return "未知"
+        case "ERROR": return "求解错误"
+        default: return solutionStatus ?? "未知"
+        }
+    }
+
+    var costLabel: String {
+        guard let costTotal else {
+            return (costUnknownCount ?? 0) > 0 ? "费用未知（\(costUnknownCount ?? 0) 段）" : "无费用数据"
+        }
+        return "\(costCurrency ?? "") \(String(format: "%.2f", costTotal))"
     }
 
     var totalDistanceKm: Double {

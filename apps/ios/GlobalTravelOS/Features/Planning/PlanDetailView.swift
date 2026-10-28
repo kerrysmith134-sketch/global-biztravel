@@ -83,12 +83,27 @@ struct PlanDetailView: View {
                 }
             }
             if let plan = viewModel.plan {
+                Section("视图") {
+                    NavigationLink {
+                        PlanMapView(plan: plan)
+                    } label: {
+                        Label("行程地图", systemImage: "map")
+                    }
+                    NavigationLink {
+                        PlanCalendarView(plan: plan)
+                    } label: {
+                        Label("行程日历", systemImage: "calendar")
+                    }
+                }
+
                 Section("计划") {
                     LabeledContent("版本", value: plan.versionLabel)
                     LabeledContent("状态", value: plan.status?.label ?? "草稿")
                     LabeledContent("可行性", value: plan.feasibilityLabel)
+                    LabeledContent("求解状态", value: plan.solutionStatusLabel)
                     LabeledContent("求解器", value: plan.solver ?? "—")
                     LabeledContent("总行程", value: "\(plan.totalTravelMinutes) 分钟")
+                    LabeledContent("费用", value: plan.costLabel)
                 }
 
                 if let validation = plan.validation {
@@ -121,6 +136,20 @@ struct PlanDetailView: View {
                                 Text("\(stop.arriveLabel) – \(stop.departLabel) · 行程 \(stop.travelLabel)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                if let legs = plan.legs, !legs.isEmpty {
+                    Section("交通段") {
+                        ForEach(legs) { leg in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(leg.sourceLabel) · \(leg.mode)")
+                                    .font(.caption.weight(.semibold))
+                                Text("\(leg.travelMinutes) 分钟 · \(leg.distanceLabel) · \(leg.costLabel)")
+                                    .font(.caption)
+                                    .foregroundStyle(leg.stale ? .orange : .secondary)
                             }
                         }
                     }

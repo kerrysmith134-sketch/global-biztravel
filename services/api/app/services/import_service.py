@@ -298,7 +298,7 @@ def _coerce_datetime(
         if parsed is None:
             issues.append(_issue("INVALID_TIME_WINDOW_FORMAT", field_name=field_name))
             return None
-
+    assert parsed is not None
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=tz)
     return parsed
@@ -306,7 +306,7 @@ def _coerce_datetime(
 
 def _is_truthy(value: Any) -> bool:
     text = _text(value)
-    return bool(text) and text.casefold() in _TRUTHY
+    return text is not None and text.casefold() in _TRUTHY
 
 
 def _normalize_header(value: Any) -> str | None:

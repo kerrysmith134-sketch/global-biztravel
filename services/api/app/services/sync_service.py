@@ -27,11 +27,13 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.api.schemas import SyncItemRequest, SyncPushRequest, VisitRecordCreate
 from app.models.geo import Customer
+from app.models.workflow import SyncOperation
 from app.services import record_service
 
 #: 客户资料允许通过离线同步写入的字段。白名单而不是黑名单：客户表里有 owner_user_id、
@@ -114,7 +116,49 @@ def push(
                 },
             )
         outcome.results.append(result)
+        _record_operation(
+            session,
+            organization_id,
+            device_id=request.device_id,
+            item=item,
+            result=result,
+        )
     return outcome
+
+
+def _record_operation(
+    session: Session,
+    organization_id: UUID | str,
+    *,
+    device_id: str,
+    item: SyncItemRequest,
+    result: SyncItemOutcome,
+) -> None:
+    """逐项落 sync_operations，供离线审计与"为什么这项没应用"回查。"""
+    details = {
+        "status": result.status,
+        "server_version": result.server_version,
+        "conflict": result.conflict,
+    }
+    statement = (
+        pg_insert(SyncOperation.__table__)
+        .values(
+            organization_id=str(organization_id),
+            device_id=device_id,
+            operation_id=item.item_id,
+            operation_type=f"{item.entity}:{item.operation}",
+            payload=item.payload,
+            status=result.status.upper(),
+            result=details,
+            client_created_at=item.client_updated_at,
+        )
+        .on_conflict_do_update(
+            constraint="uq_sync_operations_org_operation",
+            set_={"status": result.status.upper(), "result": details},
+        )
+    )
+    session.execute(statement)
+    session.flush()
 
 
 def _apply_item(

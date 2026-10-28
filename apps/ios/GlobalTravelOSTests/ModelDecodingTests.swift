@@ -25,7 +25,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(trip.stats?.visitCount, 4)
         XCTAssertNotNil(trip.window)
         XCTAssertEqual(trip.originLabel, "出发地已设置")
-        XCTAssertEqual(trip.statusLabel, "ACTIVE")
+        XCTAssertEqual(trip.statusLabel, "进行中")
     }
 
     func testPlanDetailGroupsFlatStopsIntoDays() throws {
@@ -38,19 +38,33 @@ final class ModelDecodingTests: XCTestCase {
           "solver": "heuristic",
           "degraded": false,
           "objective_value": 12.5,
+          "solution_status": "FEASIBLE",
+          "cost_total": 120.5,
+          "cost_currency": "EUR",
+          "cost_unknown_count": 1,
           "validation": {"feasible": true, "checks": []},
           "unplaced": [],
           "created_at": "2026-11-01T10:00:00+00:00",
           "stops": [
             {"visit_id": "v1", "day_index": 0, "day_date": "2026-11-03", "sequence": 1,
              "arrive_at": "2026-11-03T09:00:00+01:00", "depart_at": "2026-11-03T10:00:00+01:00",
-             "travel_minutes": 30, "service_minutes": 60},
+             "travel_minutes": 30, "service_minutes": 60, "distance_km": 12.5,
+             "cost_amount": 20.0, "cost_currency": "EUR",
+             "travel_source": "stub-provider", "stale": false,
+             "place_id": "p1", "place_name": "Berlin HQ", "city": "Berlin",
+             "country_code": "DE", "latitude": 52.52, "longitude": 13.405},
             {"visit_id": "v2", "day_index": 0, "day_date": "2026-11-03", "sequence": 2,
              "arrive_at": "2026-11-03T11:00:00+01:00", "depart_at": "2026-11-03T12:00:00+01:00",
              "travel_minutes": 15, "service_minutes": 45},
             {"visit_id": "v3", "day_index": 1, "day_date": "2026-11-04", "sequence": 1,
              "arrive_at": "2026-11-04T09:00:00+01:00", "depart_at": "2026-11-04T10:00:00+01:00",
              "travel_minutes": 40, "service_minutes": 60}
+          ],
+          "legs": [
+            {"id": "l1", "from_stop_id": null, "to_stop_id": "s1", "day_index": 0,
+             "mode": "AIR", "travel_minutes": 840, "distance_km": 8000.0,
+             "cost_amount": 500.0, "cost_currency": "EUR",
+             "source": "stub-provider", "stale": false}
           ]
         }
         """
@@ -61,6 +75,13 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(plan.dayList[0].stops.map(\.visitId), ["v1", "v2"])
         XCTAssertEqual(plan.displayStopCount, 3)
         XCTAssertNotNil(plan.dayList[0].stops[0].arrive)
+        XCTAssertEqual(plan.solutionStatus, "FEASIBLE")
+        XCTAssertEqual(plan.costTotal, 120.5)
+        XCTAssertEqual(plan.costUnknownCount, 1)
+        XCTAssertEqual(plan.legs?.count, 1)
+        XCTAssertEqual(plan.legs?.first?.mode, "AIR")
+        XCTAssertEqual(plan.dayList[0].stops[0].placeName, "Berlin HQ")
+        XCTAssertEqual(plan.dayList[0].stops[0].costAmount, 20.0)
     }
 
     func testProactiveFeedDecodes() throws {

@@ -8,7 +8,7 @@ COMPOSE := docker compose -f infra/docker/docker-compose.yml
 export PATH := /usr/local/bin:$(PATH)
 
 .PHONY: help venv install db-up db-down db-reset psql migrate revision check api worker \
-        outbox proactive test test-unit test-integration typecheck lint openapi contract-check bench e2e stack-up stack-down clean ios-build ios-test
+        outbox proactive test test-unit test-integration typecheck lint openapi contract-check bench e2e stack-up stack-down ci ci-backend lint-ios clean ios-build ios-test
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -68,6 +68,15 @@ stack-up: ## 启动完整 Docker 栈（DB + API + Worker）
 stack-down: ## 停止完整 Docker 栈
 	$(COMPOSE) --profile app down
 
+ci: ## 完整门禁：静态检查 + 契约 + 后端测试 + Docker E2E + iOS
+	bash scripts/ci.sh --with-ios
+
+ci-backend: ## 后端门禁：静态检查 + 契约 + 后端测试
+	bash scripts/ci.sh
+
+lint-ios: ## SwiftLint（未安装则提示并跳过，不伪造通过）
+	@command -v swiftlint >/dev/null 2>&1 && swiftlint --strict || echo "swiftlint 未安装，跳过（CI 镜像需安装 SwiftLint）"
+
 test: ## 全量测试
 	$(PY) -m pytest
 
@@ -77,16 +86,21 @@ test-unit: ## 仅单元测试（不需要数据库）
 test-integration: ## 集成测试（需要 db-up）
 	$(PY) -m pytest -m integration
 
+typecheck: ## MyPy 类型检查（API + 规划引擎）
+	$(PY) -m mypy services/api/app packages/planning-engine/travel_planner
+
 lint: ## ruff 检查
 	$(PY) -m ruff check services/api packages scripts
 
 clean: ## 清理缓存
 	find . -name __pycache__ -type d -not -path "./.venv/*" -prune -exec rm -rf {} + ; rm -rf .pytest_cache .ruff_cache
 
-ios-build: ## 构建 iOS 客户端（模拟器）
-	cd apps/ios && xcodebuild -project GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
-		-destination 'platform=iOS Simulator,name=iPhone Duo' build
+IOS_DEST ?= platform=iOS Simulator,name=iPhone Duo
 
-ios-test: ## 运行 iOS 单元测试
+ios-build: ## 构建 iOS 客户端（通用模拟器目标，不依赖具体设备）
 	cd apps/ios && xcodebuild -project GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
-		-destination 'platform=iOS Simulator,name=iPhone Duo' test
+		-destination 'generic/platform=iOS Simulator' build
+
+ios-test: ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行）
+	cd apps/ios && xcodebuild -project GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
+		-destination '$(IOS_DEST)' test

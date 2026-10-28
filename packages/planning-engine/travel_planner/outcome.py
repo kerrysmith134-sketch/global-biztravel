@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from travel_planner.contracts import DayPlan, PlanningProblem, SolverKind, UnplacedStop
+from travel_planner.contracts import (
+    DayPlan,
+    PlanningProblem,
+    SolverKind,
+    TravelLegPlan,
+    UnplacedStop,
+)
 
 
 class SolverUnavailable(RuntimeError):
@@ -22,6 +28,7 @@ class SolveOutcome:
 
     solver: SolverKind
     days: tuple[DayPlan, ...]
+    legs: tuple[TravelLegPlan, ...]
     unplaced: tuple[UnplacedStop, ...]
     travel_minutes_total: int
     value_placed: float

@@ -32,6 +32,9 @@ router = APIRouter(tags=["trips"])
 
 TRIPS_ENDPOINT = "POST /v1/trips"
 VISITS_ENDPOINT = "POST /v1/trips/{trip_id}/visits"
+TRIP_HOLD_ENDPOINT = "POST /v1/trips/{trip_id}/hold"
+TRIP_RESUME_ENDPOINT = "POST /v1/trips/{trip_id}/resume"
+TRIP_COMPLETE_ENDPOINT = "POST /v1/trips/{trip_id}/complete"
 
 
 def trip_read(
@@ -193,3 +196,87 @@ def create_trip_visit(
     visit = visit_service.create_visit(session, context.organization_id, trip_id, payload)
     body = VisitRead.model_validate(visit)
     return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
+
+def _trip_transition(
+    session: Session,
+    trip_id: UUID,
+    context: ContextDep,
+    idempotency_key: str | None,
+    if_match: int | None,
+    *,
+    endpoint: str,
+    action,  # noqa: ANN001 —— 服务层函数
+):
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"trip_id": str(trip_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    trip = action(
+        session, context.organization_id, trip_id, expected_version=if_match
+    )
+    return guard.finish(status_code=status.HTTP_200_OK, body=trip_read(session, trip))
+
+
+@router.post("/trips/{trip_id}/hold", response_model=TripRead, summary="暂停出行")
+def hold_trip(
+    trip_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+    if_match: IfMatchDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    return _trip_transition(
+        session,
+        trip_id,
+        context,
+        idempotency_key,
+        if_match,
+        endpoint=TRIP_HOLD_ENDPOINT,
+        action=trip_service.hold_trip,
+    )
+
+
+@router.post("/trips/{trip_id}/resume", response_model=TripRead, summary="恢复出行")
+def resume_trip(
+    trip_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+    if_match: IfMatchDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    return _trip_transition(
+        session,
+        trip_id,
+        context,
+        idempotency_key,
+        if_match,
+        endpoint=TRIP_RESUME_ENDPOINT,
+        action=trip_service.resume_trip,
+    )
+
+
+@router.post("/trips/{trip_id}/complete", response_model=TripRead, summary="完成出行")
+def complete_trip(
+    trip_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+    if_match: IfMatchDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    return _trip_transition(
+        session,
+        trip_id,
+        context,
+        idempotency_key,
+        if_match,
+        endpoint=TRIP_COMPLETE_ENDPOINT,
+        action=trip_service.complete_trip,
+    )

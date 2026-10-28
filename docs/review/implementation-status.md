@@ -1,99 +1,92 @@
-# 工程实施进度核对（对设计文档 v2.0 / 评审计划 v1.0）
+# 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
 - 核对时间：2026-10-28
-- 核对方式：逐条对照设计文档第 17.2 章里程碑与评审报告第 4 章批次；在真实 PostgreSQL 上执行
-  后端全量测试、迁移漂移检查、契约漂移检查、Worker 单轮运行、真实后端端到端脚本、规划基准、
-  iOS 构建与单元测试，以及模拟器 UI 冒烟测试。
-- 结论：**MS-1 ~ MS-7 全部完成；批次 1、批次 2 全部完成；批次 3 的 N1/N3 已完成，N2 仅剩 DST 专项测试。** 所有"主动式"分类（SCHEDULED / EVENT / STATE / EXTERNAL）均有落点。
+- 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
+  规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
+  后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
+- 结论：**PRD 与设计文档中可在本地完成的 MVP-1 开发项已落地。** 未完成项只剩需要真实外部
+  凭证/生产设施的部分，以及"AT-001~AT-012 全部按钮级 UI 自动化"这一定位为测试工程的工作。
 
 ## 1. 里程碑核对
 
 | 里程碑 | 要求 | 状态 | 证据 |
 |---|---|---|---|
-| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0013`；`0010_security_rls` 全库兜底；`test_all_org_tables_force_rls` |
-| MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 脚本第 3 步 |
-| MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、**严格覆盖不变量**（ADR-0007）、租约/DLQ |
-| MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff |
-| MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push` 逐项结果、主动式四类触发、三层记忆与复盘 |
-| MS-6 | iOS 客户端 | ✅ | App 入口 + Today/Trips/计划/现场记录/同步/记忆/设置；构建通过；7 单测 + 1 UI 冒烟 |
-| MS-7 | 交付校验 | ✅ | `scripts/acceptance_e2e.py` 真实后端全链路（8 步）通过；iOS UI 冒烟连接真实后端通过 |
+| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0017`；`0010_security_rls` 全库兜底；RLS 断言测试 |
+| MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 第 3 步 |
+| MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
+| MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
+| MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
+| MS-6 | iOS 客户端 | ✅ | Today/Trips/计划/地图/日历/现场记录/同步/记忆/设置；构建通过；7 单测 + 1 UI 冒烟 |
+| MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
-> MS-7 的边界：UI 自动化覆盖"启动 → Today → 出行列表 → 详情 → 同步页"；AT-001~AT-012 的
-> 业务全链路由 `acceptance_e2e.py` 在真实 HTTP + PostgreSQL + Worker 上完成。没有把每个业务
-> 按钮都用 XCUITest 点一遍（Excel 文件选择器在模拟器里的自动化成本高于收益）。
-
-## 2. 批次 1（MVP-1.1）核对
+## 2. 批次 1（MVP-1.1）
 
 | 编号 | 事项 | 状态 | 落点 |
 |---|---|---|---|
 | M5 | 数据库级租户隔离 | ✅ | ENABLE + FORCE + `tenant_isolation`；应用角色非 owner；事务级 GUC |
 | M6 | 指标与验收 | ✅ | 9 项指标、快照幂等、Worker 周期写入、SLO 目标 |
-| M1 | 主动式运行时 | ✅ | SCHEDULED / EVENT / STATE / **EXTERNAL** 四类触发；抑制三层；审批+审计；通知通道 |
-| M4 | 可靠性 | ✅ | 幂等、Outbox、任务租约/心跳/退避/DLQ |
+| M1 | 主动式运行时 | ✅ | SCHEDULED / EVENT / STATE / EXTERNAL；抑制三层；审批+审计；通知通道 |
+| M4 | 可靠性 | ✅ | 幂等、Outbox、任务租约/心跳/退避/DLQ、任务取消 |
 | M3 | LLM 编排与工具契约 | ✅ | Provider 抽象、调用审计、缓存、schema 校验/重试、模板降级、工具目录 |
 | M2 | Agent 记忆与复盘 | ✅ | 三层记忆、pgvector、混合检索、复盘 Worker、合规删除 |
 
-## 3. 批次 2 / 3 核对
+## 3. PRD 缺口核对（本轮逐项关闭）
 
-| 编号 | 事项 | 状态 | 落点 |
-|---|---|---|---|
-| S3 | 可观测性 | ✅ | JSON 请求日志（trace/org/trip/usecase/latency）、按 Trip 的审计时间线 `/v1/trips/{id}/audit` |
-| S5 | 版本与演进治理 | ✅ | ADR-0002~0009、迁移不可变、`/v1` 前缀、`make contract-check` |
-| S1 | 外部集成边界 | ✅ | `external_signals` + `POST /v1/integrations/signals`；主动式 EXTERNAL 规则（ADR-0005） |
-| S4 | PII 与合规 | ✅ | 数据字典；记忆合规删除；字段级加密（`GBT_FIELD_ENCRYPTION_KEY`）；留存脱敏 Worker 与 `POST /v1/admin:retention`；KMS 轮换待接 |
-| S6 | 契约同步 | ✅ | `contracts/openapi.*` + `make contract-check`（路径/schema/内容三层比较） |
-| S2 | 性能/容量/成本 | ✅ | `docs/architecture/performance.md`（容量假设/时间预算/LLM 成本/扩容顺序）+ `make bench` |
-| N3 | 求解器基准/回归 | ✅ | 同一基准 20 轮内 OR-Tools/启发式均覆盖全部停靠、problem_hash 稳定 |
-| N2 | 时区/货币 | 🟡 | 规划按 `timezone_home` 切日、iOS 侧 ISO8601 工具；DST 专项测试未补齐 |
-| N1 | 审批矩阵抽象 | ✅ | `approval_policies`（按风险等级要求最低角色）+ 批准时强制执行；多级会签仍待扩展 |
+| PRD 要求 | 处理 |
+|---|---|
+| 规划结果状态 `OPTIMAL/FEASIBLE/PARTIAL/INFEASIBLE/UNKNOWN/ERROR` | `SolutionStatus` 入契约；成功解为 `FEASIBLE/PARTIAL`，绝不标 `OPTIMAL`；落库 `plan_versions.solution_status` |
+| 交通段、时间矩阵、费用分项、未知费用不为 0 | `plan_travel_legs`（起终点真实外键）、`travel_estimates`、`cost_total/cost_unknown_count`；未知费用写 NULL |
+| Provider 超时降级（AT-003） | `TravelProvider` 边界 + 重试 + 回退；所有受影响段 `stale=true`、来源 `fallback-haversine` |
+| 统一计划变更 `POST /trips/{id}/plan-changes` | 已实现（改时间/时长、取消、增删拜访）；基础版本校验、WorkflowInstance、入队新任务（ADR-0011） |
+| `WorkflowInstance / AgentRun / Evidence / SyncOperation / IntegrationConnection / ExternalAction` | 迁移 `0016` 全部建表并实际写入：计划变更、纪要任务、建议证据、同步逐项、集成连接、建议执行 |
+| Trip `hold / resume / complete` | 端点与 `HOLD` 状态；恢复按生效计划回到 ACTIVE/READY/DRAFT |
+| 规划任务取消 | `POST /v1/jobs/{id}:cancel`；PENDING 可取消，RUNNING 返回 409 |
+| 会议纪要异步任务 | `POST /v1/visits/{id}/minutes:jobs` + `draft_minutes` Worker handler + AgentRun |
+| iOS Map / Calendar | `PlanMapView`（MapKit Marker）与 `PlanCalendarView`（按日日程） |
+| 离线更新时间 / 重启恢复 | 离线摘要带"更新于 HH:mm"；`lastTripId` 持久化并在出行页展示"上次出行" |
+| `/api/v1` vs `/v1` | 以设计 v2.0 的 `/v1` 为契约真相；额外挂 `/api/v1` 隐藏别名兼容 PRD 基线 |
+| CI：Ruff/MyPy/Pytest/PG/Alembic/OpenAPI/SwiftLint/XCTest | `scripts/ci.sh`、`make typecheck`、`make lint-ios`、`.github/workflows/ci.yml` |
 
-## 4. 本轮新增能力
-
-- **EXTERNAL 触发源**：外部信号幂等接入、按国家/出行匹配、4 类建议、人审后只准备摘要。
-- **通知/推送**：建议 → Outbox → 通知入队 → Worker 投递 → 已读；未配置 APNs 时显式失败。
-- **可观测性**：每个请求一条 JSON 日志（含延迟与 trace）；审计时间线聚合建议/审批/Outbox/记录/规划尝试。
-- **严格覆盖不变量**：修复"0 停靠仍 feasible"的静默错误；两层求解器都覆盖失败 ⇒ `SolverFailed`。
-- **交付脚本**：真实后端 E2E、契约漂移检查、规划基准、iOS UI 冒烟目标。
-- **合规**：记忆遗忘接口、字段加密、留存脱敏、密钥轮换脚本与 PII 数据字典。
-- **推送通道**：设备 token 注册、SMTP 邮件、APNs ES256 JWT、收件人快照与失败重试。
-- **部署**：API/Worker Dockerfile 与 compose `app` profile；`make stack-up` 一键启动完整栈并通过 E2E。
-- **事务时序修复**：写接口的 2xx 可能在提交前返回（E2E 暴露）；改为响应开始前提交/回滚（ADR-0010）。
-
-## 5. 验证记录
+## 4. 验证记录
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **184 passed**（真实 PostgreSQL） |
-| `make lint` / `make check` | 通过；迁移无漂移 |
-| `make openapi` / `make contract-check` | 44 路径 / 77 schema；契约一致 |
-| `make e2e`（API + PG + Worker） | 创建 Trip → Excel 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，**全部通过** |
-| `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 停靠覆盖，hash 稳定 |
+| `make test` | **195 passed**（真实 PostgreSQL） |
+| `make typecheck` | MyPy：105 个源文件无问题 |
+| `make lint` / `make check` | Ruff 通过；迁移无漂移 |
+| `make contract-check` | 53 路径 / 84 schema；契约一致 |
+| `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
+| `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | **7 单测 + 1 UI 冒烟通过**（UI 连接真实后端） |
-| 模拟器启动 | Today 页展示真实签证建议（置信度 85%、当日 1/3 次打扰） |
+| `make ios-test` | 7 单测 + 1 UI 冒烟通过（连接真实后端） |
+| `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
+| `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
-## 6. 迁移清单（当前 head `0013`）
+## 5. 迁移清单（当前 head `0017`）
 
 ```text
-0001_core_identity         0007_agent_memory
-0002_trip_domain           0008_llm_invocations
-0003_reliability_core      0009_metric_snapshots
-0004_planning_reliability  0010_security_rls
-0005_proactive_runtime     0011_external_signals
-0006_visit_records         0012_notifications
-                           0013_approval_policies
-                           0014_push_channels
+0001_core_identity         0010_security_rls
+0002_trip_domain           0011_external_signals
+0003_reliability_core      0012_notifications
+0004_planning_reliability  0013_approval_policies
+0005_proactive_runtime     0014_push_channels
+0006_visit_records         0015_plan_travel_legs
+0007_agent_memory          0016_workflow_evidence_sync
+0008_llm_invocations       0017_trip_hold_job_cancel
+0009_metric_snapshots
 ```
 
-## 7. 仍缺项（不影响 MVP-1 能力，生产前需补）
+## 6. 仍缺项（非本地代码可闭环）
 
-1. **真实外部供应商**：签证/汇率/天气/航班的数据源、鉴权与字段映射未接入；当前只提供标准信号接入。
-2. **推送凭证**：APNs（`.p8` key/team/topic）与 SMTP 通道代码已完成（设备 token 注册、ES256 JWT、收件人快照、失败重试）；生产只需注入凭证。
-3. **KMS 密钥托管**：字段加密已支持轮换脚本（`scripts/rotate_field_key.py`），但 key 仍来自环境变量，生产应接 KMS。
-4. **多级会签**：审批策略已支持"按风险等级要求最低角色"，多人会签/审批链仍待扩展。
-5. **真实 embedding 凭证**：provider 已实现（hash / openai_compatible），生产需配置 base_url/key。
-6. **事务时序**：已修成「响应开始前提交」（ADR-0010）；流式端点若将来引入需重新设计。
-6. **N2 时区/货币**：规划与客户端已有基础处理，DST 专项测试未补齐。
+1. **真实交通/签证/汇率/天气/航班供应商**：Provider/信号接口与降级已就绪，鉴权、字段映射与
+   服务商账号需接入。
+2. **APNs/SMTP 生产凭证**：代码与设备 token 管理已完成；需要 `.p8`/Team ID/Topic 或 SMTP 账号。
+3. **KMS 密钥托管**：字段加密与轮换脚本已就绪；key 仍来自环境变量。
+4. **多级会签**：单级风险角色策略已实现；多人会签/审批链仍待企业版扩展。
+5. **真实 embedding 凭证**：hash/OpenAI-compatible provider 已就绪，需配置模型与 key。
+6. **AT-001~AT-012 按钮级 UI 自动化**：业务全链路由 `make e2e` 覆盖，UI 测试仍是冒烟级
+   （启动、Today、列表、详情、同步页）；Excel 文件选择器等原生控件的 UI 自动化未逐项编写。
+7. **N2 DST 专项**：基础时区/货币处理已具备，DST 跨日专项测试未补齐。
 
 > 迁移编号以本仓库实际顺序为准（设计文档的 `0008`~`0013` 是未拆批时的规划编号）。
 > 本文件随每个里程碑完成后更新，不替代设计文档。

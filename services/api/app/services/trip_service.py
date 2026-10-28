@@ -16,7 +16,7 @@ from uuid import UUID
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.api.errors import NotFound, PreconditionFailed, Unprocessable
+from app.api.errors import Conflict, NotFound, PreconditionFailed, Unprocessable
 from app.api.schemas import TripCreate, TripUpdate
 from app.models.geo import Place
 from app.models.planning import PlanVersion
@@ -129,6 +129,92 @@ def list_trips(
         stmt = stmt.where(Trip.status == status.upper())
     stmt = stmt.order_by(Trip.window_start.desc()).limit(limit).offset(offset)
     return list(session.scalars(stmt).all())
+
+
+def _transition(
+    session: Session,
+    organization_id: UUID | str,
+    trip_id: UUID,
+    *,
+    target: str,
+    allowed_from: tuple[str, ...],
+    expected_version: int | None = None,
+) -> Trip:
+    trip = require_trip(session, organization_id, trip_id)
+    if expected_version is not None and trip.version != expected_version:
+        raise PreconditionFailed(
+            "出行已被修改，请重新获取",
+            details={"expected_version": expected_version, "current_version": trip.version},
+        )
+    if trip.status == target:
+        return trip
+    if trip.status not in allowed_from:
+        raise Conflict(
+            "当前状态不能执行该操作",
+            details={"status": trip.status, "target": target, "allowed_from": list(allowed_from)},
+        )
+    trip.status = target
+    _touch(session, trip.id, organization_id)
+    session.refresh(trip)
+    return trip
+
+
+def hold_trip(
+    session: Session, organization_id: UUID | str, trip_id: UUID, *, expected_version: int | None = None
+) -> Trip:
+    return _transition(
+        session,
+        organization_id,
+        trip_id,
+        target="HOLD",
+        allowed_from=("DRAFT", "PLANNING", "READY", "ACTIVE"),
+        expected_version=expected_version,
+    )
+
+
+def resume_trip(
+    session: Session, organization_id: UUID | str, trip_id: UUID, *, expected_version: int | None = None
+) -> Trip:
+    trip = require_trip(session, organization_id, trip_id)
+    if trip.status != "HOLD":
+        if trip.status in ("DRAFT", "PLANNING", "READY", "ACTIVE"):
+            return trip
+        raise Conflict(
+            "只有暂停中的出行可以恢复",
+            details={"status": trip.status},
+        )
+    if trip.active_plan_version_id is not None:
+        target = "ACTIVE"
+    else:
+        has_plan = bool(
+            session.scalar(
+                select(func.count())
+                .select_from(PlanVersion)
+                .where(PlanVersion.trip_id == trip.id)
+            )
+        )
+        target = "READY" if has_plan else "DRAFT"
+    return _transition(
+        session,
+        organization_id,
+        trip_id,
+        target=target,
+        allowed_from=("HOLD",),
+        expected_version=expected_version,
+    )
+
+
+def complete_trip(
+    session: Session, organization_id: UUID | str, trip_id: UUID, *, expected_version: int | None = None
+) -> Trip:
+    return _transition(
+        session,
+        organization_id,
+        trip_id,
+        target="COMPLETED",
+        allowed_from=("DRAFT", "PLANNING", "READY", "ACTIVE", "HOLD"),
+        expected_version=expected_version,
+    )
 
 
 def update_trip(

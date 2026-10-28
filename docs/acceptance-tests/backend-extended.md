@@ -44,6 +44,14 @@ make ios-test
 | 推送通道 | `services/api/tests/test_push_channels.py` | 设备 token 幂等注册/注销；SMTP 收件人；APNs ES256 JWT（raw r‖s）；未配置显式失败 |
 | 密钥轮换 | `services/api/tests/test_key_rotation.py` | 旧 key 密文重加密；明文默认跳过；不可解密文不二次加密 |
 | Docker 栈 | `make stack-up` + `make e2e` | API/Worker/DB 容器健康，真实全链路通过 |
+| 规划状态/交通段/费用 | `packages/planning-engine/tests/test_pipeline.py`、E2E | `solution_status`、legs 与 stops 对齐、未知费用为 NULL |
+| AT-003 Provider 降级 | `services/api/tests/test_travel_provider.py` | Provider 失败 ⇒ 重试 + fallback，全部段 stale、费用未知 |
+| 计划变更 | `services/api/tests/test_plan_changes.py` | 基础版本校验、WorkflowInstance、改输入并入队；旧版本 409 |
+| Trip 状态机 / 任务取消 | `services/api/tests/test_prd_workflow_extra.py` | hold/resume/complete、PENDING 可取消、RUNNING 409 |
+| 工作流/证据/同步/动作 | 同上 | evidence/external_action/sync_operation/agent_run/integration_connection 实际落库 |
+| iOS Map / Calendar | `PlanMapView`、`PlanCalendarView` + `make ios-build` | 计划停靠有坐标时地图可渲染；日历按日展示 |
+| 离线时间 / 重启恢复 | `OfflineIndicator`、`AppSettings.lastTripId` | 离线摘要显示更新时间；出行页显示"上次出行" |
+| CI 门禁 | `scripts/ci.sh`、`.github/workflows/ci.yml` | Ruff/MyPy/Pytest/迁移/契约/E2E/iOS/SwiftLint |
 | MS-6 真实启动 | 模拟器 + `make api` | Today 页从真实后端加载签证建议与每日打扰额度 |
 
 ## 已知边界

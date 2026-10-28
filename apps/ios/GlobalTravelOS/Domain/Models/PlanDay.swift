@@ -48,6 +48,10 @@ struct PlanStop: Codable, Equatable, Identifiable {
     var travelMinutes: Int?
     var distanceKm: Double?
     var serviceMinutes: Int?
+    var costAmount: Double?
+    var costCurrency: String?
+    var travelSource: String?
+    var stale: Bool?
     var locked: Bool?
     var timeWindow: TimeWindowRef?
 
@@ -65,6 +69,10 @@ struct PlanStop: Codable, Equatable, Identifiable {
         travelMinutes: Int? = nil,
         distanceKm: Double? = nil,
         serviceMinutes: Int? = nil,
+        costAmount: Double? = nil,
+        costCurrency: String? = nil,
+        travelSource: String? = nil,
+        stale: Bool? = nil,
         locked: Bool? = nil,
         timeWindow: TimeWindowRef? = nil
     ) {
@@ -81,6 +89,10 @@ struct PlanStop: Codable, Equatable, Identifiable {
         self.travelMinutes = travelMinutes
         self.distanceKm = distanceKm
         self.serviceMinutes = serviceMinutes
+        self.costAmount = costAmount
+        self.costCurrency = costCurrency
+        self.travelSource = travelSource
+        self.stale = stale
         self.locked = locked
         self.timeWindow = timeWindow
     }
@@ -113,6 +125,62 @@ struct PlanStop: Codable, Equatable, Identifiable {
         guard let distanceKm else { return "—" }
         return Distance.format(kilometers: distanceKm)
     }
+
+    var costLabel: String {
+        guard let costAmount else { return "费用未知" }
+        return "\(costCurrency ?? "") \(String(format: "%.2f", costAmount))"
+    }
+
+    var travelIsStale: Bool { stale ?? false }
+}
+
+/// One `plan_travel_legs` row. `fromStopId == nil` means the leg starts at the trip origin.
+struct PlanTravelLeg: Codable, Equatable, Identifiable {
+    var id: String
+    var fromStopId: String?
+    var toStopId: String
+    var dayIndex: Int
+    var mode: String
+    var travelMinutes: Int
+    var distanceKm: Double
+    var costAmount: Double?
+    var costCurrency: String?
+    var source: String
+    var stale: Bool
+
+    init(
+        id: String,
+        fromStopId: String? = nil,
+        toStopId: String,
+        dayIndex: Int,
+        mode: String,
+        travelMinutes: Int,
+        distanceKm: Double,
+        costAmount: Double? = nil,
+        costCurrency: String? = nil,
+        source: String = "haversine-estimate",
+        stale: Bool = false
+    ) {
+        self.id = id
+        self.fromStopId = fromStopId
+        self.toStopId = toStopId
+        self.dayIndex = dayIndex
+        self.mode = mode
+        self.travelMinutes = travelMinutes
+        self.distanceKm = distanceKm
+        self.costAmount = costAmount
+        self.costCurrency = costCurrency
+        self.source = source
+        self.stale = stale
+    }
+
+    var durationLabel: String { Distance.formatDuration(minutes: travelMinutes) }
+    var distanceLabel: String { Distance.format(kilometers: distanceKm) }
+    var costLabel: String {
+        guard let costAmount else { return "费用未知" }
+        return "\(costCurrency ?? "") \(String(format: "%.2f", costAmount))"
+    }
+    var sourceLabel: String { stale ? "\(source)（可能过期）" : source }
 }
 
 /// `time_window:{start,end}|null` — kept as raw strings because the contract does not pin the

@@ -43,8 +43,13 @@ from travel_planner.days import enumerate_days
 
 from app.api.errors import Unprocessable
 from app.config import get_settings
+from app.integrations.travel import (
+    TravelProvider,
+    estimate_with_fallback,
+    get_travel_provider,
+)
 from app.models.geo import Place
-from app.models.planning import PlanStop, PlanVersion
+from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.trip import Trip, Visit
 
 #: 能进入规划的拜访状态。``CANCELLED`` 不在其中（用户已取消）；``DONE``/``MISSED`` 也不在
@@ -82,12 +87,20 @@ class PlanningBuild:
     visits_by_id: dict[UUID, Visit] = field(default_factory=dict)
     places_by_id: dict[UUID, Place] = field(default_factory=dict)
     excluded: list[ExcludedVisit] = field(default_factory=list)
+    travel_degraded: bool = False
+    travel_errors: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
 # 输入规范化
 # ---------------------------------------------------------------------------
-def build_problem(session: Session, organization_id: UUID | str, trip: Trip) -> PlanningBuild:
+def build_problem(
+    session: Session,
+    organization_id: UUID | str,
+    trip: Trip,
+    *,
+    travel_provider: TravelProvider | None = None,
+) -> PlanningBuild:
     """把一次出行规范化为 ``PlanningProblem``。
 
     抛 ``Unprocessable``（422）的两种情况，都带机器可读 ``code``：
@@ -141,13 +154,17 @@ def build_problem(session: Session, organization_id: UUID | str, trip: Trip) -> 
         )
         visits_by_id[visit.id] = visit
 
+    origin = Origin(place_id=origin_place.id, lat=origin_place.lat, lon=origin_place.lon)
+    travel = estimate_with_fallback(travel_provider or get_travel_provider(), origin, stops)
+
     problem = PlanningProblem(
         trip_id=trip.id,
         organization_id=UUID(str(organization_id)),
         timezone_home=trip.home_timezone,
-        origin=Origin(place_id=origin_place.id, lat=origin_place.lat, lon=origin_place.lon),
+        origin=origin,
         window=window,
         stops=tuple(stops),
+        travel_estimates=tuple(travel.estimates),
         constraints=Constraints(
             max_stops_per_day=settings.max_stops_per_day,
             # ``is_immovable`` 表达的就是"这条拜访不能因为容量或价值被优化掉"，
@@ -166,6 +183,8 @@ def build_problem(session: Session, organization_id: UUID | str, trip: Trip) -> 
         visits_by_id=visits_by_id,
         places_by_id=places,
         excluded=excluded,
+        travel_degraded=travel.degraded,
+        travel_errors=travel.errors,
     )
 
 
@@ -212,6 +231,8 @@ def persist_plan(
         or 0
     ) + 1
 
+    known_costs = [leg.cost_amount for leg in result.legs if leg.cost_amount is not None]
+    cost_currencies = {leg.cost_currency for leg in result.legs if leg.cost_currency}
     version = PlanVersion(
         organization_id=org,
         trip_id=trip.id,
@@ -220,7 +241,15 @@ def persist_plan(
         problem_hash=result.problem_hash,
         solver=result.solver.value,
         objective_value=result.objective_value,
-        degraded=result.degraded,
+        solution_status=result.status.value,
+        cost_total=round(sum(known_costs), 2) if known_costs else None,
+        cost_currency=(
+            next(iter(cost_currencies))
+            if len(cost_currencies) == 1
+            else (trip.currency if known_costs else None)
+        ),
+        cost_unknown_count=sum(1 for leg in result.legs if leg.cost_amount is None),
+        degraded=result.degraded or build.travel_degraded or any(leg.stale for leg in result.legs),
         trip_version=locked.version,
         validation=result.validation.model_dump(mode="json"),
         unplaced=_unplaced_payload(build, result),
@@ -232,23 +261,57 @@ def persist_plan(
     session.flush()
 
     day_index_by_date = _day_index_by_date(build.problem, trip)
+    legs_by_target = {leg.to_visit_id: leg for leg in result.legs}
+    stop_rows: dict[UUID, PlanStop] = {}
     for day in result.days:
         for stop in day.stops:
             visit = build.visits_by_id.get(stop.visit_id)
-            session.add(
-                PlanStop(
-                    organization_id=org,
-                    plan_version_id=version.id,
-                    visit_id=stop.visit_id,
-                    day_index=_resolve_day_index(day_index_by_date, day.date),
-                    sequence=stop.sequence,
-                    day_date=day.date,
-                    arrive_at=stop.arrive,
-                    depart_at=stop.depart,
-                    travel_minutes=stop.travel_minutes,
-                    service_minutes=visit.service_minutes if visit is not None else 0,
-                )
+            leg = legs_by_target.get(stop.visit_id)
+            row = PlanStop(
+                organization_id=org,
+                plan_version_id=version.id,
+                visit_id=stop.visit_id,
+                day_index=_resolve_day_index(day_index_by_date, day.date),
+                sequence=stop.sequence,
+                day_date=day.date,
+                arrive_at=stop.arrive,
+                depart_at=stop.depart,
+                travel_minutes=stop.travel_minutes,
+                service_minutes=visit.service_minutes if visit is not None else 0,
+                distance_km=leg.distance_km if leg is not None else None,
+                cost_amount=leg.cost_amount if leg is not None else None,
+                cost_currency=leg.cost_currency if leg is not None else None,
+                travel_source=leg.source if leg is not None else "haversine-estimate",
+                travel_stale=leg.stale if leg is not None else False,
             )
+            session.add(row)
+            stop_rows[stop.visit_id] = row
+    session.flush()
+
+    for leg in result.legs:
+        target = stop_rows.get(leg.to_visit_id)
+        if target is None:
+            continue
+        session.add(
+            PlanTravelLeg(
+                organization_id=org,
+                plan_version_id=version.id,
+                from_stop_id=(
+                    stop_rows[leg.from_visit_id].id
+                    if leg.from_visit_id is not None and leg.from_visit_id in stop_rows
+                    else None
+                ),
+                to_stop_id=target.id,
+                day_index=target.day_index,
+                mode=leg.mode.value,
+                travel_minutes=leg.travel_minutes,
+                distance_km=leg.distance_km,
+                cost_amount=leg.cost_amount,
+                cost_currency=leg.cost_currency,
+                source=leg.source,
+                stale=leg.stale,
+            )
+        )
     session.flush()
     return version
 

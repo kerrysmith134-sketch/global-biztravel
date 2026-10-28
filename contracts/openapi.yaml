@@ -243,6 +243,135 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/hold:
+    post:
+      tags:
+      - trips
+      summary: 暂停出行
+      operationId: hold_trip_v1_trips__trip_id__hold_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/resume:
+    post:
+      tags:
+      - trips
+      summary: 恢复出行
+      operationId: resume_trip_v1_trips__trip_id__resume_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/complete:
+    post:
+      tags:
+      - trips
+      summary: 完成出行
+      operationId: complete_trip_v1_trips__trip_id__complete_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/visits/{visit_id}:
     patch:
       tags:
@@ -386,6 +515,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MinutesDraftRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/visits/{visit_id}/minutes:jobs:
+    post:
+      tags:
+      - visits
+      summary: 异步生成会议纪要草稿（返回 job_id 轮询）
+      operationId: create_minutes_job_v1_visits__visit_id__minutes_jobs_post
+      parameters:
+      - name: visit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Visit Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MinutesJobAcceptedRead'
         '422':
           description: Validation Error
           content:
@@ -584,6 +748,69 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/integrations/connections:
+    get:
+      tags:
+      - integrations
+      summary: 外部集成连接与能力状态
+      operationId: list_connections_v1_integrations_connections_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/IntegrationConnectionRead'
+                type: array
+                title: Response List Connections V1 Integrations Connections Get
+    post:
+      tags:
+      - integrations
+      summary: 注册/更新外部集成连接（ADMIN）
+      operationId: upsert_connection_v1_integrations_connections_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationConnectionCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationConnectionRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/integrations/connections/{connection_id}:
+    delete:
+      tags:
+      - integrations
+      summary: 删除外部集成连接（ADMIN）
+      operationId: delete_connection_v1_integrations_connections__connection_id__delete
+      parameters:
+      - name: connection_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Connection Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/trips/{trip_id}/audit:
     get:
       tags:
@@ -617,6 +844,43 @@ paths:
                 items:
                   $ref: '#/components/schemas/AuditEventRead'
                 title: Response Trip Audit V1 Trips  Trip Id  Audit Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/evidence:
+    get:
+      tags:
+      - audit
+      summary: 按对象查看证据条目
+      operationId: list_evidence_v1_evidence_get
+      parameters:
+      - name: subject_type
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          title: Subject Type
+      - name: subject_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Subject Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvidenceRead'
+                title: Response List Evidence V1 Evidence Get
         '422':
           description: Validation Error
           content:
@@ -1258,6 +1522,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlanVersionDetailRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/plan-changes:
+    post:
+      tags:
+      - plans
+      summary: 统一计划变更入口（校验基础版本 → 改输入 → 入队新计划）
+      operationId: create_plan_change_v1_trips__trip_id__plan_changes_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanChangeCreate'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanChangeRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/jobs/{job_id}:cancel:
+    post:
+      tags:
+      - plans
+      summary: 取消排队中的规划任务
+      operationId: cancel_job_v1_jobs__job_id__cancel_post
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Job Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobRead'
         '422':
           description: Validation Error
           content:
@@ -2145,6 +2485,53 @@ components:
       required:
       - token
       title: DeviceTokenRegister
+    EvidenceRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        subject_type:
+          type: string
+          title: Subject Type
+        subject_id:
+          type: string
+          format: uuid
+          title: Subject Id
+        kind:
+          type: string
+          title: Kind
+        ref:
+          type: string
+          title: Ref
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        retrieved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Retrieved At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - subject_type
+      - subject_id
+      - kind
+      - ref
+      - created_at
+      title: EvidenceRead
     ExternalSignalCreate:
       properties:
         provider:
@@ -2506,6 +2893,76 @@ components:
       - row_number
       - status
       title: ImportRowRead
+    IntegrationConnectionCreate:
+      properties:
+        provider:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Provider
+        capability:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Capability
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - DISABLED
+          - DEGRADED
+          title: Status
+          default: DISABLED
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+      type: object
+      required:
+      - provider
+      - capability
+      title: IntegrationConnectionCreate
+    IntegrationConnectionRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        provider:
+          type: string
+          title: Provider
+        capability:
+          type: string
+          title: Capability
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - DISABLED
+          - DEGRADED
+          title: Status
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+        last_synced_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Synced At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - provider
+      - capability
+      - status
+      - created_at
+      title: IntegrationConnectionRead
     JobRead:
       properties:
         id:
@@ -2524,6 +2981,7 @@ components:
           - SUCCEEDED
           - FAILED
           - DEAD
+          - CANCELLED
           title: Status
         attempts:
           type: integer
@@ -2959,6 +3417,32 @@ components:
       required:
       - title
       title: MinutesFollowUpRead
+    MinutesJobAcceptedRead:
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          title: Job Id
+        visit_id:
+          type: string
+          format: uuid
+          title: Visit Id
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - SUCCEEDED
+          - FAILED
+          - DEAD
+          - CANCELLED
+          title: Status
+      type: object
+      required:
+      - job_id
+      - visit_id
+      - status
+      title: MinutesJobAcceptedRead
     NotificationFeedRead:
       properties:
         items:
@@ -3251,6 +3735,7 @@ components:
           - PLANNING
           - READY
           - ACTIVE
+          - HOLD
           - COMPLETED
           - CANCELLED
           title: Trip Status
@@ -3285,6 +3770,67 @@ components:
         ``trip_version`` 与 ``plan_trip_version`` 都回传，是因为二者在激活前后**应当相等**——
 
         客户端可以据此断言"生效的计划确实基于当前的出行输入"。'
+    PlanChangeCreate:
+      properties:
+        base_plan_version_id:
+          type: string
+          format: uuid
+          title: Base Plan Version Id
+        base_trip_version:
+          type: integer
+          minimum: 1.0
+          title: Base Trip Version
+        source:
+          type: string
+          title: Source
+          default: MAP
+        operation_type:
+          type: string
+          enum:
+          - CHANGE_VISIT_TIME
+          - CHANGE_VISIT_DURATION
+          - CANCEL_VISIT
+          - ADD_VISIT
+          - REMOVE_VISIT
+          title: Operation Type
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+      type: object
+      required:
+      - base_plan_version_id
+      - base_trip_version
+      - operation_type
+      title: PlanChangeCreate
+    PlanChangeRead:
+      properties:
+        change_request_id:
+          type: string
+          format: uuid
+          title: Change Request Id
+        status:
+          type: string
+          title: Status
+        optimization_job_id:
+          type: string
+          format: uuid
+          title: Optimization Job Id
+        trip_version:
+          type: integer
+          title: Trip Version
+      type: object
+      required:
+      - change_request_id
+      - status
+      - optimization_job_id
+      - trip_version
+      title: PlanChangeRead
     PlanGenerateRead:
       properties:
         job_id:
@@ -3306,6 +3852,7 @@ components:
           - SUCCEEDED
           - FAILED
           - DEAD
+          - CANCELLED
           title: Status
         reused:
           type: boolean
@@ -3445,6 +3992,60 @@ components:
         service_minutes:
           type: integer
           title: Service Minutes
+        distance_km:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Distance Km
+        cost_amount:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Amount
+        cost_currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cost Currency
+        travel_source:
+          type: string
+          title: Travel Source
+          default: haversine-estimate
+        travel_stale:
+          type: boolean
+          title: Travel Stale
+          default: false
+        place_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Place Id
+        place_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Place Name
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        country_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Country Code
+        latitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Longitude
       type: object
       required:
       - id
@@ -3457,6 +4058,66 @@ components:
       - travel_minutes
       - service_minutes
       title: PlanStopRead
+    PlanTravelLegRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        from_stop_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: From Stop Id
+        to_stop_id:
+          type: string
+          format: uuid
+          title: To Stop Id
+        day_index:
+          type: integer
+          title: Day Index
+        mode:
+          type: string
+          enum:
+          - GROUND
+          - RAIL
+          - AIR
+          - SEA
+          title: Mode
+        travel_minutes:
+          type: integer
+          title: Travel Minutes
+        distance_km:
+          type: number
+          title: Distance Km
+        cost_amount:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Amount
+        cost_currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cost Currency
+        source:
+          type: string
+          title: Source
+        stale:
+          type: boolean
+          title: Stale
+      type: object
+      required:
+      - id
+      - to_stop_id
+      - day_index
+      - mode
+      - travel_minutes
+      - distance_km
+      - source
+      - stale
+      title: PlanTravelLegRead
     PlanUnplacedDeltaRead:
       properties:
         visit_id:
@@ -3517,6 +4178,31 @@ components:
         objective_value:
           type: number
           title: Objective Value
+        solution_status:
+          type: string
+          enum:
+          - OPTIMAL
+          - FEASIBLE
+          - PARTIAL
+          - INFEASIBLE
+          - UNKNOWN
+          - ERROR
+          title: Solution Status
+          default: FEASIBLE
+        cost_total:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Total
+        cost_currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cost Currency
+        cost_unknown_count:
+          type: integer
+          title: Cost Unknown Count
+          default: 0
         degraded:
           type: boolean
           title: Degraded
@@ -3577,6 +4263,11 @@ components:
             $ref: '#/components/schemas/PlanStopRead'
           type: array
           title: Stops
+        legs:
+          items:
+            $ref: '#/components/schemas/PlanTravelLegRead'
+          type: array
+          title: Legs
       type: object
       required:
       - id
@@ -3738,6 +4429,31 @@ components:
         objective_value:
           type: number
           title: Objective Value
+        solution_status:
+          type: string
+          enum:
+          - OPTIMAL
+          - FEASIBLE
+          - PARTIAL
+          - INFEASIBLE
+          - UNKNOWN
+          - ERROR
+          title: Solution Status
+          default: FEASIBLE
+        cost_total:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost Total
+        cost_currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cost Currency
+        cost_unknown_count:
+          type: integer
+          title: Cost Unknown Count
+          default: 0
         degraded:
           type: boolean
           title: Degraded
@@ -4394,6 +5110,7 @@ components:
           - PLANNING
           - READY
           - ACTIVE
+          - HOLD
           - COMPLETED
           - CANCELLED
           title: Status
@@ -4498,6 +5215,7 @@ components:
             - PLANNING
             - READY
             - ACTIVE
+            - HOLD
             - COMPLETED
             - CANCELLED
           - type: 'null'

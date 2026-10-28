@@ -81,6 +81,9 @@ def create_app() -> FastAPI:
     application.add_middleware(CommitBeforeResponseMiddleware)
     register_error_handlers(application)
     application.include_router(api_router, prefix=API_PREFIX)
+    # PRD MVP 基线使用 /api/v1，设计 v2.0 统一为 /v1。为兼容既有客户端与文档，额外挂一个
+    # 不出现在 OpenAPI 里的别名；契约真相源仍是 /v1。
+    application.include_router(api_router, prefix="/api/v1", include_in_schema=False)
     return application
 
 

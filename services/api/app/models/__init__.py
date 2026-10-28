@@ -16,7 +16,7 @@ from app.models.llm import LLMInvocation
 from app.models.memory import PlanAttemptLog, TravelerProfile, TripMemorySummary
 from app.models.metrics import MetricSnapshot
 from app.models.notifications import Notification
-from app.models.planning import PlanStop, PlanVersion
+from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.proactive import (
     Approval,
     ProactiveSuggestion,
@@ -31,8 +31,17 @@ from app.models.reliability import (
     OutboxEvent,
 )
 from app.models.trip import ImportBatch, ImportRow, Trip, Visit
+from app.models.workflow import (
+    AgentRun,
+    Evidence,
+    ExternalAction,
+    IntegrationConnection,
+    SyncOperation,
+    WorkflowInstance,
+)
 
 __all__ = [
+    "AgentRun",
     "Approval",
     "ApprovalPolicy",
     "BackgroundJob",
@@ -40,6 +49,9 @@ __all__ = [
     "Customer",
     "CustomerPlace",
     "DeviceToken",
+    "Evidence",
+    "ExternalAction",
+    "IntegrationConnection",
     "ExternalSignal",
     "IdempotencyRecord",
     "ImportBatch",
@@ -54,14 +66,17 @@ __all__ = [
     "Place",
     "PlanAttemptLog",
     "PlanStop",
+    "PlanTravelLeg",
     "PlanVersion",
     "ProactiveSuggestion",
     "ProactiveTrigger",
     "SuggestionAudit",
+    "SyncOperation",
     "TravelerProfile",
     "Trip",
     "TripMemorySummary",
     "User",
     "Visit",
     "VisitRecord",
+    "WorkflowInstance",
 ]

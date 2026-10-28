@@ -24,6 +24,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -40,19 +41,31 @@ from app.api.idempotent import IdempotentWrite
 from app.api.schemas import (
     JobRead,
     PlanActivationRead,
+    PlanChangeCreate,
+    PlanChangeRead,
     PlanGenerateRead,
     PlanStopRead,
+    PlanTravelLegRead,
     PlanVersionDetailRead,
     PlanVersionDiffRead,
     PlanVersionRead,
 )
-from app.services import job_service, plan_change_service, plan_service, trip_service
+from app.models.geo import Place
+from app.models.trip import Visit
+from app.services import (
+    job_service,
+    plan_change_request_service,
+    plan_change_service,
+    plan_service,
+    trip_service,
+)
 
 router = APIRouter(tags=["plans"])
 
 PLANS_GENERATE_ENDPOINT = "POST /v1/trips/{trip_id}/plans:generate"
 PLANS_ACTIVATE_ENDPOINT = "POST /v1/trips/{trip_id}/plans/{plan_version_id}:activate"
 PLANS_DIFF_ENDPOINT = "GET /v1/trips/{trip_id}/plans/{plan_version_id}:diff"
+PLAN_CHANGES_ENDPOINT = "POST /v1/trips/{trip_id}/plan-changes"
 
 #: 这两个状态是终态：出行已经收尾，不该再往里塞新计划。
 _TERMINAL_TRIP_STATUSES = ("CANCELLED", "COMPLETED")
@@ -154,6 +167,35 @@ def _plan_detail(
     detail.stops = [
         PlanStopRead.model_validate(stop)
         for stop in plan_service.list_plan_stops(session, organization_id, version.id)
+    ]
+    visit_ids = [stop.visit_id for stop in detail.stops]
+    if visit_ids:
+        place_rows = session.execute(
+            select(
+                Visit.id,
+                Visit.place_id,
+                Place.name,
+                Place.city,
+                Place.country_code,
+                Place.lat,
+                Place.lon,
+            )
+            .join(Place, Place.id == Visit.place_id)
+            .where(Visit.organization_id == str(organization_id), Visit.id.in_(visit_ids))
+        ).all()
+        place_by_visit = {row[0]: row for row in place_rows}
+        for stop in detail.stops:
+            info = place_by_visit.get(stop.visit_id)
+            if info is not None:
+                stop.place_id = info[1]
+                stop.place_name = info[2]
+                stop.city = info[3]
+                stop.country_code = info[4]
+                stop.latitude = info[5]
+                stop.longitude = info[6]
+    detail.legs = [
+        PlanTravelLegRead.model_validate(leg)
+        for leg in plan_service.list_plan_legs(session, organization_id, version.id)
     ]
     detail.stop_count = len(detail.stops)
     detail.day_count = len({stop.day_index for stop in detail.stops})
@@ -277,3 +319,73 @@ def get_trip_plan_version(
     if str(version.trip_id) != str(trip_id):
         raise NotFound("计划版本不属于该出行")
     return _plan_detail(session, context.organization_id, version)
+
+
+@router.post(
+    "/trips/{trip_id}/plan-changes",
+    response_model=PlanChangeRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="统一计划变更入口（校验基础版本 → 改输入 → 入队新计划）",
+)
+def create_plan_change(
+    trip_id: UUID,
+    payload: PlanChangeCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=PLAN_CHANGES_ENDPOINT,
+        key=idempotency_key,
+        payload={"trip_id": str(trip_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+
+    outcome = plan_change_request_service.create_change_request(
+        session,
+        context.organization_id,
+        trip_id,
+        base_plan_version_id=payload.base_plan_version_id,
+        base_trip_version=payload.base_trip_version,
+        source=payload.source,
+        operation_type=payload.operation_type,
+        payload=payload.payload,
+        reason=payload.reason,
+        actor_user_id=context.user_id,
+    )
+    body = PlanChangeRead(
+        change_request_id=outcome.workflow.id,
+        status=outcome.workflow.status,
+        optimization_job_id=outcome.job_id,
+        trip_version=outcome.trip_version,
+    )
+    return guard.finish(status_code=status.HTTP_202_ACCEPTED, body=body)
+
+
+@router.post(
+    "/jobs/{job_id}:cancel",
+    response_model=JobRead,
+    summary="取消排队中的规划任务",
+)
+def cancel_job(
+    job_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint="POST /v1/jobs/{job_id}:cancel",
+        key=idempotency_key,
+        payload={"job_id": str(job_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    job = job_service.cancel(session, context.organization_id, job_id)
+    return guard.finish(status_code=status.HTTP_200_OK, body=JobRead.model_validate(job))

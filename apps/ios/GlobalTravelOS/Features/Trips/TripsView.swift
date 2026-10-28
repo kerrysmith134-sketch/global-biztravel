@@ -7,6 +7,7 @@ final class TripsViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var showsCreate = false
     @Published private(set) var hasMore = false
+    @Published private(set) var lastTrip: Trip?
 
     private var cursor: String?
     private let environment: AppEnvironment
@@ -24,6 +25,9 @@ final class TripsViewModel: ObservableObject {
             trips = environment.tripListUseCase.activeTrips(from: page.items)
             cursor = page.nextCursor
             hasMore = cursor != nil
+            if let lastId = environment.settings.lastTripId {
+                lastTrip = try? await environment.tripRepository.trip(id: lastId)
+            }
             environment.refreshOfflineSummary()
         } catch {
             errorMessage = environment.errorMessage(error)
@@ -82,6 +86,16 @@ struct TripsView: View {
                 if let error = viewModel.errorMessage {
                     Section { ErrorBanner(message: error) }
                 }
+                if let lastTrip = viewModel.lastTrip {
+                    Section("上次出行") {
+                        NavigationLink {
+                            TripDetailView(tripId: lastTrip.id, environment: environment)
+                        } label: {
+                            TripRow(trip: lastTrip)
+                        }
+                    }
+                }
+
                 Section {
                     ForEach(viewModel.trips) { trip in
                         NavigationLink {

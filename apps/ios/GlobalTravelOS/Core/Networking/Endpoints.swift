@@ -49,6 +49,18 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(id)")
     }
 
+    static func holdTrip(id: String, version: Int) -> APIRequest {
+        APIRequest(method: .post, path: "/v1/trips/\(id)/hold", ifMatch: String(version))
+    }
+
+    static func resumeTrip(id: String, version: Int) -> APIRequest {
+        APIRequest(method: .post, path: "/v1/trips/\(id)/resume", ifMatch: String(version))
+    }
+
+    static func completeTrip(id: String, version: Int) -> APIRequest {
+        APIRequest(method: .post, path: "/v1/trips/\(id)/complete", ifMatch: String(version))
+    }
+
     // MARK: - Imports
 
     static func parseImport(

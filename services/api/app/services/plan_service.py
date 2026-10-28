@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound
-from app.models.planning import PlanStop, PlanVersion
+from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 
 
 def list_plan_versions(
@@ -69,6 +69,21 @@ def list_plan_stops(
     )
 
 
+def list_plan_legs(
+    session: Session, organization_id: UUID | str, plan_version_id: UUID | str
+) -> list[PlanTravelLeg]:
+    return list(
+        session.scalars(
+            select(PlanTravelLeg)
+            .where(
+                PlanTravelLeg.organization_id == str(organization_id),
+                PlanTravelLeg.plan_version_id == str(plan_version_id),
+            )
+            .order_by(PlanTravelLeg.day_index, PlanTravelLeg.created_at)
+        )
+    )
+
+
 def stop_stats(
     session: Session, organization_id: UUID | str, plan_version_ids: list[UUID]
 ) -> dict[UUID, tuple[int, int]]:
@@ -91,6 +106,7 @@ def stop_stats(
 
 
 __all__ = [
+    "list_plan_legs",
     "list_plan_stops",
     "list_plan_versions",
     "require_plan_version",

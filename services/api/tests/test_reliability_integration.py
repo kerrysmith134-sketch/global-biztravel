@@ -803,8 +803,15 @@ def _produce_plan_version(
     # 用接口回读详情把两侧对齐，顺带验证 "GET plan-version 返回的 trip_version 就是快照值"。
     detail = client.get(f"/v1/plan-versions/{job.result['plan_version_id']}", headers=_headers())
     assert detail.status_code == 200, detail.text
-    assert detail.json()["version_number"] == job.result["version_number"]
-    return {**job.result, "trip_version": detail.json()["trip_version"]}
+    body = detail.json()
+    assert body["version_number"] == job.result["version_number"]
+    assert body["solution_status"] in (
+        "OPTIMAL", "FEASIBLE", "PARTIAL", "INFEASIBLE", "UNKNOWN", "ERROR"
+    )
+    assert len(body["legs"]) == len(body["stops"])
+    assert body["cost_unknown_count"] >= 0
+    assert body["cost_total"] is None or body["cost_total"] >= 0
+    return {**job.result, "trip_version": body["trip_version"]}
 
 
 def _activate(

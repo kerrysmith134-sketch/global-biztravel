@@ -147,12 +147,17 @@ def solve(problem: PlanningProblem, eligible: tuple[UUID, ...]) -> SolveOutcome:
         return SolveOutcome(
             solver=SolverKind.ORTOOLS,
             days=empty.days,
+            legs=empty.legs,
             unplaced=(),
             travel_minutes_total=0,
             value_placed=0.0,
             objective_value=make_objective_value(problem, 0, 0.0),
         )
 
+    estimates = {
+        (item.from_visit_id, item.to_visit_id, item.mode): item
+        for item in problem.travel_estimates
+    }
     stops_by_id = {stop.visit_id: stop for stop in problem.stops}
     node_stops = [stops_by_id[vid] for vid in eligible]
     stop_count = len(node_stops)
@@ -184,8 +189,16 @@ def solve(problem: PlanningProblem, eligible: tuple[UUID, ...]) -> SolveOutcome:
         from_lat, from_lon = point(from_node)
         if to_node < _STOP_OFFSET:
             return 0
-        to_mode = node_stops[to_node - _STOP_OFFSET].movement_mode
-        return travel_minutes(from_lat, from_lon, to_lat, to_lon, to_mode)
+        to_stop = node_stops[to_node - _STOP_OFFSET]
+        from_visit = (
+            node_stops[from_node - _STOP_OFFSET].visit_id
+            if from_node >= _STOP_OFFSET
+            else None
+        )
+        estimate = estimates.get((from_visit, to_stop.visit_id, to_stop.movement_mode))
+        if estimate is not None:
+            return estimate.travel_minutes
+        return travel_minutes(from_lat, from_lon, to_lat, to_lon, to_stop.movement_mode)
 
     # 单车：起点车场 0、终点车场 1。`RoutingIndexManager` 的 `starts/ends` 形式
     # 才能让起点与终点落在不同节点上（depot 简写会强制二者相同）。
@@ -290,6 +303,7 @@ def solve(problem: PlanningProblem, eligible: tuple[UUID, ...]) -> SolveOutcome:
     return SolveOutcome(
         solver=SolverKind.ORTOOLS,
         days=schedule.days,
+        legs=schedule.legs,
         unplaced=unplaced,
         travel_minutes_total=schedule.travel_minutes_total,
         value_placed=schedule.value_placed,

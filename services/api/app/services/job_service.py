@@ -23,13 +23,14 @@ from uuid import UUID
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.api.errors import NotFound
+from app.api.errors import Conflict, NotFound
 from app.config import get_settings
 from app.models.reliability import BackgroundJob
 
 #: 队列里的任务类型。集中登记，避免各处写字符串导致 typo 静默变成"没有 Worker 会处理"。
 JOB_TYPE_PLAN_TRIP = "plan_trip"
-KNOWN_JOB_TYPES = (JOB_TYPE_PLAN_TRIP,)
+JOB_TYPE_DRAFT_MINUTES = "draft_minutes"
+KNOWN_JOB_TYPES = (JOB_TYPE_PLAN_TRIP, JOB_TYPE_DRAFT_MINUTES)
 
 
 def enqueue(
@@ -336,3 +337,27 @@ __all__ = [
     "heartbeat",
     "recover_expired_leases",
 ]
+
+def cancel(session: Session, organization_id: UUID | str, job_id: UUID | str) -> BackgroundJob:
+    """取消尚未开始的任务。RUNNING 已交给求解器，无法安全中断，返回 409。"""
+    job = session.scalars(
+        select(BackgroundJob)
+        .where(
+            BackgroundJob.organization_id == str(organization_id),
+            BackgroundJob.id == str(job_id),
+        )
+        .with_for_update()
+    ).one_or_none()
+    if job is None:
+        raise NotFound("任务不存在", details={"job_id": str(job_id)})
+    if job.status == "CANCELLED":
+        return job
+    if job.status != "PENDING":
+        raise Conflict(
+            "任务已开始执行，无法取消",
+            details={"job_id": str(job.id), "status": job.status},
+        )
+    job.status = "CANCELLED"
+    job.finished_at = session.scalar(select(func.clock_timestamp()))
+    session.flush()
+    return job
