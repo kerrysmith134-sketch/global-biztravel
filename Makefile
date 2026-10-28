@@ -8,7 +8,7 @@ COMPOSE := docker compose -f infra/docker/docker-compose.yml
 export PATH := /usr/local/bin:$(PATH)
 
 .PHONY: help venv install db-up db-down db-reset psql migrate revision check api worker \
-        outbox proactive test test-unit test-integration typecheck lint openapi contract-check bench e2e clean ios-build ios-test
+        outbox proactive test test-unit test-integration typecheck lint openapi contract-check bench e2e stack-up stack-down clean ios-build ios-test
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -61,6 +61,12 @@ bench: ## 规划引擎基准：OR-Tools / 启发式 p50/p95（S2/N3）
 
 e2e: ## 真实后端全链路验收（需 make api 运行）
 	$(PY) scripts/acceptance_e2e.py
+
+stack-up: ## 启动完整 Docker 栈（DB + API + Worker）
+	$(COMPOSE) --profile app up -d --build
+
+stack-down: ## 停止完整 Docker 栈
+	$(COMPOSE) --profile app down
 
 test: ## 全量测试
 	$(PY) -m pytest

@@ -13,6 +13,7 @@ from app.api.routes import (
     admin,
     audit,
     customers,
+    devices,
     health,
     imports,
     integrations,
@@ -37,6 +38,7 @@ api_router.include_router(integrations.router)
 api_router.include_router(audit.router)
 api_router.include_router(admin.router)
 api_router.include_router(customers.router)
+api_router.include_router(devices.router)
 api_router.include_router(places.router)
 api_router.include_router(plans.router)
 api_router.include_router(proactive.router)

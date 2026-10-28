@@ -17,16 +17,27 @@ provider 的诚实边界：
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
+import smtplib
+import time
 from dataclasses import dataclass
+from email.message import EmailMessage
+from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.models.devices import DeviceToken
+from app.models.identity import User
 from app.models.notifications import Notification
 from app.models.proactive import ProactiveSuggestion
 
@@ -64,20 +75,154 @@ class LogPushProvider:
         )
 
 
+class SMTPPushProvider:
+    """SMTP 邮件通道。recipient 在入队时快照为用户邮箱。"""
+
+    name = "smtp"
+
+    def __init__(self) -> None:
+        settings = get_settings()
+        self.host = settings.smtp_host
+        self.port = settings.smtp_port
+        self.username = settings.smtp_username
+        self.password = settings.smtp_password
+        self.sender = settings.smtp_from
+        self.use_tls = settings.smtp_use_tls
+        if not self.host or not self.sender:
+            raise PushUnavailable("SMTP 未配置 host/from")
+
+    def send(self, notification: Notification) -> None:
+        if not notification.recipient:
+            raise PushUnavailable("通知缺少收件人邮箱")
+        message = EmailMessage()
+        message["From"] = self.sender
+        message["To"] = notification.recipient
+        message["Subject"] = notification.title
+        message.set_content(notification.body or notification.title)
+        try:
+            with smtplib.SMTP(self.host, int(self.port), timeout=15) as smtp:
+                smtp.ehlo()
+                if self.use_tls:
+                    smtp.starttls()
+                    smtp.ehlo()
+                if self.username and self.password:
+                    smtp.login(self.username, self.password)
+                smtp.send_message(message)
+        except Exception as exc:  # noqa: BLE001 —— 统一转成可重试失败
+            raise PushUnavailable(f"SMTP 发送失败：{type(exc).__name__}: {exc}") from exc
+
+
+def _b64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
 class APNsPushProvider:
+    """APNs token-based（.p8）HTTP/2 推送。
+
+    未配置 key/team/topic，或通知没有设备 token 时显式抛 ``PushUnavailable``；绝不伪造"已发送"。
+    JWT 缓存 50 分钟（Apple 要求不超过 1 小时，且不要频繁刷新）。
+    """
+
     name = "apns"
 
-    def send(self, notification: Notification) -> None:  # noqa: ARG002
-        raise PushUnavailable("APNs 未配置证书与设备 token，拒绝伪造发送成功")
+    def __init__(self) -> None:
+        settings = get_settings()
+        self.key_id = settings.apns_key_id
+        self.team_id = settings.apns_team_id
+        self.topic = settings.apns_topic
+        self.sandbox = settings.apns_use_sandbox
+        raw = settings.apns_private_key
+        if not (self.key_id and self.team_id and self.topic and raw):
+            raise PushUnavailable("APNs 未配置 key_id/team_id/topic/private_key")
+        path = Path(raw)
+        pem = path.read_text(encoding="utf-8") if path.exists() else raw.replace("\\n", "\n")
+        try:
+            self._key = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
+        except Exception as exc:  # noqa: BLE001
+            raise PushUnavailable(f"APNs 私钥无法解析：{type(exc).__name__}") from exc
+        self._jwt: str | None = None
+        self._jwt_expires_at = 0.0
+
+    def _token(self) -> str:
+        now = time.time()
+        if self._jwt and now < self._jwt_expires_at:
+            return self._jwt
+        header = _b64url(json.dumps({"alg": "ES256", "kid": self.key_id}).encode("utf-8"))
+        claims = _b64url(json.dumps({"iss": self.team_id, "iat": int(now)}).encode("utf-8"))
+        signing_input = f"{header}.{claims}".encode("ascii")
+        der = self._key.sign(signing_input, ec.ECDSA(hashes.SHA256()))
+        r, s = decode_dss_signature(der)
+        raw = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+        self._jwt = f"{header}.{claims}.{_b64url(raw)}"
+        self._jwt_expires_at = now + 3000
+        return self._jwt
+
+    def send(self, notification: Notification) -> None:
+        if not notification.recipient:
+            raise PushUnavailable("通知缺少 APNs 设备 token")
+        host = "api.sandbox.push.apple.com" if self.sandbox else "api.push.apple.com"
+        try:
+            import httpx
+
+            response = httpx.post(
+                f"https://{host}/3/device/{notification.recipient}",
+                headers={
+                    "authorization": f"bearer {self._token()}",
+                    "apns-topic": self.topic,
+                    "apns-push-type": "alert",
+                    "apns-priority": "10",
+                },
+                json={
+                    "aps": {
+                        "alert": {"title": notification.title, "body": notification.body or ""},
+                        "sound": "default",
+                    }
+                },
+                http2=True,
+                timeout=15,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise PushUnavailable(f"APNs 请求失败：{type(exc).__name__}: {exc}") from exc
+        if response.status_code >= 400:
+            raise PushUnavailable(f"APNs 拒绝：{response.status_code} {response.text[:200]}")
 
 
-def build_push_provider() -> PushProvider:
-    settings = get_settings()
-    if settings.push_provider == "log":
+def build_push_provider(name: str | None = None) -> PushProvider:
+    selected = name or get_settings().push_provider
+    if selected == "log":
         return LogPushProvider()
-    if settings.push_provider == "apns":
+    if selected == "smtp":
+        return SMTPPushProvider()
+    if selected == "apns":
         return APNsPushProvider()
     return InAppPushProvider()
+
+
+def resolve_recipient(
+    session: Session,
+    organization_id: UUID | str,
+    user_id: UUID | str | None,
+    provider: str,
+) -> str | None:
+    """通知入队时解析收件人：SMTP→邮箱，APNs→最近活跃设备 token。"""
+    if user_id is None:
+        return None
+    if provider == "smtp":
+        user = session.get(User, str(user_id))
+        return user.email if user is not None else None
+    if provider == "apns":
+        token = session.scalars(
+            select(DeviceToken)
+            .where(
+                DeviceToken.organization_id == str(organization_id),
+                DeviceToken.user_id == str(user_id),
+                DeviceToken.enabled.is_(True),
+            )
+            .order_by(DeviceToken.last_seen_at.desc().nullslast(), DeviceToken.created_at.desc())
+            .limit(1)
+        ).first()
+        return token.token if token is not None else None
+    return None
 
 
 @dataclass
@@ -98,6 +243,7 @@ def enqueue_for_suggestion(
     if suggestion.push_status != "PUSHED":
         return None
     provider = get_settings().push_provider
+    recipient = resolve_recipient(session, suggestion.organization_id, user_id, provider)
     statement = (
         pg_insert(Notification.__table__)
         .values(
@@ -109,6 +255,7 @@ def enqueue_for_suggestion(
             body=suggestion.rationale,
             status="PENDING",
             provider=provider,
+            recipient=recipient,
             attempts=0,
         )
         .on_conflict_do_nothing(constraint="uq_notifications_org_suggestion_provider")
@@ -132,7 +279,6 @@ def dispatch_pending(
 ) -> DispatchReport:
     """投递一批待发通知。失败按次数上限转 FAILED，未超限保留 PENDING 等下一轮。"""
     settings = get_settings()
-    provider = build_push_provider()
     now = session.scalar(select(func.clock_timestamp()))
     rows = list(
         session.scalars(
@@ -150,8 +296,8 @@ def dispatch_pending(
     report = DispatchReport(claimed=len(rows))
     for row in rows:
         row.attempts += 1
-        row.provider = provider.name
         try:
+            provider = build_push_provider(row.provider)
             provider.send(row)
         except PushUnavailable as exc:
             row.last_error = str(exc)
@@ -242,10 +388,12 @@ __all__ = [
     "LogPushProvider",
     "PushProvider",
     "PushUnavailable",
+    "SMTPPushProvider",
     "build_push_provider",
     "dispatch_pending",
     "enqueue_for_suggestion",
     "list_for_user",
     "mark_read",
+    "resolve_recipient",
     "unread_count",
 ]

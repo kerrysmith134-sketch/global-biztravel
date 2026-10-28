@@ -41,6 +41,9 @@ make ios-test
 | PII 加密/留存 | `services/api/tests/test_retention_pii.py` | Fernet 往返 + 旧明文兼容；过期笔记/记忆清空，最近记录不动 |
 | iOS 导入契约 | `ImportModels` + `ImportSheet` | 两阶段预览/勾选/确认；模型按后端 `VALID/INVALID/DUPLICATE` 解码 |
 | 事务时序 | `services/api/tests/test_transaction_middleware.py` | 2xx 响应开始前提交；4xx 回滚；提交失败替换为 500 |
+| 推送通道 | `services/api/tests/test_push_channels.py` | 设备 token 幂等注册/注销；SMTP 收件人；APNs ES256 JWT（raw r‖s）；未配置显式失败 |
+| 密钥轮换 | `services/api/tests/test_key_rotation.py` | 旧 key 密文重加密；明文默认跳过；不可解密文不二次加密 |
+| Docker 栈 | `make stack-up` + `make e2e` | API/Worker/DB 容器健康，真实全链路通过 |
 | MS-6 真实启动 | 模拟器 + `make api` | Today 页从真实后端加载签证建议与每日打扰额度 |
 
 ## 已知边界

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.models.approval import ApprovalPolicy
 from app.models.base import Base
+from app.models.devices import DeviceToken
 from app.models.geo import Customer, CustomerPlace, Place
 from app.models.identity import Membership, Organization, User
 from app.models.integrations import ExternalSignal
@@ -38,6 +39,7 @@ __all__ = [
     "Base",
     "Customer",
     "CustomerPlace",
+    "DeviceToken",
     "ExternalSignal",
     "IdempotencyRecord",
     "ImportBatch",

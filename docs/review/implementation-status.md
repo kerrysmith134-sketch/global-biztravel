@@ -54,16 +54,18 @@
 - **可观测性**：每个请求一条 JSON 日志（含延迟与 trace）；审计时间线聚合建议/审批/Outbox/记录/规划尝试。
 - **严格覆盖不变量**：修复"0 停靠仍 feasible"的静默错误；两层求解器都覆盖失败 ⇒ `SolverFailed`。
 - **交付脚本**：真实后端 E2E、契约漂移检查、规划基准、iOS UI 冒烟目标。
-- **合规**：记忆遗忘接口、字段加密、留存脱敏与 PII 数据字典。
+- **合规**：记忆遗忘接口、字段加密、留存脱敏、密钥轮换脚本与 PII 数据字典。
+- **推送通道**：设备 token 注册、SMTP 邮件、APNs ES256 JWT、收件人快照与失败重试。
+- **部署**：API/Worker Dockerfile 与 compose `app` profile；`make stack-up` 一键启动完整栈并通过 E2E。
 - **事务时序修复**：写接口的 2xx 可能在提交前返回（E2E 暴露）；改为响应开始前提交/回滚（ADR-0010）。
 
 ## 5. 验证记录
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **176 passed**（真实 PostgreSQL） |
+| `make test` | **184 passed**（真实 PostgreSQL） |
 | `make lint` / `make check` | 通过；迁移无漂移 |
-| `make openapi` / `make contract-check` | 42 路径 / 75 schema；契约一致 |
+| `make openapi` / `make contract-check` | 44 路径 / 77 schema；契约一致 |
 | `make e2e`（API + PG + Worker） | 创建 Trip → Excel 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，**全部通过** |
 | `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 停靠覆盖，hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
@@ -80,13 +82,14 @@
 0005_proactive_runtime     0011_external_signals
 0006_visit_records         0012_notifications
                            0013_approval_policies
+                           0014_push_channels
 ```
 
 ## 7. 仍缺项（不影响 MVP-1 能力，生产前需补）
 
 1. **真实外部供应商**：签证/汇率/天气/航班的数据源、鉴权与字段映射未接入；当前只提供标准信号接入。
-2. **真实 APNs/邮件通道**：需要证书、设备 token 注册与退订；当前 `inapp` 可用，`apns` 显式失败。
-3. **KMS 密钥托管与轮换**：字段加密 key 目前来自环境变量，轮换需回填脚本。
+2. **推送凭证**：APNs（`.p8` key/team/topic）与 SMTP 通道代码已完成（设备 token 注册、ES256 JWT、收件人快照、失败重试）；生产只需注入凭证。
+3. **KMS 密钥托管**：字段加密已支持轮换脚本（`scripts/rotate_field_key.py`），但 key 仍来自环境变量，生产应接 KMS。
 4. **多级会签**：审批策略已支持"按风险等级要求最低角色"，多人会签/审批链仍待扩展。
 5. **真实 embedding 凭证**：provider 已实现（hash / openai_compatible），生产需配置 base_url/key。
 6. **事务时序**：已修成「响应开始前提交」（ADR-0010）；流式端点若将来引入需重新设计。

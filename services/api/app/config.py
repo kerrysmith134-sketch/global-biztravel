@@ -69,8 +69,23 @@ class Settings(BaseSettings):
     metrics_snapshot_interval_seconds: int = 3600
 
     # 推送通道（第 8.6 章）：本地默认 inapp（写入通知列表），log 只打日志，apns 需证书。
-    push_provider: str = "inapp"
+    push_provider: str = "inapp"              # inapp | log | smtp | apns
     push_max_attempts: int = 3
+
+    # SMTP（push_provider=smtp）
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    smtp_use_tls: bool = True
+
+    # APNs（push_provider=apns）：token-based auth（.p8）
+    apns_key_id: str | None = None
+    apns_team_id: str | None = None
+    apns_private_key: str | None = None       # PEM 内容或 .p8 文件路径
+    apns_topic: str | None = None             # bundle id
+    apns_use_sandbox: bool = True
 
     # LLM 网关（第 7 章）
     llm_provider: str = "stub"                # stub | openai_compatible

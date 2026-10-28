@@ -8,6 +8,19 @@
 #   - 迁移连接用 gbt_owner（表 owner）→ 配合 FORCE ROW LEVEL SECURITY 同样受策略约束
 name: gbt-os
 
+# API/Worker 共用配置。数据库主机名是 compose 服务名 db（不是宿主机的 localhost:55432）。
+x-app-env: &app-env
+  GBT_ENV: docker
+  GBT_DATABASE_URL: postgresql+psycopg://gbt_app:gbt_app_pw@db:5432/gbt_os
+  GBT_MIGRATION_DATABASE_URL: postgresql+psycopg://gbt_owner:gbt_owner_pw@db:5432/gbt_os
+  GBT_DEV_AUTH: "true"
+  GBT_DEV_ORG_ID: "11111111-1111-1111-1111-111111111111"
+  GBT_DEV_USER_ID: "22222222-2222-2222-2222-222222222222"
+  GBT_PLANNING_SOLVER: ortools
+  GBT_LLM_PROVIDER: stub
+  GBT_PUSH_PROVIDER: inapp
+  GBT_WORKER_POLL_SECONDS: "2"
+
 services:
   db:
     build:
@@ -32,6 +45,36 @@ services:
       timeout: 5s
       retries: 30
       start_period: 10s
+
+  api:
+    build:
+      context: ../..
+      dockerfile: services/api/Dockerfile
+    image: gbt-os-api:local
+    profiles: ["app"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: *app-env
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    image: gbt-os-api:local
+    profiles: ["app"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment: *app-env
+    command: ["python", "-m", "app.workers.main"]
 
 volumes:
   gbt_pg_data:

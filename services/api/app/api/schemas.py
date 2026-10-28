@@ -830,3 +830,21 @@ class ApprovalPolicyRead(ORMModel):
     required_role: Literal["VIEWER", "TRAVELER", "ADMIN", "OWNER"]
     enabled: bool
     created_at: datetime
+
+
+# --------------------------------------------------------------- devices
+DevicePlatform = Literal["IOS", "ANDROID"]
+
+
+class DeviceTokenRegister(BaseModel):
+    platform: DevicePlatform = "IOS"
+    token: str = Field(min_length=8, max_length=512)
+
+
+class DeviceTokenRead(ORMModel):
+    id: UUID
+    platform: DevicePlatform
+    token: str
+    enabled: bool
+    last_seen_at: datetime | None = None
+    created_at: datetime

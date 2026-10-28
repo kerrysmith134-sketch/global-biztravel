@@ -817,6 +817,69 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/devices:
+    get:
+      tags:
+      - devices
+      summary: 当前用户的设备 token 列表
+      operationId: list_devices_v1_devices_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/DeviceTokenRead'
+                type: array
+                title: Response List Devices V1 Devices Get
+    post:
+      tags:
+      - devices
+      summary: 注册/刷新当前用户的设备 token（同 token 幂等）
+      operationId: register_device_v1_devices_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRegister'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/devices/{device_id}:
+    delete:
+      tags:
+      - devices
+      summary: 注销设备 token
+      operationId: delete_device_v1_devices__device_id__delete
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Device Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/places:
     get:
       tags:
@@ -2028,6 +2091,60 @@ components:
       - used
       - cap
       title: DailyCapRead
+    DeviceTokenRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        platform:
+          type: string
+          enum:
+          - IOS
+          - ANDROID
+          title: Platform
+        token:
+          type: string
+          title: Token
+        enabled:
+          type: boolean
+          title: Enabled
+        last_seen_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Seen At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - platform
+      - token
+      - enabled
+      - created_at
+      title: DeviceTokenRead
+    DeviceTokenRegister:
+      properties:
+        platform:
+          type: string
+          enum:
+          - IOS
+          - ANDROID
+          title: Platform
+          default: IOS
+        token:
+          type: string
+          maxLength: 512
+          minLength: 8
+          title: Token
+      type: object
+      required:
+      - token
+      title: DeviceTokenRegister
     ExternalSignalCreate:
       properties:
         provider:

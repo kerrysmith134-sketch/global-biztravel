@@ -26,6 +26,7 @@ make test                        # 全量后端测试（含真实 PostgreSQL 集
 make ios-build                   # 构建 iOS 客户端（模拟器）
 make ios-test                    # iOS 单元测试 + UI 冒烟（UI 需 make api 运行）
 make e2e                         # 真实后端全链路验收（需 make api 运行）
+make stack-up                    # Docker 完整栈（DB + API + Worker）
 ```
 
 ## 本地数据库（已实测）
@@ -57,7 +58,7 @@ global-travel-os/                      # 本工作区
 ├── services/api/
 │   ├── app/                            # api / services / models / llm / workers / data
 │   │                                   # （业务规则在 services，路由只做 HTTP 语义）
-│   ├── migrations/versions/            # 0001…0013（当前 head：0013_approval_policies）
+│   ├── migrations/versions/            # 0001…0014（当前 head：0014_push_channels）
 │   └── tests/                          # 单元 + 真实 PostgreSQL 集成 + 验收场景
 ├── packages/planning-engine/           # 纯计算规划引擎（无 IO、不碰数据库、不订票）
 ├── contracts/openapi.yaml              # 契约唯一真相源（由 make openapi 导出）
@@ -106,5 +107,5 @@ Input Normalizer → Feasibility Checker → Candidate Generator
 - `AT-S01`：组织 A 会话访问组织 B 数据必须全部失败（数据库级 RLS）。
 
 验收必须在**真实客户端、后端与数据库**之间完成，不得以静态页面、模拟 API 返回值或预置演示数据替代。
-当前自动化覆盖：后端 176 条（含真实 PostgreSQL）、iOS 7 条单元测试 + 1 条 UI 冒烟、
+当前自动化覆盖：后端 184 条（含真实 PostgreSQL）、iOS 7 条单元测试 + 1 条 UI 冒烟、
 `make e2e` 真实后端全链路、`make contract-check` 契约漂移检查；iOS 客户端已在模拟器中连接真实后端验证。
