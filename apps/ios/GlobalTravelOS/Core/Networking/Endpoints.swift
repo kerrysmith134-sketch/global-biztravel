@@ -169,6 +169,50 @@ enum Endpoints {
         )
     }
 
+    // MARK: - Expenses
+
+    static func tripExpenses(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/expenses")
+    }
+
+    static func tripBudget(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/budget")
+    }
+
+    // MARK: - Visa
+
+    static func visaCases(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/visa-cases")
+    }
+
+    static func createVisaCases(tripId: String, countries: [String]?) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/trips/\(tripId)/visa-cases",
+            body: try DateCoding.encode(VisaCaseCreateRequest(countries: countries)),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func updateVisaCase(id: String, status: VisaCaseStatus) throws -> APIRequest {
+        APIRequest(
+            method: .patch,
+            path: "/v1/visa-cases/\(id)",
+            body: try DateCoding.encode(VisaCaseUpdateRequest(status: status))
+        )
+    }
+
+    static func entryAssessments(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/entry-assessments")
+    }
+
+    static func refreshEntryAssessments(tripId: String) -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/trips/\(tripId)/entry-assessments:refresh"
+        )
+    }
+
     // MARK: - Proactive suggestions
 
     static func proactiveSuggestions(

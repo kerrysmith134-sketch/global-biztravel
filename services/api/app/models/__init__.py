@@ -9,6 +9,7 @@ from __future__ import annotations
 from app.models.approval import ApprovalPolicy
 from app.models.base import Base
 from app.models.devices import DeviceToken
+from app.models.expenses import TripExpense
 from app.models.geo import Customer, CustomerPlace, Place
 from app.models.identity import Membership, Organization, User
 from app.models.integrations import ExternalSignal
@@ -31,6 +32,7 @@ from app.models.reliability import (
     OutboxEvent,
 )
 from app.models.trip import ImportBatch, ImportRow, Trip, Visit
+from app.models.visa import EntryAssessment, VisaCase
 from app.models.workflow import (
     AgentRun,
     Evidence,
@@ -49,6 +51,7 @@ __all__ = [
     "Customer",
     "CustomerPlace",
     "DeviceToken",
+    "EntryAssessment",
     "Evidence",
     "ExternalAction",
     "IntegrationConnection",
@@ -74,9 +77,11 @@ __all__ = [
     "SyncOperation",
     "TravelerProfile",
     "Trip",
+    "TripExpense",
     "TripMemorySummary",
     "User",
     "Visit",
+    "VisaCase",
     "VisitRecord",
     "WorkflowInstance",
 ]

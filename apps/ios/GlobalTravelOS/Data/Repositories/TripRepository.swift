@@ -35,6 +35,13 @@ protocol TripRepository {
     func holdTrip(id: String, version: Int) async throws -> Trip
     func resumeTrip(id: String, version: Int) async throws -> Trip
     func completeTrip(id: String, version: Int) async throws -> Trip
+    func visaCases(tripId: String) async throws -> [VisaCase]
+    func createVisaCases(tripId: String, countries: [String]?) async throws -> [VisaCase]
+    func updateVisaCase(id: String, status: VisaCaseStatus) async throws -> VisaCase
+    func expenses(tripId: String) async throws -> [TripExpense]
+    func budgetSummary(tripId: String) async throws -> BudgetSummary
+    func entryAssessments(tripId: String) async throws -> [EntryAssessment]
+    func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment]
     func createTrip(_ request: CreateTripRequest) async throws -> Trip
     func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult
     func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult
@@ -66,6 +73,46 @@ final class RemoteTripRepository: TripRepository {
 
     func completeTrip(id: String, version: Int) async throws -> Trip {
         try await client.send(Endpoints.completeTrip(id: id, version: version), as: Trip.self)
+    }
+
+    func visaCases(tripId: String) async throws -> [VisaCase] {
+        try await client.send(Endpoints.visaCases(tripId: tripId), as: [VisaCase].self)
+    }
+
+    func createVisaCases(tripId: String, countries: [String]?) async throws -> [VisaCase] {
+        try await client.send(
+            try Endpoints.createVisaCases(tripId: tripId, countries: countries),
+            as: [VisaCase].self
+        )
+    }
+
+    func updateVisaCase(id: String, status: VisaCaseStatus) async throws -> VisaCase {
+        try await client.send(
+            try Endpoints.updateVisaCase(id: id, status: status),
+            as: VisaCase.self
+        )
+    }
+
+    func expenses(tripId: String) async throws -> [TripExpense] {
+        try await client.send(Endpoints.tripExpenses(tripId: tripId), as: [TripExpense].self)
+    }
+
+    func budgetSummary(tripId: String) async throws -> BudgetSummary {
+        try await client.send(Endpoints.tripBudget(tripId: tripId), as: BudgetSummary.self)
+    }
+
+    func entryAssessments(tripId: String) async throws -> [EntryAssessment] {
+        try await client.send(
+            Endpoints.entryAssessments(tripId: tripId),
+            as: [EntryAssessment].self
+        )
+    }
+
+    func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment] {
+        try await client.send(
+            Endpoints.refreshEntryAssessments(tripId: tripId),
+            as: [EntryAssessment].self
+        )
     }
 
     func createTrip(_ request: CreateTripRequest) async throws -> Trip {
@@ -186,6 +233,34 @@ final class OfflineTripRepository: TripRepository {
 
     func completeTrip(id: String, version: Int) async throws -> Trip {
         try await remote.completeTrip(id: id, version: version)
+    }
+
+    func visaCases(tripId: String) async throws -> [VisaCase] {
+        try await remote.visaCases(tripId: tripId)
+    }
+
+    func createVisaCases(tripId: String, countries: [String]?) async throws -> [VisaCase] {
+        try await remote.createVisaCases(tripId: tripId, countries: countries)
+    }
+
+    func updateVisaCase(id: String, status: VisaCaseStatus) async throws -> VisaCase {
+        try await remote.updateVisaCase(id: id, status: status)
+    }
+
+    func expenses(tripId: String) async throws -> [TripExpense] {
+        try await remote.expenses(tripId: tripId)
+    }
+
+    func budgetSummary(tripId: String) async throws -> BudgetSummary {
+        try await remote.budgetSummary(tripId: tripId)
+    }
+
+    func entryAssessments(tripId: String) async throws -> [EntryAssessment] {
+        try await remote.entryAssessments(tripId: tripId)
+    }
+
+    func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment] {
+        try await remote.refreshEntryAssessments(tripId: tripId)
     }
 
     /// Creates always require the server; there is no offline path for a trip that does not exist yet.

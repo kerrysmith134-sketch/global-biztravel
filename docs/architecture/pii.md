@@ -14,6 +14,8 @@
 | 坐标/地址 | `places.lat/lon/address_line` | SENSITIVE | 租户隔离；用于行程计算 |
 | 照片引用 | `visit_records.photos` | RESTRICTED | 只存引用字符串，不存二进制 |
 | 行程摘要/教训/待办 | `trip_memory_summaries` | SENSITIVE | 租户隔离；支持合规删除（清空正文与向量） |
+| 护照有效期 | `visa_cases.passport_expires_at` | RESTRICTED | 只存日期，不存护照号；用于出发前时效检查 |
+| 费用/凭证引用 | `trip_expenses` | SENSITIVE | 金额与备注；凭证只存引用，不存票据二进制 |
 | 审批人/操作人 | `approvals`、`suggestion_audit`、`llm_invocations` | AUDIT | 保留用于审计，不参与业务展示 |
 
 ## 2. 已实现的控制

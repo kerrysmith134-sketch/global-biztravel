@@ -30,7 +30,6 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -56,6 +55,7 @@ from app.services import (
     evidence_service,
     external_service,
     outbox_service,
+    visa_service,
 )
 
 #: 建议类型。集中登记，避免规则、执行器与测试各写一套字符串。
@@ -1023,6 +1023,17 @@ def _execute_visa(
 ) -> dict[str, Any]:
     catalog = _visa_catalog()
     countries = [str(code).upper() for code in (suggestion.proposed_action.get("params") or {}).get("countries", [])]
+    if trip is not None and countries:
+        cases = visa_service.ensure_cases(
+            session,
+            trip.organization_id,
+            trip,
+            countries=countries,
+            actor_user_id=suggestion.approved_by_user_id,
+        )
+        case_ids = [str(case.id) for case in cases]
+    else:
+        case_ids = []
     checklist: list[dict[str, Any]] = []
     for code in countries:
         entry = catalog["countries"].get(code)
@@ -1049,6 +1060,7 @@ def _execute_visa(
         "detail": "已生成签证/证件核对清单（草稿），未向任何外部机构提交",
         "catalog_version": catalog["version"],
         "checklist": checklist,
+        "visa_case_ids": case_ids,
     }
 
 
@@ -1127,10 +1139,10 @@ def _audit(
     return row
 
 
-@lru_cache
 def _visa_catalog() -> dict[str, Any]:
-    with _CATALOG_PATH.open(encoding="utf-8") as handle:
-        return json.load(handle)
+    from app.services.visa_catalog import load_catalog
+
+    return load_catalog()
 
 
 __all__ = [

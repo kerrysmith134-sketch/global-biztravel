@@ -14,6 +14,7 @@ from app.api.routes import (
     audit,
     customers,
     devices,
+    expenses,
     health,
     imports,
     integrations,
@@ -26,6 +27,7 @@ from app.api.routes import (
     proactive,
     sync,
     trips,
+    visa,
     visits,
 )
 
@@ -33,12 +35,14 @@ api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(trips.router)
 api_router.include_router(visits.router)
+api_router.include_router(visa.router)
 api_router.include_router(imports.router)
 api_router.include_router(integrations.router)
 api_router.include_router(audit.router)
 api_router.include_router(admin.router)
 api_router.include_router(customers.router)
 api_router.include_router(devices.router)
+api_router.include_router(expenses.router)
 api_router.include_router(places.router)
 api_router.include_router(plans.router)
 api_router.include_router(proactive.router)

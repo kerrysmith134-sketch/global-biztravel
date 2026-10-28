@@ -5,6 +5,10 @@ final class TripDetailViewModel: ObservableObject {
     @Published private(set) var trip: Trip?
     @Published private(set) var visits: [TripVisit] = []
     @Published private(set) var plans: [PlanVersion] = []
+    @Published private(set) var visaCases: [VisaCase] = []
+    @Published private(set) var entryAssessments: [EntryAssessment] = []
+    @Published private(set) var expenses: [TripExpense] = []
+    @Published private(set) var budget: BudgetSummary?
     @Published private(set) var isLoading = false
     @Published private(set) var generating = false
     @Published var errorMessage: String?
@@ -34,7 +38,45 @@ final class TripDetailViewModel: ObservableObject {
             tripId: tripId,
             page: PageRequest(limit: 50, cursor: nil)
         ).items) ?? plans
+        visaCases = (try? await environment.tripRepository.visaCases(tripId: tripId)) ?? visaCases
+        entryAssessments = (try? await environment.tripRepository.entryAssessments(tripId: tripId))
+            ?? entryAssessments
+        expenses = (try? await environment.tripRepository.expenses(tripId: tripId)) ?? expenses
+        budget = try? await environment.tripRepository.budgetSummary(tripId: tripId)
         environment.refreshOfflineSummary()
+    }
+
+    func createVisaCases() async {
+        errorMessage = nil
+        do {
+            visaCases = try await environment.tripRepository.createVisaCases(
+                tripId: tripId,
+                countries: nil
+            )
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    func refreshAssessments() async {
+        errorMessage = nil
+        do {
+            entryAssessments = try await environment.tripRepository.refreshEntryAssessments(
+                tripId: tripId
+            )
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    func advanceVisaCase(_ visaCase: VisaCase, to status: VisaCaseStatus) async {
+        errorMessage = nil
+        do {
+            _ = try await environment.tripRepository.updateVisaCase(id: visaCase.id, status: status)
+            visaCases = try await environment.tripRepository.visaCases(tripId: tripId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
     }
 
     func hold() async {
@@ -142,6 +184,81 @@ struct TripDetailView: View {
                             Task { await viewModel.complete() }
                         } label: {
                             Label("标记完成", systemImage: "checkmark.circle")
+                        }
+                    }
+                }
+            }
+
+            Section("签证与入境") {
+                if viewModel.visaCases.isEmpty {
+                    Text("还没有签证案件。创建后会按目的国生成材料清单。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(viewModel.visaCases) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(item.countryCode).font(.headline)
+                            Text(item.status.label)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(item.checklistLabel)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            if !item.status.nextStatuses.isEmpty {
+                                Menu("推进") {
+                                    ForEach(item.status.nextStatuses) { next in
+                                        Button(next.label) {
+                                            Task { await viewModel.advanceVisaCase(item, to: next) }
+                                        }
+                                    }
+                                }
+                                .font(.caption)
+                            }
+                        }
+                        if let notes = item.notes, !notes.isEmpty {
+                            Text(notes).font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                HStack {
+                    Button {
+                        Task { await viewModel.createVisaCases() }
+                    } label: {
+                        Label("创建签证案件", systemImage: "doc.badge.plus")
+                    }
+                    Spacer()
+                    Button {
+                        Task { await viewModel.refreshAssessments() }
+                    } label: {
+                        Label("刷新入境评估", systemImage: "arrow.clockwise")
+                    }
+                }
+                ForEach(viewModel.entryAssessments) { assessment in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(assessment.countryCode) · \(assessment.sourceLabel)")
+                            .font(.caption.weight(.semibold))
+                        Text(assessment.summary).font(.caption)
+                        Text("\(assessment.confidenceLabel) · 需人工复核")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+
+            if let budget = viewModel.budget {
+                Section("费用与预算") {
+                    LabeledContent("预算", value: budget.budgetLabel)
+                    LabeledContent("计划估算", value: budget.plannedLabel)
+                    LabeledContent("实际费用", value: budget.actualLabel)
+                    LabeledContent("预算差额", value: budget.varianceLabel)
+                    ForEach(viewModel.expenses) { expense in
+                        HStack {
+                            Text(expense.categoryLabel)
+                            Spacer()
+                            Text(expense.amountLabel)
+                                .font(.caption.monospacedDigit())
                         }
                     }
                 }

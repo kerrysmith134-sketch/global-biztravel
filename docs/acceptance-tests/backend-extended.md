@@ -52,6 +52,9 @@ make ios-test
 | iOS Map / Calendar | `PlanMapView`、`PlanCalendarView` + `make ios-build` | 计划停靠有坐标时地图可渲染；日历按日展示 |
 | 离线时间 / 重启恢复 | `OfflineIndicator`、`AppSettings.lastTripId` | 离线摘要显示更新时间；出行页显示"上次出行" |
 | CI 门禁 | `scripts/ci.sh`、`.github/workflows/ci.yml` | Ruff/MyPy/Pytest/迁移/契约/E2E/iOS/SwiftLint |
+| 签证案件（后 MVP） | `services/api/tests/test_visa_cases.py` | 国家案件创建、状态机推进/非法推进 409、入境评估来源与人工复核、批准签证建议自动建案 |
+| 费用与预算（后 MVP） | `services/api/tests/test_expenses.py` | 多币种分列、同币种差额、计划费用未知计数、跨租户 404 |
+| iOS 签证/预算 UI | `VisaCase.swift`、`BudgetSummary.swift`、TripDetail | 案件状态推进、刷新评估、预算/实际/差额展示 |
 | MS-6 真实启动 | 模拟器 + `make api` | Today 页从真实后端加载签证建议与每日打扰额度 |
 
 ## 已知边界

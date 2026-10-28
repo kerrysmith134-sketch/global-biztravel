@@ -64,13 +64,13 @@ def create_trip(
     return trip
 
 
-def get_trip(session: Session, organization_id: UUID | str, trip_id: UUID) -> Trip | None:
+def get_trip(session: Session, organization_id: UUID | str, trip_id: UUID | str) -> Trip | None:
     return session.scalars(
         select(Trip).where(Trip.organization_id == organization_id, Trip.id == trip_id)
     ).one_or_none()
 
 
-def require_trip(session: Session, organization_id: UUID | str, trip_id: UUID) -> Trip:
+def require_trip(session: Session, organization_id: UUID | str, trip_id: UUID | str) -> Trip:
     trip = get_trip(session, organization_id, trip_id)
     if trip is None:
         raise NotFound("出行不存在", details={"trip_id": str(trip_id)})

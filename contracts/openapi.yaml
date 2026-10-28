@@ -556,6 +556,174 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/visa-cases:
+    get:
+      tags:
+      - visa
+      summary: 出行的签证案件列表
+      operationId: list_visa_cases_v1_trips__trip_id__visa_cases_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VisaCaseRead'
+                title: Response List Visa Cases V1 Trips  Trip Id  Visa Cases Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - visa
+      summary: 按目的国创建签证案件（幂等；缺省用出行国家）
+      operationId: create_visa_cases_v1_trips__trip_id__visa_cases_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisaCaseCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VisaCaseRead'
+                title: Response Create Visa Cases V1 Trips  Trip Id  Visa Cases Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/visa-cases/{case_id}:
+    patch:
+      tags:
+      - visa
+      summary: 更新签证案件状态/清单/备注
+      operationId: update_visa_case_v1_visa_cases__case_id__patch
+      parameters:
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Case Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisaCaseUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisaCaseRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/entry-assessments:
+    get:
+      tags:
+      - visa
+      summary: 出行的入境要求评估快照
+      operationId: list_entry_assessments_v1_trips__trip_id__entry_assessments_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EntryAssessmentRead'
+                title: Response List Entry Assessments V1 Trips  Trip Id  Entry Assessments
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/entry-assessments:refresh:
+    post:
+      tags:
+      - visa
+      summary: 刷新入境要求评估（离线目录，标注需人工复核）
+      operationId: refresh_entry_assessments_v1_trips__trip_id__entry_assessments_refresh_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EntryAssessmentRead'
+                title: Response Refresh Entry Assessments V1 Trips  Trip Id  Entry
+                  Assessments Refresh Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/trips/{trip_id}/imports:parse:
     post:
       tags:
@@ -1138,6 +1306,126 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/expenses:
+    get:
+      tags:
+      - expenses
+      summary: 出行的费用记录
+      operationId: list_expenses_v1_trips__trip_id__expenses_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExpenseRead'
+                title: Response List Expenses V1 Trips  Trip Id  Expenses Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - expenses
+      summary: 录入一笔费用
+      operationId: create_expense_v1_trips__trip_id__expenses_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpenseRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/expenses/{expense_id}:
+    delete:
+      tags:
+      - expenses
+      summary: 删除费用记录
+      operationId: delete_expense_v1_expenses__expense_id__delete
+      parameters:
+      - name: expense_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Expense Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/budget:
+    get:
+      tags:
+      - expenses
+      summary: 预算、计划估算与实际费用（多币种分列，不伪造汇率）
+      operationId: get_budget_v1_trips__trip_id__budget_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetSummaryRead'
         '422':
           description: Validation Error
           content:
@@ -2248,6 +2536,54 @@ components:
       required:
       - file
       title: Body_parse_import_v1_trips__trip_id__imports_parse_post
+    BudgetSummaryRead:
+      properties:
+        budget_amount:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Budget Amount
+        budget_currency:
+          type: string
+          title: Budget Currency
+        planned_cost_total:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Planned Cost Total
+        planned_cost_currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Planned Cost Currency
+        planned_cost_unknown_count:
+          type: integer
+          title: Planned Cost Unknown Count
+          default: 0
+        actual_by_currency:
+          items:
+            $ref: '#/components/schemas/CurrencyTotalRead'
+          type: array
+          title: Actual By Currency
+        actual_total_in_budget_currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actual Total In Budget Currency
+        variance_vs_budget:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Variance Vs Budget
+        variance_vs_plan:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Variance Vs Plan
+      type: object
+      required:
+      - budget_currency
+      title: BudgetSummaryRead
     ConflictRecordRead:
       properties:
         reason:
@@ -2270,6 +2606,23 @@ components:
       type: object
       title: ConflictRecordRead
       description: 冲突双方的快照。客户端把 ``server`` 与 ``client`` 并排展示，由人决定怎么处理。
+    CurrencyTotalRead:
+      properties:
+        currency:
+          type: string
+          title: Currency
+        amount:
+          type: number
+          title: Amount
+        count:
+          type: integer
+          title: Count
+      type: object
+      required:
+      - currency
+      - amount
+      - count
+      title: CurrencyTotalRead
     CustomerCreate:
       properties:
         name:
@@ -2485,6 +2838,55 @@ components:
       required:
       - token
       title: DeviceTokenRegister
+    EntryAssessmentRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        country_code:
+          type: string
+          title: Country Code
+        summary:
+          type: string
+          title: Summary
+        source:
+          type: string
+          title: Source
+        source_version:
+          type: string
+          title: Source Version
+        confidence:
+          type: number
+          title: Confidence
+        manual_review_required:
+          type: boolean
+          title: Manual Review Required
+        assessed_at:
+          type: string
+          format: date-time
+          title: Assessed At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - trip_id
+      - country_code
+      - summary
+      - source
+      - source_version
+      - confidence
+      - manual_review_required
+      - assessed_at
+      - created_at
+      title: EntryAssessmentRead
     EvidenceRead:
       properties:
         id:
@@ -2532,6 +2934,100 @@ components:
       - ref
       - created_at
       title: EvidenceRead
+    ExpenseCreate:
+      properties:
+        category:
+          type: string
+          enum:
+          - TRANSPORT
+          - LODGING
+          - MEALS
+          - OTHER
+          title: Category
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+          title: Amount
+        currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          title: Currency
+        occurred_on:
+          type: string
+          format: date
+          title: Occurred On
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+        receipt_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Receipt Ref
+      type: object
+      required:
+      - category
+      - amount
+      - currency
+      - occurred_on
+      title: ExpenseCreate
+    ExpenseRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        category:
+          type: string
+          enum:
+          - TRANSPORT
+          - LODGING
+          - MEALS
+          - OTHER
+          title: Category
+        amount:
+          type: string
+          title: Amount
+        currency:
+          type: string
+          title: Currency
+        occurred_on:
+          type: string
+          format: date
+          title: Occurred On
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+        receipt_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Receipt Ref
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - trip_id
+      - category
+      - amount
+      - currency
+      - occurred_on
+      - created_at
+      title: ExpenseRead
     ExternalSignalCreate:
       properties:
         provider:
@@ -5248,6 +5744,153 @@ components:
       - msg
       - type
       title: ValidationError
+    VisaCaseCreate:
+      properties:
+        countries:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Countries
+      type: object
+      title: VisaCaseCreate
+    VisaCaseRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        country_code:
+          type: string
+          title: Country Code
+        status:
+          type: string
+          enum:
+          - NEW
+          - PREPARING
+          - SUBMITTED
+          - APPROVED
+          - REJECTED
+          - CANCELLED
+          title: Status
+        checklist:
+          items:
+            $ref: '#/components/schemas/VisaChecklistItem'
+          type: array
+          title: Checklist
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        passport_expires_at:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Passport Expires At
+        confidence:
+          type: number
+          title: Confidence
+        submitted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Submitted At
+        decision_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Decision At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - trip_id
+      - country_code
+      - status
+      - confidence
+      - created_at
+      - updated_at
+      title: VisaCaseRead
+    VisaCaseUpdate:
+      properties:
+        status:
+          anyOf:
+          - type: string
+            enum:
+            - NEW
+            - PREPARING
+            - SUBMITTED
+            - APPROVED
+            - REJECTED
+            - CANCELLED
+          - type: 'null'
+          title: Status
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        checklist:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/VisaChecklistItem'
+            type: array
+          - type: 'null'
+          title: Checklist
+        passport_expires_at:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Passport Expires At
+      type: object
+      title: VisaCaseUpdate
+    VisaChecklistItem:
+      properties:
+        key:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Key
+        label:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Label
+        status:
+          type: string
+          enum:
+          - MISSING
+          - READY
+          - NOT_APPLICABLE
+          title: Status
+          default: MISSING
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+      type: object
+      required:
+      - key
+      - label
+      title: VisaChecklistItem
     VisitCreate:
       properties:
         place_id:

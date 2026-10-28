@@ -43,8 +43,10 @@ final class GlobalTravelOSUITests: XCTestCase {
         XCTAssertTrue(firstTrip.waitForExistence(timeout: 15), "出行列表为空；确认后端与种子数据可用")
         firstTrip.tap()
 
-        XCTAssertTrue(app.staticTexts["拜访"].firstMatch.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["概览"].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15),
+            "出行详情未加载"
+        )
 
         let syncTab = app.buttons["同步"]
         XCTAssertTrue(syncTab.waitForExistence(timeout: 10), "未找到同步标签")

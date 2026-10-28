@@ -11,7 +11,7 @@
 
 | 里程碑 | 要求 | 状态 | 证据 |
 |---|---|---|---|
-| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0017`；`0010_security_rls` 全库兜底；RLS 断言测试 |
+| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0019`；`0010_security_rls` 全库兜底；RLS 断言测试 |
 | MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 第 3 步 |
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
@@ -51,10 +51,10 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **195 passed**（真实 PostgreSQL） |
-| `make typecheck` | MyPy：105 个源文件无问题 |
+| `make test` | **198 passed**（真实 PostgreSQL） |
+| `make typecheck` | MyPy：112 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
-| `make contract-check` | 53 路径 / 84 schema；契约一致 |
+| `make contract-check` | 60 路径 / 93 schema；契约一致 |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
@@ -62,7 +62,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
-## 5. 迁移清单（当前 head `0017`）
+## 5. 迁移清单（当前 head `0019`）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -73,10 +73,20 @@
 0006_visit_records         0015_plan_travel_legs
 0007_agent_memory          0016_workflow_evidence_sync
 0008_llm_invocations       0017_trip_hold_job_cancel
-0009_metric_snapshots
+0009_metric_snapshots      0018_visa_cases
+                           0019_trip_expenses
 ```
 
-## 6. 仍缺项（非本地代码可闭环）
+## 6. MVP 之后已开始推进（PRD 方向二 / 六）
+
+- **签证案件与入境评估**：`visa_cases`（NEW→PREPARING→SUBMITTED→APPROVED/REJECTED，材料清单、
+  提交/决定时间）与 `entry_assessments`（来源/版本/置信度/人工复核快照）；主动式签证建议批准
+  时自动创建案件；不存护照号，只可选保存护照有效期。
+- **费用与预算**：`trip_expenses` 录入类别/金额/币种/日期/凭证引用；`GET /trips/{id}/budget`
+  返回预算、计划估算、实际费用与差额。多币种分列，不做假汇率；未知计划费用不当作 0。
+- **客户端**：行程详情新增"签证与入境"（案件状态推进、刷新评估）与"费用与预算"摘要。
+
+## 7. 仍缺项（非本地代码可闭环）
 
 1. **真实交通/签证/汇率/天气/航班供应商**：Provider/信号接口与降级已就绪，鉴权、字段映射与
    服务商账号需接入。
@@ -87,6 +97,8 @@
 6. **AT-001~AT-012 按钮级 UI 自动化**：业务全链路由 `make e2e` 覆盖，UI 测试仍是冒烟级
    （启动、Today、列表、详情、同步页）；Excel 文件选择器等原生控件的 UI 自动化未逐项编写。
 7. **N2 DST 专项**：基础时区/货币处理已具备，DST 跨日专项测试未补齐。
+8. **签证官方数据源与预约渠道**：当前用离线目录做要求建模，真实官方核验/预约未接入。
+9. **费用报销闭环**：当前只做归集与预算对比；汇率、票据 OCR、报销单与财务系统对接未接入。
 
 > 迁移编号以本仓库实际顺序为准（设计文档的 `0008`~`0013` 是未拆批时的规划编号）。
 > 本文件随每个里程碑完成后更新，不替代设计文档。

@@ -943,3 +943,97 @@ class MinutesJobAcceptedRead(BaseModel):
     job_id: UUID
     visit_id: UUID
     status: JobStatus
+
+
+# --------------------------------------------------------------- visa cases
+VisaCaseStatus = Literal["NEW", "PREPARING", "SUBMITTED", "APPROVED", "REJECTED", "CANCELLED"]
+ChecklistStatus = Literal["MISSING", "READY", "NOT_APPLICABLE"]
+
+
+class VisaChecklistItem(BaseModel):
+    key: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=300)
+    status: ChecklistStatus = "MISSING"
+    note: str | None = None
+
+
+class VisaCaseCreate(BaseModel):
+    countries: list[str] | None = None
+
+
+class VisaCaseUpdate(BaseModel):
+    status: VisaCaseStatus | None = None
+    notes: str | None = None
+    checklist: list[VisaChecklistItem] | None = None
+    passport_expires_at: date | None = None
+
+
+class VisaCaseRead(ORMModel):
+    id: UUID
+    trip_id: UUID
+    country_code: str
+    status: VisaCaseStatus
+    checklist: list[VisaChecklistItem] = Field(default_factory=list)
+    notes: str | None = None
+    passport_expires_at: date | None = None
+    confidence: float
+    submitted_at: datetime | None = None
+    decision_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class EntryAssessmentRead(ORMModel):
+    id: UUID
+    trip_id: UUID
+    country_code: str
+    summary: str
+    source: str
+    source_version: str
+    confidence: float
+    manual_review_required: bool
+    assessed_at: datetime
+    created_at: datetime
+
+
+# -------------------------------------------------------------- expenses
+ExpenseCategory = Literal["TRANSPORT", "LODGING", "MEALS", "OTHER"]
+
+
+class ExpenseCreate(BaseModel):
+    category: ExpenseCategory
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    currency: str = Field(min_length=3, max_length=3)
+    occurred_on: date
+    note: str | None = None
+    receipt_ref: str | None = None
+
+
+class ExpenseRead(ORMModel):
+    id: UUID
+    trip_id: UUID
+    category: ExpenseCategory
+    amount: Decimal
+    currency: str
+    occurred_on: date
+    note: str | None = None
+    receipt_ref: str | None = None
+    created_at: datetime
+
+
+class CurrencyTotalRead(BaseModel):
+    currency: str
+    amount: float
+    count: int
+
+
+class BudgetSummaryRead(BaseModel):
+    budget_amount: Decimal | None = None
+    budget_currency: str
+    planned_cost_total: float | None = None
+    planned_cost_currency: str | None = None
+    planned_cost_unknown_count: int = 0
+    actual_by_currency: list[CurrencyTotalRead] = Field(default_factory=list)
+    actual_total_in_budget_currency: Decimal | None = None
+    variance_vs_budget: Decimal | None = None
+    variance_vs_plan: float | None = None
