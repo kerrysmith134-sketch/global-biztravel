@@ -35,7 +35,7 @@ make ios-test
 | S3 可观测性 | `services/api/tests/test_observability_integration.py` | JSON 日志含 trace/org/trip/usecase/latency；格式器白名单；按 Trip 的审计时间线 |
 | 覆盖不变量 | `packages/planning-engine/tests/test_pipeline.py` | eligible 停靠未排入 ⇒ `SolverFailed`，不再产出 0 停靠可行计划（ADR-0007） |
 | MS-7 服务端全链路 | `make e2e`（`scripts/acceptance_e2e.py`） | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部真实 HTTP/DB/Worker |
-| MS-7 客户端 UI 冒烟 | `GlobalTravelOSUITests` | 启动 → Today → 出行列表 → 详情 → 同步页，连接真实后端 |
+| MS-7 客户端 UI 自动化 | `GlobalTravelOSUITests` | 启动 → Today → 行动中心 → 出行列表 → 详情 → 同步页；新建出行；拜访简报，连接真实后端 |
 | 计划契约 | `services/api/tests/test_plan_contract.py` | 嵌套详情路径 `/trips/{id}/plans/{plan_id}`；列表 `stop_count/day_count`；错误出行 404 |
 | N1 审批策略 | `services/api/tests/test_approval_policy.py` | 高风险建议要求 ADMIN；TRAVELER 批准 403；ADMIN 通过 |
 | PII 加密/留存 | `services/api/tests/test_retention_pii.py` | Fernet 往返 + 旧明文兼容；过期笔记/记忆清空，最近记录不动 |
@@ -72,8 +72,8 @@ make ios-test
 
 ## 已知边界
 
-- **AT-001~AT-012 的完整 UI 脚本尚未编写**：各环节分别有后端验收与客户端单测，但没有一条
-  XCUITest 串起"创建→导入→规划→激活→记录→同步→纪要"。这是 MS-7 剩余项。
+- **AT-001~AT-012 的完整 UI 脚本尚未完成**：已覆盖启动、行动中心、新建出行、拜访简报与
+  同步页；Excel 文件选择器、规划/激活、现场记录与纪要的逐按钮脚本仍未串成一条。
 - **会议纪要只生成草稿**：不发送、不创建正式任务；发送动作必须由人确认后走业务接口。
 - **离线同步的客户合并**只允许填空字段；服务端非空值优先，冲突字段名会在结果 `conflict` 中返回。
 - **记忆向量**为本地确定性哈希，用于验证检索链路与延迟；接入真实 embedding 时替换

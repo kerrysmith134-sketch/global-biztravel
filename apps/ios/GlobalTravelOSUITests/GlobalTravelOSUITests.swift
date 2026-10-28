@@ -63,4 +63,161 @@ final class GlobalTravelOSUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["离线同步"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["离线队列"].waitForExistence(timeout: 5))
     }
+
+    func testPreparedTripBriefing() throws {
+        let setup = try makeBriefingTrip()
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+
+        XCTAssertTrue(
+            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            "Today 页未出现；确认 make api 正在运行"
+        )
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10))
+        app.buttons["出行"].tap()
+
+        let seedTrip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(seedTrip.waitForExistence(timeout: 15), "测试出行未出现在列表中")
+        seedTrip.tap()
+        XCTAssertTrue(
+            app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15),
+            "种子出行详情未加载"
+        )
+
+        // 拜访可能在列表下方：向下滚动直到出现"简报"入口。
+        let briefingButton = app.buttons["简报"].firstMatch
+        for _ in 0 ..< 6 where !briefingButton.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(briefingButton.isHittable, "未找到拜访简报入口")
+        briefingButton.tap()
+        XCTAssertTrue(
+            app.navigationBars["拜访简报"].waitForExistence(timeout: 15),
+            "拜访简报未加载"
+        )
+        app.buttons["关闭"].tap()
+        XCTAssertTrue(
+            app.navigationBars[setup.tripName].waitForExistence(timeout: 10),
+            "简报关闭后未回到出行详情"
+        )
+    }
+
+    func testCreateTripFlow() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launch()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        app.buttons["出行"].tap()
+
+        let create = app.buttons["新建出行"]
+        XCTAssertTrue(create.waitForExistence(timeout: 10), "未找到新建出行按钮")
+        create.tap()
+        XCTAssertTrue(app.navigationBars["新建出行"].waitForExistence(timeout: 10))
+
+        let uniqueName = "UI 自动化出行 \(Int(Date().timeIntervalSince1970))"
+        let nameField = app.textFields["出行名称"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        nameField.tap()
+        nameField.typeText(uniqueName)
+        app.buttons["创建"].tap()
+        XCTAssertTrue(
+            app.staticTexts[uniqueName].waitForExistence(timeout: 20),
+            "新建出行未出现在列表中"
+        )
+    }
+}
+
+private extension GlobalTravelOSUITests {
+    struct BriefingSetup {
+        let tripId: String
+        let tripName: String
+    }
+
+    /// 用真实 HTTP 准备"有拜访的出行"，避免 UI 测试依赖手工种子数据或列表分页顺序。
+    func makeBriefingTrip() throws -> BriefingSetup {
+        let base = "http://127.0.0.1:8080"
+        let suffix = Int(Date().timeIntervalSince1970)
+        let place = try postJSON(
+            "\(base)/v1/places",
+            body: [
+                "name": "UI 简报地点 \(suffix)",
+                "city": "Berlin",
+                "country_code": "DE",
+                "lat": 52.52,
+                "lon": 13.405,
+            ]
+        )
+        let placeId = try XCTUnwrap(place["id"] as? String)
+
+        let formatter = ISO8601DateFormatter()
+        let start = Date().addingTimeInterval(86_400 * 7)
+        let end = Date().addingTimeInterval(86_400 * 9)
+        let tripName = "UI 简报出行 \(suffix)"
+        let trip = try postJSON(
+            "\(base)/v1/trips",
+            body: [
+                "name": tripName,
+                "origin_place_id": placeId,
+                "window_start": formatter.string(from: start),
+                "window_end": formatter.string(from: end),
+                "countries": ["DE"],
+            ]
+        )
+        let tripId = try XCTUnwrap(trip["id"] as? String)
+
+        _ = try postJSON(
+            "\(base)/v1/trips/\(tripId)/visits",
+            body: [
+                "place_id": placeId,
+                "title": "UI 简报拜访",
+                "objective": "确认续约条款",
+                "service_minutes": 60,
+            ]
+        )
+        return BriefingSetup(tripId: tripId, tripName: tripName)
+    }
+
+    func postJSON(_ urlString: String, body: [String: Any]) throws -> [String: Any] {
+        var request = URLRequest(url: URL(string: urlString)!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("11111111-1111-1111-1111-111111111111", forHTTPHeaderField: "X-Org-Id")
+        request.setValue("22222222-2222-2222-2222-222222222222", forHTTPHeaderField: "X-User-Id")
+        request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "Idempotency-Key")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        var output: [String: Any] = [:]
+        var failure: Error?
+        let done = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            defer { done.signal() }
+            if let error {
+                failure = error
+                return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200 ..< 300).contains(status) else {
+                failure = NSError(
+                    domain: "UISetup",
+                    code: status,
+                    userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(String(data: data ?? Data(), encoding: .utf8) ?? "")"]
+                )
+                return
+            }
+            if let data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                output = json
+            }
+        }.resume()
+        XCTAssertEqual(done.wait(timeout: .now() + 20), .success, "准备 UI 测试数据超时")
+        if let failure { throw failure }
+        return output
+    }
 }

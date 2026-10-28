@@ -52,7 +52,7 @@ final class TripsViewModel: ObservableObject {
 
     func create(name: String, countryCode: String, start: Date, end: Date) async -> Bool {
         do {
-            _ = try await environment.createTripUseCase.create(
+            let trip = try await environment.createTripUseCase.create(
                 name: name,
                 purpose: "商务拜访",
                 originName: "上海总部",
@@ -63,7 +63,10 @@ final class TripsViewModel: ObservableObject {
                 start: start,
                 end: end
             )
-            await load()
+            // 列表按窗口开始时间倒序分页；刚建的近期出行可能落在下一页。先把它放到可见位置，
+            // 而不是让用户创建成功后看不到自己刚建的出行。
+            trips.removeAll { $0.id == trip.id }
+            trips.insert(trip, at: 0)
             return true
         } catch {
             errorMessage = environment.errorMessage(error)
@@ -126,6 +129,7 @@ struct TripsView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("新建出行")
                 }
             }
             .refreshable { await viewModel.load() }

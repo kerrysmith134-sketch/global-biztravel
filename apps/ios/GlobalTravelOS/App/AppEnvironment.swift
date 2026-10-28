@@ -47,6 +47,9 @@ final class AppEnvironment: ObservableObject {
         if let value = overrides["GBT_UI_TEST_USER"], !value.isEmpty {
             loaded.userId = value
         }
+        if let value = overrides["GBT_UI_TEST_LAST_TRIP"], !value.isEmpty {
+            loaded.lastTripId = value
+        }
 
         let indicator = OfflineIndicator()
         let offline = OfflineStore(directory: directory)
