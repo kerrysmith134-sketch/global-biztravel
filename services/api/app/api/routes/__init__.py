@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.routes import (
+    action_center,
     admin,
     audit,
     crm,
@@ -44,6 +45,7 @@ api_router.include_router(imports.router)
 api_router.include_router(integrations.router)
 api_router.include_router(audit.router)
 api_router.include_router(admin.router)
+api_router.include_router(action_center.router)
 api_router.include_router(customers.router)
 api_router.include_router(crm.router)
 api_router.include_router(devices.router)

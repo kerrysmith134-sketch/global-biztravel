@@ -16,7 +16,7 @@
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/Trips/计划/地图/日历/现场记录/CRM/同步/记忆/设置；构建通过；10 单测 + 1 UI 冒烟 |
+| MS-6 | iOS 客户端 | ✅ | Today/Trips/计划/地图/日历/现场记录/CRM/同步/记忆/设置；构建通过；11 单测 + 1 UI 冒烟 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -51,14 +51,14 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **206 passed**（真实 PostgreSQL） |
-| `make typecheck` | MyPy：125 个源文件无问题 |
+| `make test` | **207 passed**（真实 PostgreSQL） |
+| `make typecheck` | MyPy：127 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
-| `make contract-check` | 72 路径 / 106 schema；契约一致 |
+| `make contract-check` | 73 路径 / 109 schema；契约一致 |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | 10 单测 + 1 UI 冒烟通过（连接真实后端） |
+| `make ios-test` | 11 单测 + 1 UI 冒烟通过（连接真实后端） |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
@@ -101,6 +101,9 @@
 - **显式汇率与预算折算**：`fx_rates` 由 ADMIN 按币种对录入（含生效时间/来源）；预算接口可传
   `base_currency`，只按最新已录入汇率折算，缺汇率时 `conversion_complete=false` 并列出缺口，
   不输出不完整总计。
+- **行动中心**：`GET /v1/action-center` 实时聚合待决定建议、待审批报销单、执行中/失败任务与
+  待导入 CRM 记录；不建第二套待办表，状态变化即时反映；iOS 从 Today 工具栏进入，可就地批准/
+  驳回建议并跳转行程。
 
 
 ## 7. 仍缺项（非本地代码可闭环）

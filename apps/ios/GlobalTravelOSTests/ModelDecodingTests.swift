@@ -176,6 +176,32 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(job.status.isTerminal)
     }
 
+    func testActionCenterDecodesSectionsAndActions() throws {
+        let json = """
+        {
+          "generated_at": "2026-10-28T10:00:00+00:00",
+          "total": 2,
+          "counts": {"DECISION": 1, "APPROVAL": 1},
+          "sections": [{
+            "key": "DECISION", "title": "需要我决定",
+            "items": [{
+              "category": "DECISION", "kind": "SUGGESTION", "entity_id": "s1",
+              "title": "签证材料可能不足", "detail": "距离出发不足 10 个工作日",
+              "status": "PENDING", "severity": "HIGH", "trip_id": "t1",
+              "trip_name": "柏林客户拜访", "action_hint": "批准后由业务服务执行",
+              "available_actions": ["APPROVE", "DISMISS", "OPEN_TRIP"],
+              "created_at": "2026-10-28T09:00:00+00:00", "updated_at": null
+            }]
+          }]
+        }
+        """
+        let center = try DateCoding.decode(ActionCenter.self, fromJSON: json)
+        XCTAssertEqual(center.total, 2)
+        XCTAssertEqual(center.actionableCount, 2)
+        XCTAssertEqual(center.sectionList.first?.items.first?.tripLabel, "柏林客户拜访")
+        XCTAssertTrue(center.sectionList.first?.items.first?.canApproveSuggestion == true)
+    }
+
     func testBudgetSummaryDecodesStringDecimalsAndConversion() throws {
         let json = """
         {

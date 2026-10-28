@@ -1080,6 +1080,42 @@ class BudgetSummaryRead(BaseModel):
     fx_conversions: list[FxConversionRead] = Field(default_factory=list)
 
 
+# ------------------------------------------------------------ action center
+ActionCategory = Literal[
+    "DECISION", "APPROVAL", "RUNNING", "FAILED", "PREPARATION", "COMPLETED"
+]
+ActionKind = Literal["SUGGESTION", "EXPENSE_REPORT", "JOB", "CRM_SYNC"]
+
+
+class ActionItemRead(BaseModel):
+    category: ActionCategory
+    kind: ActionKind
+    entity_id: str
+    title: str
+    detail: str
+    status: str
+    severity: str | None = None
+    trip_id: str | None = None
+    trip_name: str | None = None
+    action_hint: str
+    available_actions: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ActionSectionRead(BaseModel):
+    key: ActionCategory
+    title: str
+    items: list[ActionItemRead] = Field(default_factory=list)
+
+
+class ActionCenterRead(BaseModel):
+    generated_at: datetime
+    total: int
+    counts: dict[str, int] = Field(default_factory=dict)
+    sections: list[ActionSectionRead] = Field(default_factory=list)
+
+
 # ------------------------------------------------------------ travel policies
 class TravelPolicyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)

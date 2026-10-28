@@ -142,6 +142,14 @@ def main() -> int:
         _CREATED["trip"] = trip_id
         check(trip.status_code == 201, f"创建出行 {trip_id}")
 
+        center = client.get("/v1/action-center", headers=headers())
+        center.raise_for_status()
+        check(
+            [section["key"] for section in center.json()["sections"]]
+            == ["DECISION", "APPROVAL", "FAILED", "RUNNING", "PREPARATION", "COMPLETED"],
+            "行动中心分类完整",
+        )
+
         print("3) Excel 两阶段导入")
         if not FIXTURE.exists():
             raise CheckFailed(f"缺少导入夹具 {FIXTURE}")
@@ -270,6 +278,18 @@ def main() -> int:
         crm_detail = client.get(f"/v1/crm-sync-jobs/{crm_id}", headers=headers())
         crm_detail.raise_for_status()
         check(crm_detail.json()["status"] == "PREPARED", "CRM 适配器生成待导入文件")
+        center = client.get("/v1/action-center", headers=headers())
+        center.raise_for_status()
+        prepared = [
+            item
+            for section in center.json()["sections"]
+            if section["key"] == "PREPARATION"
+            for item in section["items"]
+        ]
+        check(
+            any(item["kind"] == "CRM_SYNC" for item in prepared),
+            "待导入 CRM 记录出现在行动中心",
+        )
         external = (crm_detail.json().get("result") or {}).get("external_id", "")
         if external.startswith("file:"):
             Path(external.removeprefix("file:")).unlink(missing_ok=True)

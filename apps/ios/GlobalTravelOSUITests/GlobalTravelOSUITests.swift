@@ -33,6 +33,15 @@ final class GlobalTravelOSUITests: XCTestCase {
         // 触发一次中断监视器（若系统弹窗出现会在这里被关闭）。
         app.tap()
 
+        let actionCenter = app.buttons["行动中心"]
+        XCTAssertTrue(actionCenter.waitForExistence(timeout: 10), "未找到行动中心入口")
+        actionCenter.tap()
+        XCTAssertTrue(
+            app.navigationBars["行动中心"].waitForExistence(timeout: 15),
+            "行动中心未加载"
+        )
+        app.buttons["关闭"].tap()
+
         let tripsTab = app.buttons["出行"]
         XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")
         tripsTab.tap()

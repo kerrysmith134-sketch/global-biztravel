@@ -149,6 +149,16 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/visits")
     }
 
+    // MARK: - Action Center
+
+    static func actionCenter(tripId: String? = nil) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/action-center",
+            queryItems: tripId.map { [URLQueryItem(name: "trip_id", value: $0)] } ?? []
+        )
+    }
+
     // MARK: - CRM
 
     static func crmSync(recordId: String) -> APIRequest {

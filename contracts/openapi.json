@@ -1843,6 +1843,58 @@
         }
       }
     },
+    "/v1/action-center": {
+      "get": {
+        "tags": [
+          "action-center"
+        ],
+        "summary": "聚合待决策、待审批、执行中、失败与待外部确认事项",
+        "operationId": "get_action_center_v1_action_center_get",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选：只看某次出行",
+              "title": "Trip Id"
+            },
+            "description": "可选：只看某次出行"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionCenterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/customers": {
       "get": {
         "tags": [
@@ -4802,6 +4854,193 @@
   },
   "components": {
     "schemas": {
+      "ActionCenterRead": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ActionSectionRead"
+            },
+            "type": "array",
+            "title": "Sections"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "total"
+        ],
+        "title": "ActionCenterRead"
+      },
+      "ActionItemRead": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "DECISION",
+              "APPROVAL",
+              "RUNNING",
+              "FAILED",
+              "PREPARATION",
+              "COMPLETED"
+            ],
+            "title": "Category"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "SUGGESTION",
+              "EXPENSE_REPORT",
+              "JOB",
+              "CRM_SYNC"
+            ],
+            "title": "Kind"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "trip_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Id"
+          },
+          "trip_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Name"
+          },
+          "action_hint": {
+            "type": "string",
+            "title": "Action Hint"
+          },
+          "available_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Actions"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "kind",
+          "entity_id",
+          "title",
+          "detail",
+          "status",
+          "action_hint"
+        ],
+        "title": "ActionItemRead"
+      },
+      "ActionSectionRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "DECISION",
+              "APPROVAL",
+              "RUNNING",
+              "FAILED",
+              "PREPARATION",
+              "COMPLETED"
+            ],
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActionItemRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title"
+        ],
+        "title": "ActionSectionRead"
+      },
       "ApprovalPolicyCreate": {
         "properties": {
           "subject_type": {

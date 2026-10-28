@@ -68,6 +68,7 @@ struct TodayView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: TodayViewModel
     @State private var showsSettings = false
+    @State private var showsActionCenter = false
 
     init(environment: AppEnvironment) {
         _viewModel = StateObject(wrappedValue: TodayViewModel(environment: environment))
@@ -109,6 +110,14 @@ struct TodayView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showsActionCenter = true
+                    } label: {
+                        Image(systemName: "tray.full")
+                    }
+                    .accessibilityLabel("行动中心")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         showsSettings = true
                     } label: {
                         Image(systemName: "person.crop.circle")
@@ -119,6 +128,9 @@ struct TodayView: View {
             .task { await viewModel.load() }
             .sheet(isPresented: $showsSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showsActionCenter) {
+                ActionCenterView(environment: environment)
             }
         }
     }

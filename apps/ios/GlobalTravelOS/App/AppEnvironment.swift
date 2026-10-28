@@ -22,6 +22,7 @@ final class AppEnvironment: ObservableObject {
     private(set) var visitRepository: VisitRepository
     private(set) var proactiveRepository: ProactiveRepository
     private(set) var memoryRepository: MemoryRepository
+    private(set) var actionCenterRepository: ActionCenterRepository
 
     private(set) var tripListUseCase: TripListUseCase
     private(set) var createTripUseCase: CreateTripUseCase
@@ -63,6 +64,7 @@ final class AppEnvironment: ObservableObject {
         let remoteVisits = RemoteVisitRepository(client: client)
         let remoteProactive = RemoteProactiveRepository(client: client)
         let remoteMemory = RemoteMemoryRepository(client: client)
+        let remoteActionCenter = RemoteActionCenterRepository(client: client)
 
         let trips = OfflineTripRepository(remote: remoteTrips, directory: directory, indicator: indicator)
         let plans = OfflinePlanRepository(remote: remotePlans, directory: directory, indicator: indicator)
@@ -79,6 +81,7 @@ final class AppEnvironment: ObservableObject {
         self.visitRepository = visits
         self.proactiveRepository = proactive
         self.memoryRepository = memory
+        self.actionCenterRepository = remoteActionCenter
 
         self.tripListUseCase = TripListUseCase(repository: trips)
         self.createTripUseCase = CreateTripUseCase(repository: trips)
@@ -140,6 +143,7 @@ final class AppEnvironment: ObservableObject {
             directory: directory,
             indicator: indicator
         )
+        actionCenterRepository = RemoteActionCenterRepository(client: client)
         tripListUseCase = TripListUseCase(repository: trips)
         createTripUseCase = CreateTripUseCase(repository: trips)
         generatePlanUseCase = GeneratePlanUseCase(repository: plans)

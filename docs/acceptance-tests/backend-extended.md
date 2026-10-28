@@ -65,6 +65,8 @@ make ios-test
 | iOS CRM 同步 | `CrmSyncJob.swift` + `VisitRecordSheet` | 现场记录上传后可发起同步并轮询状态，`PREPARED` 文案不声称外部成功 |
 | 显式汇率折算 | `services/api/tests/test_fx_rates.py` | ADMIN 录入/同时间点覆盖；直接与反向汇率；缺汇率 `conversion_complete=false`；跨租户隔离 |
 | 预算折算 UI 边界 | `BudgetSummary.swift` | 新增字段向后兼容解码；客户端未传 `base_currency` 时仍展示多币种分列 |
+| 行动中心 | `services/api/tests/test_action_center.py` | 建议/报销单/任务/CRM 六类聚合；分类顺序与计数；trip 过滤；跨租户隔离 |
+| iOS 行动中心 | `ActionCenterView` + `ActionCenter.swift` | Today 工具栏入口；分区展示、就地批准/驳回建议、跳转行程 |
 
 ## 已知边界
 
