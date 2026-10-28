@@ -193,8 +193,14 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/expenses")
     }
 
-    static func tripBudget(tripId: String) -> APIRequest {
-        APIRequest(method: .get, path: "/v1/trips/\(tripId)/budget")
+    static func tripBudget(tripId: String, baseCurrency: String? = nil) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/trips/\(tripId)/budget",
+            queryItems: baseCurrency.map {
+                [URLQueryItem(name: "base_currency", value: $0)]
+            } ?? []
+        )
     }
 
     static func expenseReports(tripId: String) -> APIRequest {

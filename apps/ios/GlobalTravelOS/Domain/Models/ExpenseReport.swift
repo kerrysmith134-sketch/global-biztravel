@@ -36,6 +36,23 @@ struct ExpenseReportItem: Codable, Equatable, Identifiable {
     var note: String?
     var receiptRef: String?
 
+    private enum CodingKeys: String, CodingKey {
+        case id, reportId, expenseId, category, amount, currency, occurredOn, note, receiptRef
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        reportId = try container.decode(String.self, forKey: .reportId)
+        expenseId = try container.decodeIfPresent(String.self, forKey: .expenseId)
+        category = try container.decode(String.self, forKey: .category)
+        amount = try container.decodeDecimal(forKey: .amount)
+        currency = try container.decode(String.self, forKey: .currency)
+        occurredOn = try container.decodeIfPresent(Date.self, forKey: .occurredOn)
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+        receiptRef = try container.decodeIfPresent(String.self, forKey: .receiptRef)
+    }
+
     var categoryLabel: String {
         switch category.uppercased() {
         case "TRANSPORT": return "交通"

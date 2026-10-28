@@ -1033,6 +1033,34 @@ class CurrencyTotalRead(BaseModel):
     count: int
 
 
+class FxRateCreate(BaseModel):
+    """``rate`` 语义：1 单位 base = rate 单位 quote。"""
+
+    base_currency: str = Field(min_length=3, max_length=3, pattern="^[A-Za-z]{3}$")
+    quote_currency: str = Field(min_length=3, max_length=3, pattern="^[A-Za-z]{3}$")
+    rate: Decimal = Field(gt=0)
+    as_of: datetime | None = None
+    source: str | None = Field(default=None, max_length=200)
+
+
+class FxRateRead(ORMModel):
+    id: UUID
+    base_currency: str
+    quote_currency: str
+    rate: Decimal
+    as_of: datetime
+    source: str | None = None
+    created_at: datetime
+
+
+class FxConversionRead(BaseModel):
+    currency: str
+    rate: float
+    as_of: datetime | None = None
+    source: str | None = None
+    via_inverse: bool = False
+
+
 class BudgetSummaryRead(BaseModel):
     budget_amount: Decimal | None = None
     budget_currency: str
@@ -1043,6 +1071,13 @@ class BudgetSummaryRead(BaseModel):
     actual_total_in_budget_currency: Decimal | None = None
     variance_vs_budget: Decimal | None = None
     variance_vs_plan: float | None = None
+    conversion_base_currency: str | None = None
+    converted_actual_total: Decimal | None = None
+    converted_planned_cost_total: Decimal | None = None
+    converted_variance_vs_budget: Decimal | None = None
+    conversion_complete: bool | None = None
+    unconverted_currencies: list[str] = Field(default_factory=list)
+    fx_conversions: list[FxConversionRead] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------ travel policies

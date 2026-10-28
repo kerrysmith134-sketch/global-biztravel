@@ -149,6 +149,7 @@ struct Trip: Codable, Equatable, Identifiable {
     var updatedAt: Date?
     var activePlan: PlanVersionDetail?
     var stats: TripStats?
+    var currency: String?
 
     init(
         id: String,
@@ -164,7 +165,8 @@ struct Trip: Codable, Equatable, Identifiable {
         createdAt: Date? = nil,
         updatedAt: Date? = nil,
         activePlan: PlanVersionDetail? = nil,
-        stats: TripStats? = nil
+        stats: TripStats? = nil,
+        currency: String? = nil
     ) {
         self.id = id
         self.organizationId = organizationId
@@ -180,6 +182,7 @@ struct Trip: Codable, Equatable, Identifiable {
         self.updatedAt = updatedAt
         self.activePlan = activePlan
         self.stats = stats
+        self.currency = currency
     }
 
     /// The backend returns `window_start` / `window_end`, not a nested `window`, and only an
@@ -202,6 +205,7 @@ struct Trip: Codable, Equatable, Identifiable {
         case activePlan
         case stats
         case visitCount
+        case currency
     }
 
     init(from decoder: Decoder) throws {
@@ -220,6 +224,7 @@ struct Trip: Codable, Equatable, Identifiable {
         self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
         self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
         self.activePlan = try container.decodeIfPresent(PlanVersionDetail.self, forKey: .activePlan)
+        self.currency = try container.decodeIfPresent(String.self, forKey: .currency)
 
         let start = try container.decodeIfPresent(Date.self, forKey: .windowStart)
         let end = try container.decodeIfPresent(Date.self, forKey: .windowEnd)
@@ -258,6 +263,7 @@ struct Trip: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(activePlan, forKey: .activePlan)
         try container.encodeIfPresent(stats, forKey: .stats)
         try container.encodeIfPresent(stats?.visitCount, forKey: .visitCount)
+        try container.encodeIfPresent(currency, forKey: .currency)
     }
 
     var statusLabel: String {

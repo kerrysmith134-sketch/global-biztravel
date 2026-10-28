@@ -43,7 +43,10 @@ final class TripDetailViewModel: ObservableObject {
         entryAssessments = (try? await environment.tripRepository.entryAssessments(tripId: tripId))
             ?? entryAssessments
         expenses = (try? await environment.tripRepository.expenses(tripId: tripId)) ?? expenses
-        budget = try? await environment.tripRepository.budgetSummary(tripId: tripId)
+        budget = try? await environment.tripRepository.budgetSummary(
+            tripId: tripId,
+            baseCurrency: trip?.currency
+        )
         expenseReports = (try? await environment.tripRepository.expenseReports(tripId: tripId))
             ?? expenseReports
         environment.refreshOfflineSummary()
@@ -275,7 +278,15 @@ struct TripDetailView: View {
                     LabeledContent("预算", value: budget.budgetLabel)
                     LabeledContent("计划估算", value: budget.plannedLabel)
                     LabeledContent("实际费用", value: budget.actualLabel)
+                    if let converted = budget.convertedActualLabel {
+                        LabeledContent("折算实际", value: converted)
+                    }
                     LabeledContent("预算差额", value: budget.varianceLabel)
+                    if let note = budget.conversionNote {
+                        Text(note)
+                            .font(.caption2)
+                            .foregroundStyle(budget.conversionComplete == true ? Color.secondary : Color.orange)
+                    }
                     ForEach(viewModel.expenses) { expense in
                         HStack {
                             Text(expense.categoryLabel)

@@ -176,6 +176,51 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(job.status.isTerminal)
     }
 
+    func testBudgetSummaryDecodesStringDecimalsAndConversion() throws {
+        let json = """
+        {
+          "budget_amount": "1000.00", "budget_currency": "EUR",
+          "planned_cost_total": 300.0, "planned_cost_currency": "USD",
+          "planned_cost_unknown_count": 0,
+          "actual_by_currency": [{"currency": "EUR", "amount": 200.0, "count": 1}],
+          "actual_total_in_budget_currency": "200.00",
+          "variance_vs_budget": "800.00", "variance_vs_plan": null,
+          "conversion_base_currency": "EUR",
+          "converted_actual_total": "420.00",
+          "converted_planned_cost_total": "272.73",
+          "converted_variance_vs_budget": "580.00",
+          "conversion_complete": true,
+          "unconverted_currencies": [],
+          "fx_conversions": [{
+            "currency": "USD", "rate": 0.9090909090909091,
+            "as_of": "2026-01-01T00:00:00+00:00", "source": "manual", "via_inverse": false
+          }]
+        }
+        """
+        let budget = try DateCoding.decode(BudgetSummary.self, fromJSON: json)
+        XCTAssertEqual(budget.budgetAmount, Decimal(string: "1000.00"))
+        XCTAssertEqual(budget.convertedActualTotal, Decimal(string: "420.00"))
+        XCTAssertEqual(budget.conversionNote, "已按组织录入汇率折算到 EUR")
+        XCTAssertEqual(budget.convertedActualLabel, "EUR 420")
+        XCTAssertEqual(budget.fxConversions?.first?.source, "manual")
+    }
+
+    func testFinanceRowsDecodeStringAmounts() throws {
+        let expenseJSON = """
+        {"id": "e1", "trip_id": "t1", "category": "MEALS", "amount": "12.34",
+         "currency": "EUR", "occurred_on": "2026-10-28", "note": null, "receipt_ref": null}
+        """
+        let expense = try DateCoding.decode(TripExpense.self, fromJSON: expenseJSON)
+        XCTAssertEqual(expense.amount, Decimal(string: "12.34"))
+
+        let itemJSON = """
+        {"id": "i1", "report_id": "r1", "expense_id": "e1", "category": "MEALS",
+         "amount": "12.34", "currency": "EUR", "occurred_on": "2026-10-28"}
+        """
+        let item = try DateCoding.decode(ExpenseReportItem.self, fromJSON: itemJSON)
+        XCTAssertEqual(item.amount, Decimal(string: "12.34"))
+    }
+
     func testMinutesDraftDecodes() throws {
         let json = """
         {

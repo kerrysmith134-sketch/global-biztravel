@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.api.deps import (
     ROLE_TRAVELER,
@@ -88,9 +88,21 @@ def delete_expense(expense_id: UUID, context: ContextDep, session: SessionDep):
     response_model=BudgetSummaryRead,
     summary="预算、计划估算与实际费用（多币种分列，不伪造汇率）",
 )
-def get_budget(trip_id: UUID, context: ContextDep, session: SessionDep):
+def get_budget(
+    trip_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    base_currency: str | None = Query(
+        default=None,
+        min_length=3,
+        max_length=3,
+        description="可选：按组织已录入汇率折算到该币种；缺汇率的币种保持未折算",
+    ),
+):
     require_role(context, ROLE_VIEWER)
-    summary = expense_service.budget_summary(session, context.organization_id, trip_id)
+    summary = expense_service.budget_summary(
+        session, context.organization_id, trip_id, base_currency=base_currency
+    )
     return BudgetSummaryRead(
         budget_amount=summary.budget_amount,
         budget_currency=summary.budget_currency,
@@ -101,4 +113,11 @@ def get_budget(trip_id: UUID, context: ContextDep, session: SessionDep):
         actual_total_in_budget_currency=summary.actual_total_in_budget_currency,
         variance_vs_budget=summary.variance_vs_budget,
         variance_vs_plan=summary.variance_vs_plan,
+        conversion_base_currency=summary.conversion_base_currency,
+        converted_actual_total=summary.converted_actual_total,
+        converted_planned_cost_total=summary.converted_planned_cost_total,
+        converted_variance_vs_budget=summary.converted_variance_vs_budget,
+        conversion_complete=summary.conversion_complete,
+        unconverted_currencies=summary.unconverted_currencies,
+        fx_conversions=summary.fx_conversions,
     )

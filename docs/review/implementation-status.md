@@ -11,12 +11,12 @@
 
 | 里程碑 | 要求 | 状态 | 证据 |
 |---|---|---|---|
-| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0023`；`0010_security_rls` 全库兜底；RLS 断言测试 |
+| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0024`；`0010_security_rls` 全库兜底；RLS 断言测试 |
 | MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 第 3 步 |
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/Trips/计划/地图/日历/现场记录/同步/记忆/设置；构建通过；8 单测 + 1 UI 冒烟 |
+| MS-6 | iOS 客户端 | ✅ | Today/Trips/计划/地图/日历/现场记录/CRM/同步/记忆/设置；构建通过；10 单测 + 1 UI 冒烟 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -51,18 +51,18 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **205 passed**（真实 PostgreSQL） |
-| `make typecheck` | MyPy：122 个源文件无问题 |
+| `make test` | **206 passed**（真实 PostgreSQL） |
+| `make typecheck` | MyPy：125 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
-| `make contract-check` | 71 路径 / 103 schema；契约一致 |
+| `make contract-check` | 72 路径 / 106 schema；契约一致 |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | 8 单测 + 1 UI 冒烟通过（连接真实后端） |
+| `make ios-test` | 10 单测 + 1 UI 冒烟通过（连接真实后端） |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
-## 5. 迁移清单（当前 head `0023`）
+## 5. 迁移清单（当前 head `0024`）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -79,6 +79,7 @@
                            0021_multi_approval
                            0022_expense_reports
                            0023_crm_sync
+                           0024_fx_rates
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -97,6 +98,9 @@
   源费用删除不影响已建报销单。
 - **CRM 回写**：`crm_sync_jobs` + 异步 `crm_sync` 任务；默认文件适配器写待导入 JSON 并返回
   `PREPARED`（不伪造外部成功），未配置适配器显式 `FAILED`；客户端现场记录页可发起同步并轮询状态。
+- **显式汇率与预算折算**：`fx_rates` 由 ADMIN 按币种对录入（含生效时间/来源）；预算接口可传
+  `base_currency`，只按最新已录入汇率折算，缺汇率时 `conversion_complete=false` 并列出缺口，
+  不输出不完整总计。
 
 
 ## 7. 仍缺项（非本地代码可闭环）
@@ -110,8 +114,11 @@
    （启动、Today、列表、详情、同步页）；Excel 文件选择器等原生控件的 UI 自动化未逐项编写。
 6. **N2 DST 专项**：基础时区/货币处理已具备，DST 跨日专项测试未补齐。
 7. **签证官方数据源与预约渠道**：当前用离线目录做要求建模，真实官方核验/预约未接入。
-8. **费用深度集成**：报销单快照与审批已闭环；汇率换算、票据 OCR 与财务系统对接未接入。
-9. **真实 CRM 适配器**：文件适配器与失败可见性已完成；Salesforce/Dynamics 等凭据、字段映射
+8. **费用深度集成**：报销单快照、审批与显式汇率折算已闭环；实时汇率源、票据 OCR 与财务系统
+   对接未接入。
+9. **汇率行情源**：当前只接受管理员手工录入；公开 API 接入后应写入同一 `fx_rates` 表并保留
+   `source`/`as_of`，折算与缺口逻辑不变。
+10. **真实 CRM 适配器**：文件适配器与失败可见性已完成；Salesforce/Dynamics 等凭据、字段映射
    与回执确认（`SUCCEEDED`）需按租户接入。
 
 > 迁移编号以本仓库实际顺序为准（设计文档的 `0008`~`0013` 是未拆批时的规划编号）。

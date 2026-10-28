@@ -82,6 +82,7 @@ def cleanup(trip_id: str, origin_place_id: str) -> None:
     """删掉本次脚本创建的出行与出发地；导入批次随 Trip 级联。"""
     sys.path.insert(0, str(ROOT / "services" / "api"))
     from app.db import org_session
+    from app.models.fx import FxRate
     from app.models.geo import Place
     from app.models.reliability import OutboxEvent
     from app.models.trip import Trip
@@ -89,6 +90,7 @@ def cleanup(trip_id: str, origin_place_id: str) -> None:
 
     with org_session(UUID(ORG)) as session:
         session.execute(delete(OutboxEvent).where(OutboxEvent.aggregate_id == UUID(trip_id)))
+        session.execute(delete(FxRate).where(FxRate.source == f"e2e:{trip_id}"))
         session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
         session.execute(delete(Place).where(Place.id == UUID(origin_place_id)))
 
@@ -271,6 +273,39 @@ def main() -> int:
         external = (crm_detail.json().get("result") or {}).get("external_id", "")
         if external.startswith("file:"):
             Path(external.removeprefix("file:")).unlink(missing_ok=True)
+
+        print("6c) 显式汇率与预算折算")
+        expense = client.post(
+            f"/v1/trips/{trip_id}/expenses",
+            headers=headers(),
+            json={
+                "category": "MEALS",
+                "amount": "10.00",
+                "currency": "USD",
+                "occurred_on": datetime.now(UTC).date().isoformat(),
+            },
+        )
+        expense.raise_for_status()
+        rate = client.post(
+            "/v1/fx-rates",
+            headers=headers(),
+            json={
+                "base_currency": "EUR",
+                "quote_currency": "USD",
+                "rate": "1.25",
+                "as_of": datetime.now(UTC).isoformat(),
+                "source": f"e2e:{trip_id}",
+            },
+        )
+        rate.raise_for_status()
+        budget = client.get(
+            f"/v1/trips/{trip_id}/budget",
+            headers=headers(),
+            params={"base_currency": "EUR"},
+        )
+        budget.raise_for_status()
+        converted = budget.json()["converted_actual_total"]
+        check(converted is not None and float(converted) == 8.0, "按显式汇率折算实际费用")
 
         print("7) 会议纪要草稿（LLM 网关）")
         minutes = client.post(f"/v1/visits/{visit_id}/minutes:draft", headers=headers(), json={})

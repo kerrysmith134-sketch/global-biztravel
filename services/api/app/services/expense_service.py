@@ -6,6 +6,8 @@
 - 预算来自 `trips.budget_amount/budget_currency`；计划估算来自当前 ACTIVE 计划的
   `cost_total/cost_currency/cost_unknown_count`。
 - 未知计划费用不当作 0：`planned_cost_unknown_count > 0` 时，差额只作为参考值。
+- 可选 ``base_currency``：只使用组织显式录入的汇率折算；缺汇率的币种保持未折算，
+  ``conversion_complete=false``，不按 1:1 或猜测值合并。
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from app.api.schemas import ExpenseCreate
 from app.models.expenses import TripExpense
 from app.models.planning import PlanVersion
 from app.models.trip import Trip
-from app.services import trip_service
+from app.services import fx_service, trip_service
 
 
 @dataclass
@@ -36,6 +38,13 @@ class BudgetSummary:
     actual_total_in_budget_currency: Decimal | None = None
     variance_vs_budget: Decimal | None = None
     variance_vs_plan: float | None = None
+    conversion_base_currency: str | None = None
+    converted_actual_total: Decimal | None = None
+    converted_planned_cost_total: Decimal | None = None
+    converted_variance_vs_budget: Decimal | None = None
+    conversion_complete: bool | None = None
+    unconverted_currencies: list[str] = field(default_factory=list)
+    fx_conversions: list[dict] = field(default_factory=list)
 
 
 def create_expense(
@@ -94,7 +103,11 @@ def delete_expense(
 
 
 def budget_summary(
-    session: Session, organization_id: UUID | str, trip_id: UUID | str
+    session: Session,
+    organization_id: UUID | str,
+    trip_id: UUID | str,
+    *,
+    base_currency: str | None = None,
 ) -> BudgetSummary:
     trip: Trip = trip_service.require_trip(session, organization_id, trip_id)
     rows = session.execute(
@@ -143,6 +156,96 @@ def budget_summary(
         and (plan.cost_currency or trip.currency) == trip.currency
         else None
     )
+    converted_actual: Decimal | None = None
+    converted_plan: Decimal | None = None
+    converted_variance: Decimal | None = None
+    complete: bool | None = None
+    unconverted: list[str] = []
+    used: list[dict] = []
+    base = base_currency.strip().upper() if base_currency else None
+    if base:
+        total = Decimal("0")
+        actual_complete = True
+        seen_currency: set[str] = set()
+        for item in actual_by_currency:
+            quote = fx_service.conversion_for(
+                session, organization_id, base=base, currency=item["currency"]
+            )
+            if quote is None:
+                actual_complete = False
+                continue
+            if quote.currency not in seen_currency:
+                seen_currency.add(quote.currency)
+                used.append(
+                    {
+                        "currency": quote.currency,
+                        "rate": float(quote.rate),
+                        "as_of": quote.as_of,
+                        "source": quote.source,
+                        "via_inverse": quote.via_inverse,
+                    }
+                )
+            total += Decimal(str(item["amount"])) * quote.rate
+        converted_actual = (
+            total.quantize(Decimal("0.01")) if actual_complete else None
+        )
+
+        plan_complete = True
+        if plan is not None:
+            if plan.cost_total is None or not plan.cost_currency:
+                plan_complete = False
+            else:
+                quote = fx_service.conversion_for(
+                    session, organization_id, base=base, currency=plan.cost_currency
+                )
+                if quote is None:
+                    plan_complete = False
+                else:
+                    converted_plan = (
+                        Decimal(str(plan.cost_total)) * quote.rate
+                    ).quantize(Decimal("0.01"))
+                    if quote.currency not in seen_currency:
+                        seen_currency.add(quote.currency)
+                        used.append(
+                            {
+                                "currency": quote.currency,
+                                "rate": float(quote.rate),
+                                "as_of": quote.as_of,
+                                "source": quote.source,
+                                "via_inverse": quote.via_inverse,
+                            }
+                        )
+            if plan.cost_unknown_count > 0:
+                plan_complete = False
+
+        complete = actual_complete and plan_complete
+        unconverted = sorted(
+            {
+                item["currency"]
+                for item in actual_by_currency
+                if fx_service.conversion_for(
+                    session, organization_id, base=base, currency=item["currency"]
+                )
+                is None
+            }
+            | (
+                {plan.cost_currency}
+                if plan is not None
+                and plan.cost_currency
+                and fx_service.conversion_for(
+                    session, organization_id, base=base, currency=plan.cost_currency
+                )
+                is None
+                else set()
+            )
+        )
+        if (
+            trip.budget_amount is not None
+            and trip.currency == base
+            and converted_actual is not None
+        ):
+            converted_variance = trip.budget_amount - converted_actual
+
     return BudgetSummary(
         budget_amount=trip.budget_amount,
         budget_currency=trip.currency,
@@ -153,6 +256,13 @@ def budget_summary(
         actual_total_in_budget_currency=actual_same,
         variance_vs_budget=variance_budget,
         variance_vs_plan=variance_plan,
+        conversion_base_currency=base,
+        converted_actual_total=converted_actual,
+        converted_planned_cost_total=converted_plan,
+        converted_variance_vs_budget=converted_variance,
+        conversion_complete=complete,
+        unconverted_currencies=unconverted,
+        fx_conversions=used,
     )
 
 

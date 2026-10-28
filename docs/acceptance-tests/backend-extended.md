@@ -63,6 +63,8 @@ make ios-test
 | MS-6 真实启动 | 模拟器 + `make api` | Today 页从真实后端加载签证建议与每日打扰额度 |
 | CRM 回写 | `services/api/tests/test_crm_sync.py` | 文件适配器写待导入 JSON 并标 `PREPARED`；重复触发幂等；未配置适配器显式 `FAILED`；跨租户 404 |
 | iOS CRM 同步 | `CrmSyncJob.swift` + `VisitRecordSheet` | 现场记录上传后可发起同步并轮询状态，`PREPARED` 文案不声称外部成功 |
+| 显式汇率折算 | `services/api/tests/test_fx_rates.py` | ADMIN 录入/同时间点覆盖；直接与反向汇率；缺汇率 `conversion_complete=false`；跨租户隔离 |
+| 预算折算 UI 边界 | `BudgetSummary.swift` | 新增字段向后兼容解码；客户端未传 `base_currency` 时仍展示多币种分列 |
 
 ## 已知边界
 

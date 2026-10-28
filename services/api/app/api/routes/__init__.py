@@ -17,6 +17,7 @@ from app.api.routes import (
     devices,
     expense_reports,
     expenses,
+    fx,
     health,
     imports,
     integrations,
@@ -48,6 +49,7 @@ api_router.include_router(crm.router)
 api_router.include_router(devices.router)
 api_router.include_router(expenses.router)
 api_router.include_router(expense_reports.router)
+api_router.include_router(fx.router)
 api_router.include_router(places.router)
 api_router.include_router(plans.router)
 api_router.include_router(policies.router)

@@ -2462,6 +2462,26 @@
               "format": "uuid",
               "title": "Trip Id"
             }
+          },
+          {
+            "name": "base_currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 3
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选：按组织已录入汇率折算到该币种；缺汇率的币种保持未折算",
+              "title": "Base Currency"
+            },
+            "description": "可选：按组织已录入汇率折算到该币种；缺汇率的币种保持未折算"
           }
         ],
         "responses": {
@@ -2839,6 +2859,136 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExpenseReportRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/fx-rates": {
+      "post": {
+        "tags": [
+          "fx"
+        ],
+        "summary": "录入/更新一条汇率快照（同一时间点幂等覆盖）",
+        "operationId": "create_fx_rate_v1_fx_rates_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FxRateCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FxRateRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "fx"
+        ],
+        "summary": "每个币种对的最新汇率",
+        "operationId": "list_fx_rates_v1_fx_rates_get",
+        "parameters": [
+          {
+            "name": "base_currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 3
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Currency"
+            }
+          },
+          {
+            "name": "quote_currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 3
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quote Currency"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FxRateRead"
+                  },
+                  "title": "Response List Fx Rates V1 Fx Rates Get"
                 }
               }
             }
@@ -4890,6 +5040,75 @@
               }
             ],
             "title": "Variance Vs Plan"
+          },
+          "conversion_base_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversion Base Currency"
+          },
+          "converted_actual_total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Actual Total"
+          },
+          "converted_planned_cost_total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Planned Cost Total"
+          },
+          "converted_variance_vs_budget": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Variance Vs Budget"
+          },
+          "conversion_complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversion Complete"
+          },
+          "unconverted_currencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unconverted Currencies"
+          },
+          "fx_conversions": {
+            "items": {
+              "$ref": "#/components/schemas/FxConversionRead"
+            },
+            "type": "array",
+            "title": "Fx Conversions"
           }
         },
         "type": "object",
@@ -6092,6 +6311,166 @@
           "title"
         ],
         "title": "FollowUpTaskRead"
+      },
+      "FxConversionRead": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "rate": {
+            "type": "number",
+            "title": "Rate"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "via_inverse": {
+            "type": "boolean",
+            "title": "Via Inverse",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "rate"
+        ],
+        "title": "FxConversionRead"
+      },
+      "FxRateCreate": {
+        "properties": {
+          "base_currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "pattern": "^[A-Za-z]{3}$",
+            "title": "Base Currency"
+          },
+          "quote_currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "pattern": "^[A-Za-z]{3}$",
+            "title": "Quote Currency"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Rate"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "base_currency",
+          "quote_currency",
+          "rate"
+        ],
+        "title": "FxRateCreate",
+        "description": "``rate`` 语义：1 单位 base = rate 单位 quote。"
+      },
+      "FxRateRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "base_currency": {
+            "type": "string",
+            "title": "Base Currency"
+          },
+          "quote_currency": {
+            "type": "string",
+            "title": "Quote Currency"
+          },
+          "rate": {
+            "type": "string",
+            "title": "Rate"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "As Of"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "base_currency",
+          "quote_currency",
+          "rate",
+          "as_of",
+          "created_at"
+        ],
+        "title": "FxRateRead"
       },
       "HTTPValidationError": {
         "properties": {
