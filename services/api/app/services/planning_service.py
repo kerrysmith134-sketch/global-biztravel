@@ -51,6 +51,7 @@ from app.integrations.travel import (
 from app.models.geo import Place
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.trip import Trip, Visit
+from app.services import policy_service
 
 #: 能进入规划的拜访状态。``CANCELLED`` 不在其中（用户已取消）；``DONE``/``MISSED`` 也不在
 #: ——它们是**已经发生**的现场事实，重排计划不能把它们再排一遍。
@@ -233,6 +234,21 @@ def persist_plan(
 
     known_costs = [leg.cost_amount for leg in result.legs if leg.cost_amount is not None]
     cost_currencies = {leg.cost_currency for leg in result.legs if leg.cost_currency}
+    cost_total = round(sum(known_costs), 2) if known_costs else None
+    cost_currency = (
+        next(iter(cost_currencies))
+        if len(cost_currencies) == 1
+        else (trip.currency if known_costs else None)
+    )
+    cost_unknown_count = sum(1 for leg in result.legs if leg.cost_amount is None)
+    policy_eval = policy_service.evaluate(
+        session,
+        org,
+        locked,
+        cost_total=cost_total,
+        cost_currency=cost_currency,
+        cost_unknown_count=cost_unknown_count,
+    )
     version = PlanVersion(
         organization_id=org,
         trip_id=trip.id,
@@ -242,17 +258,14 @@ def persist_plan(
         solver=result.solver.value,
         objective_value=result.objective_value,
         solution_status=result.status.value,
-        cost_total=round(sum(known_costs), 2) if known_costs else None,
-        cost_currency=(
-            next(iter(cost_currencies))
-            if len(cost_currencies) == 1
-            else (trip.currency if known_costs else None)
-        ),
-        cost_unknown_count=sum(1 for leg in result.legs if leg.cost_amount is None),
+        cost_total=cost_total,
+        cost_currency=cost_currency,
+        cost_unknown_count=cost_unknown_count,
         degraded=result.degraded or build.travel_degraded or any(leg.stale for leg in result.legs),
         trip_version=locked.version,
         validation=result.validation.model_dump(mode="json"),
         unplaced=_unplaced_payload(build, result),
+        policy_violations=policy_service.evaluation_payload(policy_eval),
         explanation_ref=result.explanation_ref or f"problem:{result.problem_hash}",
         job_id=str(job_id) if job_id is not None else None,
         created_by_user_id=str(created_by_user_id) if created_by_user_id is not None else None,

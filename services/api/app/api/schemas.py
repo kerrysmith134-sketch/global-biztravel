@@ -362,6 +362,7 @@ class PlanVersionRead(ORMModel):
     trip_version: int
     validation: dict[str, Any] = Field(default_factory=dict)
     unplaced: list[dict[str, Any]] = Field(default_factory=list)
+    policy_violations: list[dict[str, Any]] = Field(default_factory=list)
     explanation_ref: str | None
     job_id: UUID | None
     stop_count: int = 0
@@ -1037,3 +1038,54 @@ class BudgetSummaryRead(BaseModel):
     actual_total_in_budget_currency: Decimal | None = None
     variance_vs_budget: Decimal | None = None
     variance_vs_plan: float | None = None
+
+
+# ------------------------------------------------------------ travel policies
+class TravelPolicyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    currency: str = Field(default="CNY", min_length=3, max_length=3)
+    max_trip_budget: Decimal | None = Field(default=None, ge=0)
+    max_plan_cost: Decimal | None = Field(default=None, ge=0)
+    min_advance_booking_days: int | None = Field(default=None, ge=0)
+    allowed_countries: list[str] = Field(default_factory=list)
+    strict: bool = False
+    enabled: bool = True
+
+
+class TravelPolicyUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    max_trip_budget: Decimal | None = Field(default=None, ge=0)
+    max_plan_cost: Decimal | None = Field(default=None, ge=0)
+    min_advance_booking_days: int | None = Field(default=None, ge=0)
+    allowed_countries: list[str] | None = None
+    strict: bool | None = None
+    enabled: bool | None = None
+
+
+class TravelPolicyRead(ORMModel):
+    id: UUID
+    name: str
+    currency: str
+    max_trip_budget: Decimal | None = None
+    max_plan_cost: Decimal | None = None
+    min_advance_booking_days: int | None = None
+    allowed_countries: list[str] = Field(default_factory=list)
+    strict: bool
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PolicyViolationRead(BaseModel):
+    code: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class PolicyCheckRead(BaseModel):
+    policy_id: UUID | None = None
+    policy_name: str | None = None
+    strict: bool = False
+    violations: list[PolicyViolationRead] = Field(default_factory=list)
+    checked_at: datetime

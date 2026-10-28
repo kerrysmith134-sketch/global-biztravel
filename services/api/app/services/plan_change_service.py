@@ -39,10 +39,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.errors import NotFound, PlanVersionConflict, PreconditionFailed, Unprocessable
+from app.api.errors import Conflict, NotFound, PlanVersionConflict, PreconditionFailed, Unprocessable
 from app.models.planning import PlanStop, PlanVersion
 from app.models.trip import Trip
-from app.services import memory_service, outbox_service, plan_service
+from app.services import memory_service, outbox_service, plan_service, policy_service
 
 #: 计划版本状态（取自 ``PLAN_VERSION_STATUSES``，这里只用到其中两个）。
 STATUS_ACTIVE = "ACTIVE"
@@ -220,6 +220,26 @@ def activate_plan_version(
                 "plan_version_id": str(target.id),
                 "plan_trip_version": target.trip_version,
                 "current_trip_version": trip.version,
+            },
+        )
+
+    # ⑤b 严格差旅政策：违规计划不允许激活；非严格政策只记录，不阻断。
+    policy_eval = policy_service.evaluate(
+        session,
+        org,
+        trip,
+        cost_total=target.cost_total,
+        cost_currency=target.cost_currency,
+        cost_unknown_count=target.cost_unknown_count,
+    )
+    if policy_eval.strict and policy_eval.violations:
+        raise Conflict(
+            "该计划违反差旅政策，不能激活",
+            code="POLICY_VIOLATION",
+            details={
+                "policy_id": str(policy_eval.policy_id) if policy_eval.policy_id else None,
+                "policy_name": policy_eval.policy_name,
+                "violations": policy_service.evaluation_payload(policy_eval),
             },
         )
 

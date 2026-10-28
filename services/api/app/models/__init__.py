@@ -18,6 +18,7 @@ from app.models.memory import PlanAttemptLog, TravelerProfile, TripMemorySummary
 from app.models.metrics import MetricSnapshot
 from app.models.notifications import Notification
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
+from app.models.policies import TravelPolicy
 from app.models.proactive import (
     Approval,
     ProactiveSuggestion,
@@ -75,6 +76,7 @@ __all__ = [
     "ProactiveTrigger",
     "SuggestionAudit",
     "SyncOperation",
+    "TravelPolicy",
     "TravelerProfile",
     "Trip",
     "TripExpense",

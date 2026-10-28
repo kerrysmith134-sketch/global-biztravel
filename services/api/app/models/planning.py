@@ -92,6 +92,7 @@ class PlanVersion(Base):
     trip_version: Mapped[int] = mapped_column(Integer, nullable=False)
     validation: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     unplaced: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    policy_violations: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     explanation_ref: Mapped[str | None] = mapped_column(Text)
     job_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("background_jobs.id", ondelete="SET NULL"), index=True
@@ -225,6 +226,7 @@ PLAN_VERSION_CONTENT_FIELDS: tuple[str, ...] = (
     "trip_version",
     "validation",
     "unplaced",
+    "policy_violations",
     "explanation_ref",
     "job_id",
     "created_by_user_id",

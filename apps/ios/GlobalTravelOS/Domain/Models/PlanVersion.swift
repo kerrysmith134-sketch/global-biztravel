@@ -29,6 +29,7 @@ struct PlanVersion: Codable, Equatable, Identifiable {
     var costTotal: Double?
     var costCurrency: String?
     var costUnknownCount: Int?
+    var policyViolations: [PolicyViolation]?
     var stopCount: Int?
     var dayCount: Int?
     var createdAt: Date?
@@ -45,6 +46,7 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         costTotal: Double? = nil,
         costCurrency: String? = nil,
         costUnknownCount: Int? = nil,
+        policyViolations: [PolicyViolation]? = nil,
         stopCount: Int? = nil,
         dayCount: Int? = nil,
         createdAt: Date? = nil
@@ -60,6 +62,7 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         self.costTotal = costTotal
         self.costCurrency = costCurrency
         self.costUnknownCount = costUnknownCount
+        self.policyViolations = policyViolations
         self.stopCount = stopCount
         self.dayCount = dayCount
         self.createdAt = createdAt
@@ -77,6 +80,7 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         case costTotal
         case costCurrency
         case costUnknownCount
+        case policyViolations
         case stopCount
         case dayCount
         case createdAt
@@ -95,6 +99,7 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         self.costTotal = try container.decodeIfPresent(Double.self, forKey: .costTotal)
         self.costCurrency = try container.decodeIfPresent(String.self, forKey: .costCurrency)
         self.costUnknownCount = try container.decodeIfPresent(Int.self, forKey: .costUnknownCount)
+        self.policyViolations = try container.decodeIfPresent([PolicyViolation].self, forKey: .policyViolations)
         self.stopCount = try container.decodeIfPresent(Int.self, forKey: .stopCount)
         self.dayCount = try container.decodeIfPresent(Int.self, forKey: .dayCount)
         self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
@@ -116,6 +121,7 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(costTotal, forKey: .costTotal)
         try container.encodeIfPresent(costCurrency, forKey: .costCurrency)
         try container.encodeIfPresent(costUnknownCount, forKey: .costUnknownCount)
+        try container.encodeIfPresent(policyViolations, forKey: .policyViolations)
         try container.encodeIfPresent(stopCount, forKey: .stopCount)
         try container.encodeIfPresent(dayCount, forKey: .dayCount)
         try container.encodeIfPresent(createdAt, forKey: .createdAt)
@@ -135,6 +141,14 @@ struct PlanVersion: Codable, Equatable, Identifiable {
         guard let createdAt else { return "—" }
         return ISO8601.shortDisplay(from: createdAt)
     }
+}
+
+struct PolicyViolation: Codable, Equatable, Identifiable {
+    var code: String
+    var message: String
+    var details: [String: JSONValue]?
+
+    var id: String { code }
 }
 
 /// Full plan from `GET /v1/trips/{id}/plans/{plan_id}`.
@@ -157,6 +171,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
     var costTotal: Double?
     var costCurrency: String?
     var costUnknownCount: Int?
+    var policyViolations: [PolicyViolation]?
 
     init(
         id: String,
@@ -176,7 +191,8 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         solutionStatus: String? = nil,
         costTotal: Double? = nil,
         costCurrency: String? = nil,
-        costUnknownCount: Int? = nil
+        costUnknownCount: Int? = nil,
+        policyViolations: [PolicyViolation]? = nil
     ) {
         self.id = id
         self.tripId = tripId
@@ -196,6 +212,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         self.costTotal = costTotal
         self.costCurrency = costCurrency
         self.costUnknownCount = costUnknownCount
+        self.policyViolations = policyViolations
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -218,6 +235,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         case costTotal
         case costCurrency
         case costUnknownCount
+        case policyViolations
     }
 
     /// The backend returns `stops` as a flat, day-indexed list; the domain wants `days` for the
@@ -263,6 +281,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         self.costTotal = try container.decodeIfPresent(Double.self, forKey: .costTotal)
         self.costCurrency = try container.decodeIfPresent(String.self, forKey: .costCurrency)
         self.costUnknownCount = try container.decodeIfPresent(Int.self, forKey: .costUnknownCount)
+        self.policyViolations = try container.decodeIfPresent([PolicyViolation].self, forKey: .policyViolations)
         self.legs = try container.decodeIfPresent([PlanTravelLeg].self, forKey: .legs)
 
         if let decodedDays = try container.decodeIfPresent([PlanDay].self, forKey: .days) {
@@ -321,6 +340,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(costTotal, forKey: .costTotal)
         try container.encodeIfPresent(costCurrency, forKey: .costCurrency)
         try container.encodeIfPresent(costUnknownCount, forKey: .costUnknownCount)
+        try container.encodeIfPresent(policyViolations, forKey: .policyViolations)
     }
 
     var dayList: [PlanDay] { days ?? [] }

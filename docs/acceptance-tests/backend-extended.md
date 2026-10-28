@@ -55,6 +55,8 @@ make ios-test
 | 签证案件（后 MVP） | `services/api/tests/test_visa_cases.py` | 国家案件创建、状态机推进/非法推进 409、入境评估来源与人工复核、批准签证建议自动建案 |
 | 费用与预算（后 MVP） | `services/api/tests/test_expenses.py` | 多币种分列、同币种差额、计划费用未知计数、跨租户 404 |
 | iOS 签证/预算 UI | `VisaCase.swift`、`BudgetSummary.swift`、TripDetail | 案件状态推进、刷新评估、预算/实际/差额展示 |
+| 差旅政策 | `services/api/tests/test_policies.py` | CRUD、预算/费用/提前天数/目的国违规、严格政策激活 409 |
+| iOS 政策展示 | `PolicyViolation` + PlanDetail | 计划详情展示违规码与说明 |
 | MS-6 真实启动 | 模拟器 + `make api` | Today 页从真实后端加载签证建议与每日打扰额度 |
 
 ## 已知边界

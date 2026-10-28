@@ -96,6 +96,18 @@ struct PlanDetailView: View {
                     }
                 }
 
+                if let violations = plan.policyViolations, !violations.isEmpty {
+                    Section("差旅政策") {
+                        ForEach(violations) { violation in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(violation.code).font(.caption.weight(.semibold))
+                                Text(violation.message).font(.caption)
+                            }
+                            .foregroundStyle(.orange)
+                        }
+                    }
+                }
+
                 Section("计划") {
                     LabeledContent("版本", value: plan.versionLabel)
                     LabeledContent("状态", value: plan.status?.label ?? "草稿")

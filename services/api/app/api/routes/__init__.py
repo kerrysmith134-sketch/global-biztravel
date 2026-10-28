@@ -24,6 +24,7 @@ from app.api.routes import (
     notifications,
     places,
     plans,
+    policies,
     proactive,
     sync,
     trips,
@@ -45,6 +46,7 @@ api_router.include_router(devices.router)
 api_router.include_router(expenses.router)
 api_router.include_router(places.router)
 api_router.include_router(plans.router)
+api_router.include_router(policies.router)
 api_router.include_router(proactive.router)
 api_router.include_router(memory.router)
 api_router.include_router(llm.router)
