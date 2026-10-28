@@ -8,6 +8,8 @@ protocol VisitRepository {
     func listVisits(tripId: String) async throws -> [TripVisit]
     func submitRecord(visitId: String, request: VisitRecordRequest) async throws -> VisitRecord
     func draftMinutes(visitId: String) async throws -> MinutesDraft
+    func syncToCRM(recordId: String) async throws -> CrmSyncJob
+    func crmSyncJob(id: String) async throws -> CrmSyncJob
 }
 
 final class RemoteVisitRepository: VisitRepository {
@@ -30,6 +32,14 @@ final class RemoteVisitRepository: VisitRepository {
 
     func draftMinutes(visitId: String) async throws -> MinutesDraft {
         try await client.send(Endpoints.draftMinutes(visitId: visitId), as: MinutesDraft.self)
+    }
+
+    func syncToCRM(recordId: String) async throws -> CrmSyncJob {
+        try await client.send(Endpoints.crmSync(recordId: recordId), as: CrmSyncJob.self)
+    }
+
+    func crmSyncJob(id: String) async throws -> CrmSyncJob {
+        try await client.send(Endpoints.crmSyncJob(id: id), as: CrmSyncJob.self)
     }
 }
 
@@ -112,6 +122,15 @@ final class OfflineVisitRepository: VisitRepository {
     func draftMinutes(visitId: String) async throws -> MinutesDraft {
         // Drafts are always generated server-side; there is no offline template on the client.
         try await remote.draftMinutes(visitId: visitId)
+    }
+
+    /// CRM sync is a server-initiated background job; the client only asks and polls.
+    func syncToCRM(recordId: String) async throws -> CrmSyncJob {
+        try await remote.syncToCRM(recordId: recordId)
+    }
+
+    func crmSyncJob(id: String) async throws -> CrmSyncJob {
+        try await remote.crmSyncJob(id: id)
     }
 
     func cachedRecordCount() -> Int {

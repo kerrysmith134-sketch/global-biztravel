@@ -61,6 +61,8 @@ make ios-test
 | 报销单 | `services/api/tests/test_expense_reports.py` | 快照明细、多币种合计、提交/审批/驳回、源费用删除不影响快照、跨租户 404 |
 | iOS 报销单 UI | `ExpenseReport.swift` + TripDetail | 建单、提交、状态与分币种合计展示 |
 | MS-6 真实启动 | 模拟器 + `make api` | Today 页从真实后端加载签证建议与每日打扰额度 |
+| CRM 回写 | `services/api/tests/test_crm_sync.py` | 文件适配器写待导入 JSON 并标 `PREPARED`；重复触发幂等；未配置适配器显式 `FAILED`；跨租户 404 |
+| iOS CRM 同步 | `CrmSyncJob.swift` + `VisitRecordSheet` | 现场记录上传后可发起同步并轮询状态，`PREPARED` 文案不声称外部成功 |
 
 ## 已知边界
 

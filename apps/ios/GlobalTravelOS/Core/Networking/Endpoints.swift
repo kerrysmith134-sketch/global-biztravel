@@ -149,6 +149,24 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/visits")
     }
 
+    // MARK: - CRM
+
+    static func crmSync(recordId: String) -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/visit-records/\(recordId)/crm-sync",
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func crmSyncJob(id: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/crm-sync-jobs/\(id)")
+    }
+
+    static func tripCrmSyncJobs(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/crm-sync-jobs")
+    }
+
     static func draftMinutes(visitId: String) -> APIRequest {
         APIRequest(
             method: .post,

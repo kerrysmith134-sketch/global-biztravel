@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     # 指标快照间隔（秒）。同窗口重跑覆盖，不影响正确性。
     metrics_snapshot_interval_seconds: int = 3600
 
+    # CRM 同步适配器：file（写本地待同步载荷，标 PREPARED）| unavailable
+    crm_provider: str = "file"
+    crm_output_dir: str = "var/crm"
+
     # 推送通道（第 8.6 章）：本地默认 inapp（写入通知列表），log 只打日志，apns 需证书。
     push_provider: str = "inapp"              # inapp | log | smtp | apns
     push_max_attempts: int = 3

@@ -30,7 +30,8 @@ from app.models.reliability import BackgroundJob
 #: 队列里的任务类型。集中登记，避免各处写字符串导致 typo 静默变成"没有 Worker 会处理"。
 JOB_TYPE_PLAN_TRIP = "plan_trip"
 JOB_TYPE_DRAFT_MINUTES = "draft_minutes"
-KNOWN_JOB_TYPES = (JOB_TYPE_PLAN_TRIP, JOB_TYPE_DRAFT_MINUTES)
+JOB_TYPE_CRM_SYNC = "crm_sync"
+KNOWN_JOB_TYPES = (JOB_TYPE_PLAN_TRIP, JOB_TYPE_DRAFT_MINUTES, JOB_TYPE_CRM_SYNC)
 
 
 def enqueue(

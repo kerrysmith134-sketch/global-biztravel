@@ -158,6 +158,24 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(memory.failedAttempts.count, 1)
     }
 
+    func testCrmSyncJobDecodesPrepared() throws {
+        let json = """
+        {
+          "id": "c1", "trip_id": "t1", "visit_id": "v1", "visit_record_id": "r1",
+          "status": "PREPARED", "job_id": "j1",
+          "result": {"external_id": "file:var/crm/org/r1.json", "detail": "待导入"},
+          "error": null,
+          "created_at": "2026-10-28T10:00:00+00:00",
+          "updated_at": "2026-10-28T10:01:00+00:00"
+        }
+        """
+        let job = try DateCoding.decode(CrmSyncJob.self, fromJSON: json)
+        XCTAssertEqual(job.status, .prepared)
+        XCTAssertEqual(job.status.label, "已生成待导入文件")
+        XCTAssertEqual(job.externalId, "file:var/crm/org/r1.json")
+        XCTAssertTrue(job.status.isTerminal)
+    }
+
     func testMinutesDraftDecodes() throws {
         let json = """
         {

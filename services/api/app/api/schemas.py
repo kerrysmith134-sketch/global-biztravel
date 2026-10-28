@@ -273,7 +273,7 @@ class ImportConfirmRead(BaseModel):
 PlanVersionStatus = Literal["DRAFT", "ACTIVE", "SUPERSEDED"]
 PlanSolutionStatus = Literal["OPTIMAL", "FEASIBLE", "PARTIAL", "INFEASIBLE", "UNKNOWN", "ERROR"]
 PlanSolver = Literal["ortools", "heuristic"]
-JobType = Literal["plan_trip"]
+JobType = Literal["plan_trip", "draft_minutes", "crm_sync"]
 JobStatus = Literal["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "DEAD", "CANCELLED"]
 
 
@@ -1133,3 +1133,20 @@ class ExpenseReportRead(BaseModel):
 
 class ExpenseReportDecisionRequest(BaseModel):
     note: str | None = None
+
+
+# ------------------------------------------------------------- CRM sync
+CrmSyncStatus = Literal["QUEUED", "PREPARED", "SUCCEEDED", "FAILED"]
+
+
+class CrmSyncJobRead(ORMModel):
+    id: UUID
+    trip_id: UUID
+    visit_id: UUID
+    visit_record_id: UUID
+    status: CrmSyncStatus
+    job_id: UUID | None = None
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime

@@ -2046,6 +2046,155 @@
         }
       }
     },
+    "/v1/visit-records/{record_id}/crm-sync": {
+      "post": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "为一条拜访记录创建 CRM 同步任务",
+        "operationId": "enqueue_crm_sync_v1_visit_records__record_id__crm_sync_post",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Record Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrmSyncJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/crm-sync-jobs/{crm_job_id}": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "CRM 同步任务状态",
+        "operationId": "get_crm_sync_job_v1_crm_sync_jobs__crm_job_id__get",
+        "parameters": [
+          {
+            "name": "crm_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Crm Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrmSyncJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{trip_id}/crm-sync-jobs": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "出行的 CRM 同步任务列表",
+        "operationId": "list_crm_sync_jobs_v1_trips__trip_id__crm_sync_jobs_get",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CrmSyncJobRead"
+                  },
+                  "title": "Response List Crm Sync Jobs V1 Trips  Trip Id  Crm Sync Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/devices": {
       "get": {
         "tags": [
@@ -4791,6 +4940,96 @@
         "title": "ConflictRecordRead",
         "description": "冲突双方的快照。客户端把 ``server`` 与 ``client`` 并排展示，由人决定怎么处理。"
       },
+      "CrmSyncJobRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "visit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Visit Id"
+          },
+          "visit_record_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Visit Record Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "PREPARED",
+              "SUCCEEDED",
+              "FAILED"
+            ],
+            "title": "Status"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "trip_id",
+          "visit_id",
+          "visit_record_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CrmSyncJobRead"
+      },
       "CurrencyTotalRead": {
         "properties": {
           "currency": {
@@ -6254,7 +6493,11 @@
           },
           "job_type": {
             "type": "string",
-            "const": "plan_trip",
+            "enum": [
+              "plan_trip",
+              "draft_minutes",
+              "crm_sync"
+            ],
             "title": "Job Type"
           },
           "status": {

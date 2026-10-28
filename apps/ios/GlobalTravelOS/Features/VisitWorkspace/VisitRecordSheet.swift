@@ -15,6 +15,8 @@ struct VisitRecordSheet: View {
     @State private var submission: VisitSubmissionResult?
     @State private var minutes: MinutesDraft?
     @State private var isLoadingMinutes = false
+    @State private var crmJob: CrmSyncJob?
+    @State private var isSyncingCRM = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -50,6 +52,44 @@ struct VisitRecordSheet: View {
                         Text(submission.detail)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let uploadedRecordId {
+                    Section {
+                        if let crmJob {
+                            LabeledContent("状态", value: crmJob.status.label)
+                            if let externalId = crmJob.externalId {
+                                Text(externalId)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let error = crmJob.error {
+                                Text(error).font(.footnote).foregroundStyle(.red)
+                            }
+                        } else {
+                            Text("尚未同步这条现场记录。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button {
+                            Task { await syncToCRM(recordId: uploadedRecordId) }
+                        } label: {
+                            Label(isSyncingCRM ? "同步中…" : "同步到 CRM", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(isSyncingCRM)
+                        if let crmJob, !crmJob.status.isTerminal {
+                            Button {
+                                Task { await refreshCRM(id: crmJob.id) }
+                            } label: {
+                                Label("刷新状态", systemImage: "arrow.clockwise")
+                            }
+                            .disabled(isSyncingCRM)
+                        }
+                    } header: {
+                        Text("CRM 同步")
+                    } footer: {
+                        Text("服务端异步处理；文件适配器只生成待导入文件（PREPARED），不会声称已写入外部 CRM。")
                     }
                 }
 
@@ -139,6 +179,33 @@ struct VisitRecordSheet: View {
                 draft,
                 networkAvailable: true
             )
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    private var uploadedRecordId: String? {
+        if case let .uploaded(record) = submission { return record.id }
+        return nil
+    }
+
+    private func syncToCRM(recordId: String) async {
+        isSyncingCRM = true
+        errorMessage = nil
+        defer { isSyncingCRM = false }
+        do {
+            crmJob = try await environment.visitRepository.syncToCRM(recordId: recordId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    private func refreshCRM(id: String) async {
+        isSyncingCRM = true
+        errorMessage = nil
+        defer { isSyncingCRM = false }
+        do {
+            crmJob = try await environment.visitRepository.crmSyncJob(id: id)
         } catch {
             errorMessage = environment.errorMessage(error)
         }

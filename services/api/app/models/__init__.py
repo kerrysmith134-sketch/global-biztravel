@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.models.approval import ApprovalPolicy
 from app.models.base import Base
+from app.models.crm import CrmSyncJob
 from app.models.devices import DeviceToken
 from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.expenses import TripExpense
@@ -51,6 +52,7 @@ __all__ = [
     "BackgroundJob",
     "Base",
     "Customer",
+    "CrmSyncJob",
     "CustomerPlace",
     "DeviceToken",
     "EntryAssessment",

@@ -25,9 +25,11 @@ from travel_planner import SolverFailed, plan_trip
 
 from app.api.errors import ApiError
 from app.config import get_settings
+from app.integrations.crm import CrmUnavailable
 from app.models.reliability import BackgroundJob
 from app.models.trip import Trip
 from app.services import (
+    crm_service,
     job_service,
     memory_service,
     minutes_service,
@@ -199,16 +201,32 @@ def handle_draft_minutes(session: Session, job: BackgroundJob) -> dict[str, Any]
     }
 
 
+def handle_crm_sync(session: Session, job: BackgroundJob) -> dict[str, Any]:
+    """把一条拜访记录整理并交给 CRM 适配器。默认 file adapter 只标 PREPARED。"""
+    crm_id = (job.payload or {}).get("crm_sync_id")
+    if not crm_id:
+        raise TaskFailed("任务载荷缺少 crm_sync_id", retryable=False)
+    try:
+        crm_job = crm_service.get_job(session, job.organization_id, crm_id)
+        return crm_service.execute_sync(session, crm_job)
+    except CrmUnavailable as exc:
+        raise TaskFailed(str(exc), retryable=False) from exc
+    except ApiError as exc:
+        raise TaskFailed(exc.message, retryable=False) from exc
+
+
 #: 任务处理器注册表。新增 ``job_type`` 时必须同时在这里登记，否则任务会以
 #: "没有注册处理器"直接终态失败（这是刻意的：静默丢弃任务比报错更糟）。
 TASK_HANDLERS: Mapping[str, TaskHandler] = {
     job_service.JOB_TYPE_PLAN_TRIP: handle_plan_trip,
     job_service.JOB_TYPE_DRAFT_MINUTES: handle_draft_minutes,
+    job_service.JOB_TYPE_CRM_SYNC: handle_crm_sync,
 }
 
 
 __all__ = [
     "TASK_HANDLERS",
+    "handle_crm_sync",
     "TaskFailed",
     "TaskHandler",
     "handle_draft_minutes",

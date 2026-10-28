@@ -12,6 +12,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     admin,
     audit,
+    crm,
     customers,
     devices,
     expense_reports,
@@ -43,6 +44,7 @@ api_router.include_router(integrations.router)
 api_router.include_router(audit.router)
 api_router.include_router(admin.router)
 api_router.include_router(customers.router)
+api_router.include_router(crm.router)
 api_router.include_router(devices.router)
 api_router.include_router(expenses.router)
 api_router.include_router(expense_reports.router)

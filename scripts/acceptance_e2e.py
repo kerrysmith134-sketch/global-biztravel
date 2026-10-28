@@ -227,6 +227,7 @@ def main() -> int:
         )
         record.raise_for_status()
         check(record.json()["applied"] is True, "现场记录已落库")
+        record_id = record.json()["id"]
 
         sync_client_id = str(uuid.uuid4())
         sync_at = datetime.now(UTC) + timedelta(minutes=1)
@@ -257,6 +258,19 @@ def main() -> int:
         synced.raise_for_status()
         sync_body = synced.json()
         check(sync_body["summary"]["applied"] == 1, "离线同步逐项 applied")
+
+        print("6b) CRM 回写（异步任务 + 文件适配器）")
+        crm = client.post(f"/v1/visit-records/{record_id}/crm-sync", headers=headers())
+        crm.raise_for_status()
+        crm_id = crm.json()["id"]
+        check(crm.json()["status"] == "QUEUED", "CRM 同步已排队")
+        run_worker_once()
+        crm_detail = client.get(f"/v1/crm-sync-jobs/{crm_id}", headers=headers())
+        crm_detail.raise_for_status()
+        check(crm_detail.json()["status"] == "PREPARED", "CRM 适配器生成待导入文件")
+        external = (crm_detail.json().get("result") or {}).get("external_id", "")
+        if external.startswith("file:"):
+            Path(external.removeprefix("file:")).unlink(missing_ok=True)
 
         print("7) 会议纪要草稿（LLM 网关）")
         minutes = client.post(f"/v1/visits/{visit_id}/minutes:draft", headers=headers(), json={})
