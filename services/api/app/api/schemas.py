@@ -535,6 +535,9 @@ class SuggestionApproveRead(BaseModel):
     status: SuggestionStatus
     approval: SuggestionApprovalRead | None = None
     execution: SuggestionExecutionRead | None = None
+    executed: bool = True
+    approval_count: int = 1
+    required_approvals: int = 1
 
 
 class SuggestionDismissRequest(BaseModel):
@@ -852,6 +855,7 @@ class ApprovalPolicyCreate(BaseModel):
     subject_type: str = "proactive_suggestion"
     min_severity: Literal["LOW", "MEDIUM", "HIGH"] = "LOW"
     required_role: Literal["VIEWER", "TRAVELER", "ADMIN", "OWNER"] = "TRAVELER"
+    required_approvals: int = Field(default=1, ge=1, le=10)
     enabled: bool = True
 
 
@@ -860,6 +864,7 @@ class ApprovalPolicyRead(ORMModel):
     subject_type: str
     min_severity: Literal["LOW", "MEDIUM", "HIGH"]
     required_role: Literal["VIEWER", "TRAVELER", "ADMIN", "OWNER"]
+    required_approvals: int = 1
     enabled: bool
     created_at: datetime
 

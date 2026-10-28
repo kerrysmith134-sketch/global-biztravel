@@ -226,8 +226,15 @@ class Approval(Base):
 
     __tablename__ = "approvals"
     __table_args__ = (
-        UniqueConstraint(
-            "organization_id", "subject_type", "subject_id", name="uq_approvals_org_subject"
+        # 同一对象允许多个审批人；同一审批人只能有一条决定。
+        Index(
+            "uq_approvals_org_subject_approver",
+            "organization_id",
+            "subject_type",
+            "subject_id",
+            "decided_by_user_id",
+            unique=True,
+            postgresql_where=text("decided_by_user_id IS NOT NULL"),
         ),
         CheckConstraint("decision IN ('APPROVED','REJECTED')", name="decision_allowed"),
         Index("ix_approvals_subject", "subject_type", "subject_id"),

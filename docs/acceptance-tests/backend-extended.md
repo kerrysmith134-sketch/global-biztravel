@@ -57,6 +57,7 @@ make ios-test
 | iOS 签证/预算 UI | `VisaCase.swift`、`BudgetSummary.swift`、TripDetail | 案件状态推进、刷新评估、预算/实际/差额展示 |
 | 差旅政策 | `services/api/tests/test_policies.py` | CRUD、预算/费用/提前天数/目的国违规、严格政策激活 409 |
 | iOS 政策展示 | `PolicyViolation` + PlanDetail | 计划详情展示违规码与说明 |
+| 多人会签 | `services/api/tests/test_approval_policy.py` | 2 人阈值：首人 PENDING、同一人重批不计数、第二人 EXECUTED |
 | MS-6 真实启动 | 模拟器 + `make api` | Today 页从真实后端加载签证建议与每日打扰额度 |
 
 ## 已知边界

@@ -18,6 +18,7 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     Index,
+    Integer,
     Text,
     UniqueConstraint,
 )
@@ -45,6 +46,7 @@ class ApprovalPolicy(Base):
         CheckConstraint(
             "min_severity IN ('LOW','MEDIUM','HIGH')", name="severity_allowed"
         ),
+        CheckConstraint("required_approvals >= 1", name="required_approvals_positive"),
         Index("ix_approval_policies_org_enabled", "organization_id", "enabled"),
     )
 
@@ -60,6 +62,7 @@ class ApprovalPolicy(Base):
     )
     min_severity: Mapped[str] = mapped_column(Text, nullable=False, server_default="LOW")
     required_role: Mapped[str] = mapped_column(Text, nullable=False, server_default="TRAVELER")
+    required_approvals: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = created_at()
 

@@ -129,10 +129,17 @@ def approve_suggestion(
             approved_by=suggestion.approved_by_user_id,
             approved_at=suggestion.approved_at,
         ),
-        execution=SuggestionExecutionRead(
-            status=execution.get("status"),
-            detail=execution.get("detail"),
+        execution=(
+            SuggestionExecutionRead(
+                status=execution.get("status"),
+                detail=execution.get("detail"),
+            )
+            if execution
+            else None
         ),
+        executed=outcome.executed,
+        approval_count=outcome.approval_count,
+        required_approvals=outcome.required_approvals,
     )
     return guard.finish(status_code=status.HTTP_200_OK, body=body)
 

@@ -67,11 +67,16 @@ def upsert_approval_policy(
             subject_type=payload.subject_type,
             min_severity=payload.min_severity,
             required_role=payload.required_role,
+            required_approvals=payload.required_approvals,
             enabled=payload.enabled,
         )
         .on_conflict_do_update(
             constraint="uq_approval_policies_org_subject_severity",
-            set_={"required_role": payload.required_role, "enabled": payload.enabled},
+            set_={
+                "required_role": payload.required_role,
+                "required_approvals": payload.required_approvals,
+                "enabled": payload.enabled,
+            },
         )
         .returning(ApprovalPolicy.__table__.c.id)
     )

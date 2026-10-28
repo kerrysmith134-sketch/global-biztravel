@@ -141,6 +141,9 @@ class Candidate:
 class ApprovalOutcome:
     suggestion: ProactiveSuggestion
     approval: Approval
+    executed: bool = True
+    approval_count: int = 1
+    required_approvals: int = 1
 
 
 @dataclass
@@ -845,11 +848,11 @@ def approve(
     actor_role: str | None = None,
     now: datetime | None = None,
 ) -> ApprovalOutcome:
-    """人审通过 → 受控执行 → 审计。
+    """人审通过 → 会签统计 → 达到阈值后受控执行 → 审计。
 
-    只有 ``PENDING`` 可以批准；已批准/已执行的重放直接返回现状（写接口另有幂等键兜底）。
-    批准后先落 ``approvals`` 记录，再调用执行器——顺序不能反：执行器抛错时必须连审批一起
-    回滚，否则会出现"有审批记录但没有执行结果"的半条链。
+    多人会签：每个审批人一条 ``approvals``；不同审批人数量达到策略
+    ``required_approvals`` 才执行。未达阈值时建议保持 ``PENDING``，客户端可继续等待其他审批人。
+    同一审批人重复批准是幂等的，不会重复计数。
     """
     current = now or session.scalar(select(func.clock_timestamp()))
     suggestion = session.scalars(
@@ -863,28 +866,38 @@ def approve(
     if suggestion is None:
         raise NotFound("主动建议不存在", details={"suggestion_id": str(suggestion_id)})
 
-    if suggestion.status in ("APPROVED", "EXECUTED"):
-        existing = session.scalars(
+    approvals = list(
+        session.scalars(
             select(Approval).where(
                 Approval.organization_id == str(organization_id),
                 Approval.subject_type == APPROVAL_SUBJECT_SUGGESTION,
                 Approval.subject_id == suggestion.id,
+                Approval.decision == "APPROVED",
             )
-        ).one()
-        return ApprovalOutcome(suggestion=suggestion, approval=existing)
+        )
+    )
+    approval_count = len({str(item.decided_by_user_id) for item in approvals})
+    required_approvals = approval_policy_service.enforce(
+        session,
+        organization_id,
+        severity=suggestion.severity,
+        actor_role=actor_role,
+    )
+
+    if suggestion.status in ("APPROVED", "EXECUTED"):
+        return ApprovalOutcome(
+            suggestion=suggestion,
+            approval=approvals[0] if approvals else _missing_approval(suggestion, actor_user_id, current),
+            executed=True,
+            approval_count=max(approval_count, 1),
+            required_approvals=required_approvals,
+        )
 
     if suggestion.status != "PENDING":
         raise Conflict(
             "该建议当前不可批准",
             details={"suggestion_id": str(suggestion.id), "status": suggestion.status},
         )
-
-    approval_policy_service.enforce(
-        session,
-        organization_id,
-        severity=suggestion.severity,
-        actor_role=actor_role,
-    )
 
     executor = EXECUTORS.get(suggestion.suggestion_type)
     if executor is None:
@@ -893,21 +906,25 @@ def approve(
             details={"suggestion_type": suggestion.suggestion_type},
         )
 
-    approval = Approval(
-        organization_id=str(organization_id),
-        subject_type=APPROVAL_SUBJECT_SUGGESTION,
-        subject_id=suggestion.id,
-        decision="APPROVED",
-        decided_by_user_id=str(actor_user_id),
-        decided_at=current,
-        note="由 POST /v1/proactive/suggestions/{id}:approve 记录",
+    actor = str(actor_user_id)
+    approval = next(
+        (item for item in approvals if str(item.decided_by_user_id) == actor), None
     )
-    session.add(approval)
-    session.flush()
+    if approval is None:
+        approval = Approval(
+            organization_id=str(organization_id),
+            subject_type=APPROVAL_SUBJECT_SUGGESTION,
+            subject_id=suggestion.id,
+            decision="APPROVED",
+            decided_by_user_id=actor,
+            decided_at=current,
+            note="由 POST /v1/proactive/suggestions/{id}:approve 记录",
+        )
+        session.add(approval)
+        session.flush()
+        approvals.append(approval)
+        approval_count += 1
 
-    suggestion.status = "APPROVED"
-    suggestion.approved_by_user_id = str(actor_user_id)
-    suggestion.approved_at = current
     _audit(
         session,
         organization_id,
@@ -915,8 +932,26 @@ def approve(
         "APPROVED",
         actor_type="USER",
         actor_user_id=actor_user_id,
-        detail={"approval_id": str(approval.id)},
+        detail={
+            "approval_id": str(approval.id),
+            "approval_count": approval_count,
+            "required_approvals": required_approvals,
+        },
     )
+
+    if approval_count < required_approvals:
+        session.flush()
+        return ApprovalOutcome(
+            suggestion=suggestion,
+            approval=approval,
+            executed=False,
+            approval_count=approval_count,
+            required_approvals=required_approvals,
+        )
+
+    suggestion.status = "APPROVED"
+    suggestion.approved_by_user_id = actor
+    suggestion.approved_at = current
 
     trip = session.get(Trip, suggestion.trip_id)
     result = executor(session, suggestion, trip=trip, now=current)
@@ -935,7 +970,7 @@ def approve(
             request=dict(suggestion.proposed_action or {}),
             response=result,
             requires_approval=suggestion.requires_approval,
-            approved_by_user_id=str(actor_user_id) if actor_user_id is not None else None,
+            approved_by_user_id=actor,
             executed_at=current,
         )
     )
@@ -954,7 +989,28 @@ def approve(
         detail={"note": "执行结果已留痕；对外动作仍由业务服务按授权另行执行"},
     )
     session.flush()
-    return ApprovalOutcome(suggestion=suggestion, approval=approval)
+    return ApprovalOutcome(
+        suggestion=suggestion,
+        approval=approval,
+        executed=True,
+        approval_count=approval_count,
+        required_approvals=required_approvals,
+    )
+
+
+def _missing_approval(
+    suggestion: ProactiveSuggestion, actor_user_id: UUID | str, now: datetime
+) -> Approval:
+    """为历史/异常数据补齐一个只读占位，避免响应因缺审批而 500。"""
+    return Approval(
+        organization_id=str(suggestion.organization_id),
+        subject_type=APPROVAL_SUBJECT_SUGGESTION,
+        subject_id=suggestion.id,
+        decision="APPROVED",
+        decided_by_user_id=str(actor_user_id),
+        decided_at=now,
+        note="审批记录缺失时的响应占位（未落库）",
+    )
 
 
 def dismiss(

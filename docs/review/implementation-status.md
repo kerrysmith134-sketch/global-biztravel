@@ -11,7 +11,7 @@
 
 | 里程碑 | 要求 | 状态 | 证据 |
 |---|---|---|---|
-| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0020`；`0010_security_rls` 全库兜底；RLS 断言测试 |
+| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0021`；`0010_security_rls` 全库兜底；RLS 断言测试 |
 | MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 第 3 步 |
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
@@ -51,7 +51,7 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **200 passed**（真实 PostgreSQL） |
+| `make test` | **201 passed**（真实 PostgreSQL） |
 | `make typecheck` | MyPy：115 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 63 路径 / 98 schema；契约一致 |
@@ -62,7 +62,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
-## 5. 迁移清单（当前 head `0020`）
+## 5. 迁移清单（当前 head `0021`）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -76,6 +76,7 @@
 0009_metric_snapshots      0018_visa_cases
                            0019_trip_expenses
                            0020_travel_policies
+                           0021_multi_approval
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -88,6 +89,8 @@
 - **客户端**：行程详情新增"签证与入境"（案件状态推进、刷新评估）与"费用与预算"摘要。
 - **差旅政策**：四类确定性规则（预算/计划费用/提前天数/目的国）；计划生成存违规快照，
   严格政策在激活时 409 `POLICY_VIOLATION`；客户端计划详情展示违规。
+- **多人会签**：审批策略可配 `required_approvals`；不同审批人达到阈值才执行，同一人重复批准
+  幂等；未达阈值保持 PENDING。
 
 ## 7. 仍缺项（非本地代码可闭环）
 

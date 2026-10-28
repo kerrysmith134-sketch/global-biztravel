@@ -2574,6 +2574,12 @@ components:
           - OWNER
           title: Required Role
           default: TRAVELER
+        required_approvals:
+          type: integer
+          maximum: 10.0
+          minimum: 1.0
+          title: Required Approvals
+          default: 1
         enabled:
           type: boolean
           title: Enabled
@@ -2604,6 +2610,10 @@ components:
           - ADMIN
           - OWNER
           title: Required Role
+        required_approvals:
+          type: integer
+          title: Required Approvals
+          default: 1
         enabled:
           type: boolean
           title: Enabled
@@ -5354,6 +5364,18 @@ components:
           anyOf:
           - $ref: '#/components/schemas/SuggestionExecutionRead'
           - type: 'null'
+        executed:
+          type: boolean
+          title: Executed
+          default: true
+        approval_count:
+          type: integer
+          title: Approval Count
+          default: 1
+        required_approvals:
+          type: integer
+          title: Required Approvals
+          default: 1
       type: object
       required:
       - id
