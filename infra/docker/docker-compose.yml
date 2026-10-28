@@ -1,0 +1,38 @@
+# 本地开发数据库：PostgreSQL 16 + PostGIS 3.4 + pgvector
+# 启动：  make db-up          （等价于 docker compose -f infra/docker/docker-compose.yml up -d --build）
+# 连接：  postgresql://gbt_app:gbt_app_pw@localhost:55432/gbt_os          （应用角色，受 RLS 约束）
+#         postgresql://gbt_owner:gbt_owner_pw@localhost:55432/gbt_os      （迁移角色，表 owner）
+#
+# 角色分层是 RLS 的前置条件（设计文档 v2.0 第 11.2 章）：
+#   - 应用连接用 gbt_app（非表 owner、非超级用户）→ RLS 必然生效
+#   - 迁移连接用 gbt_owner（表 owner）→ 配合 FORCE ROW LEVEL SECURITY 同样受策略约束
+name: gbt-os
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.pg
+    image: gbt-os-postgres:16
+    container_name: zhi-tu-pg
+    restart: unless-stopped
+    ports:
+      - "55432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gbt_os
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+      - gbt_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gbt_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  gbt_pg_data:
+    name: gbt_os_pg_data

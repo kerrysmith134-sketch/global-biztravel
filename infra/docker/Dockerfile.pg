@@ -1,0 +1,26 @@
+# PostgreSQL 16 + PostGIS 3.4 + pgvector
+#
+# 为什么自建镜像（而不是直接用 postgis/postgis:16-3.4）：
+#   1) 设计文档 v2.0 第 9 章要求情景记忆向量列（pgvector）与业务表落在同一
+#      PostgreSQL 事务边界内，postgis 官方镜像不含 pgvector；
+#   2) postgis/postgis:16-3.4 为 linux/amd64，在 Apple Silicon 上依赖 QEMU 模拟；
+#      本镜像基于 pgvector/pgvector:pg16（linux/arm64，Debian bookworm），原生运行。
+#
+# 注意：bullseye-pgdg 仓库已 404（EOL），因此必须基于 bookworm 镜像叠加 PostGIS。
+FROM pgvector/pgvector:pg16
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        postgresql-16-postgis-3 \
+        postgresql-16-postgis-3-scripts \
+        postgresql-16-postgis-3-dbgsym || true; \
+    apt-get install -y --no-install-recommends \
+        postgresql-16-postgis-3 \
+        postgresql-16-postgis-3-scripts; \
+    rm -rf /var/lib/apt/lists/*
+
+# 校验扩展文件确实随镜像分发（构建期即失败，避免运行时才发现缺扩展）
+RUN set -eux; \
+    test -f /usr/share/postgresql/16/extension/postgis.control; \
+    test -f /usr/share/postgresql/16/extension/vector.control

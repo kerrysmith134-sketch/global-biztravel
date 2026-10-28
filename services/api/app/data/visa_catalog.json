@@ -1,0 +1,66 @@
+{
+  "version": "2026.10",
+  "note": "本地离线规则目录，只用于生成“出发前需核验”的提醒，不代表任何国家的官方签证结论。每条提醒都必须由人按官方渠道复核。",
+  "countries": {
+    "DE": {
+      "label": "德国",
+      "business_entry": "申根短期商务访问",
+      "review_hint": "需核验申根商务签证的受理周期与保险/邀请函要求",
+      "manual_confirmation_required": true
+    },
+    "FR": {
+      "label": "法国",
+      "business_entry": "申根短期商务访问",
+      "review_hint": "需核验申根商务签证的受理周期与保险/邀请函要求",
+      "manual_confirmation_required": true
+    },
+    "NL": {
+      "label": "荷兰",
+      "business_entry": "申根短期商务访问",
+      "review_hint": "需核验申根商务签证的受理周期与保险/邀请函要求",
+      "manual_confirmation_required": true
+    },
+    "GB": {
+      "label": "英国",
+      "business_entry": "标准访客签证（商务）",
+      "review_hint": "需核验标准访客签证的受理周期与资金/邀请材料",
+      "manual_confirmation_required": true
+    },
+    "US": {
+      "label": "美国",
+      "business_entry": "B-1 商务访问",
+      "review_hint": "需核验 B-1 面签预约排期与 EVUS 等登记要求",
+      "manual_confirmation_required": true
+    },
+    "SG": {
+      "label": "新加坡",
+      "business_entry": "短期商务访问",
+      "review_hint": "需核验入境卡与短期商务访问的停留期限",
+      "manual_confirmation_required": true
+    },
+    "TH": {
+      "label": "泰国",
+      "business_entry": "短期商务访问",
+      "review_hint": "需核验商务签证与入境停留期限",
+      "manual_confirmation_required": true
+    },
+    "JP": {
+      "label": "日本",
+      "business_entry": "短期商务签证",
+      "review_hint": "需核验短期商务签证的邀请函与身元保证材料",
+      "manual_confirmation_required": true
+    },
+    "AE": {
+      "label": "阿联酋",
+      "business_entry": "短期商务访问",
+      "review_hint": "需核验商务访问签证的担保与停留期限",
+      "manual_confirmation_required": true
+    },
+    "BR": {
+      "label": "巴西",
+      "business_entry": "短期商务访问",
+      "review_hint": "需核验商务签证的受理周期与邀请材料",
+      "manual_confirmation_required": true
+    }
+  }
+}

@@ -1,0 +1,49 @@
+"""路由聚合。
+
+每个模块自带前缀语义（资源名），这里只做一件事：把它们的 router 按资源域拼成一个
+``api_router``，由 :mod:`app.main` 统一挂到 ``/v1``。新增资源域时只改这一个文件，
+``main.py`` 不需要知道具体有哪些路由。
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from app.api.routes import (
+    admin,
+    audit,
+    customers,
+    health,
+    imports,
+    integrations,
+    llm,
+    memory,
+    metrics,
+    notifications,
+    places,
+    plans,
+    proactive,
+    sync,
+    trips,
+    visits,
+)
+
+api_router = APIRouter()
+api_router.include_router(health.router)
+api_router.include_router(trips.router)
+api_router.include_router(visits.router)
+api_router.include_router(imports.router)
+api_router.include_router(integrations.router)
+api_router.include_router(audit.router)
+api_router.include_router(admin.router)
+api_router.include_router(customers.router)
+api_router.include_router(places.router)
+api_router.include_router(plans.router)
+api_router.include_router(proactive.router)
+api_router.include_router(memory.router)
+api_router.include_router(llm.router)
+api_router.include_router(metrics.router)
+api_router.include_router(notifications.router)
+api_router.include_router(sync.router)
+
+__all__ = ["api_router"]

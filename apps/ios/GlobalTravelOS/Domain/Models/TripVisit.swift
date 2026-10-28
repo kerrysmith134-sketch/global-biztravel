@@ -1,0 +1,80 @@
+import Foundation
+
+/// A visit as returned by `GET /v1/trips/{trip_id}/visits`.
+///
+/// This is a read model for the field workspace: it carries enough context to show "where/when"
+/// without pulling the full plan. The backend calls the resource `Visit`; the client keeps the
+/// `TripVisit` name so it never collides with `VisitRecord` (the field note).
+struct TripVisit: Codable, Equatable, Identifiable {
+    var id: String
+    var tripId: String?
+    var placeId: String?
+    var customerId: String?
+    var title: String?
+    var serviceMinutes: Int?
+    var timeWindowStart: Date?
+    var timeWindowEnd: Date?
+    var priority: Int?
+    var movementMode: String?
+    var status: String?
+    var createdAt: Date?
+
+    init(
+        id: String,
+        tripId: String? = nil,
+        placeId: String? = nil,
+        customerId: String? = nil,
+        title: String? = nil,
+        serviceMinutes: Int? = nil,
+        timeWindowStart: Date? = nil,
+        timeWindowEnd: Date? = nil,
+        priority: Int? = nil,
+        movementMode: String? = nil,
+        status: String? = nil,
+        createdAt: Date? = nil
+    ) {
+        self.id = id
+        self.tripId = tripId
+        self.placeId = placeId
+        self.customerId = customerId
+        self.title = title
+        self.serviceMinutes = serviceMinutes
+        self.timeWindowStart = timeWindowStart
+        self.timeWindowEnd = timeWindowEnd
+        self.priority = priority
+        self.movementMode = movementMode
+        self.status = status
+        self.createdAt = createdAt
+    }
+
+    var displayName: String { title ?? "拜访 \(id.prefix(8))" }
+
+    var statusLabel: String {
+        switch (status ?? "").uppercased() {
+        case "PLANNED": return "待排期"
+        case "SCHEDULED": return "已排期"
+        case "DONE": return "已完成"
+        case "MISSED": return "未会面"
+        case "CANCELLED": return "已取消"
+        default: return status ?? "未知状态"
+        }
+    }
+
+    var isOpen: Bool {
+        let value = (status ?? "PLANNED").uppercased()
+        return value == "PLANNED" || value == "SCHEDULED"
+    }
+
+    var timeWindowLabel: String {
+        switch (timeWindowStart, timeWindowEnd) {
+        case let (start?, end?):
+            return "\(ISO8601.shortDisplay(from: start)) – \(ISO8601.shortDisplay(from: end))"
+        case let (start?, nil):
+            return "从 \(ISO8601.shortDisplay(from: start)) 起"
+        case let (nil, end?):
+            return "不晚于 \(ISO8601.shortDisplay(from: end))"
+        case (nil, nil):
+            return "无时间窗"
+        }
+    }
+}

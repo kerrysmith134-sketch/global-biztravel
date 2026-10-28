@@ -1,0 +1,4745 @@
+openapi: 3.1.0
+info:
+  title: 全球商务出行智能体 API
+  summary: Global Business Travel OS —— 主动式商务出行规划与执行平台
+  description: 服务端契约。核心不变式：计划不可变、操作可审计、后台任务可恢复、结果可验证；LLM 负责理解与解释，优化算法负责计算，独立验证器负责检查——任何单一模型都不宣布行程可行。
+  version: 2.0.0
+paths:
+  /v1/health:
+    get:
+      tags:
+      - health
+      summary: 健康检查
+      operationId: health_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRead'
+  /v1/trips:
+    post:
+      tags:
+      - trips
+      summary: 创建出行
+      operationId: create_trip_v1_trips_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TripCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - trips
+      summary: 出行列表
+      operationId: list_trips_v1_trips_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_TripRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}:
+    get:
+      tags:
+      - trips
+      summary: 出行详情
+      operationId: get_trip_v1_trips__trip_id__get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - trips
+      summary: 更新出行
+      description: 更新出行。可带 ``If-Match`` 做乐观并发：版本不符返回 412，提示客户端重取。
+      operationId: update_trip_v1_trips__trip_id__patch
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TripUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/visits:
+    get:
+      tags:
+      - trips
+      summary: 出行下的拜访列表
+      operationId: list_trip_visits_v1_trips__trip_id__visits_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VisitRead'
+                title: Response List Trip Visits V1 Trips  Trip Id  Visits Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - trips
+      summary: 在出行下新增拜访
+      description: 新增拜访会递增 Trip 版本号：既有计划立刻失效，避免"基于旧输入的计划"被当成当前有效。
+      operationId: create_trip_visit_v1_trips__trip_id__visits_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisitRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/visits/{visit_id}:
+    patch:
+      tags:
+      - visits
+      summary: 更新拜访
+      operationId: update_visit_v1_visits__visit_id__patch
+      parameters:
+      - name: visit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Visit Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisitRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - visits
+      summary: 删除拜访
+      operationId: delete_visit_v1_visits__visit_id__delete
+      parameters:
+      - name: visit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Visit Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/visits/{visit_id}/records:
+    post:
+      tags:
+      - visits
+      summary: 提交现场拜访记录（LWW，幂等）
+      description: '记录现场结果。``client_record_id`` 本身已是幂等键；``Idempotency-Key`` 再保证整次
+
+        HTTP 重试不产生第二次副作用。两者都带时以 ``client_record_id`` 为准——它跨设备重启仍在。'
+      operationId: submit_visit_record_v1_visits__visit_id__records_post
+      parameters:
+      - name: visit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Visit Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitRecordCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisitRecordRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/visits/{visit_id}/minutes:draft:
+    post:
+      tags:
+      - visits
+      summary: 生成会议纪要与跟进任务草稿（不发送）
+      description: '基于最近一条生效的现场记录起草纪要。草稿写入 ``llm_invocations`` 并返回其 id，
+
+        任何后续动作（发送、建任务）都必须由人确认后走业务接口。'
+      operationId: draft_meeting_minutes_v1_visits__visit_id__minutes_draft_post
+      parameters:
+      - name: visit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Visit Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: '#/components/schemas/MinutesDraftRequest'
+              - type: 'null'
+              title: Payload
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MinutesDraftRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/imports:parse:
+    post:
+      tags:
+      - imports
+      summary: 上传并解析客户名单（只读预览）
+      description: 解析上传的 Excel 并返回逐行预览与校验报告。**此调用不创建任何客户或拜访。**
+      operationId: parse_import_v1_trips__trip_id__imports_parse_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_parse_import_v1_trips__trip_id__imports_parse_post'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportParseRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/imports:confirm:
+    post:
+      tags:
+      - imports
+      summary: 确认导入（按勾选行号落库）
+      description: '把用户勾选的行真正落库。``accepted_row_numbers`` 为空表示"接受全部有效行"。
+
+
+        重复确认同一批次返回 409 ``IMPORT_ALREADY_CONFIRMED``——落库不是幂等操作，
+
+        必须让客户端知道"这次没有产生新数据，是第二次提交"。'
+      operationId: confirm_import_v1_trips__trip_id__imports_confirm_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportConfirmRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportConfirmRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/imports/{import_id}:
+    get:
+      tags:
+      - imports
+      summary: 导入批次详情（刷新预览页）
+      operationId: get_import_v1_imports__import_id__get
+      parameters:
+      - name: import_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Import Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportParseRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/integrations/signals:
+    post:
+      tags:
+      - integrations
+      summary: 接入外部信号（供应商回调或轮询结果）
+      operationId: ingest_signal_v1_integrations_signals_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalSignalCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalSignalRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - integrations
+      summary: 外部信号列表（按观察时间倒序）
+      operationId: list_signals_v1_integrations_signals_get
+      parameters:
+      - name: subject_ref
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 按国家代码或出行 id 过滤
+          title: Subject Ref
+        description: 按国家代码或出行 id 过滤
+      - name: signal_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 按信号类型过滤
+          title: Signal Type
+        description: 按信号类型过滤
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExternalSignalRead'
+                title: Response List Signals V1 Integrations Signals Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/audit:
+    get:
+      tags:
+      - audit
+      summary: 一次出行的审计时间线（建议/审批/Outbox/记录/规划尝试）
+      operationId: trip_audit_v1_trips__trip_id__audit_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 200
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEventRead'
+                title: Response Trip Audit V1 Trips  Trip Id  Audit Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/admin:retention:
+    post:
+      tags:
+      - admin
+      summary: 立即执行一次留存脱敏（过期笔记/记忆清空正文）
+      operationId: run_retention_v1_admin_retention_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionReportRead'
+  /v1/approval-policies:
+    get:
+      tags:
+      - admin
+      summary: 审批策略列表
+      operationId: list_approval_policies_v1_approval_policies_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ApprovalPolicyRead'
+                type: array
+                title: Response List Approval Policies V1 Approval Policies Get
+    post:
+      tags:
+      - admin
+      summary: 创建/更新一条审批策略（按 subject + 最低风险等级唯一）
+      operationId: upsert_approval_policy_v1_approval_policies_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalPolicyCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalPolicyRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/approval-policies/{policy_id}:
+    delete:
+      tags:
+      - admin
+      summary: 删除审批策略
+      operationId: delete_approval_policy_v1_approval_policies__policy_id__delete
+      parameters:
+      - name: policy_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Policy Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/customers:
+    get:
+      tags:
+      - customers
+      summary: 客户列表
+      operationId: list_customers_v1_customers_get
+      parameters:
+      - name: query
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 按名称或外部编号模糊检索
+          title: Query
+        description: 按名称或外部编号模糊检索
+      - name: tier
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 按客户分级过滤：A/B/C
+          title: Tier
+        description: 按客户分级过滤：A/B/C
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_CustomerRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - customers
+      summary: 创建客户
+      description: '``external_ref`` 已存在时返回 409 —— 客户档案不允许同编号两条。'
+      operationId: create_customer_v1_customers_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/customers/{customer_id}:
+    get:
+      tags:
+      - customers
+      summary: 客户详情
+      operationId: get_customer_v1_customers__customer_id__get
+      parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Customer Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/places:
+    get:
+      tags:
+      - places
+      summary: 地点列表
+      operationId: list_places_v1_places_get
+      parameters:
+      - name: query
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 按名称或城市模糊检索
+          title: Query
+        description: 按名称或城市模糊检索
+      - name: country_code
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: ISO 3166-1 alpha-2，如 CN/DE
+          title: Country Code
+        description: ISO 3166-1 alpha-2，如 CN/DE
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_PlaceRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - places
+      summary: 创建地点（同名同城同国自动复用）
+      operationId: create_place_v1_places_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/places/{place_id}:
+    get:
+      tags:
+      - places
+      summary: 地点详情
+      operationId: get_place_v1_places__place_id__get
+      parameters:
+      - name: place_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Place Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/plans:generate:
+    post:
+      tags:
+      - plans
+      summary: 生成计划（异步，立即返回 job_id）
+      operationId: generate_plan_v1_trips__trip_id__plans_generate_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanGenerateRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/jobs/{job_id}:
+    get:
+      tags:
+      - plans
+      summary: 任务详情
+      operationId: get_job_v1_jobs__job_id__get
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/plans:
+    get:
+      tags:
+      - plans
+      summary: 出行的计划版本列表（最新在前）
+      operationId: list_plan_versions_v1_trips__trip_id__plans_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanVersionRead'
+                title: Response List Plan Versions V1 Trips  Trip Id  Plans Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/plan-versions/{plan_version_id}:
+    get:
+      tags:
+      - plans
+      summary: 计划版本详情（含停靠时间表）
+      operationId: get_plan_version_v1_plan_versions__plan_version_id__get
+      parameters:
+      - name: plan_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Version Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanVersionDetailRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/plans/{plan_version_id}:activate:
+    post:
+      tags:
+      - plans
+      summary: '激活某一版计划（幂等；If-Match: version）'
+      description: '把某一份计划版本扶正为出行生效计划（把旧的生效版本标为 ``SUPERSEDED``）。
+
+
+        与 ``plans:generate`` 的差别：**激活是同步事务，不是异步任务**。改的是状态而非算结果，
+
+        没有不可预期的耗时，因此不排队、不返回 202，用户点完立刻看到出行进入 ``ACTIVE``。
+
+        全部判定（``If-Match`` 乐观并发、计划陈旧、重复激活、并发抢先）都在
+
+        :func:`plan_change_service.activate_plan_version` 里，路由只做权限与组装。
+
+
+        ``If-Match`` 建议带上：不带则退化为"最后写入者胜"，并发的两个激活会被行锁串行化，
+
+        后者拿到 409。带上则两者之一必然先拿到 412 而重取，语义更清晰。'
+      operationId: activate_plan_v1_trips__trip_id__plans__plan_version_id__activate_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: plan_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Version Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: If-Match
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanActivationRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/plans/{plan_version_id}:diff:
+    get:
+      tags:
+      - plans
+      summary: 两版计划差异对比（只读）
+      description: '把路径里那一版（target）与 ``against``（base）摊开来逐拜访对照。
+
+
+        ``against`` 是查询参数而不是路径参数：被比较的对象是输入，要看的是主体，
+
+        这样返回值的主语始终是路径里的那份计划。'
+      operationId: diff_plan_v1_trips__trip_id__plans__plan_version_id__diff_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: plan_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Version Id
+      - name: against
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+          description: 对比基准（旧）计划版本 id
+          title: Against
+        description: 对比基准（旧）计划版本 id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanVersionDiffRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/plans/{plan_version_id}:
+    get:
+      tags:
+      - plans
+      summary: 出行下的计划版本详情（契约 §13.2 的嵌套路径）
+      operationId: get_trip_plan_version_v1_trips__trip_id__plans__plan_version_id__get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: plan_version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Version Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanVersionDetailRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/proactive/suggestions:
+    get:
+      tags:
+      - proactive
+      summary: 主动建议列表（含今日打扰额度）
+      operationId: list_suggestions_v1_proactive_suggestions_get
+      parameters:
+      - name: trip_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: 只看某次出行
+          title: Trip Id
+        description: 只看某次出行
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - PENDING
+            - SUPPRESSED
+            - APPROVED
+            - EXECUTED
+            - DISMISSED
+            - EXPIRED
+            type: string
+          - type: 'null'
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestionFeedRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/proactive/suggestions/{suggestion_id}:approve:
+    post:
+      tags:
+      - proactive
+      summary: 人审通过并执行（只准备，不对外）
+      operationId: approve_suggestion_v1_proactive_suggestions__suggestion_id__approve_post
+      parameters:
+      - name: suggestion_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Suggestion Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestionApproveRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/proactive/suggestions/{suggestion_id}:dismiss:
+    post:
+      tags:
+      - proactive
+      summary: 驳回建议（负反馈进入误报回收）
+      operationId: dismiss_suggestion_v1_proactive_suggestions__suggestion_id__dismiss_post
+      parameters:
+      - name: suggestion_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Suggestion Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: '#/components/schemas/SuggestionDismissRequest'
+              - type: 'null'
+              title: Payload
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestionDismissRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/memory:
+    get:
+      tags:
+      - memory
+      summary: 行程记忆（摘要 + 过程记录）
+      operationId: get_trip_memory_v1_trips__trip_id__memory_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripMemoryRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/memory:review:
+    post:
+      tags:
+      - memory
+      summary: 手动触发复盘（正常由 Worker 在行程完成后执行）
+      operationId: review_trip_memory_v1_trips__trip_id__memory_review_post
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripMemoryRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/memory:search:
+    get:
+      tags:
+      - memory
+      summary: 记忆混合检索（关键词 + 向量）
+      operationId: search_memory_v1_memory_search_get
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 检索词
+          title: Q
+        description: 检索词
+      - name: trip_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: 限定某次出行
+          title: Trip Id
+        description: 限定某次出行
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 20
+          minimum: 1
+          default: 5
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemorySearchRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/traveler/profile:
+    get:
+      tags:
+      - memory
+      summary: 当前出差人画像
+      operationId: get_profile_v1_traveler_profile_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TravelerProfileRead'
+    put:
+      tags:
+      - memory
+      summary: 更新当前出差人画像
+      operationId: update_profile_v1_traveler_profile_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TravelerProfileUpdate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TravelerProfileRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/memory/{summary_id}:
+    delete:
+      tags:
+      - memory
+      summary: 合规删除一条记忆（清空正文与向量）
+      operationId: forget_memory_v1_memory__summary_id__delete
+      parameters:
+      - name: summary_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Summary Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryForgetRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/llm/tools:
+    get:
+      tags:
+      - llm
+      summary: Agent 工具契约目录
+      operationId: get_tools_v1_llm_tools_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ToolRead'
+                type: array
+                title: Response Get Tools V1 Llm Tools Get
+  /v1/llm/invocations:
+    get:
+      tags:
+      - llm
+      summary: LLM 调用记录（审计，最新在前）
+      operationId: list_invocations_v1_llm_invocations_get
+      parameters:
+      - name: task
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 按任务过滤
+          title: Task
+        description: 按任务过滤
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LLMInvocationRead'
+                title: Response List Invocations V1 Llm Invocations Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/metrics/summary:
+    get:
+      tags:
+      - metrics
+      summary: 实时指标汇总
+      operationId: metrics_summary_v1_metrics_summary_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsSummaryRead'
+  /v1/metrics:snapshot:
+    post:
+      tags:
+      - metrics
+      summary: 写入当前窗口的指标快照（同窗口可重跑覆盖）
+      operationId: create_snapshot_v1_metrics_snapshot_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/MetricSnapshotRead'
+                type: array
+                title: Response Create Snapshot V1 Metrics Snapshot Post
+  /v1/metrics/snapshots:
+    get:
+      tags:
+      - metrics
+      summary: 指标快照历史（最新在前）
+      operationId: list_snapshots_v1_metrics_snapshots_get
+      parameters:
+      - name: key
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 按指标键过滤
+          title: Key
+        description: 按指标键过滤
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MetricSnapshotRead'
+                title: Response List Snapshots V1 Metrics Snapshots Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/notifications:
+    get:
+      tags:
+      - notifications
+      summary: 我的通知
+      operationId: list_notifications_v1_notifications_get
+      parameters:
+      - name: unread_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Unread Only
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationFeedRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/notifications/{notification_id}:read:
+    post:
+      tags:
+      - notifications
+      summary: 标记通知已读（幂等）
+      operationId: read_notification_v1_notifications__notification_id__read_post
+      parameters:
+      - name: notification_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Notification Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sync:push:
+    post:
+      tags:
+      - sync
+      summary: 离线批次同步（逐项结果，部分成功可接受）
+      operationId: push_sync_batch_v1_sync_push_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPushRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    ApprovalPolicyCreate:
+      properties:
+        subject_type:
+          type: string
+          title: Subject Type
+          default: proactive_suggestion
+        min_severity:
+          type: string
+          enum:
+          - LOW
+          - MEDIUM
+          - HIGH
+          title: Min Severity
+          default: LOW
+        required_role:
+          type: string
+          enum:
+          - VIEWER
+          - TRAVELER
+          - ADMIN
+          - OWNER
+          title: Required Role
+          default: TRAVELER
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+      type: object
+      title: ApprovalPolicyCreate
+    ApprovalPolicyRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        subject_type:
+          type: string
+          title: Subject Type
+        min_severity:
+          type: string
+          enum:
+          - LOW
+          - MEDIUM
+          - HIGH
+          title: Min Severity
+        required_role:
+          type: string
+          enum:
+          - VIEWER
+          - TRAVELER
+          - ADMIN
+          - OWNER
+          title: Required Role
+        enabled:
+          type: boolean
+          title: Enabled
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - subject_type
+      - min_severity
+      - required_role
+      - enabled
+      - created_at
+      title: ApprovalPolicyRead
+    AuditEventRead:
+      properties:
+        at:
+          type: string
+          format: date-time
+          title: At
+        kind:
+          type: string
+          title: Kind
+        action:
+          type: string
+          title: Action
+        actor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor
+        detail:
+          additionalProperties: true
+          type: object
+          title: Detail
+      type: object
+      required:
+      - at
+      - kind
+      - action
+      title: AuditEventRead
+    Body_parse_import_v1_trips__trip_id__imports_parse_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: .xlsx / .xlsm 客户名单
+      type: object
+      required:
+      - file
+      title: Body_parse_import_v1_trips__trip_id__imports_parse_post
+    ConflictRecordRead:
+      properties:
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        server:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Server
+        client:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Client
+      type: object
+      title: ConflictRecordRead
+      description: 冲突双方的快照。客户端把 ``server`` 与 ``client`` 并排展示，由人决定怎么处理。
+    CustomerCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        external_ref:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: External Ref
+        tier:
+          type: string
+          enum:
+          - A
+          - B
+          - C
+          title: Tier
+          default: C
+        country_code:
+          anyOf:
+          - type: string
+            maxLength: 2
+          - type: 'null'
+          title: Country Code
+        industry:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Industry
+        primary_contact_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Contact Name
+        primary_contact_email:
+          anyOf:
+          - type: string
+            maxLength: 254
+          - type: 'null'
+          title: Primary Contact Email
+        primary_contact_phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Contact Phone
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - INACTIVE
+          - PROSPECT
+          title: Status
+          default: ACTIVE
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+      type: object
+      required:
+      - name
+      title: CustomerCreate
+    CustomerRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        external_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: External Ref
+        tier:
+          type: string
+          enum:
+          - A
+          - B
+          - C
+          title: Tier
+        country_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Country Code
+        industry:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Industry
+        primary_contact_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Contact Name
+        primary_contact_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Contact Email
+        primary_contact_phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Contact Phone
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - INACTIVE
+          - PROSPECT
+          title: Status
+        owner_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owner User Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - external_ref
+      - tier
+      - country_code
+      - industry
+      - primary_contact_name
+      - primary_contact_email
+      - primary_contact_phone
+      - status
+      - owner_user_id
+      - created_at
+      - updated_at
+      title: CustomerRead
+    DailyCapRead:
+      properties:
+        used:
+          type: integer
+          title: Used
+        cap:
+          type: integer
+          title: Cap
+      type: object
+      required:
+      - used
+      - cap
+      title: DailyCapRead
+    ExternalSignalCreate:
+      properties:
+        provider:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Provider
+        signal_type:
+          type: string
+          enum:
+          - VISA_POLICY_CHANGE
+          - WEATHER_DISRUPTION
+          - FX_VOLATILITY
+          - FLIGHT_STATUS
+          title: Signal Type
+        subject_type:
+          type: string
+          enum:
+          - COUNTRY
+          - TRIP
+          - CUSTOMER
+          title: Subject Type
+        subject_ref:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Subject Ref
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          default: 0.7
+        observed_at:
+          type: string
+          format: date-time
+          title: Observed At
+        valid_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Valid Until
+        dedupe_key:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Dedupe Key
+      type: object
+      required:
+      - provider
+      - signal_type
+      - subject_type
+      - subject_ref
+      - observed_at
+      - dedupe_key
+      title: ExternalSignalCreate
+      description: '外部源上报的一条事实。
+
+
+        ``dedupe_key`` 由上报方保证稳定（例如 ``visa_policy:DE:2026-11``）；同一键重推是更新，
+
+        不是新信号。``payload`` 的具体字段由信号类型约定，至少应包含可展示的 ``summary``。'
+    ExternalSignalRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        provider:
+          type: string
+          title: Provider
+        signal_type:
+          type: string
+          enum:
+          - VISA_POLICY_CHANGE
+          - WEATHER_DISRUPTION
+          - FX_VOLATILITY
+          - FLIGHT_STATUS
+          title: Signal Type
+        subject_type:
+          type: string
+          enum:
+          - COUNTRY
+          - TRIP
+          - CUSTOMER
+          title: Subject Type
+        subject_ref:
+          type: string
+          title: Subject Ref
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        confidence:
+          type: number
+          title: Confidence
+        observed_at:
+          type: string
+          format: date-time
+          title: Observed At
+        valid_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Valid Until
+        dedupe_key:
+          type: string
+          title: Dedupe Key
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - provider
+      - signal_type
+      - subject_type
+      - subject_ref
+      - confidence
+      - observed_at
+      - dedupe_key
+      - created_at
+      title: ExternalSignalRead
+    FollowUpTaskRead:
+      properties:
+        title:
+          type: string
+          title: Title
+        due_date:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Due Date
+      type: object
+      required:
+      - title
+      title: FollowUpTaskRead
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthRead:
+      properties:
+        status:
+          type: string
+          title: Status
+        env:
+          type: string
+          title: Env
+        version:
+          type: string
+          title: Version
+        database:
+          type: string
+          title: Database
+        time:
+          type: string
+          format: date-time
+          title: Time
+      type: object
+      required:
+      - status
+      - env
+      - version
+      - database
+      - time
+      title: HealthRead
+    ImportConfirmRead:
+      properties:
+        import_id:
+          type: string
+          format: uuid
+          title: Import Id
+        status:
+          type: string
+          title: Status
+        accepted_rows:
+          type: integer
+          title: Accepted Rows
+        rejected_rows:
+          type: integer
+          title: Rejected Rows
+        created_customers:
+          type: integer
+          title: Created Customers
+        created_places:
+          type: integer
+          title: Created Places
+        created_visits:
+          type: integer
+          title: Created Visits
+        reused_customers:
+          type: integer
+          title: Reused Customers
+        reused_places:
+          type: integer
+          title: Reused Places
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - import_id
+      - status
+      - accepted_rows
+      - rejected_rows
+      - created_customers
+      - created_places
+      - created_visits
+      - reused_customers
+      - reused_places
+      title: ImportConfirmRead
+    ImportConfirmRequest:
+      properties:
+        import_id:
+          type: string
+          format: uuid
+          title: Import Id
+        accepted_row_numbers:
+          items:
+            type: integer
+          type: array
+          title: Accepted Row Numbers
+      type: object
+      required:
+      - import_id
+      title: ImportConfirmRequest
+    ImportIssue:
+      properties:
+        code:
+          type: string
+          title: Code
+        field:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Field
+        message:
+          type: string
+          title: Message
+        severity:
+          type: string
+          enum:
+          - ERROR
+          - WARNING
+          title: Severity
+      type: object
+      required:
+      - code
+      - message
+      - severity
+      title: ImportIssue
+    ImportParseRead:
+      properties:
+        import_id:
+          type: string
+          format: uuid
+          title: Import Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        filename:
+          type: string
+          title: Filename
+        file_sha256:
+          type: string
+          title: File Sha256
+        status:
+          type: string
+          title: Status
+        total_rows:
+          type: integer
+          title: Total Rows
+        valid_rows:
+          type: integer
+          title: Valid Rows
+        invalid_rows:
+          type: integer
+          title: Invalid Rows
+        duplicate_rows:
+          type: integer
+          title: Duplicate Rows
+        columns:
+          items:
+            type: string
+          type: array
+          title: Columns
+        missing_columns:
+          items:
+            type: string
+          type: array
+          title: Missing Columns
+        unknown_columns:
+          items:
+            type: string
+          type: array
+          title: Unknown Columns
+        rows:
+          items:
+            $ref: '#/components/schemas/ImportRowRead'
+          type: array
+          title: Rows
+        report:
+          additionalProperties: true
+          type: object
+          title: Report
+      type: object
+      required:
+      - import_id
+      - trip_id
+      - filename
+      - file_sha256
+      - status
+      - total_rows
+      - valid_rows
+      - invalid_rows
+      - duplicate_rows
+      title: ImportParseRead
+    ImportRowRead:
+      properties:
+        row_number:
+          type: integer
+          title: Row Number
+        status:
+          type: string
+          title: Status
+        issues:
+          items:
+            $ref: '#/components/schemas/ImportIssue'
+          type: array
+          title: Issues
+        raw:
+          additionalProperties: true
+          type: object
+          title: Raw
+        normalized:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Normalized
+      type: object
+      required:
+      - row_number
+      - status
+      title: ImportRowRead
+    JobRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        job_type:
+          type: string
+          const: plan_trip
+          title: Job Type
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - SUCCEEDED
+          - FAILED
+          - DEAD
+          title: Status
+        attempts:
+          type: integer
+          title: Attempts
+        max_attempts:
+          type: integer
+          title: Max Attempts
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        result:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Result
+        last_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Error
+        available_at:
+          type: string
+          format: date-time
+          title: Available At
+        lease_expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Lease Expires At
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - job_type
+      - status
+      - attempts
+      - max_attempts
+      - last_error
+      - available_at
+      - lease_expires_at
+      - started_at
+      - finished_at
+      - created_at
+      - updated_at
+      title: JobRead
+    LLMInvocationRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        task:
+          type: string
+          title: Task
+        model:
+          type: string
+          title: Model
+        prompt_template_id:
+          type: string
+          title: Prompt Template Id
+        prompt_version:
+          type: string
+          title: Prompt Version
+        tokens_in:
+          type: integer
+          title: Tokens In
+        tokens_out:
+          type: integer
+          title: Tokens Out
+        latency_ms:
+          type: integer
+          title: Latency Ms
+        cost_estimate:
+          type: number
+          title: Cost Estimate
+        degraded:
+          type: boolean
+          title: Degraded
+        cached:
+          type: boolean
+          title: Cached
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+        trace_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trace Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - task
+      - model
+      - prompt_template_id
+      - prompt_version
+      - tokens_in
+      - tokens_out
+      - latency_ms
+      - cost_estimate
+      - degraded
+      - cached
+      - created_at
+      title: LLMInvocationRead
+    MemoryFeedbackRead:
+      properties:
+        type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Type
+        weight_delta:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Weight Delta
+      type: object
+      title: MemoryFeedbackRead
+    MemoryForgetRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        forgotten:
+          type: boolean
+          title: Forgotten
+        valid_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Valid Until
+      type: object
+      required:
+      - id
+      - forgotten
+      title: MemoryForgetRead
+    MemoryProcedureRead:
+      properties:
+        attempt_id:
+          type: string
+          format: uuid
+          title: Attempt Id
+        outcome:
+          type: string
+          title: Outcome
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - attempt_id
+      - outcome
+      - created_at
+      title: MemoryProcedureRead
+    MemorySearchItemRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          title: Kind
+        summary:
+          type: string
+          title: Summary
+        decisions:
+          items:
+            type: string
+          type: array
+          title: Decisions
+        follow_ups:
+          items:
+            type: string
+          type: array
+          title: Follow Ups
+        lessons:
+          items:
+            type: string
+          type: array
+          title: Lessons
+        valid_from:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Valid From
+        confidence:
+          type: number
+          title: Confidence
+        score:
+          type: number
+          title: Score
+      type: object
+      required:
+      - id
+      - kind
+      - summary
+      - confidence
+      - score
+      title: MemorySearchItemRead
+    MemorySearchRead:
+      properties:
+        query:
+          type: string
+          title: Query
+        items:
+          items:
+            $ref: '#/components/schemas/MemorySearchItemRead'
+          type: array
+          title: Items
+      type: object
+      required:
+      - query
+      title: MemorySearchRead
+    MemorySummaryRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          title: Kind
+        summary:
+          type: string
+          title: Summary
+        decisions:
+          items:
+            type: string
+          type: array
+          title: Decisions
+        follow_ups:
+          items:
+            type: string
+          type: array
+          title: Follow Ups
+        lessons:
+          items:
+            type: string
+          type: array
+          title: Lessons
+        valid_from:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Valid From
+        confidence:
+          type: number
+          title: Confidence
+      type: object
+      required:
+      - id
+      - kind
+      - summary
+      - confidence
+      title: MemorySummaryRead
+    MetricRead:
+      properties:
+        key:
+          type: string
+          title: Key
+        value:
+          type: number
+          title: Value
+        sample_size:
+          type: integer
+          title: Sample Size
+        target:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Target
+        unit:
+          type: string
+          title: Unit
+          default: ratio
+      type: object
+      required:
+      - key
+      - value
+      - sample_size
+      title: MetricRead
+    MetricSnapshotRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        metric_key:
+          type: string
+          title: Metric Key
+        value:
+          type: number
+          title: Value
+        sample_size:
+          type: integer
+          title: Sample Size
+        window_start:
+          type: string
+          format: date-time
+          title: Window Start
+        window_end:
+          type: string
+          format: date-time
+          title: Window End
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - metric_key
+      - value
+      - sample_size
+      - window_start
+      - window_end
+      - created_at
+      title: MetricSnapshotRead
+    MetricsSummaryRead:
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+          title: Generated At
+        metrics:
+          items:
+            $ref: '#/components/schemas/MetricRead'
+          type: array
+          title: Metrics
+      type: object
+      required:
+      - generated_at
+      title: MetricsSummaryRead
+    MinutesDraftRead:
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+          title: Draft Id
+        llm_invocation_id:
+          type: string
+          format: uuid
+          title: Llm Invocation Id
+        title:
+          type: string
+          title: Title
+        summary:
+          type: string
+          title: Summary
+        decisions:
+          items:
+            type: string
+          type: array
+          title: Decisions
+        follow_up_tasks:
+          items:
+            $ref: '#/components/schemas/MinutesFollowUpRead'
+          type: array
+          title: Follow Up Tasks
+        degraded:
+          type: boolean
+          title: Degraded
+      type: object
+      required:
+      - draft_id
+      - llm_invocation_id
+      - title
+      - summary
+      - degraded
+      title: MinutesDraftRead
+      description: 会议纪要草稿。``degraded=true`` 表示 LLM 不可用、内容来自模板兜底。
+    MinutesDraftRequest:
+      properties:
+        tone:
+          type: string
+          enum:
+          - PROFESSIONAL
+          - CONCISE
+          title: Tone
+          default: PROFESSIONAL
+      type: object
+      title: MinutesDraftRequest
+    MinutesFollowUpRead:
+      properties:
+        title:
+          type: string
+          title: Title
+        due_date:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Due Date
+      type: object
+      required:
+      - title
+      title: MinutesFollowUpRead
+    NotificationFeedRead:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/NotificationRead'
+          type: array
+          title: Items
+        unread:
+          type: integer
+          title: Unread
+          default: 0
+      type: object
+      title: NotificationFeedRead
+    NotificationRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        suggestion_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Suggestion Id
+        kind:
+          type: string
+          title: Kind
+        title:
+          type: string
+          title: Title
+        body:
+          type: string
+          title: Body
+        status:
+          type: string
+          enum:
+          - PENDING
+          - SENT
+          - FAILED
+          title: Status
+        provider:
+          type: string
+          title: Provider
+        attempts:
+          type: integer
+          title: Attempts
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+        read_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Read At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - kind
+      - title
+      - body
+      - status
+      - provider
+      - attempts
+      - created_at
+      title: NotificationRead
+    Page_CustomerRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/CustomerRead'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      title: Page[CustomerRead]
+    Page_PlaceRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/PlaceRead'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      title: Page[PlaceRead]
+    Page_TripRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TripRead'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      title: Page[TripRead]
+    PlaceCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        address_line:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address Line
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        region:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Region
+        country_code:
+          anyOf:
+          - type: string
+            maxLength: 2
+          - type: 'null'
+          title: Country Code
+        timezone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timezone
+        lat:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Lat
+        lon:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Lon
+      type: object
+      required:
+      - name
+      title: PlaceCreate
+    PlaceRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        address_line:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address Line
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        region:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Region
+        country_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Country Code
+        timezone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timezone
+        lat:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lat
+        lon:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lon
+        geocode_status:
+          type: string
+          enum:
+          - MISSING
+          - RESOLVED
+          - FAILED
+          title: Geocode Status
+        geocode_source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Geocode Source
+        geocode_confidence:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Geocode Confidence
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - address_line
+      - city
+      - region
+      - country_code
+      - timezone
+      - lat
+      - lon
+      - geocode_status
+      - geocode_source
+      - geocode_confidence
+      - created_at
+      - updated_at
+      title: PlaceRead
+    PlanActivationRead:
+      properties:
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        plan_version_id:
+          type: string
+          format: uuid
+          title: Plan Version Id
+        version_number:
+          type: integer
+          title: Version Number
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - ACTIVE
+          - SUPERSEDED
+          title: Status
+        superseded_plan_version_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Superseded Plan Version Id
+        trip_status:
+          type: string
+          enum:
+          - DRAFT
+          - PLANNING
+          - READY
+          - ACTIVE
+          - COMPLETED
+          - CANCELLED
+          title: Trip Status
+        trip_version:
+          type: integer
+          title: Trip Version
+        plan_trip_version:
+          type: integer
+          title: Plan Trip Version
+        activated_at:
+          type: string
+          format: date-time
+          title: Activated At
+      type: object
+      required:
+      - trip_id
+      - plan_version_id
+      - version_number
+      - status
+      - trip_status
+      - trip_version
+      - plan_trip_version
+      - activated_at
+      title: PlanActivationRead
+      description: '``plans/{plan_version_id}:activate`` 的响应。
+
+
+        返回激活**之后**的事实，而不是"请求已接受"：激活是同步的、事务性的（只有求解是异步的），
+
+        响应里给出目标版本、被顶替的上一版、出行状态与两侧的版本号，客户端无需再回查就能更新本地状态。
+
+        ``trip_version`` 与 ``plan_trip_version`` 都回传，是因为二者在激活前后**应当相等**——
+
+        客户端可以据此断言"生效的计划确实基于当前的出行输入"。'
+    PlanGenerateRead:
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          title: Job Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        trip_version:
+          type: integer
+          title: Trip Version
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - SUCCEEDED
+          - FAILED
+          - DEAD
+          title: Status
+        reused:
+          type: boolean
+          title: Reused
+          default: false
+      type: object
+      required:
+      - job_id
+      - trip_id
+      - trip_version
+      - status
+      title: PlanGenerateRead
+      description: '``plans:generate`` 的受理响应。
+
+
+        返回 **202 + job_id** 而不是计划本身：求解要走 OR-Tools，耗时不可预期，不能把 HTTP 请求
+
+        挂在那里等。客户端拿 ``job_id`` 去轮询 ``GET /v1/jobs/{job_id}``，或等出行状态变化。
+
+        ``reused=true`` 表示这次请求复用了已经在途的同一任务（同一出行同一版本重复点了按钮）。'
+    PlanStopDeltaRead:
+      properties:
+        visit_id:
+          type: string
+          format: uuid
+          title: Visit Id
+        change:
+          type: string
+          enum:
+          - ADDED
+          - REMOVED
+          - MOVED
+          - RETIMED
+          - UNCHANGED
+          title: Change
+        day_index_from:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Day Index From
+        day_index_to:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Day Index To
+        sequence_from:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sequence From
+        sequence_to:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sequence To
+        arrive_at_from:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Arrive At From
+        arrive_at_to:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Arrive At To
+        depart_at_from:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Depart At From
+        depart_at_to:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Depart At To
+        travel_minutes_from:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Travel Minutes From
+        travel_minutes_to:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Travel Minutes To
+        service_minutes_from:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Service Minutes From
+        service_minutes_to:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Service Minutes To
+      type: object
+      required:
+      - visit_id
+      - change
+      title: PlanStopDeltaRead
+      description: 一个拜访在两版计划里的对照。缺失的一侧留 ``None``（不塞哨兵值）。
+    PlanStopRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        visit_id:
+          type: string
+          format: uuid
+          title: Visit Id
+        day_index:
+          type: integer
+          title: Day Index
+        sequence:
+          type: integer
+          title: Sequence
+        day_date:
+          type: string
+          format: date
+          title: Day Date
+        arrive_at:
+          type: string
+          format: date-time
+          title: Arrive At
+        depart_at:
+          type: string
+          format: date-time
+          title: Depart At
+        travel_minutes:
+          type: integer
+          title: Travel Minutes
+        service_minutes:
+          type: integer
+          title: Service Minutes
+      type: object
+      required:
+      - id
+      - visit_id
+      - day_index
+      - sequence
+      - day_date
+      - arrive_at
+      - depart_at
+      - travel_minutes
+      - service_minutes
+      title: PlanStopRead
+    PlanUnplacedDeltaRead:
+      properties:
+        visit_id:
+          type: string
+          format: uuid
+          title: Visit Id
+        action:
+          type: string
+          enum:
+          - ADDED
+          - REMOVED
+          title: Action
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+      type: object
+      required:
+      - visit_id
+      - action
+      title: PlanUnplacedDeltaRead
+      description: 一个未排拜访在基准版与目标版之间的进出。
+    PlanVersionDetailRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        version_number:
+          type: integer
+          title: Version Number
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - ACTIVE
+          - SUPERSEDED
+          title: Status
+        problem_hash:
+          type: string
+          title: Problem Hash
+        solver:
+          type: string
+          enum:
+          - ortools
+          - heuristic
+          title: Solver
+        objective_value:
+          type: number
+          title: Objective Value
+        degraded:
+          type: boolean
+          title: Degraded
+        trip_version:
+          type: integer
+          title: Trip Version
+        validation:
+          additionalProperties: true
+          type: object
+          title: Validation
+        unplaced:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Unplaced
+        explanation_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Explanation Ref
+        job_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Job Id
+        stop_count:
+          type: integer
+          title: Stop Count
+          default: 0
+        day_count:
+          type: integer
+          title: Day Count
+          default: 0
+        activated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Activated At
+        superseded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Superseded At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        stops:
+          items:
+            $ref: '#/components/schemas/PlanStopRead'
+          type: array
+          title: Stops
+      type: object
+      required:
+      - id
+      - trip_id
+      - version_number
+      - status
+      - problem_hash
+      - solver
+      - objective_value
+      - degraded
+      - trip_version
+      - explanation_ref
+      - job_id
+      - activated_at
+      - superseded_at
+      - created_at
+      - updated_at
+      title: PlanVersionDetailRead
+    PlanVersionDiffRead:
+      properties:
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        base_plan_version_id:
+          type: string
+          format: uuid
+          title: Base Plan Version Id
+        target_plan_version_id:
+          type: string
+          format: uuid
+          title: Target Plan Version Id
+        base_version_number:
+          type: integer
+          title: Base Version Number
+        target_version_number:
+          type: integer
+          title: Target Version Number
+        base_status:
+          type: string
+          enum:
+          - DRAFT
+          - ACTIVE
+          - SUPERSEDED
+          title: Base Status
+        target_status:
+          type: string
+          enum:
+          - DRAFT
+          - ACTIVE
+          - SUPERSEDED
+          title: Target Status
+        base_solver:
+          type: string
+          enum:
+          - ortools
+          - heuristic
+          title: Base Solver
+        target_solver:
+          type: string
+          enum:
+          - ortools
+          - heuristic
+          title: Target Solver
+        base_degraded:
+          type: boolean
+          title: Base Degraded
+        target_degraded:
+          type: boolean
+          title: Target Degraded
+        objective_from:
+          type: number
+          title: Objective From
+        objective_to:
+          type: number
+          title: Objective To
+        objective_delta:
+          type: number
+          title: Objective Delta
+        travel_minutes_from:
+          type: integer
+          title: Travel Minutes From
+        travel_minutes_to:
+          type: integer
+          title: Travel Minutes To
+        travel_minutes_delta:
+          type: integer
+          title: Travel Minutes Delta
+        stops:
+          items:
+            $ref: '#/components/schemas/PlanStopDeltaRead'
+          type: array
+          title: Stops
+        unplaced:
+          items:
+            $ref: '#/components/schemas/PlanUnplacedDeltaRead'
+          type: array
+          title: Unplaced
+        summary:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Summary
+      type: object
+      required:
+      - trip_id
+      - base_plan_version_id
+      - target_plan_version_id
+      - base_version_number
+      - target_version_number
+      - base_status
+      - target_status
+      - base_solver
+      - target_solver
+      - base_degraded
+      - target_degraded
+      - objective_from
+      - objective_to
+      - objective_delta
+      - travel_minutes_from
+      - travel_minutes_to
+      - travel_minutes_delta
+      title: PlanVersionDiffRead
+      description: '``plans/{plan_version_id}:diff`` 的响应。
+
+
+        以路径里那份计划为主语（target），``against`` 为基准（base）。``summary`` 是各变更类型的
+
+        计数（键为小写变更名 + ``total``），供客户端一句话概括"改了多少"。'
+    PlanVersionRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        version_number:
+          type: integer
+          title: Version Number
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - ACTIVE
+          - SUPERSEDED
+          title: Status
+        problem_hash:
+          type: string
+          title: Problem Hash
+        solver:
+          type: string
+          enum:
+          - ortools
+          - heuristic
+          title: Solver
+        objective_value:
+          type: number
+          title: Objective Value
+        degraded:
+          type: boolean
+          title: Degraded
+        trip_version:
+          type: integer
+          title: Trip Version
+        validation:
+          additionalProperties: true
+          type: object
+          title: Validation
+        unplaced:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Unplaced
+        explanation_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Explanation Ref
+        job_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Job Id
+        stop_count:
+          type: integer
+          title: Stop Count
+          default: 0
+        day_count:
+          type: integer
+          title: Day Count
+          default: 0
+        activated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Activated At
+        superseded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Superseded At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - trip_id
+      - version_number
+      - status
+      - problem_hash
+      - solver
+      - objective_value
+      - degraded
+      - trip_version
+      - explanation_ref
+      - job_id
+      - activated_at
+      - superseded_at
+      - created_at
+      - updated_at
+      title: PlanVersionRead
+    ProactiveSuggestionRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        suggestion_type:
+          type: string
+          title: Suggestion Type
+        status:
+          type: string
+          enum:
+          - PENDING
+          - SUPPRESSED
+          - APPROVED
+          - EXECUTED
+          - DISMISSED
+          - EXPIRED
+          title: Status
+        title:
+          type: string
+          title: Title
+        rationale:
+          type: string
+          title: Rationale
+        evidence:
+          items:
+            $ref: '#/components/schemas/SuggestionEvidenceRead'
+          type: array
+          title: Evidence
+        proposed_action:
+          $ref: '#/components/schemas/ProposedActionRead'
+        confidence:
+          type: number
+          title: Confidence
+        requires_approval:
+          type: boolean
+          title: Requires Approval
+        severity:
+          type: string
+          enum:
+          - LOW
+          - MEDIUM
+          - HIGH
+          title: Severity
+        dedupe_key:
+          type: string
+          title: Dedupe Key
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - trip_id
+      - suggestion_type
+      - status
+      - title
+      - rationale
+      - confidence
+      - requires_approval
+      - severity
+      - dedupe_key
+      - created_at
+      title: ProactiveSuggestionRead
+    ProposedActionRead:
+      properties:
+        kind:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Kind
+        tool:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tool
+        params:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Params
+      type: object
+      title: ProposedActionRead
+      description: 建议被批准后系统打算做的动作。``requires_approval=true`` 时只是草稿。
+    RetentionReportRead:
+      properties:
+        records_redacted:
+          type: integer
+          title: Records Redacted
+        summaries_redacted:
+          type: integer
+          title: Summaries Redacted
+        cutoff:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Cutoff
+      type: object
+      required:
+      - records_redacted
+      - summaries_redacted
+      title: RetentionReportRead
+    SuggestionApprovalRead:
+      properties:
+        approved_by:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Approved By
+        approved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Approved At
+      type: object
+      title: SuggestionApprovalRead
+    SuggestionApproveRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - PENDING
+          - SUPPRESSED
+          - APPROVED
+          - EXECUTED
+          - DISMISSED
+          - EXPIRED
+          title: Status
+        approval:
+          anyOf:
+          - $ref: '#/components/schemas/SuggestionApprovalRead'
+          - type: 'null'
+        execution:
+          anyOf:
+          - $ref: '#/components/schemas/SuggestionExecutionRead'
+          - type: 'null'
+      type: object
+      required:
+      - id
+      - status
+      title: SuggestionApproveRead
+    SuggestionDismissRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - PENDING
+          - SUPPRESSED
+          - APPROVED
+          - EXECUTED
+          - DISMISSED
+          - EXPIRED
+          title: Status
+        dismissed_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dismissed Reason
+        memory_feedback:
+          anyOf:
+          - $ref: '#/components/schemas/MemoryFeedbackRead'
+          - type: 'null'
+      type: object
+      required:
+      - id
+      - status
+      title: SuggestionDismissRead
+    SuggestionDismissRequest:
+      properties:
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Reason
+      type: object
+      title: SuggestionDismissRequest
+      description: 驳回原因可选。契约没有强制请求体；空 body 与 ``{}`` 都应被接受。
+    SuggestionEvidenceRead:
+      properties:
+        kind:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Kind
+        ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ref
+        retrieved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Retrieved At
+      type: object
+      title: SuggestionEvidenceRead
+      description: 一条证据。``retrieved_at`` 只在真的检索过外部/缓存数据时才有值。
+    SuggestionExecutionRead:
+      properties:
+        status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+      type: object
+      title: SuggestionExecutionRead
+    SuggestionFeedRead:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ProactiveSuggestionRead'
+          type: array
+          title: Items
+        daily_cap:
+          $ref: '#/components/schemas/DailyCapRead'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - daily_cap
+      title: SuggestionFeedRead
+      description: '``GET /v1/proactive/suggestions`` 的分页壳。
+
+
+        与通用 ``Page`` 不同，这个列表额外携带"今日打扰额度"——客户端 Today 页要同时展示
+
+        "还剩几次提醒"，把它放进同一响应可以少一次往返。'
+    SyncItemRequest:
+      properties:
+        item_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Item Id
+        entity:
+          type: string
+          enum:
+          - visit_record
+          - customer
+          - plan_stop
+          title: Entity
+        operation:
+          type: string
+          enum:
+          - upsert
+          - delete
+          title: Operation
+          default: upsert
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        client_updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Client Updated At
+        base_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Base Version
+      type: object
+      required:
+      - item_id
+      - entity
+      title: SyncItemRequest
+    SyncItemResultRead:
+      properties:
+        item_id:
+          type: string
+          title: Item Id
+        entity:
+          type: string
+          enum:
+          - visit_record
+          - customer
+          - plan_stop
+          title: Entity
+        status:
+          type: string
+          enum:
+          - applied
+          - conflict
+          - rejected
+          title: Status
+        server_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Server Version
+        conflict:
+          anyOf:
+          - $ref: '#/components/schemas/ConflictRecordRead'
+          - type: 'null'
+      type: object
+      required:
+      - item_id
+      - entity
+      - status
+      title: SyncItemResultRead
+    SyncPushRead:
+      properties:
+        results:
+          items:
+            $ref: '#/components/schemas/SyncItemResultRead'
+          type: array
+          title: Results
+        summary:
+          $ref: '#/components/schemas/SyncSummaryRead'
+      type: object
+      required:
+      - results
+      - summary
+      title: SyncPushRead
+      description: 逐项结果。**部分成功是可接受的**——离线队列按每一行的 verdict 决定去留。
+    SyncPushRequest:
+      properties:
+        device_id:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Device Id
+        items:
+          items:
+            $ref: '#/components/schemas/SyncItemRequest'
+          type: array
+          maxItems: 200
+          minItems: 1
+          title: Items
+      type: object
+      required:
+      - device_id
+      - items
+      title: SyncPushRequest
+    SyncSummaryRead:
+      properties:
+        applied:
+          type: integer
+          title: Applied
+        conflict:
+          type: integer
+          title: Conflict
+        rejected:
+          type: integer
+          title: Rejected
+      type: object
+      required:
+      - applied
+      - conflict
+      - rejected
+      title: SyncSummaryRead
+    ToolRead:
+      properties:
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        input_schema:
+          additionalProperties: true
+          type: object
+          title: Input Schema
+        scope:
+          type: string
+          title: Scope
+        requires_approval:
+          type: boolean
+          title: Requires Approval
+        idempotent:
+          type: boolean
+          title: Idempotent
+        handler:
+          type: string
+          title: Handler
+      type: object
+      required:
+      - name
+      - description
+      - scope
+      - requires_approval
+      - idempotent
+      - handler
+      title: ToolRead
+    TravelerProfileRead:
+      properties:
+        version:
+          type: integer
+          title: Version
+        preferences:
+          additionalProperties: true
+          type: object
+          title: Preferences
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        confidence:
+          type: number
+          title: Confidence
+      type: object
+      required:
+      - version
+      - confidence
+      title: TravelerProfileRead
+    TravelerProfileUpdate:
+      properties:
+        preferences:
+          additionalProperties: true
+          type: object
+          title: Preferences
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          default: 1.0
+      type: object
+      title: TravelerProfileUpdate
+    TripCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        purpose:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Purpose
+        origin_place_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Origin Place Id
+        home_timezone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Home Timezone
+        currency:
+          anyOf:
+          - type: string
+            maxLength: 3
+            minLength: 3
+          - type: 'null'
+          title: Currency
+        window_start:
+          type: string
+          format: date-time
+          title: Window Start
+        window_end:
+          type: string
+          format: date-time
+          title: Window End
+        countries:
+          items:
+            type: string
+          type: array
+          title: Countries
+        budget_amount:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+          - type: 'null'
+          title: Budget Amount
+      type: object
+      required:
+      - name
+      - window_start
+      - window_end
+      title: TripCreate
+    TripMemoryRead:
+      properties:
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        summaries:
+          items:
+            $ref: '#/components/schemas/MemorySummaryRead'
+          type: array
+          title: Summaries
+        procedure:
+          items:
+            $ref: '#/components/schemas/MemoryProcedureRead'
+          type: array
+          title: Procedure
+      type: object
+      required:
+      - trip_id
+      title: TripMemoryRead
+    TripRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        purpose:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Purpose
+        owner_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owner User Id
+        origin_place_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Origin Place Id
+        home_timezone:
+          type: string
+          title: Home Timezone
+        currency:
+          type: string
+          title: Currency
+        window_start:
+          type: string
+          format: date-time
+          title: Window Start
+        window_end:
+          type: string
+          format: date-time
+          title: Window End
+        countries:
+          items:
+            type: string
+          type: array
+          title: Countries
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - PLANNING
+          - READY
+          - ACTIVE
+          - COMPLETED
+          - CANCELLED
+          title: Status
+        budget_amount:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Budget Amount
+        version:
+          type: integer
+          title: Version
+        active_plan_version_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Active Plan Version Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        visit_count:
+          type: integer
+          title: Visit Count
+          default: 0
+        customer_count:
+          type: integer
+          title: Customer Count
+          default: 0
+        plan_version_count:
+          type: integer
+          title: Plan Version Count
+          default: 0
+      type: object
+      required:
+      - id
+      - name
+      - purpose
+      - owner_user_id
+      - origin_place_id
+      - home_timezone
+      - currency
+      - window_start
+      - window_end
+      - countries
+      - status
+      - budget_amount
+      - version
+      - active_plan_version_id
+      - created_at
+      - updated_at
+      title: TripRead
+    TripUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 200
+            minLength: 1
+          - type: 'null'
+          title: Name
+        purpose:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Purpose
+        window_start:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Window Start
+        window_end:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Window End
+        countries:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Countries
+        budget_amount:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+          - type: 'null'
+          title: Budget Amount
+        status:
+          anyOf:
+          - type: string
+            enum:
+            - DRAFT
+            - PLANNING
+            - READY
+            - ACTIVE
+            - COMPLETED
+            - CANCELLED
+          - type: 'null'
+          title: Status
+      type: object
+      title: TripUpdate
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    VisitCreate:
+      properties:
+        place_id:
+          type: string
+          format: uuid
+          title: Place Id
+        customer_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Customer Id
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        service_minutes:
+          type: integer
+          maximum: 1440.0
+          exclusiveMinimum: 0.0
+          title: Service Minutes
+          default: 60
+        time_window_start:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Time Window Start
+        time_window_end:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Time Window End
+        priority:
+          type: integer
+          maximum: 3.0
+          minimum: 1.0
+          title: Priority
+          default: 2
+        business_value:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+          title: Business Value
+          default: '0'
+        movement_mode:
+          type: string
+          enum:
+          - GROUND
+          - RAIL
+          - AIR
+          - SEA
+          title: Movement Mode
+          default: GROUND
+        is_immovable:
+          type: boolean
+          title: Is Immovable
+          default: false
+      type: object
+      required:
+      - place_id
+      title: VisitCreate
+    VisitRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        customer_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Customer Id
+        place_id:
+          type: string
+          format: uuid
+          title: Place Id
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        service_minutes:
+          type: integer
+          title: Service Minutes
+        time_window_start:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Time Window Start
+        time_window_end:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Time Window End
+        priority:
+          type: integer
+          title: Priority
+        business_value:
+          type: string
+          title: Business Value
+        movement_mode:
+          type: string
+          enum:
+          - GROUND
+          - RAIL
+          - AIR
+          - SEA
+          title: Movement Mode
+        is_immovable:
+          type: boolean
+          title: Is Immovable
+        status:
+          type: string
+          enum:
+          - PLANNED
+          - SCHEDULED
+          - DONE
+          - MISSED
+          - CANCELLED
+          title: Status
+        client_updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Client Updated At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - trip_id
+      - customer_id
+      - place_id
+      - title
+      - service_minutes
+      - time_window_start
+      - time_window_end
+      - priority
+      - business_value
+      - movement_mode
+      - is_immovable
+      - status
+      - client_updated_at
+      - created_at
+      - updated_at
+      title: VisitRead
+    VisitRecordCreate:
+      properties:
+        client_record_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Client Record Id
+        outcome:
+          type: string
+          enum:
+          - MET
+          - NOT_MET
+          - RESCHEDULED
+          - CANCELLED
+          title: Outcome
+        notes:
+          type: string
+          title: Notes
+          default: ''
+        client_updated_at:
+          type: string
+          format: date-time
+          title: Client Updated At
+        photos:
+          items:
+            type: string
+          type: array
+          title: Photos
+        follow_up_tasks:
+          items:
+            $ref: '#/components/schemas/FollowUpTaskRead'
+          type: array
+          title: Follow Up Tasks
+      type: object
+      required:
+      - client_record_id
+      - outcome
+      - client_updated_at
+      title: VisitRecordCreate
+      description: '``POST /v1/visits/{visit_id}/records`` 请求体。
+
+
+        ``client_record_id`` 是客户端生成并持久化的幂等键（离线队列的 item id 与它相同）。
+
+        ``client_updated_at`` 是 LWW 冲突判定的依据，必须由客户端给出；服务端收到的时间
+
+        只用于审计，不参与"谁后写"的判断。'
+    VisitRecordRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        visit_id:
+          type: string
+          format: uuid
+          title: Visit Id
+        client_record_id:
+          type: string
+          title: Client Record Id
+        outcome:
+          type: string
+          enum:
+          - MET
+          - NOT_MET
+          - RESCHEDULED
+          - CANCELLED
+          title: Outcome
+        server_version:
+          type: integer
+          title: Server Version
+        applied:
+          type: boolean
+          title: Applied
+        conflict:
+          anyOf:
+          - $ref: '#/components/schemas/ConflictRecordRead'
+          - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - visit_id
+      - client_record_id
+      - outcome
+      - server_version
+      - applied
+      - created_at
+      title: VisitRecordRead
+    VisitUpdate:
+      properties:
+        customer_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Customer Id
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        service_minutes:
+          anyOf:
+          - type: integer
+            maximum: 1440.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Service Minutes
+        time_window_start:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Time Window Start
+        time_window_end:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Time Window End
+        priority:
+          anyOf:
+          - type: integer
+            maximum: 3.0
+            minimum: 1.0
+          - type: 'null'
+          title: Priority
+        business_value:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+          - type: 'null'
+          title: Business Value
+        movement_mode:
+          anyOf:
+          - type: string
+            enum:
+            - GROUND
+            - RAIL
+            - AIR
+            - SEA
+          - type: 'null'
+          title: Movement Mode
+        is_immovable:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Immovable
+        status:
+          anyOf:
+          - type: string
+            enum:
+            - PLANNED
+            - SCHEDULED
+            - DONE
+            - MISSED
+            - CANCELLED
+          - type: 'null'
+          title: Status
+      type: object
+      title: VisitUpdate

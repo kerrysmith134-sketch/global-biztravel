@@ -1,0 +1,27 @@
+# 只放工具配置。依赖走 requirements.txt，导入路径走 pytest 的 pythonpath，
+# 目的是让「源码目录即包根」，避免为一个单体仓库引入打包开销。
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+# 迁移脚本是"按时间顺序的历史记录"，不是可以随时重排导入的普通源码，单独排除。
+exclude = [".venv", "**/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4"]
+# UP046：`Page[T]` 的 `Generic` 写法由 Pydantic 的泛型参数化路径决定（`Page[CustomerRead]`
+# 作为 response_model 会被 Pydantic 参数化），改成 PEP 695 语法会引入不必要的验证风险，故保留。
+ignore = ["E501", "UP046"]
+
+[tool.ruff.lint.per-file-ignores]
+"services/api/tests/*" = ["E402"]
+"scripts/*" = ["E402"]
+
+[tool.pytest.ini_options]
+pythonpath = ["services/api", "packages/planning-engine"]
+testpaths = ["services/api/tests", "packages/planning-engine/tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+markers = [
+    "integration: 需要本地 PostgreSQL 实例（docker compose 起 zhi-tu-pg）",
+    "acceptance: 对应设计文档第 16.3 章 AT 编号的验收场景",
+]
