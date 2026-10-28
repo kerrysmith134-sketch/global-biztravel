@@ -35,7 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import UUID
 
 from travel_planner.contracts import (
@@ -47,7 +47,7 @@ from travel_planner.contracts import (
     UnplacedReason,
     UnplacedStop,
 )
-from travel_planner.days import DayWindow, enumerate_days
+from travel_planner.days import DayWindow, add_elapsed, enumerate_days
 from travel_planner.geometry import haversine_km, travel_minutes
 
 
@@ -177,12 +177,12 @@ def build_schedule(
                 cost_currency = None
                 source = "haversine-estimate"
                 stale = False
-            earliest = depart_time + timedelta(minutes=travel)
+            earliest = add_elapsed(depart_time, travel)
             arrive = resolve_arrival(earliest, stop, window_conflict=window_conflict)
             if arrive is None:
                 continue
 
-            depart = arrive + timedelta(minutes=stop.service_minutes)
+            depart = add_elapsed(arrive, stop.service_minutes)
             if depart > state.window.close:
                 continue
 

@@ -9,8 +9,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, time, timedelta
 from datetime import date as date_type
-from datetime import datetime, time, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -35,6 +35,16 @@ from travel_planner.geometry import travel_minutes
 
 _ONE_SECOND = timedelta(seconds=1)
 _LOCKED_ORDER_TOLERANCE = timedelta(seconds=0)
+
+
+def _elapsed_minutes(start: datetime, end: datetime) -> int:
+    """独立复算真实经过时间；不导入调度器的时长辅助函数。"""
+    if start.tzinfo is None or end.tzinfo is None:
+        return int((end - start).total_seconds() // 60)
+    return int(
+        (end.astimezone(UTC) - start.astimezone(UTC)).total_seconds()
+        // 60
+    )
 
 
 def _day_bounds(problem: PlanningProblem) -> dict[date_type, tuple[datetime, datetime]]:
@@ -168,7 +178,7 @@ def validate(
             source = by_id.get(stop.visit_id)
             if source is None:
                 continue
-            actual = int((stop.depart - stop.arrive).total_seconds() // 60)
+            actual = _elapsed_minutes(stop.arrive, stop.depart)
             if actual != source.service_minutes:
                 service_issues.append(f"{stop.visit_id}:expected={source.service_minutes} actual={actual}")
     checks.append(

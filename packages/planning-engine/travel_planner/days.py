@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, time, timedelta
 from datetime import date as date_type
-from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from travel_planner.contracts import ProblemWindow
@@ -69,6 +69,29 @@ def enumerate_days(window: ProblemWindow, timezone_home: str) -> tuple[DayWindow
     if not days:
         raise ValueError("trip window contains no usable day")
     return tuple(days)
+
+
+def add_elapsed(moment: datetime, minutes: int) -> datetime:
+    """按**真实经过时间**推进时刻，再换回原时区的墙上时间。
+
+    直接对带时区的 datetime 加 timedelta 是墙上时间运算；跨夏令时切换时会把 60 分钟
+    算成 0 或 120 分钟。航班/会议时长都是真实经过时间，必须先转到 UTC 再相加。
+    """
+    if moment.tzinfo is None:
+        return moment + timedelta(minutes=minutes)
+    return (moment.astimezone(UTC) + timedelta(minutes=minutes)).astimezone(
+        moment.tzinfo
+    )
+
+
+def elapsed_minutes(start: datetime, end: datetime) -> int:
+    """两个时刻之间真实经过的整分钟数；朴素时间按墙上时间相减。"""
+    if start.tzinfo is None or end.tzinfo is None:
+        return int((end - start).total_seconds() // 60)
+    return int(
+        (end.astimezone(UTC) - start.astimezone(UTC)).total_seconds()
+        // 60
+    )
 
 
 def minutes_between(base: datetime, moment: datetime) -> int:
