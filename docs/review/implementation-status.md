@@ -16,7 +16,7 @@
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/Trips/计划/地图/日历/现场记录/CRM/同步/记忆/设置；构建通过；12 单测 + 4 UI 自动化 |
+| MS-6 | iOS 客户端 | ✅ | Today/Trips/计划/地图/日历/现场记录/CRM/同步/记忆/设置；构建通过；13 单测 + 5 UI 自动化 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -58,7 +58,7 @@
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | 12 单测 + 4 UI 自动化通过（连接真实后端） |
+| `make ios-test` | 13 单测 + 5 UI 自动化通过（连接真实后端） |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
@@ -120,8 +120,8 @@
 3. **KMS 密钥托管**：字段加密与轮换脚本已就绪；key 仍来自环境变量。
 4. **真实 embedding 凭证**：hash/OpenAI-compatible provider 已就绪，需配置模型与 key。
 5. **AT-001~AT-012 按钮级 UI 自动化**：业务全链路由 `make e2e` 覆盖，UI 自动化已覆盖启动、
-   Today、行动中心、新建出行、列表、详情、拜访简报、费用录入与同步页；Excel 文件选择器、
-   计划生成/激活与现场记录提交仍未编写。
+   Today、行动中心、新建出行、列表、详情、拜访简报、费用录入、计划生成/激活与同步页；
+   Excel 文件选择器与现场记录提交仍未编写。
 6. **签证官方数据源与预约渠道**：当前用离线目录做要求建模，真实官方核验/预约未接入。
 7. **费用深度集成**：报销单快照、审批与显式汇率折算已闭环；实时汇率源、票据 OCR 与财务系统
    对接未接入。

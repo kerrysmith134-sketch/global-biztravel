@@ -106,6 +106,59 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
     }
 
+    func testGenerateAndActivatePlan() throws {
+        let setup = try makeBriefingTrip()
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        app.buttons["出行"].tap()
+        let trip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(trip.waitForExistence(timeout: 15))
+        trip.tap()
+        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+
+        let generate = app.buttons["生成新计划"]
+        for _ in 0 ..< 8 where !generate.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(generate.isHittable, "未找到生成新计划入口")
+        generate.tap()
+
+        // 后台 Worker 求解；给真实队列留出时间。
+        // 计划区在拜访列表之后；求解是异步的，边等边向下滚。
+        let planCell = app.buttons.matching(NSPredicate(format: "label CONTAINS 'v1'")).firstMatch
+        let deadline = Date().addingTimeInterval(60)
+        while !planCell.exists && Date() < deadline {
+            app.swipeUp()
+            usleep(1_000_000)
+        }
+        XCTAssertTrue(planCell.exists, "计划未生成；确认 Worker 正在运行")
+        planCell.tap()
+        XCTAssertTrue(app.navigationBars["计划详情"].waitForExistence(timeout: 15))
+
+        let activate = app.buttons["激活此计划"]
+        for _ in 0 ..< 8 where !activate.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(activate.isHittable, "未找到激活按钮")
+        activate.tap()
+
+        // 激活结果提示在页面顶部；先等请求完成，再回到顶部读取状态。
+        let activated = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '已激活'")
+        ).firstMatch
+        let activationDeadline = Date().addingTimeInterval(20)
+        while !activated.exists && Date() < activationDeadline {
+            app.swipeDown()
+        }
+        XCTAssertTrue(activated.exists, "计划未激活")
+    }
+
     func testExpenseEntryFlow() throws {
         let setup = try makeBriefingTrip()
         let app = XCUIApplication()

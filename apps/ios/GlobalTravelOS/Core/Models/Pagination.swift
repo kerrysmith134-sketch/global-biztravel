@@ -16,9 +16,17 @@ struct Page<Item: Decodable>: Decodable {
     }
 
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.items = try container.decodeIfPresent([Item].self, forKey: .items) ?? []
-        self.nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+        // 分页接口返回 `{items,next_cursor}`；少数列表接口（如计划版本）直接返回裸数组。
+        // 两者都要能解码——否则前者正常、后者会被静默解成空列表。
+        if let container = try? decoder.container(keyedBy: CodingKeys.self),
+           container.contains(.items) {
+            self.items = try container.decode([Item].self, forKey: .items)
+            self.nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+        } else {
+            let single = try decoder.singleValueContainer()
+            self.items = try single.decode([Item].self)
+            self.nextCursor = nil
+        }
     }
 
     var isEmpty: Bool { items.isEmpty }

@@ -176,6 +176,24 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(job.status.isTerminal)
     }
 
+    func testPageDecodesBareArrayResponse() throws {
+        let json = """
+        [{
+          "id": "p1", "trip_id": "t1", "version_number": 1, "status": "DRAFT",
+          "problem_hash": "sha256:x", "solver": "heuristic", "objective_value": 0,
+          "solution_status": "FEASIBLE", "cost_unknown_count": 0, "degraded": false,
+          "trip_version": 1, "validation": {"feasible": true}, "unplaced": [],
+          "policy_violations": [], "explanation_ref": null, "job_id": null,
+          "stop_count": 1, "day_count": 1, "activated_at": null, "superseded_at": null,
+          "created_at": "2026-10-28T10:00:00+00:00", "updated_at": "2026-10-28T10:00:00+00:00"
+        }]
+        """
+        let page = try DateCoding.decode(Page<PlanVersion>.self, fromJSON: json)
+        XCTAssertEqual(page.items.count, 1)
+        XCTAssertEqual(page.items.first?.versionLabel, "v1")
+        XCTAssertNil(page.nextCursor)
+    }
+
     func testVisitBriefingDecodesHistoryAndGaps() throws {
         let json = """
         {
