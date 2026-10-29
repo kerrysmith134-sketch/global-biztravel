@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 /// 真实后端 UI 冒烟：启动客户端 → Today 页加载 → 出行列表 → 打开种子出行 → 同步页。
@@ -196,6 +197,128 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
     }
 
+    func testVisitRecordSubmissionFlow() throws {
+        let setup = try makeBriefingTrip()
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        app.buttons["出行"].tap()
+        let trip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(trip.waitForExistence(timeout: 15))
+        trip.tap()
+        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+
+        let record = app.buttons["记录"].firstMatch
+        for _ in 0 ..< 8 where !record.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(record.isHittable, "未找到记录入口")
+        record.tap()
+        XCTAssertTrue(app.navigationBars["现场记录"].waitForExistence(timeout: 10))
+
+        let notes = app.textFields["现场记录"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 10))
+        notes.tap()
+        notes.typeText("UI 自动化：客户确认续约意向")
+
+        let save = app.buttons["保存现场记录"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        save.tap()
+
+        // 结果区显示"已提交到服务端"或离线排队原因。
+        let result = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '已提交到服务端' OR label CONTAINS '已离线保存'")
+        ).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 20), "现场记录未提交")
+    }
+
+    func testExcelImportFlow() throws {
+        let setup = try makeBriefingTrip()
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+        XCTAssertTrue(
+            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            "Today 页未出现；确认 make api 正在运行"
+        )
+        // App 装好后再落夹具：容器由安装创建，元数据一定可读。
+        try seedImportFixture()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        app.buttons["出行"].tap()
+        let trip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试出行未出现在列表中")
+        trip.tap()
+        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+
+        let importButton = app.buttons["导入 Excel 客户名单"]
+        for _ in 0 ..< 8 where !importButton.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(importButton.isHittable, "未找到导入入口")
+        importButton.tap()
+        XCTAssertTrue(app.navigationBars["导入客户名单"].waitForExistence(timeout: 10))
+
+        app.buttons["选择 Excel 文件"].tap()
+
+        // 系统文件选择器：我的iPhone → 应用目录 → 夹具文件。
+        let picker = app
+        XCTAssertTrue(
+            picker.searchFields["搜索"].waitForExistence(timeout: 15),
+            "文件选择器未出现"
+        )
+        // 选择器默认在"最近项目"；先切到"浏览"才看得到位置列表。
+        let browse = picker.buttons["浏览"]
+        if browse.waitForExistence(timeout: 5) {
+            browse.tap()
+        }
+
+        let location = picker.cells.matching(
+            NSPredicate(format: "identifier CONTAINS '我的iPhone' OR label == '我的iPhone'")
+        ).firstMatch
+        XCTAssertTrue(location.waitForExistence(timeout: 10), "未找到'我的iPhone'入口")
+        location.tap()
+
+        let appFolder = picker.cells.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'GlobalTravelOS'")
+        ).firstMatch
+        XCTAssertTrue(appFolder.waitForExistence(timeout: 30), "未找到应用目录")
+        appFolder.tap()
+
+        let fixtureCell = picker.cells.matching(
+            NSPredicate(format: "label CONTAINS 'sample-customers'")
+        ).firstMatch
+        XCTAssertTrue(fixtureCell.waitForExistence(timeout: 15), "应用目录里没有夹具文件")
+        fixtureCell.tap()
+
+        // 解析完成后出现预览与逐行确认。
+        XCTAssertTrue(
+            app.staticTexts["预览"].waitForExistence(timeout: 20),
+            "解析预览未出现"
+        )
+        let confirm = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH '确认导入'")
+        ).firstMatch
+        let confirmDeadline = Date().addingTimeInterval(20)
+        while !confirm.exists && Date() < confirmDeadline {
+            app.swipeUp()
+        }
+        XCTAssertTrue(confirm.exists, "未找到确认导入按钮")
+        confirm.tap()
+        XCTAssertTrue(
+            app.staticTexts["导入结果"].waitForExistence(timeout: 20),
+            "导入未完成"
+        )
+    }
+
     func testCreateTripFlow() throws {
         let app = XCUIApplication()
         app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
@@ -272,6 +395,48 @@ private extension GlobalTravelOSUITests {
             ]
         )
         return BriefingSetup(tripId: tripId, tripName: tripName)
+    }
+
+    /// 把导入夹具放进主 App 沙盒 Documents（App 已开启文件共享，文件选择器可见）。
+    ///
+    /// UI 测试目标编译于 iOS SDK，拿不到 `Process`，因此用共享模拟器文件系统定位主 App 容器。
+    func seedImportFixture() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("docs/acceptance-tests/fixtures/sample-customers.xlsx")
+        let fm = FileManager.default
+        XCTAssertTrue(fm.fileExists(atPath: source.path), "缺少导入夹具")
+
+        // NSHomeDirectory() = .../Containers/Data/Application/<uuid>（测试运行器自己的容器）；
+        // 上一级就是全部应用容器目录，主 App 用标记文件区分。
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let appContainers = home.deletingLastPathComponent()
+
+        // 用容器元数据里的 bundle id 精确定位主 App 容器（每次安装都成立，不依赖数据标记）。
+        var targetDocuments: URL?
+        for name in (try? fm.contentsOfDirectory(atPath: appContainers.path)) ?? [] {
+            let container = appContainers.appendingPathComponent(name)
+            let metadata = container.appendingPathComponent(
+                ".com.apple.mobile_container_manager.metadata.plist"
+            )
+            guard let data = try? Data(contentsOf: metadata),
+                  let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
+                  let identifier = plist["MCMMetadataIdentifier"] as? String,
+                  identifier == "com.anari.globaltravelos"
+            else { continue }
+            targetDocuments = container.appendingPathComponent("Documents")
+            break
+        }
+        let documents = try XCTUnwrap(targetDocuments, "未找到主 App 容器")
+        try fm.createDirectory(at: documents, withIntermediateDirectories: true)
+        let target = documents.appendingPathComponent("sample-customers.xlsx")
+        if fm.fileExists(atPath: target.path) {
+            try fm.removeItem(at: target)
+        }
+        try fm.copyItem(at: source, to: target)
     }
 
     func postJSON(_ urlString: String, body: [String: Any]) throws -> [String: Any] {
