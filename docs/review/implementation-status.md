@@ -119,7 +119,7 @@
   `assistant_reply v1` prompt 生成并挂 `llm_invocation_id`，事实卡片（行程状态/行动中心计数）
   由服务端计算随消息落库；关键词给出带人审标注的工具提案；删除对话只删聊天表。
   iOS 对话页已接入（Today 与行程详情入口：列表/消息流/事实卡片/行程卡片直达）；
-  会话内执行已接：`POST .../actions` 白名单动作（批准/驳回建议）复用
+  会话内执行已接：`POST .../actions` 白名单动作（批准/驳回建议、生成计划）复用
   `proactive_service` 的人审门槛与会签，结果以 ACTION_RESULT 卡片回到对话。
 - **当地生活指南（PRD 方向五）**：离线目录（8 国 7 类条目 + 城市贴士）按出行国家与拜访
   城市组装 `GET /v1/trips/{id}/local-guide`；实时推荐/天气以 `data_gaps` 标注为未接入；

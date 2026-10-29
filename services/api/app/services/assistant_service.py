@@ -30,7 +30,7 @@ from app.llm.tools import list_tools
 from app.models.assistant import AssistantConversation, AssistantMessage
 from app.models.proactive import ProactiveSuggestion
 from app.models.trip import Trip
-from app.services import action_center_service, proactive_service, trip_service
+from app.services import action_center_service, job_service, proactive_service, trip_service
 
 HISTORY_LIMIT = 6
 MAX_CONTENT = 4000
@@ -211,6 +211,43 @@ def run_action(
         suggestion = session.get(ProactiveSuggestion, UUID(str(subject_id)))
         status = suggestion.status if suggestion is not None else "UNKNOWN"
         detail = f"建议已批准，当前状态 {status}"
+    elif action == "generate_plan":
+        if conversation.trip_id is None:
+            raise Unprocessable("对话未绑定行程，无法生成计划", details={"action": action})
+        trip = session.get(Trip, conversation.trip_id)
+        if trip is None or trip.status in ("CANCELLED", "COMPLETED"):
+            raise Unprocessable(
+                "该出行当前不可生成计划", details={"status": trip.status if trip else None}
+            )
+        dedupe_key = f"plan_trip:{trip.id}:{trip.version}"
+        job = job_service.enqueue(
+            session,
+            organization_id,
+            job_type=job_service.JOB_TYPE_PLAN_TRIP,
+            payload={"trip_id": str(trip.id), "trip_version": trip.version},
+            dedupe_key=dedupe_key,
+        )
+        if trip.status == "DRAFT":
+            trip.status = "PLANNING"
+        session.flush()
+        detail = f"已入队生成计划任务（job {str(job.id)[:8]}）"
+        card = {
+            "type": "PLAN_JOB",
+            "title": "生成计划",
+            "detail": detail,
+            "entity_id": str(job.id),
+            "link": "trip",
+        }
+        row = AssistantMessage(
+            organization_id=str(conversation.organization_id),
+            conversation_id=conversation.id,
+            role="ASSISTANT",
+            content=detail,
+            cards=[card],
+        )
+        session.add(row)
+        session.flush()
+        return row
     elif action == "dismiss_suggestion":
         proactive_service.dismiss(
             session,

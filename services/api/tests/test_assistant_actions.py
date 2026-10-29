@@ -104,6 +104,15 @@ def test_conversation_action_runs_via_business_service(client: TestClient) -> No
             for card in message.get("cards", [])
         )
 
+        # 白名单内的生成计划动作：入队并回流卡片。
+        gen = client.post(
+            f"/v1/assistant/conversations/{conversation_id}/actions",
+            headers=headers(),
+            json={"action": "generate_plan", "subject_id": trip_id},
+        )
+        assert gen.status_code == 200, gen.text
+        assert gen.json()["cards"][0]["type"] == "PLAN_JOB"
+
         # 不支持的动作被拒（执行面保持白名单）。
         bad = client.post(
             f"/v1/assistant/conversations/{conversation_id}/actions",
@@ -119,4 +128,6 @@ def test_conversation_action_runs_via_business_service(client: TestClient) -> No
                         ProactiveSuggestion.id == UUID(suggestion_id)
                     )
                 )
+            from app.models.reliability import BackgroundJob
+            session.execute(delete(BackgroundJob).where(BackgroundJob.job_type == "plan_trip", BackgroundJob.payload["trip_id"].astext == str(trip_id)))
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
