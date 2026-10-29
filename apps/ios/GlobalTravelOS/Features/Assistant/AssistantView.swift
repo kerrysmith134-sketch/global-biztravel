@@ -119,6 +119,22 @@ struct AssistantView: View {
                             Task { await viewModel.loadList() }
                         }
                     }
+                    if let tripId = viewModel.detail?.conversation.tripId {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                Task {
+                                    await viewModel.runAction(
+                                        action: "generate_plan",
+                                        subjectId: tripId
+                                    )
+                                }
+                            } label: {
+                                Image(systemName: "wand.and.stars")
+                            }
+                            .disabled(viewModel.isSending)
+                            .accessibilityLabel("生成计划")
+                        }
+                    }
                 } else {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
