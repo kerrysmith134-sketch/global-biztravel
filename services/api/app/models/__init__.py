@@ -20,6 +20,7 @@ from app.models.integrations import ExternalSignal
 from app.models.llm import LLMInvocation
 from app.models.memory import PlanAttemptLog, TravelerProfile, TripMemorySummary
 from app.models.metrics import MetricSnapshot
+from app.models.notification_preferences import NotificationPreference
 from app.models.notifications import Notification
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.policies import TravelPolicy
@@ -74,6 +75,7 @@ __all__ = [
     "Membership",
     "MetricSnapshot",
     "Notification",
+    "NotificationPreference",
     "Organization",
     "OutboxDelivery",
     "OutboxEvent",

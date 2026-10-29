@@ -3132,6 +3132,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/notifications/preferences:
+    get:
+      tags:
+      - notifications
+      summary: 我的通知偏好（静音的等级不产生通知）
+      operationId: get_preferences_v1_notifications_preferences_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferenceRead'
+    put:
+      tags:
+      - notifications
+      summary: 更新通知偏好（幂等覆盖静音等级列表）
+      operationId: update_preferences_v1_notifications_preferences_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferenceUpdate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferenceRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/sync:push:
     post:
       tags:
@@ -5616,6 +5653,34 @@ components:
           title: Unread By Priority
       type: object
       title: NotificationFeedRead
+    NotificationPreferenceRead:
+      properties:
+        muted_priorities:
+          items:
+            type: string
+            enum:
+            - P0
+            - P1
+            - P2
+            - P3
+          type: array
+          title: Muted Priorities
+      type: object
+      title: NotificationPreferenceRead
+    NotificationPreferenceUpdate:
+      properties:
+        muted_priorities:
+          items:
+            type: string
+            enum:
+            - P0
+            - P1
+            - P2
+            - P3
+          type: array
+          title: Muted Priorities
+      type: object
+      title: NotificationPreferenceUpdate
     NotificationRead:
       properties:
         id:

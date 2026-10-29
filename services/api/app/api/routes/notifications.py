@@ -11,9 +11,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import ROLE_VIEWER, ContextDep, SessionDep, require_role
+from app.api.deps import ROLE_TRAVELER, ROLE_VIEWER, ContextDep, SessionDep, require_role
 from app.api.errors import NotFound
-from app.api.schemas import NotificationFeedRead, NotificationRead
+from app.api.schemas import (
+    NotificationFeedRead,
+    NotificationPreferenceRead,
+    NotificationPreferenceUpdate,
+    NotificationRead,
+)
 from app.services import notification_service
 
 router = APIRouter(tags=["notifications"])
@@ -66,3 +71,34 @@ def read_notification(
     if row is None:
         raise NotFound("通知不存在", details={"notification_id": str(notification_id)})
     return NotificationRead.model_validate(row)
+
+
+@router.get(
+    "/notifications/preferences",
+    response_model=NotificationPreferenceRead,
+    summary="我的通知偏好（静音的等级不产生通知）",
+)
+def get_preferences(context: ContextDep, session: SessionDep):
+    require_role(context, ROLE_VIEWER)
+    row = notification_service.get_preference(
+        session, context.organization_id, context.user_id
+    )
+    return NotificationPreferenceRead(muted_priorities=list(row.muted_priorities or []))
+
+
+@router.put(
+    "/notifications/preferences",
+    response_model=NotificationPreferenceRead,
+    summary="更新通知偏好（幂等覆盖静音等级列表）",
+)
+def update_preferences(
+    payload: NotificationPreferenceUpdate, context: ContextDep, session: SessionDep
+):
+    require_role(context, ROLE_TRAVELER)
+    row = notification_service.update_preference(
+        session,
+        context.organization_id,
+        context.user_id,
+        list(payload.muted_priorities),
+    )
+    return NotificationPreferenceRead(muted_priorities=list(row.muted_priorities or []))

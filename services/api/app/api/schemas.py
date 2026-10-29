@@ -910,6 +910,14 @@ class NotificationFeedRead(BaseModel):
     unread_by_priority: dict[str, int] = Field(default_factory=dict)
 
 
+class NotificationPreferenceRead(BaseModel):
+    muted_priorities: list[NotificationPriority] = Field(default_factory=list)
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    muted_priorities: list[NotificationPriority] = Field(default_factory=list)
+
+
 # ------------------------------------------------------------------ audit
 class AuditEventRead(BaseModel):
     at: datetime

@@ -35,9 +35,11 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.api.errors import Unprocessable
 from app.config import get_settings
 from app.models.devices import DeviceToken
 from app.models.identity import User
+from app.models.notification_preferences import NotificationPreference
 from app.models.notifications import Notification
 from app.models.proactive import ProactiveSuggestion
 from app.services import notification_policy_service
@@ -243,6 +245,20 @@ def enqueue_for_suggestion(
     """为一条**已推送**建议创建通知。抑制/保留的建议不通知（它们本就不该打扰用户）。"""
     if suggestion.push_status != "PUSHED":
         return None
+    # 用户偏好：静音的等级不产生通知（建议本身仍保留在主动式列表里）。
+    if user_id is not None:
+        priority = notification_policy_service.classify(
+            suggestion_type=suggestion.suggestion_type,
+            severity=suggestion.severity,
+        )
+        preference = session.scalars(
+            select(NotificationPreference).where(
+                NotificationPreference.organization_id == suggestion.organization_id,
+                NotificationPreference.user_id == str(user_id),
+            )
+        ).one_or_none()
+        if preference is not None and priority in (preference.muted_priorities or []):
+            return None
     provider = get_settings().push_provider
     recipient = resolve_recipient(session, suggestion.organization_id, user_id, provider)
     statement = (
@@ -390,6 +406,42 @@ def unread_count(
     )
 
 
+def get_preference(
+    session: Session, organization_id: UUID | str, user_id: UUID | str
+) -> NotificationPreference:
+    row = session.scalars(
+        select(NotificationPreference).where(
+            NotificationPreference.organization_id == str(organization_id),
+            NotificationPreference.user_id == str(user_id),
+        )
+    ).one_or_none()
+    if row is None:
+        row = NotificationPreference(
+            organization_id=str(organization_id),
+            user_id=str(user_id),
+            muted_priorities=[],
+        )
+        session.add(row)
+        session.flush()
+    return row
+
+
+def update_preference(
+    session: Session,
+    organization_id: UUID | str,
+    user_id: UUID | str,
+    muted_priorities: list[str],
+) -> NotificationPreference:
+    allowed = set(notification_policy_service.PRIORITY_LABELS)
+    invalid = sorted(set(muted_priorities) - allowed)
+    if invalid:
+        raise Unprocessable("未知通知等级", details={"invalid": invalid})
+    row = get_preference(session, organization_id, user_id)
+    row.muted_priorities = sorted(set(muted_priorities))
+    session.flush()
+    return row
+
+
 def unread_by_priority(
     session: Session, organization_id: UUID | str, user_id: UUID | str
 ) -> dict[str, int]:
@@ -422,8 +474,10 @@ __all__ = [
     "dispatch_pending",
     "enqueue_for_suggestion",
     "list_for_user",
+    "get_preference",
     "mark_read",
     "resolve_recipient",
     "unread_by_priority",
     "unread_count",
+    "update_preference",
 ]
