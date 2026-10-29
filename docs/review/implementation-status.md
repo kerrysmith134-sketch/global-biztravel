@@ -56,7 +56,7 @@
 | 命令 | 结果 |
 |---|---|
 | `make test` | **221 passed**（真实 PostgreSQL） |
-| `make typecheck` | MyPy：136 个源文件无问题 |
+| `make typecheck` | MyPy：135 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 74 路径 / 116 schema；契约一致 |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
