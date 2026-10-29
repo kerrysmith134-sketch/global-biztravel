@@ -136,8 +136,9 @@
 3. **KMS 密钥托管**：字段加密与轮换脚本已就绪；key 仍来自环境变量。
 4. **真实 embedding 凭证**：hash/OpenAI-compatible provider 已就绪，需配置模型与 key。
 5. **AT-001~AT-012 按钮级 UI 自动化**：已覆盖启动、Today、行动中心、新建出行、列表、详情、
-   拜访简报、费用录入、计划生成/激活、现场记录提交、Excel 选择器导入与同步页（7 条 XCUITest，
-   见 `docs/acceptance-tests/ios-ui-automation.md`）；尚无单条脚本串起全部 12 个 AT 场景。
+   拜访简报、费用录入、计划生成/激活、现场记录提交、会议纪要生成、Excel 选择器导入与同步页
+   （7 条 XCUITest，见 `docs/acceptance-tests/ios-ui-automation.md`）；尚无单条脚本串起全部
+   12 个 AT 场景。
 6. **签证官方数据源与预约渠道**：当前用离线目录做要求建模，真实官方核验/预约未接入。
 7. **费用深度集成**：报销单快照、审批与显式汇率折算已闭环；实时汇率源、票据 OCR 与财务系统
    对接未接入。

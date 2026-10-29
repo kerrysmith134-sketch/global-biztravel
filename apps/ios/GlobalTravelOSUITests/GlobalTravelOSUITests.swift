@@ -253,6 +253,33 @@ final class GlobalTravelOSUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS '已提交到服务端' OR label CONTAINS '已离线保存'")
         ).firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 20), "现场记录未提交")
+
+        // 会议纪要草稿：同页一键生成，走真实 LLM 网关（本地 stub）并写 llm_invocation。
+        // 先收起键盘，再滚到列表底部的生成按钮。
+        if app.keyboards.count > 0 {
+            let done = app.keyboards.buttons["完成"]
+            if done.exists {
+                done.tap()
+            } else {
+                app.swipeDown()
+            }
+        }
+        let minutes = app.buttons["生成会议纪要草稿"]
+        let minutesDeadline = Date().addingTimeInterval(15)
+        while !minutes.isHittable && Date() < minutesDeadline {
+            app.swipeUp()
+        }
+        XCTAssertTrue(minutes.exists, "未找到生成纪要按钮")
+        if minutes.isHittable {
+            minutes.tap()
+        } else {
+            // 列表已到底但按钮贴着屏幕下缘：用坐标点按中心。
+            minutes.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+        XCTAssertTrue(
+            app.staticTexts["会议纪要草稿"].waitForExistence(timeout: 30),
+            "会议纪要草稿未生成"
+        )
     }
 
     func testExcelImportFlow() throws {
