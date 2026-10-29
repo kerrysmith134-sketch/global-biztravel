@@ -68,6 +68,21 @@ def test_conversation_action_runs_via_business_service(client: TestClient) -> No
         assert conv.status_code == 201, conv.text
         conversation_id = conv.json()["id"]
 
+        # 上下文卡片携带待决定建议的 subject_id，供客户端发起会话内动作。
+        chat = client.post(
+            f"/v1/assistant/conversations/{conversation_id}/messages",
+            headers=headers(),
+            json={"content": "这趟行程有什么要我决定的？"},
+        )
+        assert chat.status_code == 200, chat.text
+        pending_cards = [
+            card
+            for card in chat.json()["cards"]
+            if card.get("type") == "PENDING_SUGGESTION"
+        ]
+        assert pending_cards, chat.text
+        assert any(card.get("entity_id") == suggestion_id for card in pending_cards)
+
         # 无审批策略时 OWNER 批准成功；动作结果以消息形式回到对话。
         action = client.post(
             f"/v1/assistant/conversations/{conversation_id}/actions",

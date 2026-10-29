@@ -138,6 +138,28 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
             }
         )
 
+        # 待决定建议：卡片携带 subject_id，客户端据此调会话内动作（批准/驳回）。
+        pending = session.scalars(
+            select(ProactiveSuggestion)
+            .where(
+                ProactiveSuggestion.organization_id == conversation.organization_id,
+                ProactiveSuggestion.trip_id == trip.id,
+                ProactiveSuggestion.status == "PENDING",
+            )
+            .order_by(ProactiveSuggestion.created_at.desc())
+            .limit(5)
+        ).all()
+        for suggestion in pending:
+            cards.append(
+                {
+                    "type": "PENDING_SUGGESTION",
+                    "title": suggestion.title,
+                    "detail": suggestion.rationale[:160],
+                    "entity_id": str(suggestion.id),
+                    "link": "suggestion",
+                }
+            )
+
     text = message.lower()
     proposals: list[dict] = []
     keywords = {
