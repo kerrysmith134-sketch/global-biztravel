@@ -190,6 +190,7 @@ struct TripDetailView: View {
     @State private var briefingVisit: TripVisit?
     @State private var showsImport = false
     @State private var showsExpense = false
+    @State private var showsAssistant = false
 
     init(tripId: String, environment: AppEnvironment) {
         _viewModel = StateObject(
@@ -447,6 +448,16 @@ struct TripDetailView: View {
             }
         }
         .navigationTitle(viewModel.trip?.name ?? "出行详情")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showsAssistant = true
+                } label: {
+                    Image(systemName: "bubble.left.and.text.bubble.right")
+                }
+                .accessibilityLabel("问助手")
+            }
+        }
         .refreshable { await viewModel.load() }
         .task { await viewModel.load() }
         .sheet(item: $selectedVisit) { visit in
@@ -459,6 +470,9 @@ struct TripDetailView: View {
             ImportSheet(tripId: viewModel.tripId) {
                 await viewModel.load()
             }
+        }
+        .sheet(isPresented: $showsAssistant) {
+            AssistantView(environment: environment, tripId: viewModel.tripId)
         }
         .sheet(isPresented: $showsExpense) {
             ExpenseEntrySheet(

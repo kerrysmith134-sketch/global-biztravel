@@ -10,9 +10,12 @@ final class AssistantViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let environment: AppEnvironment
+    /// 当前行程上下文（PRD 6.1）：从行程详情进入时，新对话自动绑定该行程。
+    let tripId: String?
 
-    init(environment: AppEnvironment) {
+    init(environment: AppEnvironment, tripId: String? = nil) {
         self.environment = environment
+        self.tripId = tripId
     }
 
     func loadList() async {
@@ -40,7 +43,7 @@ final class AssistantViewModel: ObservableObject {
     func startNew() async {
         errorMessage = nil
         do {
-            let conversation = try await environment.assistantRepository.createConversation(tripId: nil)
+            let conversation = try await environment.assistantRepository.createConversation(tripId: tripId)
             conversations.insert(conversation, at: 0)
             detail = try await environment.assistantRepository.detail(id: conversation.id)
         } catch {
@@ -70,8 +73,10 @@ struct AssistantView: View {
     @StateObject private var viewModel: AssistantViewModel
     @Environment(\.dismiss) private var dismiss
 
-    init(environment: AppEnvironment) {
-        _viewModel = StateObject(wrappedValue: AssistantViewModel(environment: environment))
+    init(environment: AppEnvironment, tripId: String? = nil) {
+        _viewModel = StateObject(
+            wrappedValue: AssistantViewModel(environment: environment, tripId: tripId)
+        )
     }
 
     var body: some View {
