@@ -149,6 +149,38 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/visits")
     }
 
+    // MARK: - Assistant
+
+    static func createAssistantConversation(body: [String: String]) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/assistant/conversations",
+            body: try JSONSerialization.data(withJSONObject: body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func listAssistantConversations() -> APIRequest {
+        APIRequest(method: .get, path: "/v1/assistant/conversations")
+    }
+
+    static func assistantConversation(id: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/assistant/conversations/\(id)")
+    }
+
+    static func deleteAssistantConversation(id: String) -> APIRequest {
+        APIRequest(method: .delete, path: "/v1/assistant/conversations/\(id)")
+    }
+
+    static func postAssistantMessage(id: String, content: String) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/assistant/conversations/\(id)/messages",
+            body: try DateCoding.encode(AssistantMessageCreate(content: content)),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     // MARK: - Local guide
 
     static func localGuide(tripId: String) -> APIRequest {

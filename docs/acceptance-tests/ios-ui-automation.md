@@ -8,7 +8,7 @@ App 启动后把夹具复制进主 App 的 `Documents`（按容器元数据 `MCM
 
 | 用例 | 覆盖 | 说明 |
 |---|---|---|
-| `testLaunchBrowseSeedTripAndSyncCenter` | Today → 通知中心 → 行动中心 → 出行列表 → 详情 → 同步页 | 验证真实网络加载与基本导航 |
+| `testLaunchBrowseSeedTripAndSyncCenter` | Today → AI 助手 → 通知中心 → 行动中心 → 出行列表 → 详情 → 同步页 | 验证真实网络加载与基本导航 |
 | `testPreparedTripBriefing` | 准备数据 → 详情 → 拜访简报 | 测试内用真实 HTTP 创建地点/出行/拜访，再用启动参数打开，避免依赖列表分页顺序 |
 | `testCreateTripFlow` | 出行列表 → 新建表单 → 创建 | 创建后断言新出行立即出现在列表顶部 |
 | `testExpenseEntryFlow` | 详情 → 记一笔费用 → 保存 | 真实 POST 费用，断言金额出现在费用列表 |

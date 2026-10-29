@@ -43,6 +43,15 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
         app.buttons["关闭"].tap()
 
+        let assistant = app.buttons["AI 助手"]
+        XCTAssertTrue(assistant.waitForExistence(timeout: 10), "未找到助手入口")
+        assistant.tap()
+        XCTAssertTrue(
+            app.navigationBars["AI 助手"].waitForExistence(timeout: 15),
+            "助手对话列表未加载"
+        )
+        app.buttons["关闭"].tap()
+
         let actionCenter = app.buttons["行动中心"]
         XCTAssertTrue(actionCenter.waitForExistence(timeout: 10), "未找到行动中心入口")
         actionCenter.tap()

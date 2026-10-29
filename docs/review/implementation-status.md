@@ -16,7 +16,7 @@
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；15 单测 + 7 UI 自动化 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；16 单测 + 7 UI 自动化 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -47,7 +47,7 @@
 | `/api/v1` vs `/v1` | 以设计 v2.0 的 `/v1` 为契约真相；额外挂 `/api/v1` 隐藏别名兼容 PRD 基线 |
 | CI：Ruff/MyPy/Pytest/PG/Alembic/OpenAPI/SwiftLint/XCTest | `scripts/ci.sh`、`make typecheck`、`make lint-ios`、`.github/workflows/ci.yml` |
 | 当地生活指南（方向五） | `local_guide_service` + `app/data/local_guide_catalog.json` | 8 国离线目录按出行国家组装、城市贴士按拜访城市裁剪、实时源缺口显式标注、iOS 指南页 |
-| AI 助手对话（页面 05，服务端 v1） | `assistant_service` + 迁移 `0027` | 对话与工作流分离（删聊天不影响任务）、事实卡片由服务端计算、工具提案标注人审、llm_invocation 可回溯 |
+| AI 助手对话（页面 05） | `assistant_service` + 迁移 `0027` + iOS `AssistantView` | 对话与工作流分离（删聊天不影响任务）、事实卡片由服务端计算、工具提案标注人审、llm_invocation 可回溯 |
 | 通知分级（S8-08 P0） | `notification_policy_service` + 迁移 `0026` | P0–P3 确定性规则入队落库；Feed `unread_by_priority`；`priority` 过滤；iOS 分组/徽标/已读 |
 
 ## 4. 验证记录
@@ -61,7 +61,7 @@
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | 15 单测 + 7 UI 自动化通过（连接真实后端） |
+| `make ios-test` | 16 单测 + 7 UI 自动化通过（连接真实后端） |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
@@ -116,7 +116,8 @@
 - **AI 助手对话（PRD 页面 05，服务端 v1）**：`/v1/assistant/conversations` 系列；回复由
   `assistant_reply v1` prompt 生成并挂 `llm_invocation_id`，事实卡片（行程状态/行动中心计数）
   由服务端计算随消息落库；关键词给出带人审标注的工具提案；删除对话只删聊天表。
-  **iOS 对话页与"会话内执行"仍待接**。
+  iOS 对话页已接入（Today 入口：列表/消息流/事实卡片/新建与返回）；**会话内直接审批/执行
+  仍待接**。
 - **当地生活指南（PRD 方向五）**：离线目录（8 国 7 类条目 + 城市贴士）按出行国家与拜访
   城市组装 `GET /v1/trips/{id}/local-guide`；实时推荐/天气以 `data_gaps` 标注为未接入；
   iOS 行程详情新增"当地生活指南"。

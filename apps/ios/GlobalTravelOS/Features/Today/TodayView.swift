@@ -70,6 +70,7 @@ struct TodayView: View {
     @State private var showsSettings = false
     @State private var showsActionCenter = false
     @State private var showsNotifications = false
+    @State private var showsAssistant = false
 
     init(environment: AppEnvironment) {
         _viewModel = StateObject(wrappedValue: TodayViewModel(environment: environment))
@@ -111,6 +112,14 @@ struct TodayView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showsAssistant = true
+                    } label: {
+                        Image(systemName: "bubble.left.and.text.bubble.right")
+                    }
+                    .accessibilityLabel("AI 助手")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         showsNotifications = true
                     } label: {
                         Image(systemName: "bell")
@@ -143,6 +152,9 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showsNotifications) {
                 NotificationsView(environment: environment)
+            }
+            .sheet(isPresented: $showsAssistant) {
+                AssistantView(environment: environment)
             }
         }
     }

@@ -24,6 +24,7 @@ final class AppEnvironment: ObservableObject {
     private(set) var memoryRepository: MemoryRepository
     private(set) var actionCenterRepository: ActionCenterRepository
     private(set) var notificationRepository: NotificationRepository
+    private(set) var assistantRepository: AssistantRepository
 
     private(set) var tripListUseCase: TripListUseCase
     private(set) var createTripUseCase: CreateTripUseCase
@@ -70,6 +71,7 @@ final class AppEnvironment: ObservableObject {
         let remoteMemory = RemoteMemoryRepository(client: client)
         let remoteActionCenter = RemoteActionCenterRepository(client: client)
         let remoteNotifications = RemoteNotificationRepository(client: client)
+        let remoteAssistant = RemoteAssistantRepository(client: client)
 
         let trips = OfflineTripRepository(remote: remoteTrips, directory: directory, indicator: indicator)
         let plans = OfflinePlanRepository(remote: remotePlans, directory: directory, indicator: indicator)
@@ -88,6 +90,7 @@ final class AppEnvironment: ObservableObject {
         self.memoryRepository = memory
         self.actionCenterRepository = remoteActionCenter
         self.notificationRepository = remoteNotifications
+        self.assistantRepository = remoteAssistant
 
         self.tripListUseCase = TripListUseCase(repository: trips)
         self.createTripUseCase = CreateTripUseCase(repository: trips)
@@ -151,6 +154,7 @@ final class AppEnvironment: ObservableObject {
         )
         actionCenterRepository = RemoteActionCenterRepository(client: client)
         notificationRepository = RemoteNotificationRepository(client: client)
+        assistantRepository = RemoteAssistantRepository(client: client)
         tripListUseCase = TripListUseCase(repository: trips)
         createTripUseCase = CreateTripUseCase(repository: trips)
         generatePlanUseCase = GeneratePlanUseCase(repository: plans)

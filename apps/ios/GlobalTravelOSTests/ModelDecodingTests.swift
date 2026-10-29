@@ -263,6 +263,31 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(feed.unreadBreakdown, "未读 P0×1")
     }
 
+    func testAssistantDetailDecodesMessagesAndCards() throws {
+        let json = """
+        {
+          "conversation": {
+            "id": "c1", "trip_id": "t1", "title": "这趟行程现在怎么样？",
+            "created_at": "2026-10-29T10:00:00+00:00",
+            "updated_at": "2026-10-29T10:01:00+00:00"
+          },
+          "messages": [
+            {"id": "m1", "role": "USER", "content": "需要我做什么？", "cards": [],
+             "llm_invocation_id": null, "created_at": "2026-10-29T10:00:00+00:00"},
+            {"id": "m2", "role": "ASSISTANT", "content": "有 2 项需要你处理。",
+             "cards": [{"type": "TRIP_STATUS", "title": "行程", "detail": "ACTIVE",
+                        "entity_id": "t1", "link": "trip"}],
+             "llm_invocation_id": "i1", "created_at": "2026-10-29T10:01:00+00:00"}
+          ]
+        }
+        """
+        let detail = try DateCoding.decode(AssistantConversationDetail.self, fromJSON: json)
+        XCTAssertEqual(detail.messageList.count, 2)
+        XCTAssertEqual(detail.messageList[1].cardList.first?.type, "TRIP_STATUS")
+        XCTAssertTrue(detail.messageList[1].llmInvocationId != nil)
+        XCTAssertTrue(detail.messageList[0].isFromUser)
+    }
+
     func testLocalGuideDecodesSectionsAndGaps() throws {
         let json = """
         {

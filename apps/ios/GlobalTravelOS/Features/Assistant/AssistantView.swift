@@ -1,0 +1,205 @@
+import SwiftUI
+
+@MainActor
+final class AssistantViewModel: ObservableObject {
+    @Published private(set) var conversations: [AssistantConversation] = []
+    @Published var detail: AssistantConversationDetail?
+    @Published private(set) var isLoading = false
+    @Published private(set) var isSending = false
+    @Published var draft = ""
+    @Published var errorMessage: String?
+
+    private let environment: AppEnvironment
+
+    init(environment: AppEnvironment) {
+        self.environment = environment
+    }
+
+    func loadList() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            conversations = try await environment.assistantRepository.conversations()
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    func open(_ conversation: AssistantConversation) async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            detail = try await environment.assistantRepository.detail(id: conversation.id)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    func startNew() async {
+        errorMessage = nil
+        do {
+            let conversation = try await environment.assistantRepository.createConversation(tripId: nil)
+            conversations.insert(conversation, at: 0)
+            detail = try await environment.assistantRepository.detail(id: conversation.id)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    func send() async {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let conversation = detail?.conversation else { return }
+        isSending = true
+        errorMessage = nil
+        defer { isSending = false }
+        do {
+            _ = try await environment.assistantRepository.send(id: conversation.id, content: text)
+            draft = ""
+            detail = try await environment.assistantRepository.detail(id: conversation.id)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+}
+
+/// AI 助手（PRD 页面 05 v1 客户端）：对话列表 + 消息流 + 事实卡片。
+struct AssistantView: View {
+    @EnvironmentObject private var environment: AppEnvironment
+    @StateObject private var viewModel: AssistantViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    init(environment: AppEnvironment) {
+        _viewModel = StateObject(wrappedValue: AssistantViewModel(environment: environment))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if viewModel.detail == nil {
+                    conversationList
+                } else {
+                    chat
+                }
+            }
+            .navigationTitle(
+                viewModel.detail == nil ? "AI 助手" : (viewModel.detail?.conversation.displayTitle ?? "对话")
+            )
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+                if viewModel.detail != nil {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("列表") {
+                            viewModel.detail = nil
+                            Task { await viewModel.loadList() }
+                        }
+                    }
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            Task { await viewModel.startNew() }
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                    }
+                }
+            }
+            .task { await viewModel.loadList() }
+        }
+    }
+
+    private var conversationList: some View {
+        List {
+            if let error = viewModel.errorMessage {
+                Section { ErrorBanner(message: error) }
+            }
+            if viewModel.conversations.isEmpty && !viewModel.isLoading {
+                ContentUnavailableView(
+                    "还没有对话",
+                    systemImage: "bubble.left.and.text.bubble.right",
+                    description: Text("点右上角新建对话，助手会基于行程与行动中心的真实状态回答。")
+                )
+            }
+            ForEach(viewModel.conversations) { conversation in
+                Button {
+                    Task { await viewModel.open(conversation) }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(conversation.displayTitle).font(.body)
+                        if let updated = conversation.updatedAt {
+                            Text(ISO8601.shortDisplay(from: updated))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var chat: some View {
+        VStack(spacing: 0) {
+            if let messages = viewModel.detail?.messageList {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(messages) { message in
+                            MessageBubble(message: message)
+                        }
+                        if let error = viewModel.errorMessage {
+                            ErrorBanner(message: error)
+                        }
+                    }
+                    .padding()
+                }
+            } else if viewModel.isLoading {
+                ProgressView("加载对话…")
+            }
+            Divider()
+            HStack(alignment: .bottom) {
+                TextField("问行程状态、待办、建议…", text: $viewModel.draft, axis: .vertical)
+                    .lineLimit(1 ... 4)
+                Button {
+                    Task { await viewModel.send() }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                }
+                .disabled(
+                    viewModel.isSending
+                        || viewModel.draft.trimmingCharacters(in: .whitespaces).isEmpty
+                )
+            }
+            .padding()
+        }
+    }
+}
+
+private struct MessageBubble: View {
+    let message: AssistantMessage
+
+    var body: some View {
+        VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: 4) {
+            Text(message.content)
+                .padding(10)
+                .background(
+                    message.isFromUser
+                        ? Color.accentColor.opacity(0.18)
+                        : Color(.secondarySystemBackground),
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+            ForEach(message.cardList) { card in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(card.title).font(.caption.weight(.semibold))
+                    Text(card.detail).font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: message.isFromUser ? .trailing : .leading)
+    }
+}
