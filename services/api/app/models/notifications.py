@@ -30,6 +30,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, created_at, updated_at, uuid_pk
 
 NOTIFICATION_STATUSES = ("PENDING", "SENT", "FAILED")
+NOTIFICATION_PRIORITIES = ("P0", "P1", "P2", "P3")
 
 
 class Notification(Base):
@@ -45,8 +46,17 @@ class Notification(Base):
             "status IN ('PENDING','SENT','FAILED')", name="status_allowed"
         ),
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
+        CheckConstraint(
+            "priority IN ('P0','P1','P2','P3')", name="priority_allowed"
+        ),
         Index("ix_notifications_org_user_created_at", "organization_id", "user_id", "created_at"),
         Index("ix_notifications_org_status", "organization_id", "status"),
+        Index(
+            "ix_notifications_org_priority_created_at",
+            "organization_id",
+            "priority",
+            "created_at",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -63,6 +73,10 @@ class Notification(Base):
         PGUUID(as_uuid=True), ForeignKey("proactive_suggestions.id", ondelete="CASCADE")
     )
     kind: Mapped[str] = mapped_column(Text, nullable=False, server_default="PROACTIVE_SUGGESTION")
+    #: 通知等级（PRD S8-08）：由 NotificationPolicyEngine 在入队时判定。
+    priority: Mapped[str] = mapped_column(Text, nullable=False, server_default="P2")
+    #: 问题级键（建议的 dedupe_key 快照）：同一问题反复出现时用于聚合展示。
+    issue_key: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="PENDING")
@@ -76,4 +90,4 @@ class Notification(Base):
     updated_at: Mapped[datetime] = updated_at()
 
 
-__all__ = ["NOTIFICATION_STATUSES", "Notification"]
+__all__ = ["NOTIFICATION_PRIORITIES", "NOTIFICATION_STATUSES", "Notification"]

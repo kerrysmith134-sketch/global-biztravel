@@ -241,6 +241,28 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(briefing.gapList.first?.code, "CRM_OPPORTUNITY_NOT_CONNECTED")
     }
 
+    func testNotificationFeedDecodesPriorities() throws {
+        let json = """
+        {
+          "items": [{
+            "id": "n1", "suggestion_id": "s1", "kind": "PROACTIVE_SUGGESTION",
+            "title": "航班状态变化", "body": "原航班取消，可能错过客户会议",
+            "status": "SENT", "provider": "inapp", "priority": "P0",
+            "issue_key": "flight:CA123", "attempts": 1,
+            "sent_at": "2026-10-29T10:00:00+00:00", "read_at": null,
+            "created_at": "2026-10-29T09:59:00+00:00"
+          }],
+          "unread": 1,
+          "unread_by_priority": {"P0": 1, "P1": 0, "P2": 0, "P3": 0}
+        }
+        """
+        let feed = try DateCoding.decode(NotificationFeed.self, fromJSON: json)
+        XCTAssertEqual(feed.unreadCount, 1)
+        XCTAssertEqual(feed.items.first?.priorityLabel, "紧急")
+        XCTAssertTrue(feed.items.first?.isUnread == true)
+        XCTAssertEqual(feed.unreadBreakdown, "未读 P0×1")
+    }
+
     func testActionCenterDecodesSectionsAndActions() throws {
         let json = """
         {

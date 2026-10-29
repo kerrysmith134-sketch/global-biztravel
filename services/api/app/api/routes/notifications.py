@@ -24,6 +24,9 @@ def list_notifications(
     context: ContextDep,
     session: SessionDep,
     unread_only: Annotated[bool, Query()] = False,
+    priority: Annotated[
+        str | None, Query(pattern="^P[0-3]$", description="只看某一通知等级")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     require_role(context, ROLE_VIEWER)
@@ -32,6 +35,7 @@ def list_notifications(
         context.organization_id,
         context.user_id,
         unread_only=unread_only,
+        priority=priority,
         limit=limit,
     )
     unread = notification_service.unread_count(
@@ -40,6 +44,9 @@ def list_notifications(
     return NotificationFeedRead(
         items=[NotificationRead.model_validate(row) for row in rows],
         unread=unread,
+        unread_by_priority=notification_service.unread_by_priority(
+            session, context.organization_id, context.user_id
+        ),
     )
 
 

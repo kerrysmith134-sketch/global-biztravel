@@ -40,6 +40,7 @@ from app.models.devices import DeviceToken
 from app.models.identity import User
 from app.models.notifications import Notification
 from app.models.proactive import ProactiveSuggestion
+from app.services import notification_policy_service
 
 logger = logging.getLogger("app.notifications")
 
@@ -251,6 +252,11 @@ def enqueue_for_suggestion(
             user_id=user_id,
             suggestion_id=suggestion.id,
             kind="PROACTIVE_SUGGESTION",
+            priority=notification_policy_service.classify(
+                suggestion_type=suggestion.suggestion_type,
+                severity=suggestion.severity,
+            ),
+            issue_key=suggestion.dedupe_key,
             title=suggestion.title,
             body=suggestion.rationale,
             status="PENDING",
@@ -329,6 +335,7 @@ def list_for_user(
     user_id: UUID | str,
     *,
     unread_only: bool = False,
+    priority: str | None = None,
     limit: int = 50,
 ) -> list[Notification]:
     stmt = select(Notification).where(
@@ -337,6 +344,8 @@ def list_for_user(
     )
     if unread_only:
         stmt = stmt.where(Notification.read_at.is_(None))
+    if priority:
+        stmt = stmt.where(Notification.priority == priority.upper())
     return list(
         session.scalars(stmt.order_by(Notification.created_at.desc()).limit(limit))
     )
@@ -381,6 +390,26 @@ def unread_count(
     )
 
 
+def unread_by_priority(
+    session: Session, organization_id: UUID | str, user_id: UUID | str
+) -> dict[str, int]:
+    """按等级统计未读（口径与 ``unread_count`` 一致：已送达 + 未读）。"""
+    counts = dict.fromkeys(notification_policy_service.PRIORITY_LABELS, 0)
+    rows = session.execute(
+        select(Notification.priority, func.count())
+        .where(
+            Notification.organization_id == str(organization_id),
+            Notification.user_id == str(user_id),
+            Notification.read_at.is_(None),
+            Notification.status == "SENT",
+        )
+        .group_by(Notification.priority)
+    ).all()
+    for priority, count in rows:
+        counts[str(priority)] = int(count)
+    return counts
+
+
 __all__ = [
     "APNsPushProvider",
     "DispatchReport",
@@ -395,5 +424,6 @@ __all__ = [
     "list_for_user",
     "mark_read",
     "resolve_recipient",
+    "unread_by_priority",
     "unread_count",
 ]

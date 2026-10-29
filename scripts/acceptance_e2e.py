@@ -95,9 +95,50 @@ def cleanup(trip_id: str, origin_place_id: str) -> None:
         session.execute(delete(Place).where(Place.id == UUID(origin_place_id)))
 
 
+def fixture_window(now: datetime) -> tuple[datetime, datetime]:
+    """从导入夹具的时间窗推导出行窗口，而不是用 ``now+10d``。
+
+    夹具里有固定的会议时间（2026-11-09/10/11）。若出行窗口用"当前时刻 + N 天"，
+    窗口起点会随墙钟漂移：当起点离最近的硬时间窗不足约 3 天时，上海→欧洲的过夜航段
+    （约 14.5 小时）无法在"当日抵达"语义下落进窗口，规划器会如实判为不可行，
+    E2E 就会随一天中的时间变化而随机失败。因此：起点 = 最早夹具窗 − 3 天，
+    终点 = 最晚夹具窗 + 2 天；夹具没有时间窗时退回 ``now+10d``。
+    """
+    try:
+        import openpyxl
+    except ImportError:  # pragma: no cover - openpyxl 是运行时依赖
+        return now + timedelta(days=10), now + timedelta(days=15)
+
+    wb = openpyxl.load_workbook(FIXTURE)
+    ws = wb.active
+    headers = [str(cell.value or "").strip() for cell in ws[1]]
+    start_idx = [i for i, h in enumerate(headers) if h in ("时间窗开始", "最早到达")]
+    end_idx = [i for i, h in enumerate(headers) if h in ("时间窗结束", "最晚离开")]
+    moments: list[datetime] = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        for idx in start_idx + end_idx:
+            raw = row[idx] if idx < len(row) else None
+            if isinstance(raw, datetime):
+                value = raw if raw.tzinfo else raw.replace(tzinfo=UTC)
+            elif isinstance(raw, str):
+                try:
+                    value = datetime.strptime(raw.strip(), "%Y-%m-%d %H:%M").replace(tzinfo=UTC)
+                except ValueError:
+                    continue
+            else:
+                continue
+            moments.append(value)
+    if not moments:
+        return now + timedelta(days=10), now + timedelta(days=15)
+    start = (min(moments) - timedelta(days=3)).replace(hour=0, minute=0, second=0, microsecond=0)
+    end = (max(moments) + timedelta(days=2)).replace(hour=23, minute=59, second=59, microsecond=0)
+    return start, end
+
+
 def main() -> int:
     name = f"AT-E2E 全流程·{uuid.uuid4().hex[:8]}"
     now = datetime.now(UTC)
+    window_start, window_end = fixture_window(now)
     trip_id: str | None = None
     origin_place_id: str | None = None
 
@@ -131,8 +172,8 @@ def main() -> int:
                 "name": name,
                 "purpose": "端到端验收",
                 "origin_place_id": origin_place_id,
-                "window_start": (now + timedelta(days=10)).isoformat(),
-                "window_end": (now + timedelta(days=15)).isoformat(),
+                "window_start": window_start.isoformat(),
+                "window_end": window_end.isoformat(),
                 "countries": ["DE", "NL"],
                 "currency": "EUR",
             },

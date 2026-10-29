@@ -149,6 +149,19 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/visits")
     }
 
+    // MARK: - Notifications
+
+    static func notifications(unreadOnly: Bool = false, priority: String? = nil) -> APIRequest {
+        var items: [URLQueryItem] = []
+        if unreadOnly { items.append(URLQueryItem(name: "unread_only", value: "true")) }
+        if let priority { items.append(URLQueryItem(name: "priority", value: priority)) }
+        return APIRequest(method: .get, path: "/v1/notifications", queryItems: items)
+    }
+
+    static func markNotificationRead(id: String) -> APIRequest {
+        APIRequest(method: .post, path: "/v1/notifications/\(id):read")
+    }
+
     // MARK: - Action Center
 
     static func actionCenter(tripId: String? = nil) -> APIRequest {

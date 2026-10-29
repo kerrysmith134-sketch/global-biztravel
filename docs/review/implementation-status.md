@@ -11,12 +11,12 @@
 
 | 里程碑 | 要求 | 状态 | 证据 |
 |---|---|---|---|
-| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0025`；`0010_security_rls` 全库兜底；RLS 断言测试 |
+| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0026`；`0010_security_rls` 全库兜底；RLS 断言测试 |
 | MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 第 3 步 |
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；13 单测 + 7 UI 自动化 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；14 单测 + 7 UI 自动化 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -46,23 +46,24 @@
 | 离线更新时间 / 重启恢复 | 离线摘要带"更新于 HH:mm"；`lastTripId` 持久化并在出行页展示"上次出行" |
 | `/api/v1` vs `/v1` | 以设计 v2.0 的 `/v1` 为契约真相；额外挂 `/api/v1` 隐藏别名兼容 PRD 基线 |
 | CI：Ruff/MyPy/Pytest/PG/Alembic/OpenAPI/SwiftLint/XCTest | `scripts/ci.sh`、`make typecheck`、`make lint-ios`、`.github/workflows/ci.yml` |
+| 通知分级（S8-08 P0） | `notification_policy_service` + 迁移 `0026` | P0–P3 确定性规则入队落库；Feed `unread_by_priority`；`priority` 过滤；iOS 分组/徽标/已读 |
 
 ## 4. 验证记录
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **214 passed**（真实 PostgreSQL） |
-| `make typecheck` | MyPy：128 个源文件无问题 |
+| `make test` | **216 passed**（真实 PostgreSQL） |
+| `make typecheck` | MyPy：129 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 74 路径 / 116 schema；契约一致 |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | 13 单测 + 7 UI 自动化通过（连接真实后端） |
+| `make ios-test` | 14 单测 + 7 UI 自动化通过（连接真实后端） |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
-## 5. 迁移清单（当前 head `0025`）
+## 5. 迁移清单（当前 head `0026`）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -81,6 +82,7 @@
                            0023_crm_sync
                            0024_fx_rates
                            0025_visit_objective
+                           0026_notification_priority
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -108,6 +110,9 @@
 - **拜访前简报**：`GET /v1/visits/{id}/briefing` 聚合客户、地点、本次目标、同客户历史拜访、
   历史跟进项与复盘记忆；`visits.objective` 可编辑；未接入的 CRM 商机/资料以 `data_gaps`
   显式标注。iOS 出行详情的每个拜访可打开简报。
+- **通知分级（PRD S8-08）**：`NotificationPolicyEngine` 按建议类型与风险等级把通知定为
+  P0–P3 并在入队时落库（迁移 `0026`）；Feed 提供分级未读与 `priority` 过滤；iOS Today
+  新增通知中心，按等级分组、徽标与标记已读。
 - **客户端费用录入**：出行详情新增“记一笔费用”（类别/金额/币种/日期/备注），复用已有费用
   API 与幂等键；保存后刷新预算与实际费用。
 

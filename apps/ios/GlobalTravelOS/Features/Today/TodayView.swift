@@ -69,6 +69,7 @@ struct TodayView: View {
     @StateObject private var viewModel: TodayViewModel
     @State private var showsSettings = false
     @State private var showsActionCenter = false
+    @State private var showsNotifications = false
 
     init(environment: AppEnvironment) {
         _viewModel = StateObject(wrappedValue: TodayViewModel(environment: environment))
@@ -110,6 +111,14 @@ struct TodayView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showsNotifications = true
+                    } label: {
+                        Image(systemName: "bell")
+                    }
+                    .accessibilityLabel("通知")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         showsActionCenter = true
                     } label: {
                         Image(systemName: "tray.full")
@@ -131,6 +140,9 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showsActionCenter) {
                 ActionCenterView(environment: environment)
+            }
+            .sheet(isPresented: $showsNotifications) {
+                NotificationsView(environment: environment)
             }
         }
     }

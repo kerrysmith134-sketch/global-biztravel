@@ -2923,6 +2923,17 @@ paths:
           type: boolean
           default: false
           title: Unread Only
+      - name: priority
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            pattern: ^P[0-3]$
+          - type: 'null'
+          description: 只看某一通知等级
+          title: Priority
+        description: 只看某一通知等级
       - name: limit
         in: query
         required: false
@@ -5264,6 +5275,11 @@ components:
           type: integer
           title: Unread
           default: 0
+        unread_by_priority:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Unread By Priority
       type: object
       title: NotificationFeedRead
     NotificationRead:
@@ -5297,6 +5313,20 @@ components:
         provider:
           type: string
           title: Provider
+        priority:
+          type: string
+          enum:
+          - P0
+          - P1
+          - P2
+          - P3
+          title: Priority
+          default: P2
+        issue_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Issue Key
         attempts:
           type: integer
           title: Attempts

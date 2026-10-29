@@ -885,6 +885,9 @@ class ExternalSignalRead(ORMModel):
 NotificationStatus = Literal["PENDING", "SENT", "FAILED"]
 
 
+NotificationPriority = Literal["P0", "P1", "P2", "P3"]
+
+
 class NotificationRead(ORMModel):
     id: UUID
     suggestion_id: UUID | None = None
@@ -893,6 +896,8 @@ class NotificationRead(ORMModel):
     body: str
     status: NotificationStatus
     provider: str
+    priority: NotificationPriority = "P2"
+    issue_key: str | None = None
     attempts: int
     sent_at: datetime | None = None
     read_at: datetime | None = None
@@ -902,6 +907,7 @@ class NotificationRead(ORMModel):
 class NotificationFeedRead(BaseModel):
     items: list[NotificationRead] = Field(default_factory=list)
     unread: int = 0
+    unread_by_priority: dict[str, int] = Field(default_factory=dict)
 
 
 # ------------------------------------------------------------------ audit
