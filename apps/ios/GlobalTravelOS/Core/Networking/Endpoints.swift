@@ -200,6 +200,17 @@ enum Endpoints {
         APIRequest(method: .post, path: "/v1/notifications/\(id):read")
     }
 
+    static func assistantAction(conversationId: String, action: String, subjectId: String) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/assistant/conversations/\(conversationId)/actions",
+            body: try JSONSerialization.data(
+                withJSONObject: ["action": action, "subject_id": subjectId]
+            ),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func notificationPreferences() -> APIRequest {
         APIRequest(method: .get, path: "/v1/notifications/preferences")
     }

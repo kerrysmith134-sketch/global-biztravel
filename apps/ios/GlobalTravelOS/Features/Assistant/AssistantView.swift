@@ -51,6 +51,23 @@ final class AssistantViewModel: ObservableObject {
         }
     }
 
+    func runAction(action: String, subjectId: String) async {
+        guard let conversation = detail?.conversation else { return }
+        isSending = true
+        errorMessage = nil
+        defer { isSending = false }
+        do {
+            _ = try await environment.assistantRepository.runAction(
+                conversationId: conversation.id,
+                action: action,
+                subjectId: subjectId
+            )
+            detail = try await environment.assistantRepository.detail(id: conversation.id)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
     func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let conversation = detail?.conversation else { return }
@@ -151,7 +168,13 @@ struct AssistantView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(messages) { message in
-                            MessageBubble(message: message, environment: environment)
+                            MessageBubble(
+                                message: message,
+                                environment: environment,
+                                runAction: { action, subject in
+                                    await viewModel.runAction(action: action, subjectId: subject)
+                                }
+                            )
                         }
                         if let error = viewModel.errorMessage {
                             ErrorBanner(message: error)
@@ -185,6 +208,7 @@ struct AssistantView: View {
 private struct MessageBubble: View {
     let message: AssistantMessage
     let environment: AppEnvironment
+    let runAction: (String, String) async -> Void
 
     var body: some View {
         VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: 4) {
@@ -206,6 +230,22 @@ private struct MessageBubble: View {
                     }
                 } else {
                     cardFace(card)
+                    if card.link == "suggestion", let subject = card.entityId {
+                        HStack(spacing: 8) {
+                            Button {
+                                Task { await runAction("approve_suggestion", subject) }
+                            } label: {
+                                Label("批准", systemImage: "checkmark.circle.fill").font(.caption)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button {
+                                Task { await runAction("dismiss_suggestion", subject) }
+                            } label: {
+                                Label("驳回", systemImage: "hand.raised").font(.caption)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
                 }
             }
         }
