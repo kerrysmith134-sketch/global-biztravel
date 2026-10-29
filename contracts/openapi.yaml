@@ -3450,6 +3450,7 @@ components:
           enum:
           - approve_suggestion
           - dismiss_suggestion
+          - generate_plan
           title: Action
         subject_id:
           type: string

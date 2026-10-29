@@ -5559,7 +5559,8 @@
             "type": "string",
             "enum": [
               "approve_suggestion",
-              "dismiss_suggestion"
+              "dismiss_suggestion",
+              "generate_plan"
             ],
             "title": "Action"
           },
