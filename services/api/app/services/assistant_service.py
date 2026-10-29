@@ -28,8 +28,9 @@ from app.llm.prompts import (
 )
 from app.llm.tools import list_tools
 from app.models.assistant import AssistantConversation, AssistantMessage
+from app.models.proactive import ProactiveSuggestion
 from app.models.trip import Trip
-from app.services import action_center_service, trip_service
+from app.services import action_center_service, proactive_service, trip_service
 
 HISTORY_LIMIT = 6
 MAX_CONTENT = 4000
@@ -160,6 +161,67 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
     return {"cards": cards, "counts": counts, "proposals": proposals}
 
 
+def run_action(
+    session: Session,
+    organization_id: UUID | str,
+    conversation_id: UUID | str,
+    action: str,
+    subject_id: str,
+    *,
+    actor_user_id: UUID | str,
+    actor_role: str | None,
+) -> AssistantMessage:
+    """会话内动作（PRD 6.3 执行进度）：适配既有业务服务，人审门槛不变。
+
+    v1 只开放 ``approve_suggestion`` / ``dismiss_suggestion``：直接复用
+    ``proactive_service`` 的批准/驳回（角色、审批策略、阈值都在那边），助手只是入口。
+    执行结果以 ASSISTANT 消息 + ACTION_RESULT 卡片落回对话，审计仍在 suggestion_audit。
+    """
+    conversation = get_conversation(session, organization_id, conversation_id)
+    if action == "approve_suggestion":
+        proactive_service.approve(
+            session,
+            organization_id,
+            subject_id,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
+        )
+        suggestion = session.get(ProactiveSuggestion, UUID(str(subject_id)))
+        status = suggestion.status if suggestion is not None else "UNKNOWN"
+        detail = f"建议已批准，当前状态 {status}"
+    elif action == "dismiss_suggestion":
+        proactive_service.dismiss(
+            session,
+            organization_id,
+            subject_id,
+            actor_user_id=actor_user_id,
+        )
+        suggestion = session.get(ProactiveSuggestion, UUID(str(subject_id)))
+        status = suggestion.status if suggestion is not None else "UNKNOWN"
+        detail = f"建议已驳回，当前状态 {status}"
+    else:
+        raise Unprocessable("不支持的动作", details={"action": action})
+
+    row = AssistantMessage(
+        organization_id=str(conversation.organization_id),
+        conversation_id=conversation.id,
+        role="ASSISTANT",
+        content=detail,
+        cards=[
+            {
+                "type": "ACTION_RESULT",
+                "title": action,
+                "detail": detail,
+                "entity_id": subject_id,
+                "link": "action_center",
+            }
+        ],
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
 def post_message(
     session: Session,
     organization_id: UUID | str,
@@ -245,6 +307,7 @@ def post_message(
 
 __all__ = [
     "create_conversation",
+    "run_action",
     "get_conversation",
     "delete_conversation",
     "list_conversations",

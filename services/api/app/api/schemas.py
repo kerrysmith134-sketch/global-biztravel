@@ -1201,6 +1201,11 @@ class AssistantMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
 
 
+class AssistantActionCreate(BaseModel):
+    action: Literal["approve_suggestion", "dismiss_suggestion"]
+    subject_id: UUID
+
+
 # ------------------------------------------------------------ local guide
 class LocalGuideSectionRead(BaseModel):
     key: str

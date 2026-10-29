@@ -1338,6 +1338,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/assistant/conversations/{conversation_id}/actions:
+    post:
+      tags:
+      - assistant
+      summary: 会话内执行（复用业务服务的人审门槛）
+      operationId: run_action_v1_assistant_conversations__conversation_id__actions_post
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Conversation Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantActionCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantMessageRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/customers:
     get:
       tags:
@@ -3410,6 +3443,23 @@ components:
       - enabled
       - created_at
       title: ApprovalPolicyRead
+    AssistantActionCreate:
+      properties:
+        action:
+          type: string
+          enum:
+          - approve_suggestion
+          - dismiss_suggestion
+          title: Action
+        subject_id:
+          type: string
+          format: uuid
+          title: Subject Id
+      type: object
+      required:
+      - action
+      - subject_id
+      title: AssistantActionCreate
     AssistantConversationCreate:
       properties:
         trip_id:

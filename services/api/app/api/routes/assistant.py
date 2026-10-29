@@ -8,6 +8,7 @@ from fastapi import APIRouter, status
 
 from app.api.deps import ROLE_TRAVELER, ROLE_VIEWER, ContextDep, SessionDep, require_role
 from app.api.schemas import (
+    AssistantActionCreate,
     AssistantConversationCreate,
     AssistantConversationDetailRead,
     AssistantConversationRead,
@@ -99,6 +100,30 @@ def post_message(
         user_id=context.user_id,
     )
     return _message_read(bot)
+
+
+@router.post(
+    "/assistant/conversations/{conversation_id}/actions",
+    response_model=AssistantMessageRead,
+    summary="会话内执行（复用业务服务的人审门槛）",
+)
+def run_action(
+    conversation_id: UUID,
+    payload: AssistantActionCreate,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    row = assistant_service.run_action(
+        session,
+        context.organization_id,
+        conversation_id,
+        payload.action,
+        str(payload.subject_id),
+        actor_user_id=context.user_id,
+        actor_role=context.role,
+    )
+    return _message_read(row)
 
 
 @router.delete(
