@@ -28,4 +28,4 @@ xcodebuild test -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelO
 - UI 用例会在真实数据库留下"UI 简报出行/UI 自动化出行"记录；开发库可定期重建。
 - 不使用假 API 或预置页面；测试通过 `GBT_UI_TEST_*` 启动参数覆盖身份与上次出行，不写回磁盘。
 - 文件选择器走「我的iPhone → 应用目录」导航（不走搜索：Spotlight 不索引直接拷入的文件）。
-- 现场记录页按钮贴屏幕下缘时用坐标点按（先收键盘，避免被键盘挡住）。
+- 现场记录页不做多行输入（避免键盘遮挡），纪要按钮用中段坐标拖动交替方向查找后点按（sheet 上 swipe 易触发交互式关闭）。
