@@ -1,0 +1,387 @@
+{
+  "countries": {
+    "BE": {
+      "cities": {
+        "Brussels": {
+          "tips": [
+            "欧盟机构区会议安检严格，提前 15 分钟到达。"
+          ]
+        }
+      },
+      "name": "比利时",
+      "sections": [
+        {
+          "items": [
+            "布鲁塞尔多机构背景，会面注意区分法语/荷语区习惯。",
+            "名片双语（法/英）更稳妥，交换时双手递接。"
+          ],
+          "key": "etiquette",
+          "title": "商务会面礼仪"
+        },
+        {
+          "items": [
+            "信用卡与 Payconiq 常见；小费非强制，取整即可。"
+          ],
+          "key": "payment",
+          "title": "支付与小费"
+        },
+        {
+          "items": [
+            "STIB/MIVB 市区票按次/日票；机场到市区火车约 20 分钟。"
+          ],
+          "key": "transport",
+          "title": "交通"
+        },
+        {
+          "items": [
+            "Merci / Dank u — 谢谢"
+          ],
+          "key": "phrases",
+          "title": "常用商务表达"
+        }
+      ]
+    },
+    "CN": {
+      "cities": {
+        "Shanghai": {
+          "tips": [
+            "早高峰高架拥堵，跨区会议预留 45 分钟。"
+          ]
+        }
+      },
+      "name": "中国",
+      "sections": [
+        {
+          "items": [
+            "交换名片双手递接，先看后收。",
+            "宴请座次有讲究，主位让客。"
+          ],
+          "key": "etiquette",
+          "title": "商务会面礼仪"
+        },
+        {
+          "items": [
+            "移动支付主导；无小费习惯。"
+          ],
+          "key": "payment",
+          "title": "支付与小费"
+        },
+        {
+          "items": [
+            "辛苦了 — 辛苦您的付出",
+            "我们保持联系 — Let's stay in touch"
+          ],
+          "key": "phrases",
+          "title": "常用商务表达"
+        }
+      ]
+    },
+    "DE": {
+      "cities": {
+        "Berlin": {
+          "tips": [
+            "市中心东西向通勤高峰 7:30–9:00，会议预留缓冲。",
+            "Alexanderplatz 周边游客多，会面地点建议写清入口。"
+          ]
+        },
+        "Munich": {
+          "tips": [
+            "慕尼黑会面礼仪偏正式，着装商务正装更稳妥。",
+            "啤酒花园适合非正式交流，注意周日多数商店关门。"
+          ]
+        }
+      },
+      "name": "德国",
+      "sections": [
+        {
+          "items": [
+            "守时是底线：迟到 5 分钟以上应提前电话说明。",
+            "称呼用 Herr/Frau + 姓氏，对方邀请后再直呼其名。",
+            "会议议程书面先行，会上直接按议题推进，闲聊宜简短。"
+          ],
+          "key": "etiquette",
+          "title": "商务会面礼仪"
+        },
+        {
+          "items": [
+            "商务午餐多在 12:00–14:00，晚餐谈判较少，适合建立关系。",
+            "分摊（AA）在同事间常见；对方做东是明确信号，不必抢着结账。"
+          ],
+          "key": "dining",
+          "title": "商务用餐"
+        },
+        {
+          "items": [
+            "银行转账（SEPA）与信用卡普遍；小额现金仍常用。",
+            "餐饮小费 5%–10%，直接现金放入账单夹或口头告知总额。"
+          ],
+          "key": "payment",
+          "title": "支付与小费"
+        },
+        {
+          "items": [
+            "城市内火车/地铁（S/U-Bahn）按区计票，逃票罚款较重。",
+            "出租车多按表计费；商务场景网约车（FreeNow/Bolt）常见。"
+          ],
+          "key": "transport",
+          "title": "交通"
+        },
+        {
+          "items": [
+            "欧盟漫游对境内流量友好；落地买 eSIM 或机场 SIM 均可。",
+            "酒店与会议中心 Wi-Fi 普遍，正式会议建议自备有线/热点备份。"
+          ],
+          "key": "connectivity",
+          "title": "网络与通信"
+        },
+        {
+          "items": [
+            "整体治安良好；火车站与地铁注意随身行李。",
+            "证件随身携带复印件，原件留酒店保险箱。"
+          ],
+          "key": "safety",
+          "title": "治安与风险"
+        },
+        {
+          "items": [
+            "Vielen Dank! — 非常感谢",
+            "Können wir das per E-Mail bestätigen? — 我们可以邮件确认吗？"
+          ],
+          "key": "phrases",
+          "title": "常用商务表达"
+        }
+      ]
+    },
+    "FI": {
+      "cities": {
+        "Helsinki": {
+          "tips": [
+            "冬季日照短，重要会面建议安排在 10:00–15:00。"
+          ]
+        }
+      },
+      "name": "芬兰",
+      "sections": [
+        {
+          "items": [
+            "沟通直接、会议准时，沉默是思考不是冷场。"
+          ],
+          "key": "etiquette",
+          "title": "商务会面礼仪"
+        },
+        {
+          "items": [
+            "几乎全无现金社会，刷卡/移动支付。"
+          ],
+          "key": "payment",
+          "title": "支付与小费"
+        },
+        {
+          "items": [
+            "整体安全；冬季路面结冰注意防滑。"
+          ],
+          "key": "safety",
+          "title": "治安与风险"
+        },
+        {
+          "items": [
+            "Kiitos — 谢谢"
+          ],
+          "key": "phrases",
+          "title": "常用商务表达"
+        }
+      ]
+    },
+    "FR": {
+      "cities": {
+        "Paris": {
+          "tips": [
+            "商务区（La Défense）与市区通勤高峰差异大，排会避峰。"
+          ]
+        }
+      },
+      "name": "法国",
+      "sections": [
+        {
+          "items": [
+            "初次会面用 Bonjour/Monsieur/Madame，礼节完整再谈正事。",
+            "决策链条较长，预留多次沟通确认。"
+          ],
+          "key": "etiquette",
+          "title": "商务会面礼仪"
+        },
+        {
+          "items": [
+            "商务晚餐是重要社交场合；干杯说 Santé。"
+          ],
+          "key": "dining",
+          "title": "商务用餐"
+        },
+        {
+          "items": [
+            "餐饮账单已含服务费，可留小额现金小费。"
+          ],
+          "key": "payment",
+          "title": "支付与小费"
+        },
+        {
+          "items": [
+            "巴黎地铁按站计票，高峰注意随身物品。"
+          ],
+          "key": "transport",
+          "title": "交通"
+        },
+        {
+          "items": [
+            "Envoi-le vous par e-mail — 我邮件发给您",
+            "Merci de votre temps — 感谢您的时间"
+          ],
+          "key": "phrases",
+          "title": "常用商务表达"
+        }
+      ]
+    },
+    "IE": {
+      "cities": {
+        "Dublin": {
+          "tips": [
+            "市中心会议点多在 Temple Bar 附近，停车位紧张建议步行/出租。"
+          ]
+        }
+      },
+      "name": "爱尔兰",
+      "sections": [
+        {
+          "items": [
+            "英语沟通，氛围偏轻松但守时。",
+            "寒暄可聊橄榄球与天气，再进入正题。"
+          ],
+          "key": "etiquette",
+          "title": "商务会面礼仪"
+        },
+        {
+          "items": [
+            "刷卡普及；餐厅小费 10%–15%。"
+          ],
+          "key": "payment",
+          "title": "支付与小费"
+        },
+        {
+          "items": [
+            "都柏林夜间部分区域注意随身财物。"
+          ],
+          "key": "safety",
+          "title": "治安与风险"
+        },
+        {
+          "items": [
+            "Thanks a million — 非常感谢"
+          ],
+          "key": "phrases",
+          "title": "常用商务表达"
+        }
+      ]
+    },
+    "NL": {
+      "cities": {
+        "Amsterdam": {
+          "tips": [
+            "运河区道路窄，商务行程打车常比自驾省时。",
+            "市中心停车昂贵，建议公共交通抵达会面点。"
+          ]
+        }
+      },
+      "name": "荷兰",
+      "sections": [
+        {
+          "items": [
+            "直率沟通是常态，结论先行，寒暄简短。",
+            "英语普及率高，非正式场合可直接用英语。"
+          ],
+          "key": "etiquette",
+          "title": "商务会面礼仪"
+        },
+        {
+          "items": [
+            "午餐常见三明治式简餐；晚餐谈判多在餐厅预约后进行。",
+            "账单通常默认送到桌前，不自动加小费。"
+          ],
+          "key": "dining",
+          "title": "商务用餐"
+        },
+        {
+          "items": [
+            "荷兰高度无现金化，PIN/手机支付普及，现金备用即可。",
+            "服务满意可留 5%–10% 小费或凑整。"
+          ],
+          "key": "payment",
+          "title": "支付与小费"
+        },
+        {
+          "items": [
+            "OV-chipkaart/银行卡刷卡进站，公交地铁按区计费。",
+            "自行车流量极大，步行过自行车道要看左右。"
+          ],
+          "key": "transport",
+          "title": "交通"
+        },
+        {
+          "items": [
+            "整体安全；阿姆斯特丹中央车站周边注意扒窃。"
+          ],
+          "key": "safety",
+          "title": "治安与风险"
+        },
+        {
+          "items": [
+            "Dank je wel — 谢谢",
+            "Zullen we dit per e-mail bevestigen? — 我们邮件确认吗？"
+          ],
+          "key": "phrases",
+          "title": "常用商务表达"
+        }
+      ]
+    },
+    "SG": {
+      "cities": {
+        "Singapore": {
+          "tips": [
+            "室内冷气强，正装外套备用。",
+            "雨季午后多阵雨，行程留缓冲。"
+          ]
+        }
+      },
+      "name": "新加坡",
+      "sections": [
+        {
+          "items": [
+            "英语商务沟通；名片双手递接。"
+          ],
+          "key": "etiquette",
+          "title": "商务会面礼仪"
+        },
+        {
+          "items": [
+            "电子支付与信用卡普及；无小费习惯。"
+          ],
+          "key": "payment",
+          "title": "支付与小费"
+        },
+        {
+          "items": [
+            "治安严格良好；注意高额罚款（禁烟/乱丢垃圾）。"
+          ],
+          "key": "safety",
+          "title": "治安与风险"
+        },
+        {
+          "items": [
+            "Thank you / 谢谢"
+          ],
+          "key": "phrases",
+          "title": "常用商务表达"
+        }
+      ]
+    }
+  }
+}

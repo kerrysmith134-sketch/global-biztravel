@@ -433,7 +433,12 @@ struct TripDetailView: View {
                 .disabled(viewModel.generating)
             }
 
-            Section("记忆") {
+            Section("当地与记忆") {
+                NavigationLink {
+                    LocalGuideView(tripId: viewModel.tripId, environment: environment)
+                } label: {
+                    Label("当地生活指南", systemImage: "map")
+                }
                 NavigationLink {
                     TripMemoryView(tripId: viewModel.tripId, environment: environment)
                 } label: {

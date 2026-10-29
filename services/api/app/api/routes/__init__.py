@@ -23,6 +23,7 @@ from app.api.routes import (
     imports,
     integrations,
     llm,
+    local_guide,
     memory,
     metrics,
     notifications,
@@ -42,6 +43,7 @@ api_router.include_router(trips.router)
 api_router.include_router(visits.router)
 api_router.include_router(visa.router)
 api_router.include_router(imports.router)
+api_router.include_router(local_guide.router)
 api_router.include_router(integrations.router)
 api_router.include_router(audit.router)
 api_router.include_router(admin.router)

@@ -47,6 +47,7 @@ protocol TripRepository {
     func entryAssessments(tripId: String) async throws -> [EntryAssessment]
     func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment]
     func createTrip(_ request: CreateTripRequest) async throws -> Trip
+    func localGuide(tripId: String) async throws -> LocalGuide
     func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult
     func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult
 }
@@ -116,6 +117,10 @@ final class RemoteTripRepository: TripRepository {
             Endpoints.tripBudget(tripId: tripId, baseCurrency: baseCurrency),
             as: BudgetSummary.self
         )
+    }
+
+    func localGuide(tripId: String) async throws -> LocalGuide {
+        try await client.send(Endpoints.localGuide(tripId: tripId), as: LocalGuide.self)
     }
 
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {
@@ -295,6 +300,13 @@ final class OfflineTripRepository: TripRepository {
 
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary {
         try await remote.budgetSummary(tripId: tripId, baseCurrency: baseCurrency)
+    }
+
+    func localGuide(tripId: String) async throws -> LocalGuide {
+        // 离线目录版指南体积小、随版本发布；直接走服务端，失败原样抛出。
+        let guide = try await remote.localGuide(tripId: tripId)
+        indicator.markServedFromServer()
+        return guide
     }
 
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {

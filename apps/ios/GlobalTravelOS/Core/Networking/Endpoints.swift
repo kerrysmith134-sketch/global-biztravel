@@ -149,6 +149,12 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/visits")
     }
 
+    // MARK: - Local guide
+
+    static func localGuide(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/local-guide")
+    }
+
     // MARK: - Notifications
 
     static func notifications(unreadOnly: Bool = false, priority: String? = nil) -> APIRequest {

@@ -261,6 +261,18 @@ def main() -> int:
             "拜访简报显式标注 CRM 商机缺口",
         )
 
+        local = client.get(f"/v1/trips/{trip_id}/local-guide", headers=headers())
+        local.raise_for_status()
+        local_body = local.json()
+        check(
+            [item["country_code"] for item in local_body["countries"]] == ["DE", "NL"],
+            "当地指南按出行国家返回",
+        )
+        check(
+            any(gap["code"] == "LIVE_POI_NOT_CONNECTED" for gap in local_body["data_gaps"]),
+            "当地指南显式标注实时源缺口",
+        )
+
         print("5) 激活计划（If-Match 乐观并发）")
         current = client.get(f"/v1/trips/{trip_id}", headers=headers())
         current.raise_for_status()

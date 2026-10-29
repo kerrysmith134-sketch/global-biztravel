@@ -867,6 +867,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/local-guide:
+    get:
+      tags:
+      - local-guide
+      summary: 按出行国家与拜访城市组装的当地指南（离线目录）
+      operationId: get_local_guide_v1_trips__trip_id__local_guide_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalGuideRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/integrations/signals:
     post:
       tags:
@@ -4935,6 +4962,87 @@ components:
       - cached
       - created_at
       title: LLMInvocationRead
+    LocalGuideCityRead:
+      properties:
+        city:
+          type: string
+          title: City
+        tips:
+          items:
+            type: string
+          type: array
+          title: Tips
+      type: object
+      required:
+      - city
+      title: LocalGuideCityRead
+    LocalGuideCountryRead:
+      properties:
+        country_code:
+          type: string
+          title: Country Code
+        name:
+          type: string
+          title: Name
+        sections:
+          items:
+            $ref: '#/components/schemas/LocalGuideSectionRead'
+          type: array
+          title: Sections
+        cities:
+          items:
+            $ref: '#/components/schemas/LocalGuideCityRead'
+          type: array
+          title: Cities
+      type: object
+      required:
+      - country_code
+      - name
+      title: LocalGuideCountryRead
+    LocalGuideRead:
+      properties:
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        countries:
+          items:
+            $ref: '#/components/schemas/LocalGuideCountryRead'
+          type: array
+          title: Countries
+        cities_covered:
+          items:
+            type: string
+          type: array
+          title: Cities Covered
+        data_gaps:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Data Gaps
+      type: object
+      required:
+      - trip_id
+      title: LocalGuideRead
+    LocalGuideSectionRead:
+      properties:
+        key:
+          type: string
+          title: Key
+        title:
+          type: string
+          title: Title
+        items:
+          items:
+            type: string
+          type: array
+          title: Items
+      type: object
+      required:
+      - key
+      - title
+      title: LocalGuideSectionRead
     MemoryFeedbackRead:
       properties:
         type:

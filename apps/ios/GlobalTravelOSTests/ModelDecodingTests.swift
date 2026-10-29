@@ -263,6 +263,25 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(feed.unreadBreakdown, "未读 P0×1")
     }
 
+    func testLocalGuideDecodesSectionsAndGaps() throws {
+        let json = """
+        {
+          "trip_id": "t1",
+          "countries": [{
+            "country_code": "DE", "name": "德国",
+            "sections": [{"key": "etiquette", "title": "商务会面礼仪", "items": ["守时是底线"]}],
+            "cities": [{"city": "Berlin", "tips": ["会议预留缓冲"]}]
+          }],
+          "cities_covered": ["Berlin"],
+          "data_gaps": [{"code": "LIVE_POI_NOT_CONNECTED", "message": "实时推荐未接入"}]
+        }
+        """
+        let guide = try DateCoding.decode(LocalGuide.self, fromJSON: json)
+        XCTAssertEqual(guide.countryList.first?.sectionList.first?.itemList.count, 1)
+        XCTAssertEqual(guide.countryList.first?.cityList.first?.city, "Berlin")
+        XCTAssertEqual(guide.gapList.first?.code, "LIVE_POI_NOT_CONNECTED")
+    }
+
     func testActionCenterDecodesSectionsAndActions() throws {
         let json = """
         {

@@ -1161,6 +1161,32 @@ class BudgetSummaryRead(BaseModel):
     fx_conversions: list[FxConversionRead] = Field(default_factory=list)
 
 
+# ------------------------------------------------------------ local guide
+class LocalGuideSectionRead(BaseModel):
+    key: str
+    title: str
+    items: list[str] = Field(default_factory=list)
+
+
+class LocalGuideCityRead(BaseModel):
+    city: str
+    tips: list[str] = Field(default_factory=list)
+
+
+class LocalGuideCountryRead(BaseModel):
+    country_code: str
+    name: str
+    sections: list[LocalGuideSectionRead] = Field(default_factory=list)
+    cities: list[LocalGuideCityRead] = Field(default_factory=list)
+
+
+class LocalGuideRead(BaseModel):
+    trip_id: UUID
+    countries: list[LocalGuideCountryRead] = Field(default_factory=list)
+    cities_covered: list[str] = Field(default_factory=list)
+    data_gaps: list[dict[str, Any]] = Field(default_factory=list)
+
+
 # ------------------------------------------------------------ action center
 ActionCategory = Literal[
     "DECISION", "APPROVAL", "RUNNING", "FAILED", "PREPARATION", "COMPLETED"
