@@ -200,6 +200,19 @@ enum Endpoints {
         APIRequest(method: .post, path: "/v1/notifications/\(id):read")
     }
 
+    static func notificationPreferences() -> APIRequest {
+        APIRequest(method: .get, path: "/v1/notifications/preferences")
+    }
+
+    static func updateNotificationPreferences(muted: [String]) throws -> APIRequest {
+        APIRequest(
+            method: .put,
+            path: "/v1/notifications/preferences",
+            body: try DateCoding.encode(NotificationPreferenceUpdate(mutedPriorities: muted)),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     // MARK: - Action Center
 
     static func actionCenter(tripId: String? = nil) -> APIRequest {

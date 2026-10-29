@@ -7,6 +7,8 @@ final class NotificationsViewModel: ObservableObject {
     @Published private(set) var busyIds: Set<String> = []
     @Published var errorMessage: String?
     @Published var filter: String?
+    @Published private(set) var muted: Set<String> = []
+    @Published var isSavingPreference = false
 
     private let environment: AppEnvironment
 
@@ -23,6 +25,31 @@ final class NotificationsViewModel: ObservableObject {
                 unreadOnly: false,
                 priority: filter
             )
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    func loadPreferences() async {
+        do {
+            let prefs = try await environment.notificationRepository.preferences()
+            muted = Set(prefs.mutedList)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    func toggleMuted(_ key: String) async {
+        isSavingPreference = true
+        defer { isSavingPreference = false }
+        var next = muted
+        if next.contains(key) { next.remove(key) } else { next.insert(key) }
+        do {
+            let saved = try await environment.notificationRepository.updatePreferences(
+                muted: ["P0", "P1", "P2", "P3"].filter(next.contains)
+            )
+            muted = Set(saved.mutedList)
+            await load()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -53,6 +80,7 @@ struct NotificationsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: NotificationsViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showsPreferences = false
 
     init(environment: AppEnvironment) {
         _viewModel = StateObject(wrappedValue: NotificationsViewModel(environment: environment))
@@ -121,6 +149,15 @@ struct NotificationsView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        Task { await viewModel.loadPreferences() }
+                        showsPreferences = true
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                    }
+                    .accessibilityLabel("通知偏好")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         Task { await viewModel.load() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
@@ -132,6 +169,9 @@ struct NotificationsView: View {
             .task { await viewModel.load() }
             .onChange(of: viewModel.filter) {
                 Task { await viewModel.load() }
+            }
+            .sheet(isPresented: $showsPreferences) {
+                NotificationPreferencesSheet(viewModel: viewModel)
             }
         }
     }
@@ -198,6 +238,50 @@ private struct NotificationRow: View {
         case "orange": return .orange
         case "blue": return .blue
         default: return .secondary
+        }
+    }
+}
+
+/// 按等级静音：静音只抑制通知，建议仍保留在主动式列表。
+struct NotificationPreferencesSheet: View {
+    @ObservedObject var viewModel: NotificationsViewModel
+    @Environment(\.dismiss) private var dismiss
+    private let levels = ["P0", "P1", "P2", "P3"]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(levels, id: \.self) { key in
+                        Toggle(isOn: Binding(
+                            get: { viewModel.muted.contains(key) },
+                            set: { _ in Task { await viewModel.toggleMuted(key) } }
+                        )) {
+                            Text("\(key) \(label(key))")
+                        }
+                        .disabled(viewModel.isSavingPreference)
+                    }
+                } footer: {
+                    Text("静音的等级不再产生通知；建议本身仍会出现在主动建议里。")
+                }
+            }
+            .navigationTitle("通知偏好")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .task { await viewModel.loadPreferences() }
+        }
+    }
+
+    private func label(_ key: String) -> String {
+        switch key {
+        case "P0": return "紧急"
+        case "P1": return "高优先级"
+        case "P2": return "一般"
+        case "P3": return "信息性"
+        default: return key
         }
     }
 }

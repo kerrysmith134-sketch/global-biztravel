@@ -55,3 +55,12 @@ struct NotificationFeed: Codable, Equatable {
         return parts.isEmpty ? "全部已读" : "未读 " + parts.joined(separator: " · ")
     }
 }
+
+struct NotificationPreferenceRead: Codable, Equatable {
+    var mutedPriorities: [String]?
+    var mutedList: [String] { mutedPriorities ?? [] }
+}
+
+struct NotificationPreferenceUpdate: Codable, Equatable {
+    var mutedPriorities: [String]
+}
