@@ -151,7 +151,7 @@ struct AssistantView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(messages) { message in
-                            MessageBubble(message: message)
+                            MessageBubble(message: message, environment: environment)
                         }
                         if let error = viewModel.errorMessage {
                             ErrorBanner(message: error)
@@ -184,6 +184,7 @@ struct AssistantView: View {
 
 private struct MessageBubble: View {
     let message: AssistantMessage
+    let environment: AppEnvironment
 
     var body: some View {
         VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: 4) {
@@ -196,15 +197,28 @@ private struct MessageBubble: View {
                     in: RoundedRectangle(cornerRadius: 12)
                 )
             ForEach(message.cardList) { card in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(card.title).font(.caption.weight(.semibold))
-                    Text(card.detail).font(.caption2).foregroundStyle(.secondary)
+                if card.link == "trip", let tripId = card.entityId {
+                    // 卡片是执行入口：行程卡片直达行程详情，而不是声称"已办完"。
+                    NavigationLink {
+                        TripDetailView(tripId: tripId, environment: environment)
+                    } label: {
+                        cardFace(card)
+                    }
+                } else {
+                    cardFace(card)
                 }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isFromUser ? .trailing : .leading)
+    }
+
+    private func cardFace(_ card: AssistantCard) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(card.title).font(.caption.weight(.semibold))
+            Text(card.detail).font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
