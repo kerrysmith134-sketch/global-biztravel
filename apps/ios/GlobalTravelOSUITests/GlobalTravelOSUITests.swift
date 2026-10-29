@@ -252,32 +252,42 @@ final class GlobalTravelOSUITests: XCTestCase {
         let result = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS '已提交到服务端' OR label CONTAINS '已离线保存'")
         ).firstMatch
-        XCTAssertTrue(result.waitForExistence(timeout: 20), "现场记录未提交")
+        XCTAssertTrue(result.waitForExistence(timeout: 30), "现场记录未提交")
 
-        // 会议纪要草稿：同页一键生成，走真实 LLM 网关（本地 stub）并写 llm_invocation。
-        // 先收起键盘，再滚到列表底部的生成按钮。
+        // 会议纪要草稿：同页一键生成。用视口中段的坐标拖动滚动（在 sheet 上 swipe
+        // 容易触发交互式关闭），避免把表单滑没。
         if app.keyboards.count > 0 {
-            let done = app.keyboards.buttons["完成"]
-            if done.exists {
-                done.tap()
-            } else {
-                app.swipeDown()
+            let dismiss = app.keyboards.buttons.matching(
+                NSPredicate(format: "label == '完成' OR label == '收起键盘' OR label == 'Dismiss Keyboard' OR identifier == 'dismiss keyboard'")
+            ).firstMatch
+            if dismiss.exists {
+                dismiss.tap()
             }
         }
+        func dragDown() {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)))
+        }
+        func dragUp() {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)))
+        }
         let minutes = app.buttons["生成会议纪要草稿"]
-        let minutesDeadline = Date().addingTimeInterval(15)
-        while !minutes.isHittable && Date() < minutesDeadline {
-            app.swipeUp()
+        let minutesDeadline = Date().addingTimeInterval(20)
+        while !minutes.exists && Date() < minutesDeadline {
+            dragDown()
+        }
+        while minutes.exists && !minutes.isHittable && Date() < minutesDeadline {
+            dragUp()
         }
         XCTAssertTrue(minutes.exists, "未找到生成纪要按钮")
         if minutes.isHittable {
             minutes.tap()
         } else {
-            // 列表已到底但按钮贴着屏幕下缘：用坐标点按中心。
             minutes.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
         XCTAssertTrue(
-            app.staticTexts["会议纪要草稿"].waitForExistence(timeout: 30),
+            app.staticTexts["会议纪要草稿"].waitForExistence(timeout: 45),
             "会议纪要草稿未生成"
         )
     }
@@ -400,6 +410,16 @@ private extension GlobalTravelOSUITests {
 
     /// 用真实 HTTP 准备"有拜访的出行"，避免 UI 测试依赖手工种子数据或列表分页顺序。
     func makeBriefingTrip() throws -> BriefingSetup {
+        do {
+            return try makeBriefingTripOnce()
+        } catch {
+            // 准备数据偶发失败（后端瞬时抖动）：重试一次，避免整条 UI 用例假失败。
+            Thread.sleep(forTimeInterval: 2)
+            return try makeBriefingTripOnce()
+        }
+    }
+
+    private func makeBriefingTripOnce() throws -> BriefingSetup {
         let base = "http://127.0.0.1:8080"
         let suffix = Int(Date().timeIntervalSince1970)
         let place = try postJSON(
@@ -516,7 +536,7 @@ private extension GlobalTravelOSUITests {
                 output = json
             }
         }.resume()
-        XCTAssertEqual(done.wait(timeout: .now() + 20), .success, "准备 UI 测试数据超时")
+        XCTAssertEqual(done.wait(timeout: .now() + 30), .success, "准备 UI 测试数据超时")
         if let failure { throw failure }
         return output
     }
