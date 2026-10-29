@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from app.models.approval import ApprovalPolicy
+from app.models.assistant import AssistantConversation, AssistantMessage
 from app.models.base import Base
 from app.models.crm import CrmSyncJob
 from app.models.devices import DeviceToken
@@ -51,6 +52,8 @@ __all__ = [
     "Approval",
     "ApprovalPolicy",
     "BackgroundJob",
+    "AssistantConversation",
+    "AssistantMessage",
     "Base",
     "Customer",
     "CrmSyncJob",

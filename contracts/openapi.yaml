@@ -1216,6 +1216,128 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/assistant/conversations:
+    get:
+      tags:
+      - assistant
+      summary: 我的对话列表
+      operationId: list_conversations_v1_assistant_conversations_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AssistantConversationRead'
+                type: array
+                title: Response List Conversations V1 Assistant Conversations Get
+    post:
+      tags:
+      - assistant
+      summary: 新建对话
+      operationId: create_conversation_v1_assistant_conversations_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantConversationCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantConversationRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/assistant/conversations/{conversation_id}:
+    get:
+      tags:
+      - assistant
+      summary: 对话详情（含消息）
+      operationId: get_conversation_v1_assistant_conversations__conversation_id__get
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Conversation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantConversationDetailRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - assistant
+      summary: 删除对话（只删聊天，不影响任务与审计）
+      operationId: delete_conversation_v1_assistant_conversations__conversation_id__delete
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Conversation Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/assistant/conversations/{conversation_id}/messages:
+    post:
+      tags:
+      - assistant
+      summary: 发送消息：获取基于事实卡片的回复
+      operationId: post_message_v1_assistant_conversations__conversation_id__messages_post
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Conversation Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantMessageCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantMessageRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/customers:
     get:
       tags:
@@ -3251,6 +3373,110 @@ components:
       - enabled
       - created_at
       title: ApprovalPolicyRead
+    AssistantConversationCreate:
+      properties:
+        trip_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Trip Id
+        title:
+          type: string
+          maxLength: 200
+          title: Title
+          default: ''
+      type: object
+      title: AssistantConversationCreate
+    AssistantConversationDetailRead:
+      properties:
+        conversation:
+          $ref: '#/components/schemas/AssistantConversationRead'
+        messages:
+          items:
+            $ref: '#/components/schemas/AssistantMessageRead'
+          type: array
+          title: Messages
+      type: object
+      required:
+      - conversation
+      title: AssistantConversationDetailRead
+    AssistantConversationRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        trip_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Trip Id
+        title:
+          type: string
+          title: Title
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - title
+      - created_at
+      - updated_at
+      title: AssistantConversationRead
+    AssistantMessageCreate:
+      properties:
+        content:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Content
+      type: object
+      required:
+      - content
+      title: AssistantMessageCreate
+    AssistantMessageRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        role:
+          type: string
+          title: Role
+        content:
+          type: string
+          title: Content
+        cards:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Cards
+        llm_invocation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Llm Invocation Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - role
+      - content
+      - created_at
+      title: AssistantMessageRead
     AuditEventRead:
       properties:
         at:

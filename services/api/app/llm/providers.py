@@ -44,6 +44,22 @@ class StubProvider:
         variables = request.variables
         if request.task == "draft_meeting_minutes":
             output = self._meeting_minutes(variables)
+        elif request.task == "assistant_reply":
+            trip = str(variables.get("trip_name") or "未命名出行")
+            counts = variables.get("action_counts") or {}
+            open_items = int(counts.get("DECISION", 0)) + int(counts.get("APPROVAL", 0)) + int(
+                counts.get("FAILED", 0)
+            )
+            question = str(variables.get("message") or "").strip()
+            reply = (
+                f"当前行程「{trip}」，有 {open_items} 项需要你处理的事项"
+                "（待决定/待审批/失败）。"
+            )
+            if question:
+                reply += f"关于「{question[:40]}」：请到行动中心或对应行程页查看权威状态，我不会在这里代替执行。"
+            else:
+                reply += "可以直接问我行程状态，或去行动中心处理待办。"
+            output = {"reply": reply}
         elif request.task == "explain_plan":
             output = {
                 "summary": (

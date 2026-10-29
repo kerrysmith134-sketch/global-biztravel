@@ -1161,6 +1161,38 @@ class BudgetSummaryRead(BaseModel):
     fx_conversions: list[FxConversionRead] = Field(default_factory=list)
 
 
+# ------------------------------------------------------------ assistant
+class AssistantConversationCreate(BaseModel):
+    trip_id: UUID | None = None
+    title: str = Field(default="", max_length=200)
+
+
+class AssistantConversationRead(ORMModel):
+    id: UUID
+    trip_id: UUID | None = None
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssistantMessageRead(ORMModel):
+    id: UUID
+    role: str
+    content: str
+    cards: list[dict[str, Any]] = Field(default_factory=list)
+    llm_invocation_id: UUID | None = None
+    created_at: datetime
+
+
+class AssistantConversationDetailRead(BaseModel):
+    conversation: AssistantConversationRead
+    messages: list[AssistantMessageRead] = Field(default_factory=list)
+
+
+class AssistantMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+
 # ------------------------------------------------------------ local guide
 class LocalGuideSectionRead(BaseModel):
     key: str

@@ -389,6 +389,26 @@ def main() -> int:
         converted = budget.json()["converted_actual_total"]
         check(converted is not None and float(converted) == 8.0, "按显式汇率折算实际费用")
 
+        conv = client.post(
+            "/v1/assistant/conversations",
+            headers=headers(),
+            json={"trip_id": trip_id, "title": ""},
+        )
+        conv.raise_for_status()
+        chat = client.post(
+            f"/v1/assistant/conversations/{conv.json()['id']}/messages",
+            headers=headers(),
+            json={"content": "这趟行程现在需要我做什么？"},
+        )
+        chat.raise_for_status()
+        chat_body = chat.json()
+        check(bool(chat_body["content"]), "助手回复非空")
+        check(
+            any(card["type"] == "TRIP_STATUS" for card in chat_body["cards"]),
+            "助手回复携带事实卡片",
+        )
+        client.delete(f"/v1/assistant/conversations/{conv.json()['id']}", headers=headers())
+
         print("7) 会议纪要草稿（LLM 网关）")
         minutes = client.post(f"/v1/visits/{visit_id}/minutes:draft", headers=headers(), json={})
         minutes.raise_for_status()

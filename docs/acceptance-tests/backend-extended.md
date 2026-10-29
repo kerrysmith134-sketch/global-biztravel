@@ -70,6 +70,7 @@ make ios-test
 | 拜访前简报 | `services/api/tests/test_visit_briefing.py` | 客户/地点/目标/历史/跟进/记忆聚合；目标可编辑；未关联客户与 CRM/资料缺口显式返回；跨租户 404 |
 | 通知分级（S8-08） | `services/api/tests/test_notification_priority.py` | P0/P1/P2/P3 确定性规则；入队落库优先级与 issue_key；Feed 分级未读与过滤；非法等级 4xx；跨租户隔离 |
 | 当地生活指南（方向五） | `services/api/tests/test_local_guide.py` | 按出行国家返回目录条目；城市贴士只覆盖拜访城市；未知国家与实时源缺口显式返回；跨租户 404 |
+| AI 助手对话（页面 05） | `services/api/tests/test_assistant.py` | 事实卡片与 llm 回溯；消息对/详情/删除只影响对话表；空/超长消息 4xx；跨租户 404 |
 | iOS 行动中心 | `ActionCenterView` + `ActionCenter.swift` | Today 工具栏入口；分区展示、就地批准/驳回建议、跳转行程 |
 
 ## 已知边界
