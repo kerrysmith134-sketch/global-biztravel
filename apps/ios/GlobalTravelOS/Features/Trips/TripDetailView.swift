@@ -43,10 +43,15 @@ final class TripDetailViewModel: ObservableObject {
         entryAssessments = (try? await environment.tripRepository.entryAssessments(tripId: tripId))
             ?? entryAssessments
         expenses = (try? await environment.tripRepository.expenses(tripId: tripId)) ?? expenses
-        budget = try? await environment.tripRepository.budgetSummary(
-            tripId: tripId,
-            baseCurrency: trip?.currency
-        )
+        do {
+            // 预算失败要显式暴露：try? 静默吞掉会让"预算区永远不出现"无法诊断。
+            budget = try await environment.tripRepository.budgetSummary(
+                tripId: tripId,
+                baseCurrency: trip?.currency
+            )
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
         expenseReports = (try? await environment.tripRepository.expenseReports(tripId: tripId))
             ?? expenseReports
         environment.refreshOfflineSummary()
