@@ -43,6 +43,34 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.navigationBars["通知"].waitForExistence(timeout: 15),
             "通知中心未加载"
         )
+        // 通知偏好面板：按等级静音并即时保存（真实 PUT /v1/notifications/preferences）。
+        let prefsButton = app.buttons["通知偏好"]
+        XCTAssertTrue(prefsButton.waitForExistence(timeout: 10), "未找到通知偏好入口")
+        prefsButton.tap()
+        XCTAssertTrue(
+            app.navigationBars["通知偏好"].waitForExistence(timeout: 15),
+            "通知偏好面板未打开"
+        )
+        let p3Toggle = app.switches.matching(
+            NSPredicate(format: "label BEGINSWITH 'P3'")
+        ).firstMatch
+        XCTAssertTrue(p3Toggle.waitForExistence(timeout: 10), "未找到 P3 开关")
+        let original = p3Toggle.value as? String
+        p3Toggle.tap()
+        Thread.sleep(forTimeInterval: 2)
+        // 还原为初始状态，避免影响后续用例。
+        if (p3Toggle.value as? String) != original {
+            p3Toggle.tap()
+        }
+        XCTAssertTrue(
+            app.buttons["完成"].waitForExistence(timeout: 10),
+            "偏好面板缺少完成按钮"
+        )
+        app.buttons["完成"].tap()
+        XCTAssertTrue(
+            app.navigationBars["通知"].waitForExistence(timeout: 10),
+            "偏好关闭后未回到通知中心"
+        )
         app.buttons["关闭"].tap()
 
         let assistant = app.buttons["AI 助手"]
