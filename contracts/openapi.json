@@ -5560,7 +5560,8 @@
             "enum": [
               "approve_suggestion",
               "dismiss_suggestion",
-              "generate_plan"
+              "generate_plan",
+              "create_expense_report"
             ],
             "title": "Action"
           },

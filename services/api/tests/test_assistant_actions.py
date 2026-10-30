@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
 import pytest
@@ -112,6 +112,26 @@ def test_conversation_action_runs_via_business_service(client: TestClient) -> No
         )
         assert gen.status_code == 200, gen.text
         assert gen.json()["cards"][0]["type"] == "PLAN_JOB"
+
+        # 生成报销单：先记一笔费用，再从费用快照建单。
+        expense = client.post(
+            f"/v1/trips/{trip_id}/expenses",
+            headers=headers(),
+            json={
+                "category": "MEALS",
+                "amount": "12.30",
+                "currency": "EUR",
+                "occurred_on": date.today().isoformat(),
+            },
+        )
+        assert expense.status_code == 201, expense.text
+        report_action = client.post(
+            f"/v1/assistant/conversations/{conversation_id}/actions",
+            headers=headers(),
+            json={"action": "create_expense_report", "subject_id": trip_id},
+        )
+        assert report_action.status_code == 200, report_action.text
+        assert report_action.json()["cards"][0]["type"] == "EXPENSE_REPORT"
 
         # 不支持的动作被拒（执行面保持白名单）。
         bad = client.post(

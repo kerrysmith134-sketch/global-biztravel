@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound, Unprocessable
+from app.api.schemas import ExpenseReportCreate
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
 from app.llm.prompts import (
@@ -30,7 +31,13 @@ from app.llm.tools import list_tools
 from app.models.assistant import AssistantConversation, AssistantMessage
 from app.models.proactive import ProactiveSuggestion
 from app.models.trip import Trip
-from app.services import action_center_service, job_service, proactive_service, trip_service
+from app.services import (
+    action_center_service,
+    expense_report_service,
+    job_service,
+    proactive_service,
+    trip_service,
+)
 
 HISTORY_LIMIT = 6
 MAX_CONTENT = 4000
@@ -244,6 +251,39 @@ def run_action(
             role="ASSISTANT",
             content=detail,
             cards=[card],
+        )
+        session.add(row)
+        session.flush()
+        return row
+    elif action == "create_expense_report":
+        if conversation.trip_id is None:
+            raise Unprocessable("对话未绑定行程，无法生成报销单", details={"action": action})
+        detail_obj = expense_report_service.create_report(
+            session,
+            organization_id,
+            conversation.trip_id,
+            ExpenseReportCreate(),
+            actor_user_id=actor_user_id,
+        )
+        report = detail_obj.report
+        detail = (
+            f"已从费用记录生成报销单 {str(report.id)[:8]}"
+            f"（{len(detail_obj.items)} 项，状态 {report.status}）"
+        )
+        row = AssistantMessage(
+            organization_id=str(conversation.organization_id),
+            conversation_id=conversation.id,
+            role="ASSISTANT",
+            content=detail,
+            cards=[
+                {
+                    "type": "EXPENSE_REPORT",
+                    "title": "报销单已生成",
+                    "detail": detail,
+                    "entity_id": str(report.id),
+                    "link": "trip",
+                }
+            ],
         )
         session.add(row)
         session.flush()

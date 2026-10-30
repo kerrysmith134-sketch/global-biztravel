@@ -3451,6 +3451,7 @@ components:
           - approve_suggestion
           - dismiss_suggestion
           - generate_plan
+          - create_expense_report
           title: Action
         subject_id:
           type: string
