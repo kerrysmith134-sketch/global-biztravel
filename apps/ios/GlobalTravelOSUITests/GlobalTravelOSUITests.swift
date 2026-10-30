@@ -278,6 +278,13 @@ final class GlobalTravelOSUITests: XCTestCase {
         XCTAssertTrue(activated.exists, "计划未激活")
 
         // 5) 记一笔费用
+        // 预算区在异步 budget 加载后才渲染：先等区块头出现，再找按钮。
+        let budgetHeader = app.staticTexts["费用与预算"]
+        let budgetDeadline = Date().addingTimeInterval(30)
+        while !budgetHeader.exists && Date() < budgetDeadline { dragContent(app, up: true) }
+        if !budgetHeader.exists {
+            XCTFail("budget-state: \(app.debugDescription)")
+        }
         XCTAssertTrue(revealAndTap(app, app.buttons["记一笔费用"]), "未找到记一笔费用")
         if !app.navigationBars["记一笔费用"].waitForExistence(timeout: 15) {
             // 第一次点击可能落在滚动惯性中：再点一次。
