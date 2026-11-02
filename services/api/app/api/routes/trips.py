@@ -24,9 +24,17 @@ from app.api.deps import (
 from app.api.idempotent import IdempotentWrite
 from app.api.pagination import clamp_limit, decode_cursor
 from app.api.pagination import next_cursor as page_cursor
-from app.api.schemas import Page, TripCreate, TripRead, TripUpdate, VisitCreate, VisitRead
+from app.api.schemas import (
+    Page,
+    TripCreate,
+    TripOutcomeRead,
+    TripRead,
+    TripUpdate,
+    VisitCreate,
+    VisitRead,
+)
 from app.models.trip import Trip
-from app.services import trip_service, visit_service
+from app.services import trip_outcome_service, trip_service, visit_service
 
 router = APIRouter(tags=["trips"])
 
@@ -280,3 +288,13 @@ def complete_trip(
         endpoint=TRIP_COMPLETE_ENDPOINT,
         action=trip_service.complete_trip,
     )
+
+
+@router.get(
+    "/trips/{trip_id}/outcome",
+    response_model=TripOutcomeRead,
+    summary="出差结果分析与客户机会复盘（PRD P1）",
+)
+def get_trip_outcome(trip_id: UUID, context: ContextDep, session: SessionDep):
+    require_role(context, ROLE_VIEWER)
+    return trip_outcome_service.build_outcome(session, context.organization_id, trip_id)

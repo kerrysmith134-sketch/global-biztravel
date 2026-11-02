@@ -1293,6 +1293,48 @@ class LocalGuideRead(BaseModel):
     data_gaps: list[dict[str, Any]] = Field(default_factory=list)
 
 
+# ------------------------------------------------------------ trip outcome
+class TripOutcomeVisitRead(BaseModel):
+    status: str
+    count: int
+
+
+class TripOutcomeCostRead(BaseModel):
+    total: float | None = None
+    currency: str | None = None
+    unknown_count: int = 0
+
+
+class TripOpportunitySignalRead(BaseModel):
+    kind: str
+    kind_label: str
+    text: str
+    visit_id: str
+    requires_confirmation: bool = True
+
+
+class TripOutcomeRead(BaseModel):
+    """出差结果分析与客户机会复盘（PRD P1）。
+
+    只读聚合：拜访结果、费用计划 vs 实际、纪要分类洞察与商机信号。
+    所有"机会"都标注 requires_confirmation=True——不得当作已确认事实。
+    """
+
+    trip_id: UUID
+    status: str
+    window: dict[str, str] = Field(default_factory=dict)
+    visits: dict[str, int] = Field(default_factory=dict)
+    visit_labels: dict[str, str] = Field(default_factory=dict)
+    record_outcomes: dict[str, int] = Field(default_factory=dict)
+    record_outcome_labels: dict[str, str] = Field(default_factory=dict)
+    plan_cost: TripOutcomeCostRead | None = None
+    actual_cost: list[dict[str, Any]] = Field(default_factory=list)
+    insights_by_kind: dict[str, int] = Field(default_factory=dict)
+    insight_kind_labels: dict[str, str] = Field(default_factory=dict)
+    opportunity_signals: list[TripOpportunitySignalRead] = Field(default_factory=list)
+    memory_summaries: list[dict[str, Any]] = Field(default_factory=list)
+
+
 # ------------------------------------------------------------ action center
 ActionCategory = Literal[
     "DECISION", "APPROVAL", "RUNNING", "FAILED", "PREPARATION", "COMPLETED"

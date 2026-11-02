@@ -634,6 +634,49 @@
         }
       }
     },
+    "/v1/trips/{trip_id}/outcome": {
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "出差结果分析与客户机会复盘（PRD P1）",
+        "operationId": "get_trip_outcome_v1_trips__trip_id__outcome_get",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripOutcomeRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/visits/{visit_id}/briefing": {
       "get": {
         "tags": [
@@ -12203,6 +12246,174 @@
           "trip_id"
         ],
         "title": "TripMemoryRead"
+      },
+      "TripOpportunitySignalRead": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "kind_label": {
+            "type": "string",
+            "title": "Kind Label"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "visit_id": {
+            "type": "string",
+            "title": "Visit Id"
+          },
+          "requires_confirmation": {
+            "type": "boolean",
+            "title": "Requires Confirmation",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "kind_label",
+          "text",
+          "visit_id"
+        ],
+        "title": "TripOpportunitySignalRead"
+      },
+      "TripOutcomeCostRead": {
+        "properties": {
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "unknown_count": {
+            "type": "integer",
+            "title": "Unknown Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "TripOutcomeCostRead"
+      },
+      "TripOutcomeRead": {
+        "properties": {
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "window": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Window"
+          },
+          "visits": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Visits"
+          },
+          "visit_labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Visit Labels"
+          },
+          "record_outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Record Outcomes"
+          },
+          "record_outcome_labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Record Outcome Labels"
+          },
+          "plan_cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TripOutcomeCostRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actual_cost": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Actual Cost"
+          },
+          "insights_by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Insights By Kind"
+          },
+          "insight_kind_labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Insight Kind Labels"
+          },
+          "opportunity_signals": {
+            "items": {
+              "$ref": "#/components/schemas/TripOpportunitySignalRead"
+            },
+            "type": "array",
+            "title": "Opportunity Signals"
+          },
+          "memory_summaries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Memory Summaries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip_id",
+          "status"
+        ],
+        "title": "TripOutcomeRead",
+        "description": "出差结果分析与客户机会复盘（PRD P1）。\n\n只读聚合：拜访结果、费用计划 vs 实际、纪要分类洞察与商机信号。\n所有\"机会\"都标注 requires_confirmation=True——不得当作已确认事实。"
       },
       "TripRead": {
         "properties": {
