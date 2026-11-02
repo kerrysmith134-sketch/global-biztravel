@@ -71,6 +71,7 @@ make ios-test
 | 通知用户偏好（S8-08） | `services/api/tests/test_notification_preferences.py`、iOS 偏好面板 | 静音等级 ⇒ 无通知但建议保留；偏好 GET/PUT 幂等；非法等级 4xx；通知页按 P0–P3 开关即时保存 |
 | 通知分级（S8-08） | `services/api/tests/test_notification_priority.py` | P0/P1/P2/P3 确定性规则；入队落库优先级与 issue_key；Feed 分级未读与过滤；非法等级 4xx；跨租户隔离 |
 | 当地生活指南（方向五） | `services/api/tests/test_local_guide.py` | 按出行国家返回目录条目；城市贴士只覆盖拜访城市；未知国家与实时源缺口显式返回；跨租户 404 |
+| 客户多地址（P0-3） | `services/api/tests/test_customer_places.py` | 一企业两地址（总部/工厂）；幂等关联；来源+可信度返回；解除关联保留地点本体；跨租户 404；不存在地点 404 |
 | 自然语言创建出差（P0-2） | `services/api/tests/test_assistant_trip_creation.py` | 完整请求→提案→确认建 DRAFT；缺字段反问；问状态不误判；重复确认幂等；跨租户 404 |
 | AI 助手对话/会话内执行（页面 05） | `services/api/tests/test_assistant.py`、`test_assistant_actions.py`、iOS `AssistantView` | 事实卡片与 llm 回溯；删除只影响对话表；空/超长消息 4xx；跨租户 404；iOS 列表/消息流/卡片展示 |
 | iOS 行动中心 | `ActionCenterView` + `ActionCenter.swift` | Today 工具栏入口；分区展示、就地批准/驳回建议、跳转行程 |

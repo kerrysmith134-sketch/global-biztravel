@@ -2431,6 +2431,166 @@
         }
       }
     },
+    "/v1/customers/{customer_id}/places": {
+      "get": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "客户的全部地址（一家企业多个地址，PRD P0-3）",
+        "operationId": "list_customer_places_v1_customers__customer_id__places_get",
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Customer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerPlaceRead"
+                  },
+                  "title": "Response List Customer Places V1 Customers  Customer Id  Places Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "为客户关联一个地址（幂等）",
+        "operationId": "link_customer_place_v1_customers__customer_id__places_post",
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerPlaceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerPlaceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/customers/{customer_id}/places/{place_id}": {
+      "delete": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "解除客户—地址关联（不删地点本身）",
+        "operationId": "unlink_customer_place_v1_customers__customer_id__places__place_id__delete",
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "place_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Place Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/visit-records/{record_id}/crm-sync": {
       "post": {
         "tags": [
@@ -6622,6 +6782,171 @@
           "name"
         ],
         "title": "CustomerCreate"
+      },
+      "CustomerPlaceCreate": {
+        "properties": {
+          "place_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Place Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "place_id"
+        ],
+        "title": "CustomerPlaceCreate"
+      },
+      "CustomerPlaceRead": {
+        "properties": {
+          "place_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Place Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "default": false
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "address_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address Line"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "geocode_status": {
+            "type": "string",
+            "enum": [
+              "MISSING",
+              "RESOLVED",
+              "FAILED"
+            ],
+            "title": "Geocode Status"
+          },
+          "geocode_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geocode Source"
+          },
+          "geocode_confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geocode Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "place_id",
+          "name",
+          "geocode_status"
+        ],
+        "title": "CustomerPlaceRead",
+        "description": "客户的一个地址（PRD P0-3：一家企业可有多个地址）。\n\n``geocode_source``/``geocode_confidence`` 即\"信息来源及可信度\"——地址坐标从哪来、有多可靠。"
       },
       "CustomerRead": {
         "properties": {

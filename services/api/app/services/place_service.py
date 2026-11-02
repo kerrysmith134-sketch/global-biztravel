@@ -170,6 +170,40 @@ def link_customer_place(
     return link
 
 
+def list_customer_places(
+    session: Session, organization_id: UUID | str, customer_id: UUID
+) -> list[tuple[CustomerPlace, Place]]:
+    """一家企业的全部地址（PRD P0-3）：按主地址优先、名称稳定排序返回关联与地点。"""
+    rows = session.execute(
+        select(CustomerPlace, Place)
+        .join(Place, Place.id == CustomerPlace.place_id)
+        .where(
+            CustomerPlace.organization_id == organization_id,
+            CustomerPlace.customer_id == customer_id,
+        )
+        .order_by(CustomerPlace.is_primary.desc(), Place.name)
+    ).all()
+    return [(row[0], row[1]) for row in rows]
+
+
+def unlink_customer_place(
+    session: Session, organization_id: UUID | str, customer_id: UUID, place_id: UUID
+) -> bool:
+    """解除客户—地点关联；返回是否真的删掉了行（幂等）。"""
+    link = session.scalars(
+        select(CustomerPlace).where(
+            CustomerPlace.organization_id == organization_id,
+            CustomerPlace.customer_id == customer_id,
+            CustomerPlace.place_id == place_id,
+        )
+    ).one_or_none()
+    if link is None:
+        return False
+    session.delete(link)
+    session.flush()
+    return True
+
+
 def get_place(session: Session, organization_id: UUID | str, place_id: UUID) -> Place | None:
     return session.scalars(
         select(Place).where(Place.organization_id == organization_id, Place.id == place_id)

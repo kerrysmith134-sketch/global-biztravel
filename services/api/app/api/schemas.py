@@ -80,6 +80,33 @@ class PlaceRead(ORMModel):
     updated_at: datetime
 
 
+class CustomerPlaceRead(BaseModel):
+    """客户的一个地址（PRD P0-3：一家企业可有多个地址）。
+
+    ``geocode_source``/``geocode_confidence`` 即"信息来源及可信度"——地址坐标从哪来、有多可靠。
+    """
+
+    place_id: UUID
+    label: str | None = None
+    is_primary: bool = False
+    name: str
+    address_line: str | None = None
+    city: str | None = None
+    region: str | None = None
+    country_code: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    geocode_status: GeocodeStatus
+    geocode_source: str | None = None
+    geocode_confidence: Decimal | None = None
+
+
+class CustomerPlaceCreate(BaseModel):
+    place_id: UUID
+    label: str | None = Field(default=None, max_length=120)
+    is_primary: bool = False
+
+
 # --------------------------------------------------------------- customers
 class CustomerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
