@@ -52,6 +52,39 @@ TRIP_INTAKE_SCHEMA: dict[str, Any] = {
     },
 }
 
+#: PRD P1「自动识别拜访纪要、客户需求和后续任务」：v2 在纪要基础上抽取分类洞察。
+#: 模板改动一律新增版本（v1 保留供历史调用回放）。
+MEETING_MINUTES_V2_PROMPT_VERSION = "v2"
+
+MEETING_MINUTES_V2_SYSTEM = (
+    "你是企业差旅助手。根据现场拜访记录起草会议纪要，只输出 JSON。"
+    "summary 用 2-4 句客观描述，decisions 只写客户当场确认的结论（没有就留空数组），"
+    "follow_up_tasks 每条都必须有 title；"
+    "insights 逐条抽取记录中出现的信息，kind 只能取 "
+    "SUMMARY / CUSTOMER_NEED / OPPORTUNITY_SIGNAL / DEAL_TERM / COMMITMENT / STAGE_CHANGE，"
+    "text 用记录里的原话或紧贴原意的概括，绝不推断没写的内容；"
+    "requires_confirmation 对除 SUMMARY 外的所有 kind 必须为 true，只有 SUMMARY 可为 false。"
+    "不要编造未在输入中出现的事实，也不要把推断写成已确认结论。"
+)
+
+#: 服务端强制确认的类别（PRD 页面 07 §8.2 默认处理表）：模型说 false 也改回 true。
+MUST_CONFIRM_KINDS = frozenset(
+    {"CUSTOMER_NEED", "OPPORTUNITY_SIGNAL", "DEAL_TERM", "COMMITMENT", "STAGE_CHANGE"}
+)
+INSIGHT_KINDS = frozenset({"SUMMARY"}) | MUST_CONFIRM_KINDS
+
+MEETING_MINUTES_V2_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "required": ["title", "summary", "decisions", "follow_up_tasks", "insights"],
+    "properties": {
+        "title": {"type": "string"},
+        "summary": {"type": "string"},
+        "decisions": {"type": "array"},
+        "follow_up_tasks": {"type": "array"},
+        "insights": {"type": "array"},
+    },
+}
+
 ASSISTANT_TEMPLATE_ID = "assistant_reply"
 ASSISTANT_PROMPT_VERSION = "v1"
 
@@ -92,6 +125,11 @@ PROMPT_TEMPLATES: dict[tuple[str, str], dict[str, Any]] = {
         "schema": TRIP_INTAKE_SCHEMA,
         "task": "trip_intake",
     },
+    (MEETING_MINUTES_TEMPLATE_ID, MEETING_MINUTES_V2_PROMPT_VERSION): {
+        "system": MEETING_MINUTES_V2_SYSTEM,
+        "schema": MEETING_MINUTES_V2_SCHEMA,
+        "task": "draft_meeting_minutes",
+    },
     (ASSISTANT_TEMPLATE_ID, ASSISTANT_PROMPT_VERSION): {
         "system": ASSISTANT_SYSTEM,
         "schema": ASSISTANT_SCHEMA,
@@ -106,6 +144,11 @@ def get_template(template_id: str, version: str) -> dict[str, Any]:
 
 __all__ = [
     "ASSISTANT_PROMPT_VERSION",
+    "INSIGHT_KINDS",
+    "MUST_CONFIRM_KINDS",
+    "MEETING_MINUTES_V2_PROMPT_VERSION",
+    "MEETING_MINUTES_V2_SCHEMA",
+    "MEETING_MINUTES_V2_SYSTEM",
     "TRIP_INTAKE_PROMPT_VERSION",
     "TRIP_INTAKE_SCHEMA",
     "TRIP_INTAKE_SYSTEM",

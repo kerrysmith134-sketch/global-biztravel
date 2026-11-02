@@ -1,6 +1,7 @@
 import XCTest
 @testable import GlobalTravelOS
 
+// swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
     func testTripDecodesBackendFlatShape() throws {
         let json = """
@@ -336,7 +337,15 @@ final class ModelDecodingTests: XCTestCase {
     func testBudgetSummaryDecodesChainPayload() throws {
         // 链式用例实际返回的 payload（2026-10-30 抓取）：无预算、无计划成本、CNY 折算。
         let json = """
-        {"budget_amount":null,"budget_currency":"CNY","planned_cost_total":null,"planned_cost_currency":null,"planned_cost_unknown_count":7,"actual_by_currency":[],"actual_total_in_budget_currency":"0","variance_vs_budget":null,"variance_vs_plan":null,"conversion_base_currency":"CNY","converted_actual_total":"0.00","converted_planned_cost_total":null,"converted_variance_vs_budget":null,"conversion_complete":false,"unconverted_currencies":[],"fx_conversions":[]}
+        {
+          "budget_amount": null, "budget_currency": "CNY", "planned_cost_total": null,
+          "planned_cost_currency": null, "planned_cost_unknown_count": 7,
+          "actual_by_currency": [], "actual_total_in_budget_currency": "0",
+          "variance_vs_budget": null, "variance_vs_plan": null,
+          "conversion_base_currency": "CNY", "converted_actual_total": "0.00",
+          "converted_planned_cost_total": null, "converted_variance_vs_budget": null,
+          "conversion_complete": false, "unconverted_currencies": [], "fx_conversions": []
+        }
         """
         let budget = try DateCoding.decode(BudgetSummary.self, fromJSON: json)
         XCTAssertEqual(budget.budgetCurrency, "CNY")

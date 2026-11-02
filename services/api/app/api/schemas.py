@@ -813,6 +813,25 @@ class MinutesFollowUpRead(BaseModel):
     due_date: str | None = None
 
 
+class MinutesInsightRead(BaseModel):
+    """一条被识别的信息（PRD 页面 07 §8.2）。
+
+    ``requires_confirmation`` 是服务端强制的业务规则：除 SUMMARY 外一律 True，
+    客户需求/商机信号/交易条件/商业承诺/阶段变化都必须人工核对后才能采信。
+    """
+
+    kind: Literal[
+        "SUMMARY",
+        "CUSTOMER_NEED",
+        "OPPORTUNITY_SIGNAL",
+        "DEAL_TERM",
+        "COMMITMENT",
+        "STAGE_CHANGE",
+    ]
+    text: str
+    requires_confirmation: bool
+
+
 class MinutesDraftRead(BaseModel):
     """会议纪要草稿。``degraded=true`` 表示 LLM 不可用、内容来自模板兜底。"""
 
@@ -822,6 +841,7 @@ class MinutesDraftRead(BaseModel):
     summary: str
     decisions: list[str] = Field(default_factory=list)
     follow_up_tasks: list[MinutesFollowUpRead] = Field(default_factory=list)
+    insights: list[MinutesInsightRead] = Field(default_factory=list)
     degraded: bool
 
 

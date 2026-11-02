@@ -21,10 +21,12 @@ from sqlalchemy.orm import Session
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
 from app.llm.prompts import (
-    MEETING_MINUTES_PROMPT_VERSION,
-    MEETING_MINUTES_SCHEMA,
-    MEETING_MINUTES_SYSTEM,
+    INSIGHT_KINDS,
     MEETING_MINUTES_TEMPLATE_ID,
+    MEETING_MINUTES_V2_PROMPT_VERSION,
+    MEETING_MINUTES_V2_SCHEMA,
+    MEETING_MINUTES_V2_SYSTEM,
+    MUST_CONFIRM_KINDS,
 )
 from app.models.geo import Customer, Place
 from app.models.records import VisitRecord
@@ -34,12 +36,26 @@ from app.services import record_service, visit_service
 
 
 @dataclass
+class MinutesInsight:
+    """一条被识别的信息（PRD 页面 07 §8.2）。
+
+    ``requires_confirmation`` 由**服务端**按类别强制：除 SUMMARY 外一律 True，
+    模型说 false 也改回来——"必须确认"是业务规则，不交给模型决定。
+    """
+
+    kind: str
+    text: str
+    requires_confirmation: bool
+
+
+@dataclass
 class MinutesDraft:
     invocation_id: UUID
     title: str
     summary: str
     decisions: list[str] = field(default_factory=list)
     follow_up_tasks: list[dict[str, Any]] = field(default_factory=list)
+    insights: list[MinutesInsight] = field(default_factory=list)
     degraded: bool = False
 
 
@@ -65,7 +81,35 @@ def _fallback(title_seed: str, customer_name: str, notes: str, tasks: list[dict[
         "summary": summary,
         "decisions": [],
         "follow_up_tasks": follow_ups,
+        # 模板兜底：只回摘要类洞察，不猜客户需求/交易条件。
+        "insights": (
+            [{"kind": "SUMMARY", "text": notes.strip()[:200], "requires_confirmation": False}]
+            if notes.strip()
+            else []
+        ),
     }
+
+
+def _normalise_insights(value: Any) -> list[MinutesInsight]:
+    """校验并归一化模型返回的洞察；类别非法或文本为空的直接丢弃。"""
+    insights: list[MinutesInsight] = []
+    if not isinstance(value, list):
+        return insights
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "").strip().upper()
+        if kind not in INSIGHT_KINDS:
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        # 业务规则：非 SUMMARY 类别必须人工确认，模型的 false 一律覆盖为 True。
+        requires = kind in MUST_CONFIRM_KINDS
+        insights.append(
+            MinutesInsight(kind=kind, text=text[:500], requires_confirmation=requires)
+        )
+    return insights
 
 
 def _normalise_tasks(value: Any) -> list[dict[str, Any]]:
@@ -115,11 +159,11 @@ def draft_minutes(
     request = LLMRequest(
         task="draft_meeting_minutes",
         prompt_template_id=MEETING_MINUTES_TEMPLATE_ID,
-        prompt_version=MEETING_MINUTES_PROMPT_VERSION,
+        prompt_version=MEETING_MINUTES_V2_PROMPT_VERSION,
         variables=variables,
-        schema=MEETING_MINUTES_SCHEMA,
-        fallback=fallback,
-        system=MEETING_MINUTES_SYSTEM,
+        schema=MEETING_MINUTES_V2_SCHEMA,
+        fallback={**fallback, "insights": []},
+        system=MEETING_MINUTES_V2_SYSTEM,
     )
     run = AgentRun(
         organization_id=str(organization_id),
@@ -156,8 +200,9 @@ def draft_minutes(
         summary=summary,
         decisions=decisions,
         follow_up_tasks=follow_ups,
+        insights=_normalise_insights(output.get("insights")),
         degraded=response.degraded,
     )
 
 
-__all__ = ["MinutesDraft", "draft_minutes"]
+__all__ = ["MinutesDraft", "MinutesInsight", "draft_minutes"]

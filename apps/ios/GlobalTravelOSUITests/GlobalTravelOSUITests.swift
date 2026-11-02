@@ -1,17 +1,19 @@
 import Foundation
 import XCTest
 
-// swiftlint:disable file_length function_body_length type_body_length
+// swiftlint:disable file_length
 
-/// 真实后端 UI 冒烟：启动客户端 → Today 页加载 → 出行列表 → 打开种子出行 → 同步页。
-///
-/// 前置：`make api` 正在运行，且 `scripts/seed_dev.py` 已执行（种子出行存在）。
-/// 身份通过启动环境覆盖，不读取/不修改本机设置。
+// 真实后端 UI 冒烟：启动客户端 → Today 页加载 → 出行列表 → 打开种子出行 → 同步页。
+//
+// 前置：`make api` 正在运行，且 `scripts/seed_dev.py` 已执行（种子出行存在）。
+// 身份通过启动环境覆盖，不读取/不修改本机设置。
+// swiftlint:disable:next type_body_length
 final class GlobalTravelOSUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
+    // swiftlint:disable:next function_body_length
     func testLaunchBrowseSeedTripAndSyncCenter() throws {
         let app = XCUIApplication()
         app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
@@ -208,7 +210,6 @@ final class GlobalTravelOSUITests: XCTestCase {
         XCTAssertTrue(activated.exists, "计划未激活")
     }
 
-    // swiftlint:disable:next function_body_length
     // 单条链式验收（AT 主干）：新建 → Excel 导入 → 规划 → 激活 → 费用 → 现场记录 → 纪要。
     // 简报/助手/同步由分步用例覆盖；全部连接真实后端与 Worker。
     // swiftlint:disable:next function_body_length

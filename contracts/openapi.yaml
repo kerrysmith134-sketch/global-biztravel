@@ -5821,6 +5821,11 @@ components:
             $ref: '#/components/schemas/MinutesFollowUpRead'
           type: array
           title: Follow Up Tasks
+        insights:
+          items:
+            $ref: '#/components/schemas/MinutesInsightRead'
+          type: array
+          title: Insights
         degraded:
           type: boolean
           title: Degraded
@@ -5858,6 +5863,36 @@ components:
       required:
       - title
       title: MinutesFollowUpRead
+    MinutesInsightRead:
+      properties:
+        kind:
+          type: string
+          enum:
+          - SUMMARY
+          - CUSTOMER_NEED
+          - OPPORTUNITY_SIGNAL
+          - DEAL_TERM
+          - COMMITMENT
+          - STAGE_CHANGE
+          title: Kind
+        text:
+          type: string
+          title: Text
+        requires_confirmation:
+          type: boolean
+          title: Requires Confirmation
+      type: object
+      required:
+      - kind
+      - text
+      - requires_confirmation
+      title: MinutesInsightRead
+      description: '一条被识别的信息（PRD 页面 07 §8.2）。
+
+
+        ``requires_confirmation`` 是服务端强制的业务规则：除 SUMMARY 外一律 True，
+
+        客户需求/商机信号/交易条件/商业承诺/阶段变化都必须人工核对后才能采信。'
     MinutesJobAcceptedRead:
       properties:
         job_id:

@@ -97,6 +97,35 @@ struct VisitRecordSheet: View {
                     Section("会议纪要草稿") {
                         Text(minutes.title).font(.headline)
                         Text(minutes.summary).font(.body)
+                        if !minutes.insightList.isEmpty {
+                            let pending = minutes.pendingConfirmationCount
+                            Label(
+                                pending > 0
+                                    ? "识别出 \(minutes.insightList.count) 条信息，其中 \(pending) 条需人工确认后才能采信"
+                                    : "识别出 \(minutes.insightList.count) 条信息，均可作草稿",
+                                systemImage: pending > 0 ? "exclamationmark.circle" : "checkmark.circle"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(pending > 0 ? .orange : .secondary)
+                            ForEach(minutes.insightList) { insight in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack {
+                                        Text(insight.kindLabel)
+                                            .font(.caption.weight(.semibold))
+                                        Spacer()
+                                        Text(insight.confirmLabel)
+                                            .font(.caption2)
+                                            .foregroundStyle(
+                                                insight.requiresConfirmation ? .orange : .secondary
+                                            )
+                                    }
+                                    Text(insight.text)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
                         ForEach(minutes.taskList, id: \.title) { task in
                             Label(task.displayText, systemImage: "checklist")
                                 .font(.footnote)

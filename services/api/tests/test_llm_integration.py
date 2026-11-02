@@ -144,6 +144,15 @@ def test_minutes_draft_records_invocation_and_replays_from_cache(client: TestCli
         assert any("报价" in task["title"] for task in body["follow_up_tasks"])
         assert body["draft_id"] == body["llm_invocation_id"]
 
+        # PRD 页面 07 §8.2：分类洞察 + 服务端强制"非摘要必须人工确认"。
+        kinds = {item["kind"] for item in body["insights"]}
+        assert "SUMMARY" in kinds, body["insights"]
+        for item in body["insights"]:
+            if item["kind"] == "SUMMARY":
+                assert item["requires_confirmation"] is False
+            else:
+                assert item["requires_confirmation"] is True, item
+
         with org_session(UUID(ORG_A)) as session:
             invocations = list(
                 session.scalars(
@@ -158,7 +167,8 @@ def test_minutes_draft_records_invocation_and_replays_from_cache(client: TestCli
         invocation = invocations[0]
         assert invocation.model == "stub"
         assert invocation.prompt_template_id == "meeting_minutes"
-        assert invocation.prompt_version == "v1"
+        # PRD P1「自动识别拜访纪要、客户需求和后续任务」→ 模板升到 v2（v1 保留可回放）。
+        assert invocation.prompt_version == "v2"
         assert invocation.degraded is False
         assert invocation.cached is False
         assert invocation.tokens_in > 0 and invocation.tokens_out > 0

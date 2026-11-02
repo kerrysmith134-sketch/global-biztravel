@@ -44,6 +44,8 @@ class StubProvider:
         variables = request.variables
         if request.task == "draft_meeting_minutes":
             output = self._meeting_minutes(variables)
+            if "insights" in (request.schema or {}).get("properties", {}):
+                output["insights"] = self._meeting_insights(variables)
         elif request.task == "trip_intake":
             output = self._trip_intake(str(variables.get("message") or ""))
         elif request.task == "assistant_reply":
@@ -76,6 +78,38 @@ class StubProvider:
             tokens_in=_word_count(variables),
             tokens_out=_word_count(output),
         )
+
+    #: 关键词 → 洞察类别（PRD 页面 07 §8.2）。只在记录里真的出现这些措辞时才归类。
+    _INSIGHT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("DEAL_TERM", ("报价", "价格", "折扣", "单价", "数量", "采购量", "付款条件")),
+        ("COMMITMENT", ("交期", "交付", "承诺", "保证", "签约", "合同")),
+        ("OPPORTUNITY_SIGNAL", ("扩产", "新增", "计划", "试点", "二期", "招标")),
+        ("CUSTOMER_NEED", ("需要", "希望", "要求", "痛点", "支持")),
+        ("STAGE_CHANGE", ("商机阶段", "进入谈判", "推进到", "转正式")),
+    )
+
+    @classmethod
+    def _meeting_insights(cls, variables: dict[str, Any]) -> list[dict[str, Any]]:
+        """从现场记录里按关键词抽洞察；命不中就不生成（不推断没写的内容）。"""
+        notes = str(variables.get("notes") or "")
+        insights: list[dict[str, Any]] = []
+        if notes.strip():
+            insights.append(
+                {"kind": "SUMMARY", "text": notes.strip()[:200], "requires_confirmation": False}
+            )
+        for kind, keywords in cls._INSIGHT_KEYWORDS:
+            hit = next((kw for kw in keywords if kw in notes), None)
+            if hit is None:
+                continue
+            # 摘要句里包含关键词时，抽该句作为该类洞察的原文依据。
+            sentence = next(
+                (part.strip() for part in notes.split("。") if hit in part and part.strip()),
+                notes.strip(),
+            )
+            insights.append(
+                {"kind": kind, "text": sentence[:200], "requires_confirmation": True}
+            )
+        return insights
 
     @staticmethod
     def _trip_intake(message: str) -> dict[str, Any]:

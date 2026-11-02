@@ -30,6 +30,7 @@ from app.api.schemas import (
     MinutesDraftRead,
     MinutesDraftRequest,
     MinutesFollowUpRead,
+    MinutesInsightRead,
     MinutesJobAcceptedRead,
     TripRead,
     VisitBriefingRead,
@@ -168,6 +169,14 @@ def draft_meeting_minutes(
         summary=draft.summary,
         decisions=list(draft.decisions),
         follow_up_tasks=[MinutesFollowUpRead(**task) for task in draft.follow_up_tasks],
+        insights=[
+            MinutesInsightRead(
+                kind=insight.kind,
+                text=insight.text,
+                requires_confirmation=insight.requires_confirmation,
+            )
+            for insight in draft.insights
+        ],
         degraded=draft.degraded,
     )
     return guard.finish(status_code=status.HTTP_200_OK, body=body)
