@@ -28,6 +28,30 @@ MEETING_MINUTES_SCHEMA: dict[str, Any] = {
     },
 }
 
+TRIP_INTAKE_TEMPLATE_ID = "trip_intake"
+TRIP_INTAKE_PROMPT_VERSION = "v1"
+
+TRIP_INTAKE_SYSTEM = (
+    "你是企业差旅助手。判断用户消息是否在请求创建一次出差，只输出 JSON。"
+    "has_trip_request 为 true 时必须给出：countries（ISO 两位字母大写数组）、"
+    "days（正整数天数）或 start_date/end_date（YYYY-MM-DD）之一、name（中文短名称）。"
+    "目的国家或天数/日期在消息中未出现时不要编造，让对应字段缺失；"
+    "不涉及创建出差的消息输出 has_trip_request=false。"
+)
+
+TRIP_INTAKE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "required": ["has_trip_request"],
+    "properties": {
+        "has_trip_request": {"type": "boolean"},
+        "name": {"type": "string"},
+        "countries": {"type": "array"},
+        "days": {"type": "integer"},
+        "start_date": {"type": "string"},
+        "end_date": {"type": "string"},
+    },
+}
+
 ASSISTANT_TEMPLATE_ID = "assistant_reply"
 ASSISTANT_PROMPT_VERSION = "v1"
 
@@ -43,11 +67,30 @@ ASSISTANT_SCHEMA: dict[str, Any] = {
     "properties": {"reply": {"type": "string"}},
 }
 
+def trip_creation_intent(message: str) -> bool:
+    """判断消息是否在**请求创建**一次出差（而不是询问现有行程）。
+
+    关键口径：必须出现"出差"，或"行程"叠加创建类动词，或英文 trip 叠加 create/plan 类词。
+    仅问"这趟行程需要我做什么"不命中——那是在询问状态，不是创建请求。
+    """
+    text = message.lower()
+    if "出差" in message:
+        return True
+    if "行程" in message and any(k in message for k in ("创建", "新建", "安排", "规划")):
+        return True
+    return "trip" in text and any(k in text for k in ("create", "plan a", "new trip", "book"))
+
+
 PROMPT_TEMPLATES: dict[tuple[str, str], dict[str, Any]] = {
     (MEETING_MINUTES_TEMPLATE_ID, MEETING_MINUTES_PROMPT_VERSION): {
         "system": MEETING_MINUTES_SYSTEM,
         "schema": MEETING_MINUTES_SCHEMA,
         "task": "draft_meeting_minutes",
+    },
+    (TRIP_INTAKE_TEMPLATE_ID, TRIP_INTAKE_PROMPT_VERSION): {
+        "system": TRIP_INTAKE_SYSTEM,
+        "schema": TRIP_INTAKE_SCHEMA,
+        "task": "trip_intake",
     },
     (ASSISTANT_TEMPLATE_ID, ASSISTANT_PROMPT_VERSION): {
         "system": ASSISTANT_SYSTEM,
@@ -63,6 +106,10 @@ def get_template(template_id: str, version: str) -> dict[str, Any]:
 
 __all__ = [
     "ASSISTANT_PROMPT_VERSION",
+    "TRIP_INTAKE_PROMPT_VERSION",
+    "TRIP_INTAKE_SCHEMA",
+    "TRIP_INTAKE_SYSTEM",
+    "TRIP_INTAKE_TEMPLATE_ID",
     "ASSISTANT_SCHEMA",
     "ASSISTANT_SYSTEM",
     "ASSISTANT_TEMPLATE_ID",
@@ -72,4 +119,5 @@ __all__ = [
     "MEETING_MINUTES_TEMPLATE_ID",
     "PROMPT_TEMPLATES",
     "get_template",
+    "trip_creation_intent",
 ]

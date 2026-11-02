@@ -44,6 +44,8 @@ class StubProvider:
         variables = request.variables
         if request.task == "draft_meeting_minutes":
             output = self._meeting_minutes(variables)
+        elif request.task == "trip_intake":
+            output = self._trip_intake(str(variables.get("message") or ""))
         elif request.task == "assistant_reply":
             trip = str(variables.get("trip_name") or "未命名出行")
             counts = variables.get("action_counts") or {}
@@ -74,6 +76,73 @@ class StubProvider:
             tokens_in=_word_count(variables),
             tokens_out=_word_count(output),
         )
+
+    @staticmethod
+    def _trip_intake(message: str) -> dict[str, Any]:
+        """确定性解析：只提取消息里**真实出现**的国家、天数与日期，缺失就缺失。"""
+        from app.llm.prompts import trip_creation_intent
+
+        if not trip_creation_intent(message):
+            return {"has_trip_request": False}
+
+        countries: list[str] = []
+        known = {
+            "德国": "DE", "荷兰": "NL", "法国": "FR", "比利时": "BE", "新加坡": "SG",
+            "泰国": "TH", "越南": "VN", "马来西亚": "MY", "日本": "JP", "美国": "US",
+            "英国": "GB", "爱尔兰": "IE", "芬兰": "FI", "中国": "CN", "印度": "IN",
+            "阿联酋": "AE", "澳大利亚": "AU", "加拿大": "CA", "意大利": "IT", "西班牙": "ES",
+            "波兰": "PL", "土耳其": "TR", "韩国": "KR",
+        }
+        for name, code in known.items():
+            if name in message and code not in countries:
+                countries.append(code)
+        # 顺带识别裸 ISO 码（如 "DE/SG"）
+        import re
+
+        for code in re.findall(r"\b([A-Z]{2})\b", message):
+            if code in known.values() and code not in countries:
+                countries.append(code)
+
+        days = None
+        m = re.search(r"(\d{1,3})\s*天", message)
+        if m:
+            days = int(m.group(1))
+        else:
+            m = re.search(r"(\d{1,2})\s*周", message)
+            if m:
+                days = int(m.group(1)) * 7
+
+        import re as _re
+        from datetime import date, timedelta
+
+        dates = _re.findall(r"(\d{4})-(\d{2})-(\d{2})", message)
+        start_date: str | None = None
+        end_date: str | None = None
+        if dates:
+            start_date = f"{dates[0][0]}-{dates[0][1]}-{dates[0][2]}"
+            if len(dates) > 1:
+                end_date = f"{dates[1][0]}-{dates[1][1]}-{dates[1][2]}"
+        if start_date is None and days is not None:
+            # 用户只给了天数：起点默认从明天开始（在回复卡片里明示，可被用户改口）。
+            start_date = (date.today() + timedelta(days=1)).isoformat()
+
+        trip_name: str | None = None
+        if countries or days:
+            region = "、".join(countries) if countries else "未指定目的地"
+            trip_name = f"{region}出差" + (f" {days} 天" if days else "")
+
+        result: dict[str, Any] = {"has_trip_request": True}
+        if trip_name:
+            result["name"] = trip_name
+        if countries:
+            result["countries"] = countries
+        if days is not None:
+            result["days"] = days
+        if start_date:
+            result["start_date"] = start_date
+        if end_date:
+            result["end_date"] = end_date
+        return result
 
     @staticmethod
     def _meeting_minutes(variables: dict[str, Any]) -> dict[str, Any]:

@@ -75,6 +75,7 @@ class AssistantMessage(Base):
         ForeignKey("llm_invocations.id", ondelete="SET NULL"),
     )
     created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
 
 
 __all__ = ["AssistantConversation", "AssistantMessage", "MESSAGE_ROLES"]

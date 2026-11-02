@@ -246,6 +246,16 @@ private struct MessageBubble: View {
                     }
                 } else {
                     cardFace(card)
+                    if card.link == "trip_proposal", let subject = card.entityId {
+                        // 提案卡是待确认动作：点按才创建草稿行程（服务端二次校验 + 幂等）。
+                        Button {
+                            Task { await runAction("create_trip_draft", subject) }
+                        } label: {
+                            Label("创建出差草稿", systemImage: "airplane.departure")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                     if card.link == "suggestion", let subject = card.entityId {
                         HStack(spacing: 8) {
                             Button {

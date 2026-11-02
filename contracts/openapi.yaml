@@ -3452,6 +3452,7 @@ components:
           - dismiss_suggestion
           - generate_plan
           - create_expense_report
+          - create_trip_draft
           title: Action
         subject_id:
           type: string

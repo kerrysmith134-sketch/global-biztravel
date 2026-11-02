@@ -1202,7 +1202,13 @@ class AssistantMessageCreate(BaseModel):
 
 
 class AssistantActionCreate(BaseModel):
-    action: Literal["approve_suggestion", "dismiss_suggestion", "generate_plan", "create_expense_report"]
+    action: Literal[
+        "approve_suggestion",
+        "dismiss_suggestion",
+        "generate_plan",
+        "create_expense_report",
+        "create_trip_draft",
+    ]
     subject_id: UUID
 
 

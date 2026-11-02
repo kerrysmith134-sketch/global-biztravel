@@ -12,13 +12,17 @@
 
 from __future__ import annotations
 
+from datetime import date as date_type
+from datetime import datetime, time, timedelta
+from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound, Unprocessable
-from app.api.schemas import ExpenseReportCreate
+from app.api.schemas import ExpenseReportCreate, TripCreate
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
 from app.llm.prompts import (
@@ -26,6 +30,11 @@ from app.llm.prompts import (
     ASSISTANT_SCHEMA,
     ASSISTANT_SYSTEM,
     ASSISTANT_TEMPLATE_ID,
+    TRIP_INTAKE_PROMPT_VERSION,
+    TRIP_INTAKE_SCHEMA,
+    TRIP_INTAKE_SYSTEM,
+    TRIP_INTAKE_TEMPLATE_ID,
+    trip_creation_intent,
 )
 from app.llm.tools import list_tools
 from app.models.assistant import AssistantConversation, AssistantMessage
@@ -255,6 +264,87 @@ def run_action(
         session.add(row)
         session.flush()
         return row
+    elif action == "create_trip_draft":
+        message_id = UUID(str(subject_id))
+        proposal_row = session.get(AssistantMessage, message_id)
+        if (
+            proposal_row is None
+            or proposal_row.conversation_id != conversation.id
+            or proposal_row.role != "ASSISTANT"
+        ):
+            raise Unprocessable("提案消息不存在", details={"subject_id": subject_id})
+        proposal_card: dict[str, Any] | None = next(
+            (
+                item
+                for item in (proposal_row.cards or [])
+                if isinstance(item, dict) and item.get("type") == "TRIP_PROPOSAL"
+            ),
+            None,
+        )
+        if proposal_card is None:
+            raise Unprocessable("该消息不是行程提案", details={"subject_id": subject_id})
+        # 幂等：同一提案只能创建一次。
+        for existing in session.scalars(
+            select(AssistantMessage).where(
+                AssistantMessage.conversation_id == conversation.id,
+                AssistantMessage.role == "ASSISTANT",
+            )
+        ):
+            for item in existing.cards or []:
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "ACTION_RESULT"
+                    and item.get("proposal_id") == str(message_id)
+                ):
+                    raise Unprocessable(
+                        "该提案已创建过行程",
+                        details={"trip_id": item.get("entity_id")},
+                    )
+        raw_payload = proposal_card.get("payload")
+        payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
+        window_start, window_end = _trip_window_from_payload(payload)
+        countries = [
+            str(code).strip().upper()
+            for code in (payload.get("countries") or [])
+            if len(str(code).strip()) == 2
+        ]
+        if not countries:
+            raise Unprocessable("提案缺少目的国家")
+        trip = trip_service.create_trip(
+            session,
+            organization_id,
+            TripCreate(
+                name=str(payload.get("name") or "对话创建的出差")[:200],
+                purpose=str(payload.get("purpose") or "")[:200] or None,
+                window_start=window_start,
+                window_end=window_end,
+                countries=countries,
+            ),
+            owner_user_id=None if actor_user_id is None else UUID(str(actor_user_id)),
+        )
+        detail = (
+            f"已创建行程草稿「{trip.name}」（{trip.window_start.date()} 至 "
+            f"{trip.window_end.date()}，状态 {trip.status}；不对外预订）"
+        )
+        row = AssistantMessage(
+            organization_id=str(conversation.organization_id),
+            conversation_id=conversation.id,
+            role="ASSISTANT",
+            content=detail,
+            cards=[
+                {
+                    "type": "ACTION_RESULT",
+                    "title": "create_trip_draft",
+                    "detail": detail,
+                    "entity_id": str(trip.id),
+                    "link": "trip",
+                    "proposal_id": str(message_id),
+                }
+            ],
+        )
+        session.add(row)
+        session.flush()
+        return row
     elif action == "create_expense_report":
         if conversation.trip_id is None:
             raise Unprocessable("对话未绑定行程，无法生成报销单", details={"action": action})
@@ -321,6 +411,91 @@ def run_action(
     return row
 
 
+def _build_trip_proposal(
+    parsed: dict, *, today: date_type
+) -> tuple[dict | None, list[str]]:
+    """把 trip_intake 的解析结果变成可确认的草稿提案；信息不足返回缺失清单。
+
+    只使用解析出的真实字段：国家过滤为两位字母，日期必须可解析且顺序正确，
+    出发日不得早于今天（过期日期不替用户顺延——那是编造）。
+    """
+    countries: list[str] = []
+    for raw in parsed.get("countries") or []:
+        code = str(raw).strip().upper()
+        if len(code) == 2 and code.isalpha() and code not in countries:
+            countries.append(code)
+
+    def parse_day(value: object) -> date_type | None:
+        try:
+            return date_type.fromisoformat(str(value))
+        except (ValueError, TypeError):
+            return None
+
+    start = parse_day(parsed.get("start_date"))
+    end = parse_day(parsed.get("end_date"))
+    days_raw = parsed.get("days")
+    days: int | None = None
+    if isinstance(days_raw, int) and 1 <= days_raw <= 365:
+        days = days_raw
+    elif isinstance(days_raw, float) and 1 <= days_raw <= 365:
+        days = int(days_raw)
+
+    missing: list[str] = []
+    if not countries:
+        missing.append("目的国家（ISO 代码）")
+
+    if start is not None and end is not None:
+        if end <= start:
+            missing.append("有效的起止日期（结束须晚于开始）")
+            start = end = None
+    elif start is not None and days is not None:
+        end = start + timedelta(days=days - 1)
+    elif days is not None:
+        start = today + timedelta(days=1)
+        end = start + timedelta(days=days - 1)
+    elif start is not None:
+        missing.append("天数或结束日期")
+    else:
+        missing.append("天数或起止日期")
+
+    if start is not None and start < today:
+        missing.append("未来出发日期（给定的出发日已过期）")
+        start = end = None
+
+    if missing:
+        return None, missing
+    if start is None or end is None:  # missing 为空时必有值；防御 mypy
+        return None, ["天数或起止日期"]
+
+    name = str(parsed.get("name") or "").strip()[:100]
+    if not name:
+        name = f"{'/'.join(countries)}出差"
+    return {
+        "name": name,
+        "countries": countries,
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+    }, []
+
+
+def _trip_window_from_payload(payload: dict) -> tuple[datetime, datetime]:
+    """服务端二次校验提案载荷（提案可能来自历史消息，不信任客户端回传）。"""
+    try:
+        start_day = date_type.fromisoformat(str(payload["start_date"]))
+        end_day = date_type.fromisoformat(str(payload["end_date"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise Unprocessable("提案缺少有效的起止日期", details={"payload": str(exc)}) from exc
+    if end_day <= start_day:
+        raise Unprocessable("提案的结束日期必须晚于开始日期")
+    if start_day < date_type.today():
+        raise Unprocessable("提案的出发日期已过期，请重新发起")
+    tz = ZoneInfo("Asia/Shanghai")
+    return (
+        datetime.combine(start_day, time(0, 0), tzinfo=tz),
+        datetime.combine(end_day, time(23, 59, 59), tzinfo=tz),
+    )
+
+
 def post_message(
     session: Session,
     organization_id: UUID | str,
@@ -335,6 +510,81 @@ def post_message(
         raise Unprocessable("消息内容不能为空")
     if len(text) > MAX_CONTENT:
         raise Unprocessable("消息过长", details={"limit": MAX_CONTENT})
+
+    # 自然语言创建出差（PRD P0-2）：意图命中时走 trip_intake 结构化解析，
+    # 产出"可确认的草稿提案卡"；执行仍走白名单动作 create_trip_draft（人审确认）。
+    if trip_creation_intent(text):
+        intake_request = LLMRequest(
+            task="trip_intake",
+            prompt_template_id=TRIP_INTAKE_TEMPLATE_ID,
+            prompt_version=TRIP_INTAKE_PROMPT_VERSION,
+            variables={"message": text},
+            schema=TRIP_INTAKE_SCHEMA,
+            fallback={"has_trip_request": False},
+            system=TRIP_INTAKE_SYSTEM,
+        )
+        intake = get_gateway().complete(
+            session, conversation.organization_id, intake_request
+        )
+        parsed = intake.output or {}
+        if parsed.get("has_trip_request") is True:
+            proposal, missing = _build_trip_proposal(parsed, today=date_type.today())
+            user_row = AssistantMessage(
+                organization_id=str(conversation.organization_id),
+                conversation_id=conversation.id,
+                role="USER",
+                content=text,
+                cards=[],
+            )
+            if proposal is None:
+                reply = (
+                    "要创建出差还缺以下信息：" + "、".join(missing)
+                    + "。补充后我会给出可确认的草稿卡片；不会替你猜日期或目的地。"
+                )
+                bot_row = AssistantMessage(
+                    organization_id=str(conversation.organization_id),
+                    conversation_id=conversation.id,
+                    role="ASSISTANT",
+                    content=reply,
+                    cards=[],
+                    llm_invocation_id=intake.invocation_id,
+                )
+            else:
+                reply = (
+                    f"已识别出差意图：{proposal['name']}，目的国 "
+                    f"{'、'.join(proposal['countries'])}，窗口 {proposal['start_date']} 至 "
+                    f"{proposal['end_date']}。确认后我创建草稿行程（DRAFT，不对外预订）；"
+                    "要调整直接说明。"
+                )
+                bot_row = AssistantMessage(
+                    organization_id=str(conversation.organization_id),
+                    conversation_id=conversation.id,
+                    role="ASSISTANT",
+                    content=reply,
+                    cards=[],
+                    llm_invocation_id=intake.invocation_id,
+                )
+            session.add_all([user_row, bot_row])
+            if not conversation.title:
+                conversation.title = text[:60]
+            session.flush()
+            if proposal is not None:
+                detail = (
+                    f"{'、'.join(proposal['countries'])} · {proposal['start_date']} 至 "
+                    f"{proposal['end_date']}"
+                )
+                bot_row.cards = [
+                    {
+                        "type": "TRIP_PROPOSAL",
+                        "title": f"创建行程草稿：{proposal['name']}",
+                        "detail": detail,
+                        "entity_id": str(bot_row.id),
+                        "link": "trip_proposal",
+                        "payload": {**proposal, "purpose": text[:200]},
+                    }
+                ]
+                session.flush()
+            return user_row, bot_row
 
     facts = _facts(session, conversation, text)
     history = list(
