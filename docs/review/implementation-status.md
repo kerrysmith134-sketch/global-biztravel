@@ -11,7 +11,7 @@
 
 | 里程碑 | 要求 | 状态 | 证据 |
 |---|---|---|---|
-| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0029`；`0010_security_rls` 全库兜底；RLS 断言测试 |
+| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0030`；`0010_security_rls` 全库兜底；RLS 断言测试 |
 | MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 第 3 步 |
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
@@ -49,6 +49,7 @@
 | 当地生活指南（方向五） | `local_guide_service` + `app/data/local_guide_catalog.json` | 8 国离线目录按出行国家组装、城市贴士按拜访城市裁剪、实时源缺口显式标注、iOS 指南页 |
 | AI 助手对话/会话内执行（页面 05） | `assistant_service` + 迁移 `0027` + iOS `AssistantView` + `test_assistant_actions.py` | 对话与工作流分离（删聊天不影响任务）、事实卡片由服务端计算、工具提案标注人审、llm_invocation 可回溯 |
 | 通知用户偏好（S8-08） | `notification_preferences` + 迁移 `0028` | 静音等级不产生通知但保留建议；GET/PUT 偏好幂等；非法等级 4xx |
+| 入境评估结合证件/国籍（P0-7） | `traveler_nationality` + 迁移 `0030` | 画像登记/清除国籍（幂等、校验）；评估陈述证件前提、缺信息降置信度；不给确定性入境结论；租户隔离 |
 | 客户多地址（P0-3） | `place_service.list/unlink_customer_place` + `routes/customers.py` | 一企业多地址增删查；主地址优先；来源+可信度随地址返回；解除关联不删地点；跨租户 404 |
 | 自然语言创建出差（P0-2） | `trip_intake` v1 + `create_trip_draft` 动作 + 迁移 `0029` | 意图判定不误伤问状态；缺字段反问不编造；提案卡人确认；服务端二次校验 + 幂等；DRAFT 不预订 |
 | 通知分级（S8-08 P0） | `notification_policy_service` + 迁移 `0026` | P0–P3 确定性规则入队落库；Feed `unread_by_priority`；`priority` 过滤；iOS 分组/徽标/已读 |
@@ -57,7 +58,7 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **227 passed**（真实 PostgreSQL） |
+| `make test` | **230 passed**（真实 PostgreSQL） |
 | `make typecheck` | MyPy：135 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 74 路径 / 116 schema；契约一致 |
@@ -68,7 +69,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 
-## 5. 迁移清单（当前 head `0029`）
+## 5. 迁移清单（当前 head `0030`）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -91,6 +92,7 @@
                            0027_assistant_conversations
                            0028_notification_preferences
                            0029_assistant_msg_updated_at
+                           0030_traveler_nationality
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）

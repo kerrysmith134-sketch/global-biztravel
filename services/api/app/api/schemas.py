@@ -782,12 +782,20 @@ class MemorySearchRead(BaseModel):
 class TravelerProfileRead(BaseModel):
     version: int
     preferences: dict[str, Any] = Field(default_factory=dict)
+    nationality: str | None = None
     notes: str | None = None
     confidence: float
 
 
 class TravelerProfileUpdate(BaseModel):
     preferences: dict[str, Any] = Field(default_factory=dict)
+    nationality: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=2,
+        pattern="^[A-Za-z]{2}$",
+        description="护照国籍 ISO 3166-1 alpha-2；用于入境可行性核验（PRD P0-7）",
+    )
     notes: str | None = None
     confidence: float = Field(default=1.0, ge=0, le=1)
 

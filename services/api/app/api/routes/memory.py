@@ -115,10 +115,13 @@ def get_profile(context: ContextDep, session: SessionDep):
     require_role(context, ROLE_VIEWER)
     profile = memory_service.get_profile(session, context.organization_id, context.user_id)
     if profile is None:
-        return TravelerProfileRead(version=0, preferences={}, notes=None, confidence=0.0)
+        return TravelerProfileRead(
+            version=0, preferences={}, nationality=None, notes=None, confidence=0.0
+        )
     return TravelerProfileRead(
         version=profile.version,
         preferences=dict(profile.preferences or {}),
+        nationality=profile.nationality,
         notes=profile.notes,
         confidence=profile.confidence,
     )
@@ -136,10 +139,14 @@ def update_profile(
         preferences=payload.preferences,
         notes=payload.notes,
         confidence=payload.confidence,
+        nationality=payload.nationality,
+        clear_nationality="nationality" in payload.model_fields_set
+        and payload.nationality is None,
     )
     return TravelerProfileRead(
         version=profile.version,
         preferences=dict(profile.preferences or {}),
+        nationality=profile.nationality,
         notes=profile.notes,
         confidence=profile.confidence,
     )

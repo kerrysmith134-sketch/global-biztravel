@@ -22,6 +22,7 @@ from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    CHAR,
     CheckConstraint,
     DateTime,
     Float,
@@ -56,6 +57,10 @@ class TravelerProfile(Base):
         ),
         CheckConstraint("version >= 1", name="version_positive"),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
+        CheckConstraint(
+            "nationality IS NULL OR nationality ~ '^[A-Z]{2}$'",
+            name="nationality",
+        ),
         Index("ix_traveler_profiles_org_user_valid", "organization_id", "user_id", "valid_until"),
     )
 
@@ -71,6 +76,8 @@ class TravelerProfile(Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     preferences: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    #: 护照国籍（ISO 3166-1 alpha-2）。PRD P0-7：入境可行性必须结合证件，缺省要显式提示。
+    nationality: Mapped[str | None] = mapped_column(CHAR(2))
     notes: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float, nullable=False, server_default="1")
     valid_from: Mapped[datetime] = mapped_column(

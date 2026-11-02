@@ -89,13 +89,30 @@ def update_profile(
     preferences: dict[str, Any],
     notes: str | None = None,
     confidence: float = 1.0,
+    nationality: str | None = None,
+    clear_nationality: bool = False,
     now: datetime | None = None,
 ) -> TravelerProfile:
-    """写入新一版画像。内容没变时返回当前版本，不制造无意义的版本号。"""
+    """写入新一版画像。内容没变时返回当前版本，不制造无意义的版本号。
+
+    ``nationality`` 传两位大写字母即设置；``clear_nationality=True`` 显式清除
+    （请求里 nationality 缺省为 null 时区分"没提"与"清空"：路由用
+    ``"nationality" in payload.model_fields_set`` 判定）。
+    """
     current = get_profile(session, organization_id, user_id)
     merged = dict(current.preferences or {}) if current is not None else {}
     merged.update(preferences or {})
-    if current is not None and merged == (current.preferences or {}) and notes == current.notes:
+    next_nationality = (
+        None
+        if clear_nationality
+        else (nationality.upper() if nationality else (current.nationality if current else None))
+    )
+    if (
+        current is not None
+        and merged == (current.preferences or {})
+        and notes == current.notes
+        and next_nationality == current.nationality
+    ):
         return current
 
     current_time = _now(session, now)
@@ -107,6 +124,7 @@ def update_profile(
         version=(current.version + 1) if current is not None else 1,
         preferences=merged,
         notes=notes,
+        nationality=next_nationality,
         confidence=max(0.0, min(1.0, confidence)),
         valid_from=current_time,
     )

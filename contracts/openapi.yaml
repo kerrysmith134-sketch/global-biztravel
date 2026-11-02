@@ -7670,6 +7670,11 @@ components:
           additionalProperties: true
           type: object
           title: Preferences
+        nationality:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nationality
         notes:
           anyOf:
           - type: string
@@ -7689,6 +7694,15 @@ components:
           additionalProperties: true
           type: object
           title: Preferences
+        nationality:
+          anyOf:
+          - type: string
+            maxLength: 2
+            minLength: 2
+            pattern: ^[A-Za-z]{2}$
+          - type: 'null'
+          title: Nationality
+          description: 护照国籍 ISO 3166-1 alpha-2；用于入境可行性核验（PRD P0-7）
         notes:
           anyOf:
           - type: string

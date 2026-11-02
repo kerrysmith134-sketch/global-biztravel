@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, Unprocessable
+from app.models.memory import TravelerProfile
 from app.models.trip import Trip
 from app.models.visa import EntryAssessment, VisaCase
 from app.services import visa_catalog
@@ -166,24 +167,57 @@ def update_case(
     return case
 
 
+def traveler_nationality(
+    session: Session, organization_id: UUID | str, trip: Trip
+) -> str | None:
+    """取出差人的护照国籍（画像事实记忆层）；没有就返回 None，**不猜**。"""
+    if trip.owner_user_id is None:
+        return None
+    profile = session.scalars(
+        select(TravelerProfile)
+        .where(
+            TravelerProfile.organization_id == organization_id,
+            TravelerProfile.user_id == trip.owner_user_id,
+            TravelerProfile.valid_until.is_(None),
+        )
+        .order_by(TravelerProfile.version.desc())
+        .limit(1)
+    ).one_or_none()
+    if profile is None or not profile.nationality:
+        return None
+    return str(profile.nationality).upper()
+
+
 def assess_entry(
     session: Session, organization_id: UUID | str, trip: Trip, *, now: datetime | None = None
 ) -> list[EntryAssessment]:
     catalog = visa_catalog.load_catalog()
     current = now or session.scalar(select(func.clock_timestamp()))
+    nationality = traveler_nationality(session, organization_id, trip)
     results: list[EntryAssessment] = []
     for raw_code in sorted({str(code).upper() for code in (trip.countries or [])}):
         code = _country(raw_code)
         knowledge = catalog["countries"].get(code)
+        # 证件前提：PRD P0-7 要求结合证件/国籍核验。目录只按国别组织、不含按国籍的
+        # 差异结论，因此这里只陈述"以哪本护照为前提"与缺口，**不宣布需要/免签**。
+        if nationality:
+            premise = f"证件前提：{nationality} 护照。"
+        else:
+            premise = "证件前提：未登记护照国籍，无法结合证件核验。"
         if knowledge is None:
-            summary = f"{code}：本地目录未收录，必须直接查询官方入境要求。"
+            summary = (
+                f"{premise}{code}：本地目录未收录，必须直接查询官方入境要求。"
+            )
             confidence = 0.4
         else:
             summary = (
-                f"{knowledge['label']}：{knowledge['business_entry']}。"
+                f"{premise}{knowledge['label']}：{knowledge['business_entry']}。"
                 f"{knowledge['review_hint']}（来源 {catalog['version']}，需人工复核）"
             )
             confidence = 0.6
+        # 缺证件信息时置信度更低：评估对象不明的结论更不可靠。
+        if nationality is None:
+            confidence = min(confidence, 0.35)
         statement = (
             pg_insert(EntryAssessment.__table__)
             .values(
@@ -233,6 +267,7 @@ def list_assessments(
 
 __all__ = [
     "CASE_APPROVED",
+    "traveler_nationality",
     "CASE_CANCELLED",
     "CASE_NEW",
     "CASE_PREPARING",
