@@ -25,6 +25,7 @@ from app.api.routes import (
     integrations,
     llm,
     local_guide,
+    members,
     memory,
     metrics,
     notifications,
@@ -61,6 +62,7 @@ api_router.include_router(plans.router)
 api_router.include_router(policies.router)
 api_router.include_router(proactive.router)
 api_router.include_router(memory.router)
+api_router.include_router(members.router)
 api_router.include_router(llm.router)
 api_router.include_router(metrics.router)
 api_router.include_router(notifications.router)

@@ -1293,6 +1293,27 @@ class LocalGuideRead(BaseModel):
     data_gaps: list[dict[str, Any]] = Field(default_factory=list)
 
 
+# ------------------------------------------------------------ team members
+OrgRole = Literal["OWNER", "ADMIN", "TRAVELER", "VIEWER"]
+
+
+class MemberRead(BaseModel):
+    user_id: UUID
+    display_name: str
+    email: str
+    role: OrgRole
+    joined_at: datetime
+
+
+class MemberAdd(BaseModel):
+    user_id: UUID
+    role: OrgRole = "TRAVELER"
+
+
+class MemberRoleUpdate(BaseModel):
+    role: OrgRole
+
+
 # ------------------------------------------------------------ trip outcome
 class TripOutcomeVisitRead(BaseModel):
     status: str

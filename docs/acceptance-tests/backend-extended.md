@@ -71,6 +71,7 @@ make ios-test
 | 通知用户偏好（S8-08） | `services/api/tests/test_notification_preferences.py`、iOS 偏好面板 | 静音等级 ⇒ 无通知但建议保留；偏好 GET/PUT 幂等；非法等级 4xx；通知页按 P0–P3 开关即时保存 |
 | 通知分级（S8-08） | `services/api/tests/test_notification_priority.py` | P0/P1/P2/P3 确定性规则；入队落库优先级与 issue_key；Feed 分级未读与过滤；非法等级 4xx；跨租户隔离 |
 | 当地生活指南（方向五） | `services/api/tests/test_local_guide.py` | 按出行国家返回目录条目；城市贴士只覆盖拜访城市；未知国家与实时源缺口显式返回；跨租户 404 |
+| 团队协作（P1） | `services/api/tests/test_members.py` | 成员列表+角色+邮箱；ADMIN 改角色/移除；OWNER 保护（降级/移除最后 OWNER 拒绝）；ADMIN 升 OWNER 拒绝；跨租户 |
 | 出差结果复盘（P1） | `services/api/tests/test_trip_outcome.py` | 拜访状态/记录结果计数；计划vs实际费用分列；洞察按类计数；商机信号待确认；零 CRM 写入；跨租户 404 |
 | 纪要分类洞察（P1） | `services/api/tests/test_minutes_insights.py`、`test_llm_integration.py` | 六类关键词抽取；非摘要强制确认；非法类别/空文本丢弃；模板兜底无假洞察；零 CRM 写入 |
 | 入境评估证件前提（P0-7） | `services/api/tests/test_entry_assessment_credentials.py` | 国籍登记/清除/校验/幂等；有国籍陈述前提、无国籍显式提示且置信度≤0.35；禁确定性结论；跨租户隔离 |

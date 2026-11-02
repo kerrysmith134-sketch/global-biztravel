@@ -49,6 +49,7 @@
 | 当地生活指南（方向五） | `local_guide_service` + `app/data/local_guide_catalog.json` | 8 国离线目录按出行国家组装、城市贴士按拜访城市裁剪、实时源缺口显式标注、iOS 指南页 |
 | AI 助手对话/会话内执行（页面 05） | `assistant_service` + 迁移 `0027` + iOS `AssistantView` + `test_assistant_actions.py` | 对话与工作流分离（删聊天不影响任务）、事实卡片由服务端计算、工具提案标注人审、llm_invocation 可回溯 |
 | 通知用户偏好（S8-08） | `notification_preferences` + 迁移 `0028` | 静音等级不产生通知但保留建议；GET/PUT 偏好幂等；非法等级 4xx |
+| 团队协作（P1） | `member_service` + `routes/members.py` | GET/PATCH/DELETE 成员；角色降级/移除保护最后 OWNER；ADMIN 不能提升 OWNER；跨租户隔离 |
 | 出差结果分析与机会复盘（P1） | `trip_outcome_service` + `GET /trips/{id}/outcome` | 拜访结果计数、费用计划vs实际分列、纪要洞察按类计数、商机信号待确认、零 CRM 写入 |
 | 纪要分类洞察（P1） | `meeting_minutes` v2 + `MUST_CONFIRM_KINDS` | 六类信息分类；非摘要强制人工确认（服务端覆盖模型）；模板兜底只回摘要；零 CRM 写入；iOS 待确认计数 |
 | 入境评估结合证件/国籍（P0-7） | `traveler_nationality` + 迁移 `0030` | 画像登记/清除国籍（幂等、校验）；评估陈述证件前提、缺信息降置信度；不给确定性入境结论；租户隔离 |
@@ -61,7 +62,7 @@
 | 命令 | 结果 |
 |---|---|
 | `make test` | **235 passed**（真实 PostgreSQL） |
-| `make typecheck` | MyPy：136 个源文件无问题 |
+| `make typecheck` | MyPy：138 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 74 路径 / 116 schema；契约一致 |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |

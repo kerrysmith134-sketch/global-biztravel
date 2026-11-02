@@ -3090,6 +3090,101 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/members:
+    get:
+      tags:
+      - members
+      summary: 组织成员列表
+      operationId: list_members_v1_members_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/MemberRead'
+                type: array
+                title: Response List Members V1 Members Get
+    post:
+      tags:
+      - members
+      summary: 添加成员（需用户已存在）
+      operationId: add_member_v1_members_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberAdd'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/members/{user_id}:
+    patch:
+      tags:
+      - members
+      summary: 变更成员角色
+      operationId: update_role_v1_members__user_id__patch
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberRoleUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - members
+      summary: 移除成员
+      operationId: remove_member_v1_members__user_id__delete
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/llm/tools:
     get:
       tags:
@@ -5582,6 +5677,71 @@ components:
       - key
       - title
       title: LocalGuideSectionRead
+    MemberAdd:
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+        role:
+          type: string
+          enum:
+          - OWNER
+          - ADMIN
+          - TRAVELER
+          - VIEWER
+          title: Role
+          default: TRAVELER
+      type: object
+      required:
+      - user_id
+      title: MemberAdd
+    MemberRead:
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+        display_name:
+          type: string
+          title: Display Name
+        email:
+          type: string
+          title: Email
+        role:
+          type: string
+          enum:
+          - OWNER
+          - ADMIN
+          - TRAVELER
+          - VIEWER
+          title: Role
+        joined_at:
+          type: string
+          format: date-time
+          title: Joined At
+      type: object
+      required:
+      - user_id
+      - display_name
+      - email
+      - role
+      - joined_at
+      title: MemberRead
+    MemberRoleUpdate:
+      properties:
+        role:
+          type: string
+          enum:
+          - OWNER
+          - ADMIN
+          - TRAVELER
+          - VIEWER
+          title: Role
+      type: object
+      required:
+      - role
+      title: MemberRoleUpdate
     MemoryFeedbackRead:
       properties:
         type:
