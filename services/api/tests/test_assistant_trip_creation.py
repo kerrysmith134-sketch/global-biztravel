@@ -144,6 +144,28 @@ def test_incomplete_request_asks_instead_of_guessing(client: TestClient) -> None
             )
 
 
+def test_relative_dates_parsed_and_proposed(client: TestClient) -> None:
+    conversation_id = new_conversation(client)
+    try:
+        bot = send(client, conversation_id, "两周后出发去新加坡出差 7 天")
+        proposal = next(
+            (card for card in bot["cards"] if card["type"] == "TRIP_PROPOSAL"), None
+        )
+        assert proposal is not None, bot
+        payload = proposal["payload"]
+        assert payload["countries"] == ["SG"]
+        assert payload["start_date"] == (date.today() + timedelta(weeks=2)).isoformat()
+        # 7 天含出发日 → 结束 = start + 6
+        assert payload["end_date"] == (date.today() + timedelta(weeks=2, days=6)).isoformat()
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(AssistantConversation).where(
+                    AssistantConversation.id == UUID(conversation_id)
+                )
+            )
+
+
 def test_status_question_is_not_a_creation_request(client: TestClient) -> None:
     conversation_id = new_conversation(client)
     try:

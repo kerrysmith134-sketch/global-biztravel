@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date, timedelta
 from typing import Any, Protocol
 
 from app.config import get_settings
@@ -29,6 +30,85 @@ class LLMProvider(Protocol):
 
 def _word_count(value: Any) -> int:
     return len(json.dumps(value, ensure_ascii=False, default=str).split())
+
+
+_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+_WEEKDAYS = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "天": 6, "日": 6}
+
+
+def _cn_num(text: str) -> int | None:
+    """简单中文数字 → int（支持一~九十九，足够日常表达）。"""
+    if text.isdigit():
+        return int(text)
+    if text in _CN_DIGITS:
+        return _CN_DIGITS[text]
+    if "十" in text:
+        parts = text.split("十")
+        tens = _CN_DIGITS.get(parts[0], 1) if parts[0] else 1
+        ones = _CN_DIGITS.get(parts[1], 0) if parts[1] else 0
+        return tens * 10 + ones
+    return None
+
+
+def _parse_dates(message: str) -> tuple[str | None, str | None]:
+    """解析中文/ISO 日期表达式；返回 (start, end) ISO 字符串或 None。
+
+    支持：YYYY-MM-DD、"M月D日"、"下个月"/"下月初"/"下月底"、"X周后"、"X天后"、
+    "下周X"。只取前两个找到的日期作为起点/终点。
+    """
+    today = date.today()
+    dates: list[str] = []
+
+    for m in re.finditer(r"(\d{4})-(\d{1,2})-(\d{1,2})", message):
+        try:
+            dates.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat())
+        except ValueError:
+            pass
+
+    if not dates:
+        for m in re.finditer(r"(\d{1,2})月(\d{1,2})[日号]", message):
+            month, day = int(m.group(1)), int(m.group(2))
+            year = today.year if date(today.year, month, min(day, 28)) >= today else today.year + 1
+            try:
+                dates.append(date(year, month, day).isoformat())
+            except ValueError:
+                pass
+
+    if not dates:
+        if "下月初" in message:
+            nxt = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+            dates.append(nxt.isoformat())
+        elif "下月中旬" in message:
+            nxt = (today.replace(day=1) + timedelta(days=32)).replace(day=15)
+            dates.append(nxt.isoformat())
+        elif "下月底" in message:
+            nxt = (today.replace(day=1) + timedelta(days=62)).replace(day=1) - timedelta(days=1)
+            dates.append(nxt.isoformat())
+        elif "下个月" in message or "下月" in message:
+            nxt = (today.replace(day=1) + timedelta(days=32)).replace(day=today.day)
+            dates.append(nxt.isoformat())
+
+    if not dates:
+        for m in re.finditer(r"([一二两三四五六七八九十\d]{1,4})\s*周后", message):
+            weeks = _cn_num(m.group(1))
+            if weeks is not None:
+                dates.append((today + timedelta(weeks=weeks)).isoformat())
+
+    if not dates:
+        for m in re.finditer(r"([一二两三四五六七八九十\d]{1,4})\s*天后", message):
+            offset = _cn_num(m.group(1))
+            if offset is not None:
+                dates.append((today + timedelta(days=offset)).isoformat())
+
+    if not dates:
+        for m in re.finditer(r"下周([一二三四五六天日])", message):
+            target = _WEEKDAYS.get(m.group(1))
+            if target is None:
+                continue
+            delta = (target - today.weekday() + 7) % 7 or 7
+            dates.append((today + timedelta(days=delta)).isoformat())
+
+    return (dates[0] if dates else None, dates[1] if len(dates) > 1 else None)
 
 
 class StubProvider:
@@ -138,24 +218,17 @@ class StubProvider:
                 countries.append(code)
 
         days = None
-        m = re.search(r"(\d{1,3})\s*天", message)
-        if m:
-            days = int(m.group(1))
+        m = re.search(r"([一二两三四五六七八九十\d]{1,4})\s*天", message)
+        if m and "天后" not in m.group(0):
+            days = _cn_num(m.group(1))
         else:
-            m = re.search(r"(\d{1,2})\s*周", message)
-            if m:
-                days = int(m.group(1)) * 7
+            m = re.search(r"([一二两三四五六七八九十\d]{1,4})\s*周", message)
+            if m and "周后" not in m.group(0):
+                weeks = _cn_num(m.group(1))
+                if weeks is not None:
+                    days = weeks * 7
 
-        import re as _re
-        from datetime import date, timedelta
-
-        dates = _re.findall(r"(\d{4})-(\d{2})-(\d{2})", message)
-        start_date: str | None = None
-        end_date: str | None = None
-        if dates:
-            start_date = f"{dates[0][0]}-{dates[0][1]}-{dates[0][2]}"
-            if len(dates) > 1:
-                end_date = f"{dates[1][0]}-{dates[1][1]}-{dates[1][2]}"
+        start_date, end_date = _parse_dates(message)
         if start_date is None and days is not None:
             # 用户只给了天数：起点默认从明天开始（在回复卡片里明示，可被用户改口）。
             start_date = (date.today() + timedelta(days=1)).isoformat()
