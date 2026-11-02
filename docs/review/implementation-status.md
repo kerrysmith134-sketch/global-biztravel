@@ -16,7 +16,7 @@
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；17 单测 + 7 UI 自动化 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；18 单测 + 7 UI 自动化 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -67,7 +67,7 @@
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | 17 单测 + 7 UI 自动化通过（连接真实后端） |
+| `make ios-test` | 18 单测 + 7 UI 自动化通过（连接真实后端） |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
 

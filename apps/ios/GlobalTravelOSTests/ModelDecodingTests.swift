@@ -289,6 +289,32 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(detail.messageList[0].isFromUser)
     }
 
+    func testTripOutcomeDecodesVisitsAndSignals() throws {
+        let json = """
+        {
+          "trip_id": "t1", "status": "COMPLETED",
+          "window": {"start": "2026-11-01T00:00:00+00:00", "end": "2026-11-05T00:00:00+00:00"},
+          "visits": {"DONE": 2, "MISSED": 1},
+          "visit_labels": {"DONE": "已完成", "MISSED": "未会面"},
+          "record_outcomes": {"MET": 1}, "record_outcome_labels": {"MET": "已会面"},
+          "plan_cost": {"total": 400.0, "currency": "EUR", "unknown_count": 0},
+          "actual_cost": [{"currency": "EUR", "amount": 150.0, "count": 1}],
+          "insights_by_kind": {"OPPORTUNITY_SIGNAL": 1},
+          "insight_kind_labels": {"OPPORTUNITY_SIGNAL": "商机信号"},
+          "opportunity_signals": [{
+            "kind": "OPPORTUNITY_SIGNAL", "kind_label": "商机信号",
+            "text": "客户计划明年扩产", "visit_id": "v1", "requires_confirmation": true
+          }],
+          "memory_summaries": [{"kind": "TRIP_REVIEW", "summary": "完成 3 次拜访"}]
+        }
+        """
+        let outcome = try DateCoding.decode(TripOutcome.self, fromJSON: json)
+        XCTAssertEqual(outcome.visitList.count, 2)
+        XCTAssertEqual(outcome.planCost?.label, "EUR 400.00")
+        XCTAssertEqual(outcome.signalList.first?.kindLabel, "商机信号")
+        XCTAssertTrue(outcome.signalList.first?.requiresConfirmation == true)
+    }
+
     func testLocalGuideDecodesSectionsAndGaps() throws {
         let json = """
         {

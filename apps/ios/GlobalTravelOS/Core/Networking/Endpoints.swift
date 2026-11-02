@@ -181,6 +181,12 @@ enum Endpoints {
         )
     }
 
+    // MARK: - Trip outcome
+
+    static func tripOutcome(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/outcome")
+    }
+
     // MARK: - Local guide
 
     static func localGuide(tripId: String) -> APIRequest {

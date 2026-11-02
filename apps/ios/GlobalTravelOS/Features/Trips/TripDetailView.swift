@@ -441,6 +441,11 @@ struct TripDetailView: View {
 
             Section("当地与记忆") {
                 NavigationLink {
+                    TripOutcomeView(tripId: viewModel.tripId, environment: environment)
+                } label: {
+                    Label("结果复盘", systemImage: "chart.bar.doc.horizontal")
+                }
+                NavigationLink {
                     LocalGuideView(tripId: viewModel.tripId, environment: environment)
                 } label: {
                     Label("当地生活指南", systemImage: "map")

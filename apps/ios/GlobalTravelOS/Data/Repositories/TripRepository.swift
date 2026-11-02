@@ -48,6 +48,7 @@ protocol TripRepository {
     func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment]
     func createTrip(_ request: CreateTripRequest) async throws -> Trip
     func localGuide(tripId: String) async throws -> LocalGuide
+    func tripOutcome(tripId: String) async throws -> TripOutcome
     func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult
     func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult
 }
@@ -121,6 +122,10 @@ final class RemoteTripRepository: TripRepository {
 
     func localGuide(tripId: String) async throws -> LocalGuide {
         try await client.send(Endpoints.localGuide(tripId: tripId), as: LocalGuide.self)
+    }
+
+    func tripOutcome(tripId: String) async throws -> TripOutcome {
+        try await client.send(Endpoints.tripOutcome(tripId: tripId), as: TripOutcome.self)
     }
 
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {
@@ -307,6 +312,13 @@ final class OfflineTripRepository: TripRepository {
         let guide = try await remote.localGuide(tripId: tripId)
         indicator.markServedFromServer()
         return guide
+    }
+
+    /// 结果复盘是只读聚合，直接走服务端。
+    func tripOutcome(tripId: String) async throws -> TripOutcome {
+        let outcome = try await remote.tripOutcome(tripId: tripId)
+        indicator.markServedFromServer()
+        return outcome
     }
 
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {
