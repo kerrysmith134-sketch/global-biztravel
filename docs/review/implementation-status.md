@@ -47,9 +47,9 @@
 | `/api/v1` vs `/v1` | 以设计 v2.0 的 `/v1` 为契约真相；额外挂 `/api/v1` 隐藏别名兼容 PRD 基线 |
 | CI：Ruff/MyPy/Pytest/PG/Alembic/OpenAPI/SwiftLint/XCTest | `scripts/ci.sh`、`make typecheck`、`make lint-ios`、`.github/workflows/ci.yml` |
 | 当地生活指南（方向五） | `local_guide_service` + `app/data/local_guide_catalog.json` | 8 国离线目录按出行国家组装、城市贴士按拜访城市裁剪、实时源缺口显式标注、iOS 指南页 |
-| AI 助手对话（页面 05） | `assistant_service` + 迁移 `0027` + iOS `AssistantView` + `test_assistant_actions.py` |
+| AI 助手对话/会话内执行（页面 05） | `assistant_service` + 迁移 `0027` + iOS `AssistantView` + `test_assistant_actions.py` | 对话与工作流分离（删聊天不影响任务）、事实卡片由服务端计算、工具提案标注人审、llm_invocation 可回溯 |
 | 通知用户偏好（S8-08） | `notification_preferences` + 迁移 `0028` | 静音等级不产生通知但保留建议；GET/PUT 偏好幂等；非法等级 4xx |
-| 自然语言创建出差（P0-2） | `trip_intake` v1 + `create_trip_draft` 动作 + 迁移 `0029` | 意图判定不误伤问状态；缺字段反问不编造；提案卡人确认；服务端二次校验 + 幂等；DRAFT 不预订 | 对话与工作流分离（删聊天不影响任务）、事实卡片由服务端计算、工具提案标注人审、llm_invocation 可回溯 |
+| 自然语言创建出差（P0-2） | `trip_intake` v1 + `create_trip_draft` 动作 + 迁移 `0029` | 意图判定不误伤问状态；缺字段反问不编造；提案卡人确认；服务端二次校验 + 幂等；DRAFT 不预订 |
 | 通知分级（S8-08 P0） | `notification_policy_service` + 迁移 `0026` | P0–P3 确定性规则入队落库；Feed `unread_by_priority`；`priority` 过滤；iOS 分组/徽标/已读 |
 
 ## 4. 验证记录
