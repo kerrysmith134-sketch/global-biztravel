@@ -6,6 +6,8 @@ import Foundation
 /// after each trip and read by the operator between trips, often on a plane.
 protocol MemoryRepository {
     func tripMemory(tripId: String) async throws -> TripMemory
+    func travelerProfile() async throws -> TravelerProfile
+    func updateProfile(_ body: TravelerProfileUpdate) async throws -> TravelerProfile
 }
 
 final class RemoteMemoryRepository: MemoryRepository {
@@ -17,6 +19,16 @@ final class RemoteMemoryRepository: MemoryRepository {
 
     func tripMemory(tripId: String) async throws -> TripMemory {
         try await client.send(Endpoints.tripMemory(tripId: tripId), as: TripMemory.self)
+    }
+
+    func travelerProfile() async throws -> TravelerProfile {
+        try await client.send(Endpoints.travelerProfile(), as: TravelerProfile.self)
+    }
+
+    func updateProfile(_ body: TravelerProfileUpdate) async throws -> TravelerProfile {
+        try await client.send(
+            try Endpoints.updateTravelerProfile(body), as: TravelerProfile.self
+        )
     }
 }
 
@@ -59,5 +71,13 @@ final class OfflineMemoryRepository: MemoryRepository {
             indicator.markServedFromCache("行程记忆")
             return cached
         }
+    }
+
+    func travelerProfile() async throws -> TravelerProfile {
+        try await remote.travelerProfile()
+    }
+
+    func updateProfile(_ body: TravelerProfileUpdate) async throws -> TravelerProfile {
+        try await remote.updateProfile(body)
     }
 }

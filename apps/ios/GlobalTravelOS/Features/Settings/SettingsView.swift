@@ -9,6 +9,8 @@ struct SettingsView: View {
     @State private var userId = ""
     @State private var operatorName = ""
     @State private var loaded = false
+    @State private var nationality = ""
+    @State private var profileError: String?
 
     var body: some View {
         NavigationStack {
@@ -26,6 +28,18 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     TextField("称呼（可选）", text: $operatorName)
+                }
+                Section {
+                    TextField("护照国籍（如 CN / DE）", text: $nationality)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                    if let err = profileError {
+                        Text(err).font(.caption).foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("出差人画像")
+                } footer: {
+                    Text("护照国籍用于入境可行性核验（PRD P0-7）。留空表示未登记。")
                 }
                 Section {
                     Button("恢复开发默认") {
@@ -58,7 +72,22 @@ struct SettingsView: View {
                             settings.operatorName = name.isEmpty ? nil : name
                             settings.isAuthenticated = true
                         }
-                        dismiss()
+                        let nat = nationality.trimmingCharacters(in: .whitespaces).uppercased()
+                        Task {
+                            do {
+                                _ = try await environment.memoryRepository.updateProfile(
+                                    TravelerProfileUpdate(
+                                        preferences: nil,
+                                        nationality: nat.isEmpty ? nil : nat,
+                                        notes: nil,
+                                        confidence: 1.0
+                                    )
+                                )
+                            } catch {
+                                // 画像保存失败不阻断身份保存（用户可重试）。
+                            }
+                            dismiss()
+                        }
                     }
                 }
             }
@@ -69,6 +98,12 @@ struct SettingsView: View {
                 orgId = environment.settings.orgId
                 userId = environment.settings.userId
                 operatorName = environment.settings.operatorName ?? ""
+                do {
+                    let profile = try await environment.memoryRepository.travelerProfile()
+                    nationality = profile.nationality ?? ""
+                } catch {
+                    profileError = "画像读取失败"
+                }
             }
         }
     }

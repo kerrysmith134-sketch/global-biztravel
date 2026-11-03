@@ -181,6 +181,21 @@ enum Endpoints {
         )
     }
 
+    // MARK: - Traveler profile
+
+    static func travelerProfile() -> APIRequest {
+        APIRequest(method: .get, path: "/v1/traveler/profile")
+    }
+
+    static func updateTravelerProfile(_ body: TravelerProfileUpdate) throws -> APIRequest {
+        APIRequest(
+            method: .put,
+            path: "/v1/traveler/profile",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     // MARK: - Trip outcome
 
     static func tripOutcome(tripId: String) -> APIRequest {
