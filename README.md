@@ -19,14 +19,14 @@
 ## 快速开始
 
 ```bash
-bash scripts/bootstrap.sh        # venv + 依赖 + 数据库 + 迁移
+bash scripts/bootstrap.sh        # venv + 依赖 + 数据库 + 迁移 + 种子数据
 make api                         # 起 API（http://localhost:8080/docs）
 make worker                      # 起后台 Worker（Outbox / 规划作业 / 主动式扫描 / 复盘 / 指标）
-make test                        # 全量后端测试（含真实 PostgreSQL 集成测试）
+make test                        # 全量后端测试（含真实 PostgreSQL；自动先补种子数据）
 make typecheck                   # MyPy 类型检查
 make ci                          # 完整门禁（静态/类型/契约/测试/Docker E2E/iOS）
 make ios-build                   # 构建 iOS 客户端（模拟器）
-make ios-test                    # iOS 单元测试 + UI 冒烟（UI 需 make api 运行）
+make ios-test                    # iOS 单元测试 + UI 冒烟（需 make api + make worker 运行；模拟器名用 IOS_DEST 覆盖）
 make e2e                         # 真实后端全链路验收（需 make api 运行）
 make stack-up                    # Docker 完整栈（DB + API + Worker）
 ```
@@ -109,5 +109,5 @@ Input Normalizer → Feasibility Checker → Candidate Generator
 - `AT-S01`：组织 A 会话访问组织 B 数据必须全部失败（数据库级 RLS）。
 
 验收必须在**真实客户端、后端与数据库**之间完成，不得以静态页面、模拟 API 返回值或预置演示数据替代。
-当前自动化覆盖：后端 237 条（含真实 PostgreSQL）、iOS 18 条单元测试 + 7 条 UI 自动化、
+当前自动化覆盖：后端 238 条（含真实 PostgreSQL）、iOS 18 条单元测试 + 8 条 UI 自动化、
 `make e2e` 真实后端全链路、`make contract-check` 契约漂移检查；iOS 客户端已在模拟器中连接真实后端验证。

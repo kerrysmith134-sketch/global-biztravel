@@ -1,6 +1,8 @@
 # iOS UI 自动化（连接真实后端）
 
-前置：`make api` 正在运行；每条用例用真实 HTTP 自建数据，不依赖手工种子（`scripts/seed_dev.py` 可选）。
+前置：`make api` 与 `make worker` 正在运行（`testAcceptanceJourneyChain` / `testGenerateAndActivatePlan`
+要真实 Worker 求解，只起 API 会一直等不到计划）；每条用例用真实 HTTP 自建数据，不依赖手工种子
+（`make test` / `make e2e` 会自动跑 `make seed`，UI 用例本身可不依赖种子）。
 
 App 已启用文件分享（`GlobalTravelOSConfig/AppInfo.plist` 的 `UIFileSharingEnabled` +
 `LSSupportsOpeningDocumentsInPlace`），系统文件选择器因此能列出 App 目录；Excel 用例在
@@ -10,8 +12,7 @@ App 启动后把夹具复制进主 App 的 `Documents`（按容器元数据 `MCM
 |---|---|---|
 | `testAcceptanceJourneyChain` | 新建 → Excel 导入 → 规划 → 激活 → 费用 → 现场记录 → 纪要（严格断言，无期望失败标记） | 单条串联最长稳定主干；每阶段有导航栏检查点（expectNav）；简报/助手/同步由分步用例覆盖 |
 | `testLaunchBrowseSeedTripAndSyncCenter` | Today → AI 助手 → 通知中心（含偏好面板 P3 开关真实 PUT）→ 行动中心 → 出行列表 → 详情 → 同步页 | 验证真实网络加载与基本导航 |
-| `testPreparedTripBriefing` | 详情 → 结果复盘 → 拜访简报 | 结果复盘视图（拜访/费用/机会信号）在链式用例中由分步用例覆盖；此处验证简报 |
-| `testPreparedTripBriefing` | 准备数据 → 详情 → 拜访简报 | 测试内用真实 HTTP 创建地点/出行/拜访，再用启动参数打开，避免依赖列表分页顺序 |
+| `testPreparedTripBriefing` | 准备数据 → 详情 → 拜访简报 | 测试内用真实 HTTP 创建地点/出行/拜访，再用启动参数打开，避免依赖列表分页顺序（结果复盘视图 `TripOutcomeView` 暂无 UI 用例，仅服务端 `test_trip_outcome.py` 覆盖） |
 | `testCreateTripFlow` | 出行列表 → 新建表单 → 创建 | 创建后断言新出行立即出现在列表顶部 |
 | `testExpenseEntryFlow` | 详情 → 记一笔费用 → 保存 | 真实 POST 费用，断言金额出现在费用列表 |
 | `testGenerateAndActivatePlan` | 详情 → 生成新计划 → 计划详情 → 激活 | 真实 Worker 求解；计划列表裸数组契约；激活后回到顶部读状态 |
