@@ -57,6 +57,13 @@ def headers() -> dict[str, str]:
 
 def run_worker_once() -> None:
     env = os.environ.copy()
+    # travel_planner 是纯源码目录（刻意不打包）：Worker 子进程必须能 import 到它。
+    # 不假设调用方已设 PYTHONPATH（直接跑本脚本或经 make e2e 都要能过）。
+    engine = str(ROOT / "packages" / "planning-engine")
+    api = str(ROOT / "services" / "api")
+    env["PYTHONPATH"] = os.pathsep.join(
+        item for item in (api, engine, env.get("PYTHONPATH", "")) if item
+    )
     subprocess.run(
         [sys.executable, "-m", "app.workers.main", "--once", "--org", ORG],
         cwd=ROOT / "services" / "api",
