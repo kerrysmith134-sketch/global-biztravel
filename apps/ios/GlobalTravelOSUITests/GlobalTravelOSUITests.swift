@@ -11,6 +11,11 @@ import XCTest
 final class GlobalTravelOSUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
+        // XCUITest 与模拟器的交互偶发无响应（本机并发跑多个测试套件时更常见）：
+        // 没有兜底时用例会无限挂起而不是失败，日志停在最后一次 Synthesize event，
+        // 看起来像"跑着跑着没了"。300s 覆盖最长的链式用例（实测完整跑完 ~260s），
+        // 超时由 XCTest 终止用例并给出明确失败，而不是永远占着 runner。
+        executionTimeAllowance = 300
     }
 
     // swiftlint:disable:next function_body_length
@@ -96,7 +101,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         let tripsTab = app.buttons["出行"]
         XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")
         tripsTab.tap()
-        XCTAssertTrue(app.navigationBars["出行"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["出行"].waitForExistence(timeout: 10), "阶段失守：导航栏 出行 未出现")
 
         // 开发库里出行会累积，列表按时间倒序分页；冒烟测试取第一行，验证"列表 → 详情"真实可用。
         let firstTrip = app.cells.firstMatch
@@ -112,7 +117,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         XCTAssertTrue(syncTab.waitForExistence(timeout: 10), "未找到同步标签")
         syncTab.tap()
         expectNav(app, "离线同步", stage: "打开同步页")
-        XCTAssertTrue(app.staticTexts["离线队列"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["离线队列"].waitForExistence(timeout: 5), "阶段失守：文本 离线队列 未出现")
     }
 
     func testPreparedTripBriefing() throws {
@@ -128,7 +133,7 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.navigationBars["主动建议"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10), "阶段失守：按钮 出行 未出现")
         app.buttons["出行"].tap()
 
         let seedTrip = app.staticTexts[setup.tripName]
@@ -166,12 +171,12 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
         app.buttons["出行"].tap()
         let trip = app.staticTexts[setup.tripName]
-        XCTAssertTrue(trip.waitForExistence(timeout: 15))
+        XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
-        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15), "阶段失守：文本 概览 未出现")
 
         let generate = app.buttons["生成新计划"]
         for _ in 0 ..< 8 where !generate.isHittable {
@@ -224,18 +229,21 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
         app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
         app.launch()
-        XCTAssertTrue(app.navigationBars["主动建议"].waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            "阶段失守：启动（Today 页未出现）"
+        )
 
         // 1) 新建出行（真实表单）
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10), "阶段失守：底部出行 Tab")
         app.buttons["出行"].tap()
         let create = app.buttons["新建出行"]
-        XCTAssertTrue(create.waitForExistence(timeout: 10))
+        XCTAssertTrue(create.waitForExistence(timeout: 10), "阶段失守：出行列表（新建按钮）")
         create.tap()
-        XCTAssertTrue(app.navigationBars["新建出行"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["新建出行"].waitForExistence(timeout: 10), "阶段失守：新建表单未打开")
         let tripName = "全链路 AT \(Int(Date().timeIntervalSince1970))"
         let nameField = app.textFields["出行名称"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10), "阶段失守：新建表单（名称字段）")
         nameField.tap()
         // 键盘弹出需要一拍；紧接着 typeText 会偶发"无键盘焦点"。
         Thread.sleep(forTimeInterval: 1.5)
@@ -245,7 +253,10 @@ final class GlobalTravelOSUITests: XCTestCase {
         expectNav(app, "出行", stage: "创建后列表")
         app.staticTexts[tripName].tap()
         expectNav(app, tripName, stage: "打开新建行程")
-        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15),
+            "阶段失守：新建行程详情（概览未渲染）"
+        )
 
         // 创建表单的窗口是 +7/+10 天，不含夹具里的固定会议时间（2026-11-09/10/11）；
         // 用真实 API 把窗口对齐到夹具区间，否则固定时间窗的拜访会被规划器判为不可行。
@@ -260,26 +271,38 @@ final class GlobalTravelOSUITests: XCTestCase {
 
         // 2) Excel 两阶段导入
         XCTAssertTrue(revealAndTap(app, app.buttons["导入 Excel 客户名单"]), "未找到导入入口")
-        XCTAssertTrue(app.navigationBars["导入客户名单"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["导入客户名单"].waitForExistence(timeout: 10), "阶段失守：导入面板未打开")
         app.buttons["选择 Excel 文件"].tap()
-        XCTAssertTrue(app.searchFields["搜索"].waitForExistence(timeout: 15))
+        if !app.searchFields["搜索"].waitForExistence(timeout: 15) {
+            // 系统文件选择器（Files 扩展）在机器高负载下偶发不启动：等按钮回来重试点一次。
+            // 实测这是链式用例最常挂的点（同 testExcelImportFlow 的历史失败同源）。
+            let pickAgain = app.buttons["选择 Excel 文件"]
+            if pickAgain.waitForExistence(timeout: 5) { pickAgain.tap() }
+            XCTAssertTrue(
+                app.searchFields["搜索"].waitForExistence(timeout: 15),
+                "阶段失守：文件选择器（搜索栏未出现，重试后仍失败）"
+            )
+        }
         if app.buttons["浏览"].waitForExistence(timeout: 5) { app.buttons["浏览"].tap() }
         let location = app.cells.matching(
             NSPredicate(format: "identifier CONTAINS '我的iPhone' OR label == '我的iPhone'")
         ).firstMatch
-        XCTAssertTrue(location.waitForExistence(timeout: 10))
+        XCTAssertTrue(location.waitForExistence(timeout: 10), "阶段失守：文件选择器（我的iPhone 位置）")
         location.tap()
         let appFolder = app.cells.matching(
             NSPredicate(format: "identifier BEGINSWITH 'GlobalTravelOS'")
         ).firstMatch
-        XCTAssertTrue(appFolder.waitForExistence(timeout: 30))
+        XCTAssertTrue(appFolder.waitForExistence(timeout: 30), "阶段失守：文件选择器（App 目录）")
         appFolder.tap()
         let fixtureCell = app.cells.matching(
             NSPredicate(format: "label CONTAINS 'sample-customers'")
         ).firstMatch
-        XCTAssertTrue(fixtureCell.waitForExistence(timeout: 15))
+        XCTAssertTrue(fixtureCell.waitForExistence(timeout: 15), "阶段失守：文件选择器（夹具文件）")
         fixtureCell.tap()
-        XCTAssertTrue(app.staticTexts["预览"].waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            app.staticTexts["预览"].waitForExistence(timeout: 20),
+            "阶段失守：导入预览未出现"
+        )
         let confirm = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH '确认导入'")
         ).firstMatch
@@ -287,7 +310,10 @@ final class GlobalTravelOSUITests: XCTestCase {
         while !confirm.exists && Date() < confirmDeadline { dragContent(app, up: true) }
         XCTAssertTrue(confirm.exists, "未找到确认导入")
         confirm.tap()
-        XCTAssertTrue(app.staticTexts["导入结果"].waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            app.staticTexts["导入结果"].waitForExistence(timeout: 20),
+            "阶段失守：导入确认（导入结果未出现）"
+        )
         app.buttons["完成"].tap()
         expectNav(app, tripName, stage: "导入完成回详情")
 
@@ -301,7 +327,10 @@ final class GlobalTravelOSUITests: XCTestCase {
         while !planCell.exists && Date() < planDeadline { dragContent(app, up: true) }
         XCTAssertTrue(planCell.exists, "计划未生成")
         planCell.tap()
-        XCTAssertTrue(app.navigationBars["计划详情"].waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            app.navigationBars["计划详情"].waitForExistence(timeout: 15),
+            "阶段失守：打开计划详情"
+        )
         XCTAssertTrue(revealAndTap(app, app.buttons["激活此计划"]), "未找到激活按钮")
         let activated = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS '已激活'")
@@ -352,7 +381,7 @@ final class GlobalTravelOSUITests: XCTestCase {
             expectNav(app, "记一笔费用", stage: "费用录入页(重试)")
         }
         let amount = app.textFields["金额（如 88.50）"]
-        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        XCTAssertTrue(amount.waitForExistence(timeout: 10), "阶段失守：费用录入页（金额字段未渲染）")
         amount.tap()
         Thread.sleep(forTimeInterval: 1.5)
         amount.typeText("88.50")
@@ -404,12 +433,12 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
         app.buttons["出行"].tap()
         let trip = app.staticTexts[setup.tripName]
-        XCTAssertTrue(trip.waitForExistence(timeout: 15))
+        XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
-        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15), "阶段失守：文本 概览 未出现")
 
         let addExpense = app.buttons["记一笔费用"]
         for _ in 0 ..< 8 where !addExpense.isHittable {
@@ -417,10 +446,13 @@ final class GlobalTravelOSUITests: XCTestCase {
         }
         XCTAssertTrue(addExpense.isHittable, "未找到记一笔费用入口")
         addExpense.tap()
-        XCTAssertTrue(app.navigationBars["记一笔费用"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.navigationBars["记一笔费用"].waitForExistence(timeout: 10),
+            "阶段失守：费用录入页未打开"
+        )
 
         let amount = app.textFields["金额（如 88.50）"]
-        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        XCTAssertTrue(amount.waitForExistence(timeout: 10), "阶段失守：费用录入页（金额字段未渲染）")
         amount.tap()
         Thread.sleep(forTimeInterval: 1.5)
         amount.typeText("88.50")
@@ -442,12 +474,12 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
         app.buttons["出行"].tap()
         let trip = app.staticTexts[setup.tripName]
-        XCTAssertTrue(trip.waitForExistence(timeout: 15))
+        XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
-        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15), "阶段失守：文本 概览 未出现")
 
         let record = app.buttons["记录"].firstMatch
         for _ in 0 ..< 8 where !record.isHittable {
@@ -455,12 +487,12 @@ final class GlobalTravelOSUITests: XCTestCase {
         }
         XCTAssertTrue(record.isHittable, "未找到记录入口")
         record.tap()
-        XCTAssertTrue(app.navigationBars["现场记录"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["现场记录"].waitForExistence(timeout: 10), "阶段失守：导航栏 现场记录 未出现")
 
         // 不在多行输入框里打字：键盘会遮挡列表底部按钮，导致纪要步骤随机失败。
         // 记录正文由后端测试覆盖；这里验证的是"保存 → 出结果 → 生成纪要"的界面链路。
         let save = app.buttons["保存现场记录"]
-        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        XCTAssertTrue(save.waitForExistence(timeout: 10), "阶段失守：元素未出现（save）")
         save.tap()
 
         // 结果区显示"已提交到服务端"或离线排队原因。
@@ -521,12 +553,12 @@ final class GlobalTravelOSUITests: XCTestCase {
         // App 装好后再落夹具：容器由安装创建，元数据一定可读。
         try seedImportFixture()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
         app.buttons["出行"].tap()
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试出行未出现在列表中")
         trip.tap()
-        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15), "阶段失守：文本 概览 未出现")
 
         let importButton = app.buttons["导入 Excel 客户名单"]
         for _ in 0 ..< 8 where !importButton.isHittable {
@@ -534,16 +566,21 @@ final class GlobalTravelOSUITests: XCTestCase {
         }
         XCTAssertTrue(importButton.isHittable, "未找到导入入口")
         importButton.tap()
-        XCTAssertTrue(app.navigationBars["导入客户名单"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["导入客户名单"].waitForExistence(timeout: 10), "阶段失守：导航栏 导入客户名单 未出现")
 
         app.buttons["选择 Excel 文件"].tap()
 
         // 系统文件选择器：我的iPhone → 应用目录 → 夹具文件。
         let picker = app
-        XCTAssertTrue(
-            picker.searchFields["搜索"].waitForExistence(timeout: 15),
-            "文件选择器未出现"
-        )
+        if !picker.searchFields["搜索"].waitForExistence(timeout: 15) {
+            // Files 扩展在高负载下偶发不启动：重试点一次（与链式用例同款加固）。
+            let pickAgain = app.buttons["选择 Excel 文件"]
+            if pickAgain.waitForExistence(timeout: 5) { pickAgain.tap() }
+            XCTAssertTrue(
+                picker.searchFields["搜索"].waitForExistence(timeout: 15),
+                "文件选择器未出现（重试后仍失败）"
+            )
+        }
         // 选择器默认在"最近项目"；先切到"浏览"才看得到位置列表。
         let browse = picker.buttons["浏览"]
         if browse.waitForExistence(timeout: 5) {
@@ -595,17 +632,17 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
         app.buttons["出行"].tap()
 
         let create = app.buttons["新建出行"]
         XCTAssertTrue(create.waitForExistence(timeout: 10), "未找到新建出行按钮")
         create.tap()
-        XCTAssertTrue(app.navigationBars["新建出行"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["新建出行"].waitForExistence(timeout: 10), "阶段失守：导航栏 新建出行 未出现")
 
         let uniqueName = "UI 自动化出行 \(Int(Date().timeIntervalSince1970))"
         let nameField = app.textFields["出行名称"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10), "阶段失守：元素未出现（nameField）")
         nameField.tap()
         nameField.typeText(uniqueName)
         app.buttons["创建"].tap()
@@ -645,6 +682,17 @@ extension GlobalTravelOSUITests {
     func backToTripDetail(_ app: XCUIApplication, tripName: String) -> Bool {
         let overview = app.staticTexts["概览"].firstMatch
         let deadline = Date().addingTimeInterval(30)
+        // 已在行程详情（导航栏即行程名）时只需滚回顶部：费用保存后列表常停在费用区，
+        // "概览"在页面顶部。此时走返回/Tab 策略不仅多余，实测还曾因为先做左缘滑动
+        // （策略 1）让 XCUITest 桥接挂死——用例无限停在 Synthesize event 之后。
+        if app.navigationBars[tripName].exists {
+            for _ in 0 ..< 10 where !overview.exists {
+                dragContent(app, up: false) // 手指下拖 = 视口上移 = 回顶部
+            }
+            if overview.exists {
+                return true
+            }
+        }
         var strategy = 0
         while !overview.exists && Date() < deadline {
             switch strategy % 3 {
@@ -854,6 +902,17 @@ private extension GlobalTravelOSUITests {
     ///
     /// UI 测试目标编译于 iOS SDK，拿不到 `Process`，因此用共享模拟器文件系统定位主 App 容器。
     func seedImportFixture() throws {
+        // 夹具（sample-customers.xlsx）的会议日期固定为 2026-11-09/10/11：过期后规划器会把
+        // 拜访判为不可行，链式/导入用例在规划阶段必挂，且失败点离根因很远、极难联想到夹具。
+        // 这里先显式拦截，给出可执行的修复指引。（XCTSkip 在 UI 宿主无效，只能用失败。）
+        let fixtureLastDay = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 11)) ?? .distantFuture
+        if Date() > fixtureLastDay {
+            XCTFail(
+                "导入夹具已过期（会议日期 2026-11-09~11 已过）："
+                    + "运行 .venv/bin/python scripts/seed_dev.py --fixture-only 重新生成夹具后重跑"
+            )
+            return
+        }
         let source = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
