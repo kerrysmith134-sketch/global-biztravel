@@ -68,7 +68,7 @@
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.6ms / p95 0.8ms；ortools p50 0.6ms / p95 0.7ms（2026-11-09 实测，亚毫秒级、随机器负载浮动）；6/6 覆盖、两求解器 hash 一致 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | 45 单测全绿（18 手写解码 + 28 条由 openapi 生成的契约样本，覆盖 28 个读模型）；完整套件**连续两轮 8/8**（589.7s / 512.0s，链式 241.9s，连接真实后端）。此前 flaky 已定位并加固：backToTripDetail 在详情页滚回顶部、executionTimeAllowance 兜底、文件选择器重试、激活等待与稳定用例对齐、全部断言补"阶段失守"消息 |
+| `make ios-test` | **46 单测 + 9 条 UI 用例整轮全绿**（598s，连接真实后端，经 `scripts/ios_test_guard.sh` 保护；链式 207s、AT-007/008 专项 131s）。2026-11-09 八轮完整套件实证并修掉：费用横幅谓词过宽（误匹配正常区块头）、AT-006 加载时序、AT-011 同步 Tab 被 sheet 关闭动画吞掉、AT-007 计划版本区定位、`PlanDiff` 模型与契约漂移（契约样本门禁首次实战命中）、`backToTripDetail` 多元素匹配、Excel 文件选择器重试 |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
@@ -149,7 +149,8 @@
 5. **AT-001~AT-012 按钮级 UI 自动化**：2026-11-09 已补齐最后两个 UI 缺口——计划调整入口
    （`PlanChangeCreate` 客户端模型 + 仓储 + 计划详情「调整拜访」，走真实
    `POST /v1/trips/{id}/plan-changes`）与版本比较页（`PlanDiffView`）。
-   测试结构（2026-11-09 按 8 轮完整套件实证调整）：`testAcceptanceJourneyChain` 单条串联
+   **2026-11-09 最终验证：46 单测 + 9 条 UI 用例整轮全绿（598s）。**
+   测试结构（按 8 轮完整套件实证调整）：`testAcceptanceJourneyChain` 单条串联
    **AT-001~006 + AT-010/012**（新建 → 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 → 记录 → 纪要）；
    **AT-007/008** 由 `testPlanChangeAndDiffFlow` 覆盖（取消拜访 → 等重求解 → 版本比较页）；
    **AT-011** 由 `testLaunchBrowseSeedTripAndSyncCenter` 覆盖（逐项判定由 `make e2e` 与
