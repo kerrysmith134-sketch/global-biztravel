@@ -19,7 +19,9 @@
   这条隔离路径是通的。
 - **附带生成一次性的 Excel 夹具**：``docs/acceptance-tests/fixtures/sample-customers.xlsx``，
   刻意混入 8 类"脏数据"，用来验证导入器的净空报告确实能逐类识别（见文件末尾的
-  ``FIXTURE_ROWS`` 注释）。
+  ``build_fixture_rows`` 注释）。**夹具里的会议日期相对"今天"生成**（+2/+3/+4 天）：
+  日期写死会让夹具过期，导入的拜访落在过去 → 规划器如实判不可行 → 链式/导入用例
+  在规划阶段必挂且根因离现场很远。夹具是生成产物、不入版本库（见 ``.gitignore``）。
 
 用法::
 
@@ -32,7 +34,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -518,12 +520,32 @@ FIXTURE_HEADERS = [
 ]
 
 #: 每行都对应一个预期被识别的问题码，见行尾注释。整表用于验证净空报告的**分类能力**。
-FIXTURE_ROWS: list[list[object]] = [
+#:
+#: 会议日期**相对"今天"生成**（+2/+3/+4 天，见 ``_fixture_day``）：夹具写死日期会过期，
+#: 导入后的拜访落在过去 → 规划器判不可行，链式/导入用例在规划阶段必挂且难排查。
+#: 固定的是"相对关系"（第 5 行与第 1 行同窗去重、第 8 行结束早于开始），日期本身随天滚动。
+def _fixture_day(offset: int) -> str:
+    """夹具基准日：今天 + offset 天，返回 YYYY-MM-DD。"""
+    return (date.today() + timedelta(days=offset)).isoformat()
+
+
+def _fixture_window(offset: int, start_hhmm: str, end_hhmm: str) -> tuple[str, str]:
+    day = _fixture_day(offset)
+    return f"{day} {start_hhmm}", f"{day} {end_hhmm}"
+
+
+def build_fixture_rows() -> list[list[object]]:
+    """生成夹具数据行（日期动态，其余字段固定）。"""
+    d1_start, d1_end = _fixture_window(2, "09:00", "12:00")
+    d2_start, d2_end = _fixture_window(3, "14:00", "16:00")
+    # 第 8 行刻意倒置（16:00 → 14:00），验证 INVALID_TIME_WINDOW。
+    d3_start, d3_end = _fixture_window(4, "16:00", "14:00")
+    return [
     # 1) 正常行：显式坐标，全字段齐备 → VALID
     [
         "慕尼黑机器人有限公司", "产线考察", "DE-1001", "A", "DE", "Munich",
         "Werner-von-Siemens-Ring 1", 48.1351, 11.5820, 90, 1, 120000,
-        "2026-11-09 09:00", "2026-11-09 12:00", "Anna Bauer",
+        d1_start, d1_end, "Anna Bauer",
         "anna@munich-robotics.example", "重点客户",
     ],
     # 2) 无坐标但城市在离线索引中 → VALID（坐标由索引补齐，可能带 GEOCODE_LOW_CONFIDENCE）
@@ -548,7 +570,7 @@ FIXTURE_ROWS: list[list[object]] = [
     [
         "慕尼黑机器人有限公司", "产线考察", "DE-1001", "A", "DE", "Munich",
         "Werner-von-Siemens-Ring 1", 48.1351, 11.5820, 90, 1, 120000,
-        "2026-11-09 09:00", "2026-11-09 12:00", "Anna Bauer",
+        d1_start, d1_end, "Anna Bauer",
         "anna@munich-robotics.example", "重点客户（重复填写）",
     ],
     # 6) 客户名为空 → MISSING_CUSTOMER_NAME（ERROR，整行不可接受）
@@ -561,14 +583,14 @@ FIXTURE_ROWS: list[list[object]] = [
     [
         "布鲁塞尔能源署", "政策沟通", "BE-4001", "B", "BE", "Brussels",
         None, None, None, "2 小时", 2, 30000,
-        "2026-11-10 14:00", "2026-11-10 16:00", "Claire Dubois",
+        d2_start, d2_end, "Claire Dubois",
         "claire@be-energy.example", None,
     ],
     # 8) 结束早于开始 → INVALID_TIME_WINDOW（WARNING，结束时间被丢弃）
     [
         "巴黎物流集团", "仓储方案", "FR-5001", "B", "FR", "Paris",
         None, None, None, 60, 2, 45000,
-        "2026-11-11 16:00", "2026-11-11 14:00", "Émile Roux",
+        d3_start, d3_end, "Émile Roux",
         "emile@paris-logistics.example", None,
     ],
     # 9) 国家代码三字母 + 城市不在索引 → INVALID_COUNTRY_CODE + COORDINATES_MISSING
@@ -595,7 +617,7 @@ def write_fixture(path: Path = FIXTURE_PATH) -> Path:
     sheet = workbook.active
     sheet.title = "客户拜访名单"
     sheet.append(FIXTURE_HEADERS)
-    for row in FIXTURE_ROWS:
+    for row in build_fixture_rows():
         sheet.append(row)
     workbook.save(path)
     workbook.close()
@@ -637,7 +659,7 @@ def main() -> int:
 
     if args.fixture_only:
         path = write_fixture()
-        print(f"[ok] Excel 夹具已写入 {path}（{len(FIXTURE_ROWS)} 行数据 + 1 行表头）")
+        print(f"[ok] Excel 夹具已写入 {path}（{len(build_fixture_rows())} 行数据 + 1 行表头）")
         return 0
 
     identity = seed_identity()

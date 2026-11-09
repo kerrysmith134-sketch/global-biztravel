@@ -258,14 +258,22 @@ final class GlobalTravelOSUITests: XCTestCase {
             "阶段失守：新建行程详情（概览未渲染）"
         )
 
-        // 创建表单的窗口是 +7/+10 天，不含夹具里的固定会议时间（2026-11-09/10/11）；
-        // 用真实 API 把窗口对齐到夹具区间，否则固定时间窗的拜访会被规划器判为不可行。
+        // 夹具的会议日期由 seed_dev.py 相对"今天"生成（+2/+3/+4 天）；创建表单默认
+        // +7/+10 天窗口来不及覆盖，用真实 API 把窗口对齐到今天起算的 11 天，
+        // 否则固定时间窗的拜访会被规划器判为不可行（窗口与夹具日期必须同源）。
         let tripId = try findTripId(named: tripName)
+        let isoFormatter = ISO8601DateFormatter()
+        let windowStart = isoFormatter.string(
+            from: Calendar.current.startOfDay(for: Date())
+        )
+        let windowEnd = isoFormatter.string(
+            from: Calendar.current.date(byAdding: .day, value: 10, to: Date()) ?? Date()
+        )
         try patchJSON(
             "http://127.0.0.1:8080/v1/trips/\(tripId)",
             body: [
-                "window_start": "2026-11-06T00:00:00Z",
-                "window_end": "2026-11-13T23:59:59Z",
+                "window_start": windowStart,
+                "window_end": windowEnd,
             ]
         )
 
@@ -335,9 +343,13 @@ final class GlobalTravelOSUITests: XCTestCase {
         let activated = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS '已激活'")
         ).firstMatch
-        let activationDeadline = Date().addingTimeInterval(20)
-        while !activated.exists && Date() < activationDeadline { dragContent(app, up: false) }
-        XCTAssertTrue(activated.exists, "计划未激活")
+        // 激活是同步事务（API 200 即成功），但页面刷新与滚动位置会竞争：用与
+        // testGenerateAndActivatePlan 同款的标准 swipeDown 反复回顶部；30s 覆盖慢刷新。
+        let activationDeadline = Date().addingTimeInterval(30)
+        while !activated.exists && Date() < activationDeadline {
+            app.swipeDown()
+        }
+        XCTAssertTrue(activated.exists, "计划未激活（激活请求已成功，但未读到'已激活'状态）")
 
         // 5) 记一笔费用
         // 预算区在异步 budget 加载后才渲染：先等区块头出现，再找按钮。
@@ -545,13 +557,15 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
         app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        // 夹具在 launch **之前**落进 App 容器：容器由安装创建（launch 非必需），
+        // 先落文件再启动，避免文件选择器（Files 扩展）已打开时看不到新写入的文件。
+        // 链式用例一直是这个顺序；本用例原先在 launch 后落夹具，实测偶发"未找到应用目录"。
+        try seedImportFixture()
         app.launch()
         XCTAssertTrue(
             app.navigationBars["主动建议"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
-        // App 装好后再落夹具：容器由安装创建，元数据一定可读。
-        try seedImportFixture()
 
         XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
         app.buttons["出行"].tap()
@@ -902,17 +916,8 @@ private extension GlobalTravelOSUITests {
     ///
     /// UI 测试目标编译于 iOS SDK，拿不到 `Process`，因此用共享模拟器文件系统定位主 App 容器。
     func seedImportFixture() throws {
-        // 夹具（sample-customers.xlsx）的会议日期固定为 2026-11-09/10/11：过期后规划器会把
-        // 拜访判为不可行，链式/导入用例在规划阶段必挂，且失败点离根因很远、极难联想到夹具。
-        // 这里先显式拦截，给出可执行的修复指引。（XCTSkip 在 UI 宿主无效，只能用失败。）
-        let fixtureLastDay = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 11)) ?? .distantFuture
-        if Date() > fixtureLastDay {
-            XCTFail(
-                "导入夹具已过期（会议日期 2026-11-09~11 已过）："
-                    + "运行 .venv/bin/python scripts/seed_dev.py --fixture-only 重新生成夹具后重跑"
-            )
-            return
-        }
+        // 夹具是生成产物（seed_dev.py 按"今天"生成会议日期，不入版本库）：
+        // 缺文件时给出可执行的修复指引。（XCTSkip 在 UI 宿主无效，只能用失败。）
         let source = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -920,7 +925,7 @@ private extension GlobalTravelOSUITests {
             .deletingLastPathComponent()
             .appendingPathComponent("docs/acceptance-tests/fixtures/sample-customers.xlsx")
         let fm = FileManager.default
-        XCTAssertTrue(fm.fileExists(atPath: source.path), "缺少导入夹具")
+        XCTAssertTrue(fm.fileExists(atPath: source.path), "缺少导入夹具：先运行 make seed 生成（日期相对今天）")
 
         // NSHomeDirectory() = .../Containers/Data/Application/<uuid>（测试运行器自己的容器）；
         // 上一级就是全部应用容器目录，主 App 用标记文件区分。

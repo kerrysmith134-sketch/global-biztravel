@@ -3,6 +3,10 @@
 > 本报告由 `scripts/generate_import_report.py` 对运行中的后端发起真实 HTTP 请求生成，
 > 数据源为验收夹具 `docs/acceptance-tests/fixtures/sample-customers.xlsx`。
 > 报告内容全部来自服务端返回的结构化 `report`，未经人工修饰。
+>
+> **本报告是历史快照**：夹具已改为生成产物（会议日期相对"今天"，不入版本库），
+> 下文的文件 SHA-256 与日期不再对应最新夹具。需要最新数据时运行
+> `make seed && .venv/bin/python scripts/generate_import_report.py` 重新生成。
 
 #### 运行上下文
 

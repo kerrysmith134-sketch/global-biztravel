@@ -81,10 +81,10 @@ ci-backend: ## 后端门禁：静态检查 + 契约 + 后端测试
 lint-ios: ## SwiftLint（未安装则提示并跳过，不伪造通过）
 	@command -v swiftlint >/dev/null 2>&1 && swiftlint --strict || echo "swiftlint 未安装，跳过（CI 镜像需安装 SwiftLint）"
 
-seed: ## 造种子数据（幂等；--no-fixture 不改已提交的 Excel 夹具）
-	$(PY) scripts/seed_dev.py --no-fixture
+seed: ## 造种子数据 + 生成 Excel 夹具（幂等；日期相对今天，夹具不入库）
+	$(PY) scripts/seed_dev.py
 
-test: seed ## 全量测试（真实 PostgreSQL；自动先补齐种子数据）
+test: seed ## 全量测试（真实 PostgreSQL；自动先补齐种子数据与夹具）
 	$(PY) -m pytest
 
 test-unit: ## 仅单元测试（不需要数据库）
@@ -110,7 +110,7 @@ ios-build: ## 构建 iOS 客户端（通用模拟器目标，不依赖具体设�
 	cd apps/ios && xcodebuild -project GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
 		-destination 'generic/platform=iOS Simulator' build
 
-ios-test: ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行；模拟器名用 IOS_DEST 覆盖）
+ios-test: seed ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行；自动补种子与夹具；模拟器名用 IOS_DEST 覆盖）
 	@name="$(IOS_DEST)"; name="$${name##*name=}"; \
 	if ! xcrun simctl list devices available | grep -q "$$name"; then \
 	  fallback=$$(xcrun simctl list devices available | sed -n 's/^ *\(iPhone [^(]*\) (.*/\1/p' | head -1 | sed 's/ *$$//'); \

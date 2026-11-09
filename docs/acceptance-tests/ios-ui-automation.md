@@ -2,7 +2,11 @@
 
 前置：`make api` 与 `make worker` 正在运行（`testAcceptanceJourneyChain` / `testGenerateAndActivatePlan`
 要真实 Worker 求解，只起 API 会一直等不到计划）；每条用例用真实 HTTP 自建数据，不依赖手工种子
-（`make test` / `make e2e` 会自动跑 `make seed`，UI 用例本身可不依赖种子）。
+（`make test` / `make e2e` / `make ios-test` 会自动跑 `make seed`；UI 用例本身可不依赖种子）。
+
+Excel 夹具 `docs/acceptance-tests/fixtures/sample-customers.xlsx` 是**生成产物**（不入版本库）：
+`make seed` 按"今天"生成会议日期（+2/+3/+4 天），链式用例的行程窗口也按今天推导，
+两边同源；夹具缺失时先跑 `make seed`。
 
 App 已启用文件分享（`GlobalTravelOSConfig/AppInfo.plist` 的 `UIFileSharingEnabled` +
 `LSSupportsOpeningDocumentsInPlace`），系统文件选择器因此能列出 App 目录；Excel 用例在

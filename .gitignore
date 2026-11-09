@@ -21,3 +21,6 @@ var/
 .DS_Store
 # Agent 收件箱（原始对话记录，不作为交付物）
 .dumate/
+
+# 验收夹具是生成产物（会议日期相对"今天"，写死会过期）：由 scripts/seed_dev.py 生成
+docs/acceptance-tests/fixtures/*.xlsx

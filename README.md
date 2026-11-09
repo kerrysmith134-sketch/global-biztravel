@@ -19,7 +19,7 @@
 ## 快速开始
 
 ```bash
-bash scripts/bootstrap.sh        # venv + 依赖 + 数据库 + 迁移 + 种子数据
+bash scripts/bootstrap.sh        # venv + 依赖 + 数据库 + 迁移 + 种子数据（含 Excel 夹具）
 make api                         # 起 API（http://localhost:8080/docs）
 make worker                      # 起后台 Worker（Outbox / 规划作业 / 主动式扫描 / 复盘 / 指标）
 make test                        # 全量后端测试（含真实 PostgreSQL；自动先补种子数据）
