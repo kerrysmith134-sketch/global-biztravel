@@ -50,13 +50,31 @@ def _cn_num(text: str) -> int | None:
     return None
 
 
-def _parse_dates(message: str) -> tuple[str | None, str | None]:
+def _parse_today(value: object) -> date | None:
+    """把 variables 里的 ``today``（YYYY-MM-DD）解析成日期；缺失/非法返回 None。
+
+    ``trip_intake`` 的相对日期（"两周后"）依赖"今天"：调用方把 today 显式放进
+    variables，既让真实模型看到基准日，也让缓存键随日期变化——否则同一句消息在
+    第二天会命中昨天的缓存，返回已经过期的日期。
+    """
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_dates(message: str, *, today: date | None = None) -> tuple[str | None, str | None]:
     """解析中文/ISO 日期表达式；返回 (start, end) ISO 字符串或 None。
 
     支持：YYYY-MM-DD、"M月D日"、"下个月"/"下月初"/"下月底"、"X周后"、"X天后"、
-    "下周X"。只取前两个找到的日期作为起点/终点。
+    "下周X"。只取前两个找到的日期作为起点/终点。``today`` 由调用方给出时（推荐，
+    便于按组织/用户时区与缓存键一致）；缺省退回进程本地日期。
     """
-    today = date.today()
+    today = today or date.today()
     dates: list[str] = []
 
     for m in re.finditer(r"(\d{4})-(\d{1,2})-(\d{1,2})", message):
@@ -127,7 +145,10 @@ class StubProvider:
             if "insights" in (request.schema or {}).get("properties", {}):
                 output["insights"] = self._meeting_insights(variables)
         elif request.task == "trip_intake":
-            output = self._trip_intake(str(variables.get("message") or ""))
+            output = self._trip_intake(
+                str(variables.get("message") or ""),
+                today=_parse_today(variables.get("today")),
+            )
         elif request.task == "assistant_reply":
             trip = str(variables.get("trip_name") or "未命名出行")
             counts = variables.get("action_counts") or {}
@@ -192,9 +213,15 @@ class StubProvider:
         return insights
 
     @staticmethod
-    def _trip_intake(message: str) -> dict[str, Any]:
-        """确定性解析：只提取消息里**真实出现**的国家、天数与日期，缺失就缺失。"""
+    def _trip_intake(message: str, *, today: date | None = None) -> dict[str, Any]:
+        """确定性解析：只提取消息里**真实出现**的国家、天数与日期，缺失就缺失。
+
+        ``today`` 是相对日期（"两周后"/"下周X"/"明后天"）的基准日；默认取进程本地
+        日期，调用方（assistant_service）会传 variables 里的 today 以保持缓存键一致。
+        """
         from app.llm.prompts import trip_creation_intent
+
+        today = today or date.today()
 
         if not trip_creation_intent(message):
             return {"has_trip_request": False}
@@ -228,10 +255,10 @@ class StubProvider:
                 if weeks is not None:
                     days = weeks * 7
 
-        start_date, end_date = _parse_dates(message)
+        start_date, end_date = _parse_dates(message, today=today)
         if start_date is None and days is not None:
             # 用户只给了天数：起点默认从明天开始（在回复卡片里明示，可被用户改口）。
-            start_date = (date.today() + timedelta(days=1)).isoformat()
+            start_date = (today + timedelta(days=1)).isoformat()
 
         trip_name: str | None = None
         if countries or days:

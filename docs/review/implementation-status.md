@@ -61,7 +61,7 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **238 passed**（真实 PostgreSQL；全新库 `db-reset` 后一条命令全绿——`make test` 自动先补种子数据） |
+| `make test` | **240 passed**（真实 PostgreSQL；全新库 `db-reset` 后一条命令全绿——`make test` 自动先补种子数据） |
 | `make typecheck` | MyPy：138 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 85 路径 / 137 schema；契约一致 |

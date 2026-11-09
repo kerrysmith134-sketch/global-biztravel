@@ -518,7 +518,9 @@ def post_message(
             task="trip_intake",
             prompt_template_id=TRIP_INTAKE_TEMPLATE_ID,
             prompt_version=TRIP_INTAKE_PROMPT_VERSION,
-            variables={"message": text},
+            # today 进 variables 有两个作用：真实模型据此换算相对日期；同时它参与
+            # input_hash，同一句"两周后出发"在跨天后不再命中昨天的缓存（否则返回旧日期）。
+            variables={"message": text, "today": date_type.today().isoformat()},
             schema=TRIP_INTAKE_SCHEMA,
             fallback={"has_trip_request": False},
             system=TRIP_INTAKE_SYSTEM,

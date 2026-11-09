@@ -207,3 +207,48 @@ def test_action_requires_proposal_and_is_tenant_scoped(client: TestClient) -> No
                     AssistantConversation.id == UUID(conversation_id)
                 )
             )
+
+
+# ---------------------------------------------------------------------------
+# 回归：相对日期必须按「请求当天」解析，不能被 LLM 重放缓存冻结。
+# 背景：v1 的 input_hash 只含 message，跨天后同一句"两周后出发"会命中昨天的
+# 缓存并返回旧日期（P0-2 真实缺陷：11-07 的缓存让 11-09 的请求解析出 11-21）。
+def test_relative_dates_follow_variables_today() -> None:
+    from app.llm.contracts import LLMRequest
+    from app.llm.providers import StubProvider
+
+    provider = StubProvider()
+    message = "两周后出发去新加坡出差 7 天"
+
+    def parse(today: date) -> dict:
+        request = LLMRequest(
+            task="trip_intake",
+            prompt_template_id="trip_intake",
+            prompt_version="v2",
+            variables={"message": message, "today": today.isoformat()},
+        )
+        return provider.complete(request).output
+
+    day1 = date.today()
+    day2 = day1 + timedelta(days=1)
+    assert parse(day1)["start_date"] == (day1 + timedelta(weeks=2)).isoformat()
+    assert parse(day2)["start_date"] == (day2 + timedelta(weeks=2)).isoformat()
+
+
+def test_trip_intake_cache_key_includes_today() -> None:
+    """同一消息的不同基准日必须产生不同 input_hash，否则会命中过期缓存。"""
+    from app.llm.contracts import LLMRequest
+    from app.llm.gateway import LLMGateway
+
+    def digest(today: str) -> str:
+        request = LLMRequest(
+            task="trip_intake",
+            prompt_template_id="trip_intake",
+            prompt_version="v2",
+            variables={"message": "两周后出发去新加坡出差 7 天", "today": today},
+        )
+        return LLMGateway._input_hash(request, "stub")
+
+    assert digest("2026-11-07") != digest("2026-11-09")
+    # 同一天内可重放（缓存语义仍然有效）。
+    assert digest("2026-11-09") == digest("2026-11-09")

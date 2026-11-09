@@ -29,10 +29,14 @@ MEETING_MINUTES_SCHEMA: dict[str, Any] = {
 }
 
 TRIP_INTAKE_TEMPLATE_ID = "trip_intake"
-TRIP_INTAKE_PROMPT_VERSION = "v1"
+#: v2：把"今天"放进 variables 并在 system 里声明基准日——相对日期（"两周后"/"下周X"）
+#: 必须按请求当天解析；v1 的缓存键不含日期，跨天后会返回昨天的旧日期（真 bug）。
+TRIP_INTAKE_PROMPT_VERSION = "v2"
 
 TRIP_INTAKE_SYSTEM = (
     "你是企业差旅助手。判断用户消息是否在请求创建一次出差，只输出 JSON。"
+    "变量 today 是本次请求的基准日期（YYYY-MM-DD）；消息里的相对日期（两周后、下周X、"
+    "下月初等）一律以 today 为基准换算成具体 YYYY-MM-DD。"
     "has_trip_request 为 true 时必须给出：countries（ISO 两位字母大写数组）、"
     "days（正整数天数）或 start_date/end_date（YYYY-MM-DD）之一、name（中文短名称）。"
     "目的国家或天数/日期在消息中未出现时不要编造，让对应字段缺失；"
