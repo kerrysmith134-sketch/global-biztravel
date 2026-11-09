@@ -121,7 +121,7 @@ ios-build: ## 构建 iOS 客户端（通用模拟器目标，不依赖具体设�
 	cd apps/ios && xcodebuild -project GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
 		-destination 'generic/platform=iOS Simulator' build
 
-ios-test: seed ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行；自动补种子与夹具；模拟器名用 IOS_DEST 覆盖）
+ios-test: seed ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行；自动补种子与夹具；挂死自动清缓存重试；模拟器名用 IOS_DEST 覆盖）
 	@name="$(IOS_DEST)"; name="$${name##*name=}"; \
 	if ! xcrun simctl list devices available | grep -q "$$name"; then \
 	  fallback=$$(xcrun simctl list devices available | sed -n 's/^ *\(iPhone [^(]*\) (.*/\1/p' | head -1 | sed 's/ *$$//'); \
@@ -131,5 +131,4 @@ ios-test: seed ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行；�
 	else \
 	  dest='$(IOS_DEST)'; \
 	fi; \
-	cd apps/ios && xcodebuild -project GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
-		-destination "$$dest" test
+	DEST="$$dest" scripts/ios_test_guard.sh

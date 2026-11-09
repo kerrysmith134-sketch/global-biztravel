@@ -24,7 +24,7 @@ App 启动后把夹具复制进主 App 的 `Documents`（按容器元数据 `MCM
 | `testVisitRecordSubmissionFlow` | 详情 → 记录 → 填写 → 保存 → 生成会议纪要草稿 | 真实离线队列 + 服务端提交；同页生成纪要（真实 LLM 网关/stub），断言「会议纪要草稿」区出现 |
 | `testExcelImportFlow` | 详情 → 导入 → 系统选择器选夹具 → 预览 → 确认导入 | 两阶段导入端到端：解析不落库、确认后出现「导入结果」 |
 
-运行：
+运行（推荐 `make ios-test`：内部经 `scripts/ios_test_guard.sh`，xcodebuild 挂死时自动清缓存重试）：
 
 ```bash
 xcodebuild test -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
