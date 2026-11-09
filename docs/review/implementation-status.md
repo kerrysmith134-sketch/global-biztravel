@@ -66,7 +66,7 @@
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 85 路径 / 137 schema；契约一致 |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
-| `make bench` | heuristic p50 0.4ms / p95 0.5ms；ortools p50 0.3ms / p95 0.4ms；6/6 覆盖、hash 稳定 |
+| `make bench` | heuristic p50 0.6ms / p95 0.8ms；ortools p50 0.6ms / p95 0.7ms（2026-11-09 实测，亚毫秒级、随机器负载浮动）；6/6 覆盖、两求解器 hash 一致 |
 | `make ios-build` | BUILD SUCCEEDED |
 | `make ios-test` | 18 单测全绿；完整套件**连续两轮 8/8**（589.7s / 512.0s，链式 241.9s，连接真实后端）。此前 flaky 已定位并加固：backToTripDetail 在详情页滚回顶部、executionTimeAllowance 兜底、文件选择器重试、激活等待与稳定用例对齐、全部断言补"阶段失守"消息 |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
