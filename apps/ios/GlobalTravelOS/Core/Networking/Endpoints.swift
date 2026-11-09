@@ -105,6 +105,15 @@ enum Endpoints {
         )
     }
 
+    static func createPlanChange(tripId: String, body: PlanChangeCreate) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/trips/\(tripId)/plan-changes",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func job(id: String) -> APIRequest {
         APIRequest(method: .get, path: "/v1/jobs/\(id)")
     }

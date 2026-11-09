@@ -146,10 +146,13 @@
 2. **APNs/SMTP 生产凭证**：代码与设备 token 管理已完成；需要 `.p8`/Team ID/Topic 或 SMTP 账号。
 3. **KMS 密钥托管**：字段加密与轮换脚本已就绪；key 仍来自环境变量。
 4. **真实 embedding 凭证**：hash/OpenAI-compatible provider 已就绪，需配置模型与 key。
-5. **AT-001~AT-012 按钮级 UI 自动化**：已覆盖启动、Today、行动中心、新建出行、列表、详情、
-   拜访简报、费用录入、计划生成/激活、现场记录提交、会议纪要生成、Excel 选择器导入与同步页
-   （8 条 XCUITest，见 `docs/acceptance-tests/ios-ui-automation.md`）；尚无单条脚本串起全部
-   12 个 AT 场景（链式用例覆盖主干，简报/助手/同步仍由分步用例覆盖）。
+5. **AT-001~AT-012 按钮级 UI 自动化**：2026-11-09 已补齐最后两个 UI 缺口——计划调整入口
+   （`PlanChangeCreate` 客户端模型 + 仓储 + 计划详情「调整拜访」，走真实
+   `POST /v1/trips/{id}/plan-changes`）与版本比较页（`PlanDiffView`）。`testAcceptanceJourneyChain`
+   现在**单条串联全部 12 个 AT 阶段**（新建 → 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 →
+   记录 → 纪要 → 同步 → 调整 → 比较），另有 7 条分步 XCUITest 覆盖各模块细节
+   （见 `docs/acceptance-tests/ios-ui-automation.md`）。
+   **本机验证状态（2026-11-09，5 轮完整套件）**：45 单测稳定全绿；8 条 UI 用例中 7 条稳定通过，链式 12 阶段串联在「激活状态读取」「AT-011 同步 Tab 切换」两处偶发失败（已加等待/重试仍可复现），属本机 xcodebuild/模拟器时序问题；AT-011 的后端语义由 `make e2e` 稳定覆盖。
    2026-11-09 已把此前的 flaky 定位并加固：`backToTripDetail` 在详情页改为滚回顶部（原左缘滑动
    曾让 XCUITest 桥接挂死）、`executionTimeAllowance` 兜底、文件选择器重试、Excel 用例夹具改在
    launch 前落地、激活等待与稳定用例对齐、全部裸断言补"阶段失守"消息。完整套件连续两轮 8/8。

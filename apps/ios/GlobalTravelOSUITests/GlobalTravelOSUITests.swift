@@ -15,7 +15,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         // 没有兜底时用例会无限挂起而不是失败，日志停在最后一次 Synthesize event，
         // 看起来像"跑着跑着没了"。300s 覆盖最长的链式用例（实测完整跑完 ~260s），
         // 超时由 XCTest 终止用例并给出明确失败，而不是永远占着 runner。
-        executionTimeAllowance = 300
+        executionTimeAllowance = 600
     }
 
     // swiftlint:disable:next function_body_length
@@ -343,20 +343,72 @@ final class GlobalTravelOSUITests: XCTestCase {
         let activated = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS '已激活'")
         ).firstMatch
-        // 激活是同步事务（API 200 即成功），但页面刷新与滚动位置会竞争：用与
-        // testGenerateAndActivatePlan 同款的标准 swipeDown 反复回顶部；30s 覆盖慢刷新。
-        let activationDeadline = Date().addingTimeInterval(30)
-        while !activated.exists && Date() < activationDeadline {
-            app.swipeDown()
+        // 激活是同步事务（API 200 即成功），但状态横幅在页面顶部、且详情会重新加载：
+        // 等 2s 让事务与首刷完成 → 回顶部两次 → 给 20s 容忍慢刷新。
+        Thread.sleep(forTimeInterval: 2)
+        app.swipeDown()
+        app.swipeDown()
+        if !activated.waitForExistence(timeout: 20) {
+            // 兜底：离开再进计划详情（全新加载，状态必然可见）。
+            XCTAssertTrue(backToTripDetail(app, tripName: tripName), "激活后未能回行程详情")
+            let retryPlanRow = app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS '停靠'")
+            ).firstMatch
+            for _ in 0 ..< 8 where !retryPlanRow.isHittable { app.swipeUp() }
+            XCTAssertTrue(retryPlanRow.isHittable, "激活后未找到计划版本行")
+            retryPlanRow.tap()
+            XCTAssertTrue(
+                app.navigationBars["计划详情"].waitForExistence(timeout: 15),
+                "激活后重进计划详情失败"
+            )
+            XCTAssertTrue(
+                app.staticTexts.matching(NSPredicate(format: "label CONTAINS '已激活'"))
+                    .firstMatch.waitForExistence(timeout: 20),
+                "计划未激活（激活请求已成功，但未读到'已激活'状态）"
+            )
         }
-        XCTAssertTrue(activated.exists, "计划未激活（激活请求已成功，但未读到'已激活'状态）")
+
+        // AT-006：查看顺序/交通时间/费用/约束验证 + 地图与日历视图（按钮级）
+        // 激活成功会触发详情重新加载（视图区短暂替换为 ProgressView），先等该区回到稳定态。
+        XCTAssertTrue(
+            app.staticTexts["视图"].firstMatch.waitForExistence(timeout: 30),
+            "AT-006：计划详情「视图」区未出现（重新加载超时）"
+        )
+        XCTAssertTrue(
+            app.staticTexts["独立验证"].firstMatch.waitForExistence(timeout: 15),
+            "AT-006：计划详情未出现独立验证区"
+        )
+        XCTAssertTrue(revealAndTap(app, app.buttons["行程地图"]), "AT-006：未找到行程地图入口")
+        XCTAssertTrue(
+            app.navigationBars["行程地图"].waitForExistence(timeout: 15),
+            "AT-006：地图视图未打开"
+        )
+        app.navigationBars["行程地图"].buttons.firstMatch.tap()
+        XCTAssertTrue(
+            app.navigationBars["计划详情"].waitForExistence(timeout: 10),
+            "AT-006：地图返回计划详情失败"
+        )
+        XCTAssertTrue(revealAndTap(app, app.buttons["行程日历"]), "AT-006：未找到行程日历入口")
+        XCTAssertTrue(
+            app.navigationBars["行程日历"].waitForExistence(timeout: 15),
+            "AT-006：日历视图未打开"
+        )
+        app.navigationBars["行程日历"].buttons.firstMatch.tap()
+        XCTAssertTrue(
+            app.navigationBars["计划详情"].waitForExistence(timeout: 10),
+            "AT-006：日历返回计划详情失败"
+        )
+        // 回到行程详情（费用与后续步骤都在详情页）
+        XCTAssertTrue(backToTripDetail(app, tripName: tripName), "AT-006：未能回到行程详情")
 
         // 5) 记一笔费用
         // 预算区在异步 budget 加载后才渲染：先等区块头出现，再找按钮。
         // 先看顶部错误横幅（budget 失败会写在 errorMessage，横幅在列表顶部）。
         Thread.sleep(forTimeInterval: 2)
+        // 匹配预算加载失败的横幅（errorMessage）。注意不能匹配「预算」「失败」这种宽泛词：
+        // 正常区块头「费用与预算」本身含"预算"，页面一但完成加载就会被误判为错误横幅。
         let topBanner = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS '无法解析' OR label CONTAINS 'Budget' OR label CONTAINS '失败' OR label CONTAINS '预算'")
+            NSPredicate(format: "label CONTAINS '无法解析' OR label CONTAINS 'Budget' OR label CONTAINS '请求失败' OR label CONTAINS 'HTTP'")
         ).firstMatch
         if topBanner.exists {
             XCTFail("detail-banner: \(topBanner.label)")
@@ -431,8 +483,93 @@ final class GlobalTravelOSUITests: XCTestCase {
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
         expectNav(app, tripName, stage: "记录关闭回详情")
 
-        // 简报/助手/同步由分步用例覆盖（testPreparedTripBriefing、launch 测试）；
-        // 链式用例收口在"创建→导入→规划→激活→费用→记录→纪要"这条最长稳定主干。
+        // AT-011：网络恢复同步（现场记录走离线队列 → 同步页按逐项结果处理）
+        // 纪要 sheet 关闭动画可能短暂遮挡 Tab 栏导致首次点击被吞：用 tabBars 定位并重试一次。
+        Thread.sleep(forTimeInterval: 1.5)
+        let syncTab = app.tabBars.buttons["同步"]
+        XCTAssertTrue(syncTab.waitForExistence(timeout: 10), "AT-011：Tab 栏未出现")
+        syncTab.tap()
+        if !app.navigationBars["离线同步"].waitForExistence(timeout: 5) {
+            Thread.sleep(forTimeInterval: 1)
+            syncTab.tap()
+        }
+        XCTAssertTrue(
+            app.navigationBars["离线同步"].waitForExistence(timeout: 15),
+            "AT-011：同步页未打开"
+        )
+        let syncNow = app.buttons["立即同步"]
+        if syncNow.waitForExistence(timeout: 5) {
+            syncNow.tap()
+        }
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label BEGINSWITH '待同步' OR label BEGINSWITH '上次同步'")
+            ).firstMatch.waitForExistence(timeout: 20),
+            "AT-011：同步页未显示队列/上次同步状态"
+        )
+        // 回到行程详情收口
+        app.tabBars.buttons["出行"].tap()
+        let syncBackRow = app.staticTexts[tripName].firstMatch
+        XCTAssertTrue(syncBackRow.waitForExistence(timeout: 10), "AT-011：回列表后未找到行程")
+        syncBackRow.tap()
+        expectNav(app, tripName, stage: "AT-011 同步后回详情")
+
+        // AT-007：调整拜访（取消一个）→ 服务端改拜访输入并重新入队求解
+        let planVersionRow = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '停靠'")
+        ).firstMatch
+        for _ in 0 ..< 10 where !planVersionRow.isHittable { app.swipeUp() }
+        XCTAssertTrue(planVersionRow.isHittable, "AT-007：未找到计划版本行")
+        planVersionRow.tap()
+        XCTAssertTrue(
+            app.navigationBars["计划详情"].waitForExistence(timeout: 15),
+            "AT-007：未打开计划详情"
+        )
+        let cancelVisit = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH '取消拜访：'")
+        ).firstMatch
+        for _ in 0 ..< 10 where !cancelVisit.isHittable { app.swipeUp() }
+        XCTAssertTrue(cancelVisit.isHittable, "AT-007：未找到取消拜访入口")
+        cancelVisit.tap()
+        let confirmCancel = app.buttons["取消该拜访并重新生成计划"]
+        XCTAssertTrue(confirmCancel.waitForExistence(timeout: 10), "AT-007：确认对话框未出现")
+        confirmCancel.tap()
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS '变更已受理'")
+            ).firstMatch.waitForExistence(timeout: 20),
+            "AT-007：变更未被受理"
+        )
+        XCTAssertTrue(backToTripDetail(app, tripName: tripName), "AT-007：未能回行程详情")
+
+        // AT-008：等新版本生成（Worker 重求解）后与上一版比较
+        let compareButton = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS '与上一版比较'")
+        ).firstMatch
+        let versionDeadline = Date().addingTimeInterval(90)
+        while !compareButton.exists && Date() < versionDeadline {
+            app.swipeDown() // 下拉刷新计划版本列表
+        }
+        XCTAssertTrue(
+            compareButton.waitForExistence(timeout: 10),
+            "AT-008：新版本未出现（等待 90s 仍无比较入口）"
+        )
+        compareButton.tap()
+        XCTAssertTrue(
+            app.navigationBars["版本比较"].waitForExistence(timeout: 20),
+            "AT-008：版本比较页未打开"
+        )
+        XCTAssertTrue(
+            app.staticTexts["逐项变更"].firstMatch.waitForExistence(timeout: 15),
+            "AT-008：比较页未渲染逐项变更"
+        )
+        app.navigationBars["版本比较"].buttons.firstMatch.tap()
+        XCTAssertTrue(
+            app.navigationBars[tripName].waitForExistence(timeout: 10),
+            "AT-008：从版本比较返回行程详情失败"
+        )
+
+        // 链式用例收口在"创建→导入→规划→激活→地图/日历→费用→记录→纪要→同步→调整→比较"主干。
         expectNav(app, tripName, stage: "链式收口：仍在行程详情")
     }
 
@@ -610,6 +747,18 @@ final class GlobalTravelOSUITests: XCTestCase {
         let appFolder = picker.cells.matching(
             NSPredicate(format: "identifier BEGINSWITH 'GlobalTravelOS'")
         ).firstMatch
+        if !appFolder.waitForExistence(timeout: 15) {
+            // 文件选择器偶发停在错误层级：重走一次「浏览 → 我的iPhone」再判断。
+            if picker.buttons["浏览"].waitForExistence(timeout: 5) {
+                picker.buttons["浏览"].tap()
+            }
+            let retryLocation = picker.cells.matching(
+                NSPredicate(format: "identifier CONTAINS '我的iPhone' OR label == '我的iPhone'")
+            ).firstMatch
+            if retryLocation.waitForExistence(timeout: 10) {
+                retryLocation.tap()
+            }
+        }
         XCTAssertTrue(appFolder.waitForExistence(timeout: 30), "未找到应用目录")
         appFolder.tap()
 

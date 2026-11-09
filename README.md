@@ -103,7 +103,8 @@ Input Normalizer → Feasibility Checker → Candidate Generator
 ## 验收
 
 - `AT-001~AT-012`：MVP-1 业务闭环（创建多国 Trip → Excel 导入 → 校验 → 生成候选行程 → 地图/顺序/时间/费用/约束验证 → 增删调整 → 新版本 + diff → 激活 → 现场记录（离线可存）→ 网络恢复同步 → 会议纪要草稿）。
-  后端与客户端能力均已实现；场景到测试用例的映射见 `docs/acceptance-tests/backend-extended.md`。
+  后端与客户端能力均已实现；客户端由 `testAcceptanceJourneyChain` **单条串联全部 12 个阶段**，
+  场景到测试用例的映射见 `docs/acceptance-tests/backend-extended.md`。
 - `AT-P01~AT-P04`：主动式（签证时效触发 / 重复触发抑制 / 人审→受控执行→审计 / 驳回→误报回收）。
   场景到测试用例的映射见 `docs/acceptance-tests/proactive-runtime.md`。
 - `AT-S01`：组织 A 会话访问组织 B 数据必须全部失败（数据库级 RLS）。

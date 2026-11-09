@@ -405,7 +405,7 @@ struct TripDetailView: View {
                 if viewModel.plans.isEmpty {
                     Text("还没有计划版本。").foregroundStyle(.secondary)
                 }
-                ForEach(viewModel.plans) { plan in
+                ForEach(Array(viewModel.plans.enumerated()), id: \.element.id) { index, plan in
                     NavigationLink {
                         PlanDetailView(
                             tripId: viewModel.tripId,
@@ -425,6 +425,20 @@ struct TripDetailView: View {
                             Text("\(plan.feasibilityLabel) · \(plan.stopCountLabel)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+                    // AT-008：有更早版本时给出「与上一版比较」入口（列表最新在前）。
+                    if index + 1 < viewModel.plans.count {
+                        NavigationLink {
+                            PlanDiffView(
+                                tripId: viewModel.tripId,
+                                planId: plan.id,
+                                against: viewModel.plans[index + 1].id,
+                                environment: environment
+                            )
+                        } label: {
+                            Label("与上一版比较", systemImage: "arrow.left.arrow.right")
+                                .font(.caption)
                         }
                     }
                 }

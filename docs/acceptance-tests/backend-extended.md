@@ -23,6 +23,7 @@ make ios-test
 | AT-011 网络恢复同步 | 同文件 `test_sync_push_returns_per_item_verdicts_and_is_idempotent` | 逐项 `applied/rejected`；计划停靠 `PLAN_IMMUTABLE`；缺 `visit_id` 拒绝；整批同键重放字节一致 |
 | AT-S01 记录写隔离 | 同文件 `test_cross_tenant_cannot_write_record` | 组织 B 写组织 A 拜访 → 404 |
 | AT-012 会议纪要草稿 | `services/api/tests/test_llm_integration.py::test_minutes_draft_records_invocation_and_replays_from_cache` | 草稿含跟进任务；每次草稿可回溯 `llm_invocations`；同输入缓存命中 `cached=true` |
+| AT-001~AT-012 客户端串联 | `apps/ios/GlobalTravelOSUITests/GlobalTravelOSUITests.swift::testAcceptanceJourneyChain` | 真实后端+Worker+模拟器单条跑完 12 阶段；AT-007 经 `POST /plan-changes` 取消拜访并等重求解，AT-008 在行程详情打开版本比较页 |
 | M3 降级 | 同文件 `test_gateway_degrades_to_fallback_when_provider_fails` | provider 故障 → 模板兜底、`degraded=true`、`error` 保留原因 |
 | M3 工具契约 | 同文件 `test_tool_catalog_marks_approval` | `visit.draft_minutes` 标注 `requires_approval=true` |
 | M2 记忆与复盘 | `services/api/tests/test_memory_integration.py` | 复盘摘要含决策/待办/教训；重复复盘幂等；过程记录随行程返回；画像版本生效；混合检索命中；跨租户 404 |

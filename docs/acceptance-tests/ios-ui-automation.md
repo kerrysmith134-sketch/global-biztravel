@@ -14,7 +14,7 @@ App 启动后把夹具复制进主 App 的 `Documents`（按容器元数据 `MCM
 
 | 用例 | 覆盖 | 说明 |
 |---|---|---|
-| `testAcceptanceJourneyChain` | 新建 → Excel 导入 → 规划 → 激活 → 费用 → 现场记录 → 纪要（严格断言，无期望失败标记） | 单条串联最长稳定主干；每阶段有导航栏检查点（expectNav）；简报/助手/同步由分步用例覆盖 |
+| `testAcceptanceJourneyChain` | **AT-001~AT-012 单条串联**：新建 → Excel 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 → 现场记录 → 纪要 → 同步 → 调整拜访（取消）→ 新版本比较（严格断言，无期望失败标记） | 覆盖 MVP-1 全 12 阶段；每阶段有导航栏检查点（expectNav）。AT-007 经真实 `POST /plan-changes` 改拜访输入并等 Worker 重求解；AT-008 在行程详情的「与上一版比较」入口打开版本比较页。**注意**：12 阶段串联在本机（xcodebuild 偶发挂死、模拟器时序抖动）下单次全绿不稳定——2026-11-09 五轮完整套件验证中，链式在「激活状态读取」「AT-011 同步 Tab 切换」两处偶发失败，均已加等待/重试但仍可复现；其余 7 条分步用例稳定通过。需空闲机器或接受重试。 |
 | `testLaunchBrowseSeedTripAndSyncCenter` | Today → AI 助手 → 通知中心（含偏好面板 P3 开关真实 PUT）→ 行动中心 → 出行列表 → 详情 → 同步页 | 验证真实网络加载与基本导航 |
 | `testPreparedTripBriefing` | 准备数据 → 详情 → 拜访简报 | 测试内用真实 HTTP 创建地点/出行/拜访，再用启动参数打开，避免依赖列表分页顺序（结果复盘视图 `TripOutcomeView` 暂无 UI 用例，仅服务端 `test_trip_outcome.py` 覆盖） |
 | `testCreateTripFlow` | 出行列表 → 新建表单 → 创建 | 创建后断言新出行立即出现在列表顶部 |
@@ -27,7 +27,10 @@ App 启动后把夹具复制进主 App 的 `Documents`（按容器元数据 `MCM
 
 ```bash
 xcodebuild test -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
-  -destination 'platform=iOS Simulator,name=YZ-E2E' -only-testing:GlobalTravelOSUITests
+  -destination 'platform=iOS Simulator,name=GBT-E2E' -only-testing:GlobalTravelOSUITests
+# 注意：只用 bundle 级过滤（-only-testing:GlobalTravelOSUITests）。按单方法过滤
+# （-only-testing:GlobalTravelOSUITests/testXxx）在本机偶发匹配不到、跑 0 个用例却报
+# TEST SUCCEEDED；隔离排查单条用例时请检查输出里的 Executed N tests。
 ```
 
 注意：

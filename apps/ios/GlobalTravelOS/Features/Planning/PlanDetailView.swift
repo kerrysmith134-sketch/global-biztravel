@@ -5,6 +5,7 @@ final class PlanDetailViewModel: ObservableObject {
     @Published private(set) var plan: PlanVersionDetail?
     @Published private(set) var isLoading = false
     @Published private(set) var activating = false
+    @Published private(set) var submittingChange = false
     @Published var errorMessage: String?
     @Published var statusMessage: String?
 
@@ -34,6 +35,28 @@ final class PlanDetailViewModel: ObservableObject {
         }
     }
 
+    /// AT-007：从**当前生效计划**发起一次"取消拜访"变更（改拜访输入 → 重新求解）。
+    func cancelVisit(_ plan: PlanVersionDetail, stop: PlanStop) async {
+        submittingChange = true
+        errorMessage = nil
+        defer { submittingChange = false }
+        do {
+            let accepted = try await environment.planRepository.createPlanChange(
+                tripId: tripId,
+                request: PlanChangeCreate(
+                    basePlanVersionId: plan.id,
+                    baseTripVersion: tripVersion,
+                    operationType: .cancelVisit,
+                    payload: ["visit_id": stop.visitId],
+                    reason: "客户端取消拜访"
+                )
+            )
+            statusMessage = accepted.summary
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
     func activate() async {
         guard let plan else { return }
         activating = true
@@ -58,6 +81,8 @@ final class PlanDetailViewModel: ObservableObject {
 struct PlanDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: PlanDetailViewModel
+    @State private var pendingCancelStop: PlanStop?
+    @State private var showCancelConfirm = false
 
     init(tripId: String, planId: String, tripVersion: Int, environment: AppEnvironment) {
         _viewModel = StateObject(
@@ -177,6 +202,28 @@ struct PlanDetailView: View {
                     }
                 }
 
+                if plan.status == .active {
+                    Section {
+                        ForEach(plan.orderedStops, id: \.stop.visitId) { item in
+                            Button(role: .destructive) {
+                                pendingCancelStop = item.stop
+                                showCancelConfirm = true
+                            } label: {
+                                Label(
+                                    "取消拜访：\(item.stop.displayName)",
+                                    systemImage: "xmark.circle"
+                                )
+                                .font(.caption)
+                            }
+                            .disabled(viewModel.submittingChange)
+                        }
+                    } header: {
+                        Text("调整拜访")
+                    } footer: {
+                        Text("取消会修改拜访输入并重新入队求解，生成新计划版本；旧版本保留，可与新版本比较。")
+                    }
+                }
+
                 Section {
                     Button {
                         Task { await viewModel.activate() }
@@ -197,5 +244,21 @@ struct PlanDetailView: View {
         .navigationTitle("计划详情")
         .task { await viewModel.load() }
         .refreshable { await viewModel.load() }
+        .confirmationDialog(
+            "确认取消该拜访？",
+            isPresented: $showCancelConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("取消该拜访并重新生成计划", role: .destructive) {
+                guard let plan = viewModel.plan, let stop = pendingCancelStop else { return }
+                Task {
+                    await viewModel.cancelVisit(plan, stop: stop)
+                    pendingCancelStop = nil
+                }
+            }
+            Button("不取消", role: .cancel) { pendingCancelStop = nil }
+        } message: {
+            Text("这会改拜访状态为已取消，并由 Worker 重新生成计划；可在版本比较里看差异。")
+        }
     }
 }
