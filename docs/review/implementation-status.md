@@ -70,7 +70,7 @@
 | `make ios-build` | BUILD SUCCEEDED |
 | `make ios-test` | 45 单测全绿（18 手写解码 + 27 条由 openapi 生成的契约样本，覆盖 27 个读模型）；完整套件**连续两轮 8/8**（589.7s / 512.0s，链式 241.9s，连接真实后端）。此前 flaky 已定位并加固：backToTripDetail 在详情页滚回顶部、executionTimeAllowance 兜底、文件选择器重试、激活等待与稳定用例对齐、全部断言补"阶段失守"消息 |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
-| `make stack-up` + E2E | Docker DB/API/Worker 健康，真实全链路通过 |
+| `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
 ## 5. 迁移清单（当前 head `0030`）
 
