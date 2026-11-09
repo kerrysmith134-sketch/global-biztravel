@@ -23,6 +23,7 @@ jobs:
           make typecheck
           make contract-check
           make docs-check
+          make ios-contract-check
       - name: Database
         run: make db-up && make migrate
       - name: Tests

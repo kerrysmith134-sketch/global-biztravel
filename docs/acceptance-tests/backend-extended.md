@@ -40,6 +40,7 @@ make ios-test
 | N1 审批策略 | `services/api/tests/test_approval_policy.py` | 高风险建议要求 ADMIN；TRAVELER 批准 403；ADMIN 通过 |
 | PII 加密/留存 | `services/api/tests/test_retention_pii.py` | Fernet 往返 + 旧明文兼容；过期笔记/记忆清空，最近记录不动 |
 | iOS 导入契约 | `ImportModels` + `ImportSheet` | 两阶段预览/勾选/确认；模型按后端 `VALID/INVALID/DUPLICATE` 解码 |
+| iOS 契约样本（S6） | `apps/ios/GlobalTravelOSTests/ContractSampleTests.swift` + `scripts/gen_ios_contract_samples.py` | 13 个核心读模型的样本由 `contracts/openapi.json` 生成；契约改字段名/类型/枚举 → 样本变 → 解码测试失败；`make ios-contract-check` 校验样本与契约同步（ADR-0030） |
 | 事务时序 | `services/api/tests/test_transaction_middleware.py` | 2xx 响应开始前提交；4xx 回滚；提交失败替换为 500 |
 | 推送通道 | `services/api/tests/test_push_channels.py` | 设备 token 幂等注册/注销；SMTP 收件人；APNs ES256 JWT（raw r‖s）；未配置显式失败 |
 | 密钥轮换 | `services/api/tests/test_key_rotation.py` | 旧 key 密文重加密；明文默认跳过；不可解密文不二次加密 |

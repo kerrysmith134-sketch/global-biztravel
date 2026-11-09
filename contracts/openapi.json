@@ -5933,6 +5933,76 @@
         ],
         "title": "AssistantActionCreate"
       },
+      "AssistantCardRead": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "detail"
+        ],
+        "title": "AssistantCardRead",
+        "description": "助手消息里的卡片：服务端算好的事实快照，客户端直接展示。\n\n契约此前写成 ``list[dict]``，但六种卡片（TRIP_STATUS / ACTION_CENTER /\nPENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：\n``type``/``title``/``detail`` 必有，``entity_id``/``link`` 用于跳转。\n``ACTION_RESULT`` 额外带 ``proposal_id``——显式保留，避免契约收紧时丢字段。"
+      },
       "AssistantConversationCreate": {
         "properties": {
           "trip_id": {
@@ -6051,8 +6121,7 @@
           },
           "cards": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/AssistantCardRead"
             },
             "type": "array",
             "title": "Cards"
@@ -7295,6 +7364,36 @@
           "cap"
         ],
         "title": "DailyCapRead"
+      },
+      "DataGapRead": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "DataGapRead",
+        "description": "本地指南的数据缺口：目录未覆盖的国家，或未接入的实时源（天气/POI/餐厅）。"
       },
       "DeviceTokenRead": {
         "properties": {
@@ -8918,8 +9017,7 @@
           },
           "data_gaps": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/DataGapRead"
             },
             "type": "array",
             "title": "Data Gaps"
@@ -10728,6 +10826,41 @@
         "title": "PlanUnplacedDeltaRead",
         "description": "一个未排拜访在基准版与目标版之间的进出。"
       },
+      "PlanUnplacedRead": {
+        "properties": {
+          "visit_id": {
+            "type": "string",
+            "title": "Visit Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "visit_id",
+          "reason",
+          "source"
+        ],
+        "title": "PlanUnplacedRead",
+        "description": "未排进计划的拜访（求解器没放下 + 输入阶段就被排除，用 ``source`` 区分）。\n\n契约此前写成 ``list[dict]``，实际结构固定（见 ``planning_service._unplaced_payload``）：\n客户端要按 ``visit_id`` 回到具体拜访，靠 ``reason`` 解释为什么没排上。"
+      },
       "PlanVersionDetailRead": {
         "properties": {
           "id": {
@@ -10824,16 +10957,14 @@
           },
           "unplaced": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/PlanUnplacedRead"
             },
             "type": "array",
             "title": "Unplaced"
           },
           "policy_violations": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/PolicyViolationRead"
             },
             "type": "array",
             "title": "Policy Violations"
@@ -11172,16 +11303,14 @@
           },
           "unplaced": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/PlanUnplacedRead"
             },
             "type": "array",
             "title": "Unplaced"
           },
           "policy_violations": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/PolicyViolationRead"
             },
             "type": "array",
             "title": "Policy Violations"
@@ -12549,6 +12678,25 @@
         "type": "object",
         "title": "TripOutcomeCostRead"
       },
+      "TripOutcomeMemoryRead": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "summary"
+        ],
+        "title": "TripOutcomeMemoryRead",
+        "description": "出差结果里的复盘记忆引用：行程结束后由复盘 Worker 生成的摘要。"
+      },
       "TripOutcomeRead": {
         "properties": {
           "trip_id": {
@@ -12607,8 +12755,7 @@
           },
           "actual_cost": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/CurrencyTotalRead"
             },
             "type": "array",
             "title": "Actual Cost"
@@ -12636,8 +12783,7 @@
           },
           "memory_summaries": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/TripOutcomeMemoryRead"
             },
             "type": "array",
             "title": "Memory Summaries"

@@ -448,6 +448,19 @@ class PlanTravelLegRead(ORMModel):
     stale: bool
 
 
+class PlanUnplacedRead(BaseModel):
+    """未排进计划的拜访（求解器没放下 + 输入阶段就被排除，用 ``source`` 区分）。
+
+    契约此前写成 ``list[dict]``，实际结构固定（见 ``planning_service._unplaced_payload``）：
+    客户端要按 ``visit_id`` 回到具体拜访，靠 ``reason`` 解释为什么没排上。
+    """
+
+    visit_id: str
+    reason: str
+    source: str
+    detail: str | None = None
+
+
 class PlanVersionRead(ORMModel):
     id: UUID
     trip_id: UUID
@@ -463,8 +476,8 @@ class PlanVersionRead(ORMModel):
     degraded: bool
     trip_version: int
     validation: dict[str, Any] = Field(default_factory=dict)
-    unplaced: list[dict[str, Any]] = Field(default_factory=list)
-    policy_violations: list[dict[str, Any]] = Field(default_factory=list)
+    unplaced: list[PlanUnplacedRead] = Field(default_factory=list)
+    policy_violations: list[PolicyViolationRead] = Field(default_factory=list)
     explanation_ref: str | None
     job_id: UUID | None
     stop_count: int = 0
@@ -1238,11 +1251,34 @@ class AssistantConversationRead(ORMModel):
     updated_at: datetime
 
 
+class AssistantCardRead(BaseModel):
+    """助手消息里的卡片：服务端算好的事实快照，客户端直接展示。
+
+    契约此前写成 ``list[dict]``，但六种卡片（TRIP_STATUS / ACTION_CENTER /
+    PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
+    ``type``/``title``/``detail`` 必有，``entity_id``/``link`` 用于跳转。
+    ``ACTION_RESULT`` 额外带 ``proposal_id``——显式保留，避免契约收紧时丢字段。
+    """
+
+    type: str
+    title: str
+    detail: str
+    entity_id: str | None = None
+    link: str | None = None
+    #: 仅 ``ACTION_RESULT`` 卡片携带：触发本次动作的提案消息 id（回跳用）。
+    proposal_id: str | None = None
+    #: 仅 ``TRIP_PROPOSAL`` 卡片携带：提案载荷（国家/日期/名称/用途），确认创建时使用。
+    payload: dict[str, Any] | None = None
+
+    #: 卡片是多态展示面：未来新增卡片字段不能被响应模型静默丢弃（否则客户端拿不到）。
+    model_config = ConfigDict(extra="allow")
+
+
 class AssistantMessageRead(ORMModel):
     id: UUID
     role: str
     content: str
-    cards: list[dict[str, Any]] = Field(default_factory=list)
+    cards: list[AssistantCardRead] = Field(default_factory=list)
     llm_invocation_id: UUID | None = None
     created_at: datetime
 
@@ -1286,11 +1322,19 @@ class LocalGuideCountryRead(BaseModel):
     cities: list[LocalGuideCityRead] = Field(default_factory=list)
 
 
+class DataGapRead(BaseModel):
+    """本地指南的数据缺口：目录未覆盖的国家，或未接入的实时源（天气/POI/餐厅）。"""
+
+    code: str
+    message: str
+    country_code: str | None = None
+
+
 class LocalGuideRead(BaseModel):
     trip_id: UUID
     countries: list[LocalGuideCountryRead] = Field(default_factory=list)
     cities_covered: list[str] = Field(default_factory=list)
-    data_gaps: list[dict[str, Any]] = Field(default_factory=list)
+    data_gaps: list[DataGapRead] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------ team members
@@ -1334,6 +1378,13 @@ class TripOpportunitySignalRead(BaseModel):
     requires_confirmation: bool = True
 
 
+class TripOutcomeMemoryRead(BaseModel):
+    """出差结果里的复盘记忆引用：行程结束后由复盘 Worker 生成的摘要。"""
+
+    kind: str
+    summary: str
+
+
 class TripOutcomeRead(BaseModel):
     """出差结果分析与客户机会复盘（PRD P1）。
 
@@ -1349,11 +1400,11 @@ class TripOutcomeRead(BaseModel):
     record_outcomes: dict[str, int] = Field(default_factory=dict)
     record_outcome_labels: dict[str, str] = Field(default_factory=dict)
     plan_cost: TripOutcomeCostRead | None = None
-    actual_cost: list[dict[str, Any]] = Field(default_factory=list)
+    actual_cost: list[CurrencyTotalRead] = Field(default_factory=list)
     insights_by_kind: dict[str, int] = Field(default_factory=dict)
     insight_kind_labels: dict[str, str] = Field(default_factory=dict)
     opportunity_signals: list[TripOpportunitySignalRead] = Field(default_factory=list)
-    memory_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    memory_summaries: list[TripOutcomeMemoryRead] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------ action center

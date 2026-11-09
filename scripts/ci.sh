@@ -20,6 +20,9 @@ make contract-check
 echo "== 文档漂移 =="
 make docs-check
 
+echo "== iOS 契约样本 =="
+make ios-contract-check
+
 echo "== 数据库 =="
 make db-up
 make migrate

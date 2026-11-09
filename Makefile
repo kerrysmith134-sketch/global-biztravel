@@ -12,7 +12,7 @@ export PATH := /usr/local/bin:$(PATH)
 export PYTHONPATH := $(CURDIR)/services/api:$(CURDIR)/packages/planning-engine$(if $(PYTHONPATH),:$(PYTHONPATH))
 
 .PHONY: help venv install db-up db-down db-reset psql migrate revision check api worker \
-        outbox proactive seed test test-unit test-integration typecheck lint openapi contract-check docs-check bench e2e stack-up stack-down ci ci-backend lint-ios clean ios-build ios-test
+        outbox proactive seed test test-unit test-integration typecheck lint openapi contract-check docs-check ios-contract-samples ios-contract-check bench e2e stack-up stack-down ci ci-backend lint-ios clean ios-build ios-test
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -62,6 +62,14 @@ contract-check: ## 校验代码与 contracts/openapi.json 是否漂移（S6）
 
 docs-check: ## 校验 ADR 索引与迁移清单是否跟上代码（文档漂移门禁）
 	$(PY) scripts/check_docs.py
+
+ios-contract-samples: ## 从 openapi 契约生成 iOS 解码样本（S6）
+	$(PY) scripts/gen_ios_contract_samples.py
+
+ios-contract-check: ## 校验 iOS 契约样本与 openapi 同步（漂移即失败，S6）
+	$(PY) scripts/gen_ios_contract_samples.py
+	@git diff --exit-code --quiet -- apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift \
+		|| (echo "契约样本已过期：make ios-contract-samples 后提交新样本"; exit 1)
 
 bench: ## 规划引擎基准：OR-Tools / 启发式 p50/p95（S2/N3）
 	$(PY) scripts/bench_planning.py
