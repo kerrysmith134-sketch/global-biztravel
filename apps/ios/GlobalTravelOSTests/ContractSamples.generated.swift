@@ -39,6 +39,23 @@ enum ContractSamples {
   "total": 1
 }
 """
+    static let appNotification = """
+{
+  "attempts": 1,
+  "body": "1",
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "issue_key": "1",
+  "kind": "1",
+  "priority": "P0",
+  "provider": "1",
+  "read_at": "2026-11-09T09:00:00+00:00",
+  "sent_at": "2026-11-09T09:00:00+00:00",
+  "status": "PENDING",
+  "suggestion_id": "11111111-1111-1111-1111-111111111111",
+  "title": "1"
+}
+"""
     static let assistantConversationDetail = """
 {
   "conversation": {
@@ -118,6 +135,127 @@ enum ContractSamples {
   "updated_at": "2026-11-09T09:00:00+00:00",
   "visit_id": "11111111-1111-1111-1111-111111111111",
   "visit_record_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let customer = """
+{
+  "country_code": "1",
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "external_ref": "1",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "industry": "1",
+  "name": "1",
+  "owner_user_id": "11111111-1111-1111-1111-111111111111",
+  "primary_contact_email": "1",
+  "primary_contact_name": "1",
+  "primary_contact_phone": "1",
+  "status": "ACTIVE",
+  "tier": "A",
+  "updated_at": "2026-11-09T09:00:00+00:00"
+}
+"""
+    static let entryAssessment = """
+{
+  "assessed_at": "2026-11-09T09:00:00+00:00",
+  "confidence": 1.5,
+  "country_code": "1",
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "manual_review_required": true,
+  "source": "1",
+  "source_version": "1",
+  "summary": "1",
+  "trip_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let expenseReport = """
+{
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "decided_at": "2026-11-09T09:00:00+00:00",
+  "decided_by_user_id": "11111111-1111-1111-1111-111111111111",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "items": [
+    {
+      "amount": "1",
+      "category": "TRANSPORT",
+      "currency": "1",
+      "expense_id": "11111111-1111-1111-1111-111111111111",
+      "id": "11111111-1111-1111-1111-111111111111",
+      "note": "1",
+      "occurred_on": "2026-11-09",
+      "receipt_ref": "1",
+      "report_id": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "notes": "1",
+  "status": "DRAFT",
+  "submitted_at": "2026-11-09T09:00:00+00:00",
+  "totals": [
+    {
+      "amount": 1.5,
+      "count": 1,
+      "currency": "1"
+    }
+  ],
+  "trip_id": "11111111-1111-1111-1111-111111111111",
+  "updated_at": "2026-11-09T09:00:00+00:00"
+}
+"""
+    static let importParseResult = """
+{
+  "columns": [
+    "1"
+  ],
+  "duplicate_rows": 1,
+  "file_sha256": "1",
+  "filename": "1",
+  "import_id": "11111111-1111-1111-1111-111111111111",
+  "invalid_rows": 1,
+  "missing_columns": [
+    "1"
+  ],
+  "report": {},
+  "rows": [
+    {
+      "issues": [
+        {
+          "code": "1",
+          "field": "1",
+          "message": "1",
+          "severity": "ERROR"
+        }
+      ],
+      "normalized": {},
+      "raw": {},
+      "row_number": 1,
+      "status": "1"
+    }
+  ],
+  "status": "1",
+  "total_rows": 1,
+  "trip_id": "11111111-1111-1111-1111-111111111111",
+  "unknown_columns": [
+    "1"
+  ],
+  "valid_rows": 1
+}
+"""
+    static let jobResult = """
+{
+  "attempts": 1,
+  "available_at": "2026-11-09T09:00:00+00:00",
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "finished_at": "2026-11-09T09:00:00+00:00",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "job_type": "plan_trip",
+  "last_error": "1",
+  "lease_expires_at": "2026-11-09T09:00:00+00:00",
+  "max_attempts": 1,
+  "payload": {},
+  "result": {},
+  "started_at": "2026-11-09T09:00:00+00:00",
+  "status": "PENDING",
+  "updated_at": "2026-11-09T09:00:00+00:00"
 }
 """
     static let localGuide = """
@@ -206,6 +344,72 @@ enum ContractSamples {
   "unread_by_priority": {
     "key": 1
   }
+}
+"""
+    static let notificationPreferenceRead = """
+{
+  "muted_priorities": [
+    "P0"
+  ]
+}
+"""
+    static let place = """
+{
+  "address_line": "1",
+  "city": "1",
+  "country_code": "1",
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "geocode_confidence": "1",
+  "geocode_source": "1",
+  "geocode_status": "MISSING",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "lat": 1.5,
+  "lon": 1.5,
+  "name": "1",
+  "region": "1",
+  "timezone": "1",
+  "updated_at": "2026-11-09T09:00:00+00:00"
+}
+"""
+    static let planVersion = """
+{
+  "activated_at": "2026-11-09T09:00:00+00:00",
+  "cost_currency": "1",
+  "cost_total": 1.5,
+  "cost_unknown_count": 1,
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "day_count": 1,
+  "degraded": true,
+  "explanation_ref": "1",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "job_id": "11111111-1111-1111-1111-111111111111",
+  "objective_value": 1.5,
+  "policy_violations": [
+    {
+      "code": "1",
+      "details": {},
+      "message": "1"
+    }
+  ],
+  "problem_hash": "1",
+  "solution_status": "OPTIMAL",
+  "solver": "ortools",
+  "status": "DRAFT",
+  "stop_count": 1,
+  "superseded_at": "2026-11-09T09:00:00+00:00",
+  "trip_id": "11111111-1111-1111-1111-111111111111",
+  "trip_version": 1,
+  "unplaced": [
+    {
+      "detail": "1",
+      "reason": "1",
+      "source": "1",
+      "visit_id": "1"
+    }
+  ],
+  "updated_at": "2026-11-09T09:00:00+00:00",
+  "validation": {},
+  "version_number": 1
 }
 """
     static let planVersionDetail = """
@@ -324,6 +528,22 @@ enum ContractSamples {
   "next_cursor": "1"
 }
 """
+    static let syncSummary = """
+{
+  "applied": 1,
+  "conflict": 1,
+  "rejected": 1
+}
+"""
+    static let travelerProfile = """
+{
+  "confidence": 1.5,
+  "nationality": "1",
+  "notes": "1",
+  "preferences": {},
+  "version": 1
+}
+"""
     static let trip = """
 {
   "active_plan_version_id": "11111111-1111-1111-1111-111111111111",
@@ -347,6 +567,19 @@ enum ContractSamples {
   "visit_count": 1,
   "window_end": "2026-11-09T09:00:00+00:00",
   "window_start": "2026-11-09T09:00:00+00:00"
+}
+"""
+    static let tripExpense = """
+{
+  "amount": "1",
+  "category": "TRANSPORT",
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "currency": "1",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "note": "1",
+  "occurred_on": "2026-11-09",
+  "receipt_ref": "1",
+  "trip_id": "11111111-1111-1111-1111-111111111111"
 }
 """
     static let tripMemory = """
@@ -432,6 +665,29 @@ enum ContractSamples {
   "window": {
     "key": "1"
   }
+}
+"""
+    static let visaCase = """
+{
+  "checklist": [
+    {
+      "key": "1",
+      "label": "1",
+      "note": "1",
+      "status": "MISSING"
+    }
+  ],
+  "confidence": 1.5,
+  "country_code": "1",
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "decision_at": "2026-11-09T09:00:00+00:00",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "notes": "1",
+  "passport_expires_at": "2026-11-09",
+  "status": "NEW",
+  "submitted_at": "2026-11-09T09:00:00+00:00",
+  "trip_id": "11111111-1111-1111-1111-111111111111",
+  "updated_at": "2026-11-09T09:00:00+00:00"
 }
 """
     static let visitBriefing = """
@@ -525,6 +781,22 @@ enum ContractSamples {
     "trip_id": "11111111-1111-1111-1111-111111111111",
     "updated_at": "2026-11-09T09:00:00+00:00"
   }
+}
+"""
+    static let visitRecord = """
+{
+  "applied": true,
+  "client_record_id": "1",
+  "conflict": {
+    "client": {},
+    "reason": "1",
+    "server": {}
+  },
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "outcome": "MET",
+  "server_version": 1,
+  "visit_id": "11111111-1111-1111-1111-111111111111"
 }
 """
 }

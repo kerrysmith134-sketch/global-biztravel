@@ -69,4 +69,62 @@ final class ContractSampleTests: XCTestCase {
     func testSuggestionFeedContractSampleDecodes() throws {
         _ = try decode(SuggestionFeed.self, ContractSamples.suggestionFeed)
     }
+
+    // ---- 第二批：只验证"契约样本可解码"，字段级断言交给各模型的独立测试 ----
+
+    func testPlanVersionContractSampleDecodes() throws {
+        _ = try decode(PlanVersion.self, ContractSamples.planVersion)
+    }
+
+    func testCustomerContractSampleDecodes() throws {
+        _ = try decode(Customer.self, ContractSamples.customer)
+    }
+
+    func testPlaceContractSampleDecodes() throws {
+        _ = try decode(Place.self, ContractSamples.place)
+    }
+
+    func testVisaCaseContractSampleDecodes() throws {
+        _ = try decode(VisaCase.self, ContractSamples.visaCase)
+    }
+
+    func testEntryAssessmentContractSampleDecodes() throws {
+        _ = try decode(EntryAssessment.self, ContractSamples.entryAssessment)
+    }
+
+    func testTripExpenseContractSampleDecodes() throws {
+        _ = try decode(TripExpense.self, ContractSamples.tripExpense)
+    }
+
+    func testExpenseReportContractSampleDecodes() throws {
+        _ = try decode(ExpenseReport.self, ContractSamples.expenseReport)
+    }
+
+    func testImportParseResultContractSampleDecodes() throws {
+        _ = try decode(ImportParseResult.self, ContractSamples.importParseResult)
+    }
+
+    func testSyncSummaryContractSampleDecodes() throws {
+        _ = try decode(SyncSummary.self, ContractSamples.syncSummary)
+    }
+
+    func testVisitRecordContractSampleDecodes() throws {
+        _ = try decode(VisitRecord.self, ContractSamples.visitRecord)
+    }
+
+    func testTravelerProfileContractSampleDecodes() throws {
+        _ = try decode(TravelerProfile.self, ContractSamples.travelerProfile)
+    }
+
+    func testAppNotificationContractSampleDecodes() throws {
+        _ = try decode(AppNotification.self, ContractSamples.appNotification)
+    }
+
+    func testNotificationPreferenceContractSampleDecodes() throws {
+        _ = try decode(NotificationPreferenceRead.self, ContractSamples.notificationPreferenceRead)
+    }
+
+    func testJobResultContractSampleDecodes() throws {
+        _ = try decode(JobResult.self, ContractSamples.jobResult)
+    }
 }

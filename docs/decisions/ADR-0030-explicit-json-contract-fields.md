@@ -35,7 +35,7 @@
    `model_config = ConfigDict(extra="allow")`——卡片新增字段不会被响应模型静默丢弃，
    也不会因漏列一个字段而让既有接口 500。
 3. **用契约生成 iOS 解码样本**：`scripts/gen_ios_contract_samples.py` 读
-   `contracts/openapi.json`，为 13 个核心读模型生成样本（JSON 嵌进
+   `contracts/openapi.json`，为 27 个读模型生成样本（JSON 嵌进
    `ContractSamples.generated.swift`），`ContractSampleTests` 用真实 `DateCoding.decoder()`
    解码。**契约改字段名/类型/枚举 → 样本变 → 解码测试红**，这是手写样本给不了的保护。
 4. **门禁**：`make ios-contract-check` 重新生成样本并比对 git 差异（漂移即失败），接入
@@ -46,5 +46,5 @@
 - 好处：契约对 5 个字段重新有约束力；iOS 侧获得"契约→解码"的自动化检查，不再依赖人肉比对；
   收紧过程本身抓到了此前未暴露的结构假设（如 `TRIP_PROPOSAL.payload` 被漏列、卡片多态字段）。
 - 代价：前端/客户端新增消费字段时，改契约要同步跑 `make ios-contract-samples` 并提交生成文件；
-  生成器只覆盖 13 个核心读模型，不是全量 140 个 schema——按需扩展 `TARGETS` 即可。
+  生成器当前覆盖 27 个读模型（不是全量 141 个 schema）——按需扩展 `TARGETS` 即可；扩展时只验证"可解码"，字段级断言留给各模型自己的测试，避免测试自身引入错配。
 - 边界：生成样本是"类型合法的最小响应"，不替代业务语义测试（语义仍由 `make e2e` 与各集成测试覆盖）。

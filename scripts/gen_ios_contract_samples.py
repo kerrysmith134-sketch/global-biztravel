@@ -48,6 +48,21 @@ TARGETS: dict[str, str] = {
     "LocalGuide": "LocalGuideRead",
     "AssistantConversationDetail": "AssistantConversationDetailRead",
     "SuggestionFeed": "SuggestionFeedRead",
+    # ---- 第二批：覆盖更多既有读模型（只验证"契约样本能解码"，字段级断言在各模型测试） ----
+    "PlanVersion": "PlanVersionRead",
+    "Customer": "CustomerRead",
+    "Place": "PlaceRead",
+    "VisaCase": "VisaCaseRead",
+    "EntryAssessment": "EntryAssessmentRead",
+    "TripExpense": "ExpenseRead",
+    "ExpenseReport": "ExpenseReportRead",
+    "ImportParseResult": "ImportParseRead",
+    "SyncSummary": "SyncSummaryRead",
+    "VisitRecord": "VisitRecordRead",
+    "TravelerProfile": "TravelerProfileRead",
+    "AppNotification": "NotificationRead",
+    "NotificationPreferenceRead": "NotificationPreferenceRead",
+    "JobResult": "JobRead",
 }
 
 SAMPLE_UUID = "11111111-1111-1111-1111-111111111111"
