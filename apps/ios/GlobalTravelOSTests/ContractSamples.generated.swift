@@ -371,6 +371,56 @@ enum ContractSamples {
   "updated_at": "2026-11-09T09:00:00+00:00"
 }
 """
+    static let planDiff = """
+{
+  "base_degraded": true,
+  "base_plan_version_id": "11111111-1111-1111-1111-111111111111",
+  "base_solver": "ortools",
+  "base_status": "DRAFT",
+  "base_version_number": 1,
+  "objective_delta": 1.5,
+  "objective_from": 1.5,
+  "objective_to": 1.5,
+  "stops": [
+    {
+      "arrive_at_from": "2026-11-09T09:00:00+00:00",
+      "arrive_at_to": "2026-11-09T09:00:00+00:00",
+      "change": "ADDED",
+      "day_index_from": 1,
+      "day_index_to": 1,
+      "depart_at_from": "2026-11-09T09:00:00+00:00",
+      "depart_at_to": "2026-11-09T09:00:00+00:00",
+      "sequence_from": 1,
+      "sequence_to": 1,
+      "service_minutes_from": 1,
+      "service_minutes_to": 1,
+      "travel_minutes_from": 1,
+      "travel_minutes_to": 1,
+      "visit_id": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "summary": {
+    "key": 1
+  },
+  "target_degraded": true,
+  "target_plan_version_id": "11111111-1111-1111-1111-111111111111",
+  "target_solver": "ortools",
+  "target_status": "DRAFT",
+  "target_version_number": 1,
+  "travel_minutes_delta": 1,
+  "travel_minutes_from": 1,
+  "travel_minutes_to": 1,
+  "trip_id": "11111111-1111-1111-1111-111111111111",
+  "unplaced": [
+    {
+      "action": "ADDED",
+      "reason": "1",
+      "source": "1",
+      "visit_id": "11111111-1111-1111-1111-111111111111"
+    }
+  ]
+}
+"""
     static let planVersion = """
 {
   "activated_at": "2026-11-09T09:00:00+00:00",

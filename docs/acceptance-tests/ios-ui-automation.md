@@ -17,7 +17,7 @@ App 启动后把夹具复制进主 App 的 `Documents`（按容器元数据 `MCM
 | `testAcceptanceJourneyChain` | AT-001~006 + AT-010/012 单条串联：新建 → Excel 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 → 现场记录 → 纪要（严格断言，无期望失败标记） | 每阶段有导航栏检查点（expectNav）。AT-007/008 与 AT-011 拆成独立用例（见下两行）：链式内做这几段在本机 8 轮完整套件验证中可复现地找不稳，拆开后各自可重试、失败点更近 |
 | `testLaunchBrowseSeedTripAndSyncCenter` | Today → AI 助手 → 通知中心（含偏好面板 P3 开关真实 PUT）→ 行动中心 → 出行列表 → 详情 → 同步页 | 验证真实网络加载与基本导航 |
 | `testPreparedTripBriefing` | 准备数据 → 详情 → 拜访简报 | 测试内用真实 HTTP 创建地点/出行/拜访，再用启动参数打开，避免依赖列表分页顺序（结果复盘视图 `TripOutcomeView` 暂无 UI 用例，仅服务端 `test_trip_outcome.py` 覆盖） |
-| `testPlanChangeAndDiffFlow` | 生成计划 → 激活 → **AT-007** 取消一个拜访（真实 `POST /plan-changes`，等 Worker 重求解）→ **AT-008** 从行程详情「与上一版比较」打开版本比较页 | 覆盖计划调整与版本比较的按钮级路径；计划详情「调整拜访」区对生效计划每个停靠提供取消入口 |
+| `testPlanChangeAndDiffFlow` | 生成计划 → 激活 → **AT-007** 取消一个拜访（真实 `POST /plan-changes`，等 Worker 重求解）→ **AT-008** 从行程详情「与上一版比较」打开版本比较页 | 覆盖计划调整与版本比较的按钮级路径；用例准备两个拜访（取消唯一拜访会让重求解以「没有可规划的有效拜访」失败，这是正确业务行为）。`PlanDiff` 模型按真实 `PlanVersionDiffRead` 重写（此前手写字段与响应完全漂移，由新增的契约样本解码测试抓出） |
 | `testCreateTripFlow` | 出行列表 → 新建表单 → 创建 | 创建后断言新出行立即出现在列表顶部 |
 | `testExpenseEntryFlow` | 详情 → 记一笔费用 → 保存 | 真实 POST 费用，断言金额出现在费用列表 |
 | `testGenerateAndActivatePlan` | 详情 → 生成新计划 → 计划详情 → 激活 | 真实 Worker 求解；计划列表裸数组契约；激活后回到顶部读状态 |

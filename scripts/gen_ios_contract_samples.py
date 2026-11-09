@@ -63,6 +63,9 @@ TARGETS: dict[str, str] = {
     "AppNotification": "NotificationRead",
     "NotificationPreferenceRead": "NotificationPreferenceRead",
     "JobResult": "JobRead",
+    # 版本比较：iOS 手写模型曾与真实响应完全漂移（base/compare vs base_plan_version_id/
+    # target_plan_version_id、changes vs stops），加入契约样本后这类错误会在解码测试里直接失败。
+    "PlanDiff": "PlanVersionDiffRead",
 }
 
 SAMPLE_UUID = "11111111-1111-1111-1111-111111111111"

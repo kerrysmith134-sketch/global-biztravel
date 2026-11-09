@@ -127,4 +127,10 @@ final class ContractSampleTests: XCTestCase {
     func testJobResultContractSampleDecodes() throws {
         _ = try decode(JobResult.self, ContractSamples.jobResult)
     }
+
+    func testPlanDiffContractSampleDecodes() throws {
+        let value = try decode(PlanDiff.self, ContractSamples.planDiff)
+        XCTAssertFalse(value.basePlanVersionId.isEmpty)
+        XCTAssertFalse(value.targetPlanVersionId.isEmpty)
+    }
 }

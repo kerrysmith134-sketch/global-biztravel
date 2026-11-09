@@ -74,21 +74,20 @@ struct PlanDiffView: View {
     @ViewBuilder
     private func breakdown(_ diff: PlanDiff) -> some View {
         List {
-            if let summary = diff.summary {
-                Section("摘要") {
+            Section("摘要") {
+                if let summary = diff.summary {
                     LabeledContent("变更", value: summary.displayText)
-                    LabeledContent("行驶时间", value: summary.travelDeltaLabel)
-                    LabeledContent("里程", value: summary.distanceDeltaLabel)
                 }
+                LabeledContent("行驶时间", value: diff.travelDeltaLabel)
             }
             Section("逐项变更") {
-                if diff.materialChanges.isEmpty {
+                if diff.materialStops.isEmpty {
                     Text("两版计划没有实质差异。").foregroundStyle(.secondary)
                 }
-                ForEach(diff.materialChanges) { change in
+                ForEach(diff.materialStops) { change in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Label(change.kind.label, systemImage: change.kind.glyph)
+                            Label(change.change.label, systemImage: change.change.glyph)
                                 .font(.headline)
                             Spacer()
                             Text(change.displayName)

@@ -16,7 +16,7 @@
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；45 单测（18 解码 + 27 契约样本）+ 8 UI 自动化 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；46 单测（18 解码 + 28 契约样本）+ 8 UI 自动化 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -68,7 +68,7 @@
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | heuristic p50 0.6ms / p95 0.8ms；ortools p50 0.6ms / p95 0.7ms（2026-11-09 实测，亚毫秒级、随机器负载浮动）；6/6 覆盖、两求解器 hash 一致 |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | 45 单测全绿（18 手写解码 + 27 条由 openapi 生成的契约样本，覆盖 27 个读模型）；完整套件**连续两轮 8/8**（589.7s / 512.0s，链式 241.9s，连接真实后端）。此前 flaky 已定位并加固：backToTripDetail 在详情页滚回顶部、executionTimeAllowance 兜底、文件选择器重试、激活等待与稳定用例对齐、全部断言补"阶段失守"消息 |
+| `make ios-test` | 45 单测全绿（18 手写解码 + 28 条由 openapi 生成的契约样本，覆盖 28 个读模型）；完整套件**连续两轮 8/8**（589.7s / 512.0s，链式 241.9s，连接真实后端）。此前 flaky 已定位并加固：backToTripDetail 在详情页滚回顶部、executionTimeAllowance 兜底、文件选择器重试、激活等待与稳定用例对齐、全部断言补"阶段失守"消息 |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 

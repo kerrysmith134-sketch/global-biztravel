@@ -500,6 +500,31 @@ final class GlobalTravelOSUITests: XCTestCase {
     /// 套件验证中可复现地找不稳；拆成短用例后可单独重试、失败点也更近。
     func testPlanChangeAndDiffFlow() throws {
         let setup = try makeBriefingTrip()
+        // AT-007 取消一个拜访后必须还剩可规划拜访：只取消唯一拜访会让重求解以
+        // 「该出行没有任何可规划的有效拜访」失败（正确的业务行为，不是缺陷）。
+        // 因此这里再补第二个拜访，保证变更后仍能生成新版本。
+        let base = "http://127.0.0.1:8080"
+        let extraSuffix = Int(Date().timeIntervalSince1970) + 1
+        let extraPlace = try postJSON(
+            "\(base)/v1/places",
+            body: [
+                "name": "UI 调整地点 \(extraSuffix)",
+                "city": "Munich",
+                "country_code": "DE",
+                "lat": 48.1351,
+                "lon": 11.582,
+            ]
+        )
+        let extraPlaceId = try XCTUnwrap(extraPlace["id"] as? String)
+        _ = try postJSON(
+            "\(base)/v1/trips/\(setup.tripId)/visits",
+            body: [
+                "place_id": extraPlaceId,
+                "title": "UI 调整拜访",
+                "objective": "二次确认",
+                "service_minutes": 60,
+            ]
+        )
         let app = XCUIApplication()
         app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
         app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
@@ -561,25 +586,38 @@ final class GlobalTravelOSUITests: XCTestCase {
         let confirmCancel = app.buttons["取消该拜访并重新生成计划"]
         XCTAssertTrue(confirmCancel.waitForExistence(timeout: 10), "AT-007：确认对话框未出现")
         confirmCancel.tap()
+        // 受理提示渲染在页面顶部；取消按钮在页面下方，List 懒加载下顶部区块未渲染会
+        // 导致 exists=false（API 已确认 202，问题在视图可见性）→ 先回顶部再断言。
+        let changeAccepted = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '变更已受理'")
+        ).firstMatch
+        for _ in 0 ..< 8 where !changeAccepted.exists { app.swipeDown() }
         XCTAssertTrue(
-            app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS '变更已受理'")
-            ).firstMatch.waitForExistence(timeout: 20),
+            changeAccepted.waitForExistence(timeout: 15),
             "AT-007：变更未被受理"
         )
         XCTAssertTrue(backToTripDetail(app, tripName: setup.tripName), "AT-007：未能回行程详情")
 
         // AT-008：等新版本生成（Worker 重求解）后与上一版比较。
+        // 计划列表是进详情时加载的；下拉刷新只在列表处于顶部时触发，滚动位置不定时不可靠。
+        // 因此先给 Worker 留出求解时间，再「回列表 → 重进详情」强制重新加载。
+        Thread.sleep(forTimeInterval: 25)
+        app.tabBars.buttons["出行"].tap()
+        let reloadRow = app.staticTexts[setup.tripName].firstMatch
+        if reloadRow.waitForExistence(timeout: 5) {
+            reloadRow.tap()
+        }
         let compareButton = app.buttons.matching(
             NSPredicate(format: "label CONTAINS '与上一版比较'")
         ).firstMatch
         let versionDeadline = Date().addingTimeInterval(90)
         while !compareButton.exists && Date() < versionDeadline {
-            app.swipeDown()
+            app.swipeUp()
+            usleep(1_000_000)
         }
         XCTAssertTrue(
             compareButton.waitForExistence(timeout: 10),
-            "AT-008：新版本未出现（等待 90s 仍无比较入口）"
+            "AT-008：新版本未出现（重新加载后 90s 仍无比较入口）"
         )
         compareButton.tap()
         XCTAssertTrue(
