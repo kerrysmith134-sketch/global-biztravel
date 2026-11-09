@@ -17,6 +17,9 @@ make check
 echo "== 契约漂移 =="
 make contract-check
 
+echo "== 文档漂移 =="
+make docs-check
+
 echo "== 数据库 =="
 make db-up
 make migrate

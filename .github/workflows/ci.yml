@@ -17,11 +17,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-      - name: Static + contract
+      - name: Static + contract + docs
         run: |
           make lint
           make typecheck
           make contract-check
+          make docs-check
       - name: Database
         run: make db-up && make migrate
       - name: Tests
