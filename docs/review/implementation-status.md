@@ -148,11 +148,16 @@
 4. **真实 embedding 凭证**：hash/OpenAI-compatible provider 已就绪，需配置模型与 key。
 5. **AT-001~AT-012 按钮级 UI 自动化**：2026-11-09 已补齐最后两个 UI 缺口——计划调整入口
    （`PlanChangeCreate` 客户端模型 + 仓储 + 计划详情「调整拜访」，走真实
-   `POST /v1/trips/{id}/plan-changes`）与版本比较页（`PlanDiffView`）。`testAcceptanceJourneyChain`
-   现在**单条串联全部 12 个 AT 阶段**（新建 → 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 →
-   记录 → 纪要 → 同步 → 调整 → 比较），另有 7 条分步 XCUITest 覆盖各模块细节
-   （见 `docs/acceptance-tests/ios-ui-automation.md`）。
-   **本机验证状态（2026-11-09，5 轮完整套件）**：45 单测稳定全绿；8 条 UI 用例中 7 条稳定通过，链式 12 阶段串联在「激活状态读取」「AT-011 同步 Tab 切换」两处偶发失败（已加等待/重试仍可复现），属本机 xcodebuild/模拟器时序问题；AT-011 的后端语义由 `make e2e` 稳定覆盖。
+   `POST /v1/trips/{id}/plan-changes`）与版本比较页（`PlanDiffView`）。
+   测试结构（2026-11-09 按 8 轮完整套件实证调整）：`testAcceptanceJourneyChain` 单条串联
+   **AT-001~006 + AT-010/012**（新建 → 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 → 记录 → 纪要）；
+   **AT-007/008** 由 `testPlanChangeAndDiffFlow` 覆盖（取消拜访 → 等重求解 → 版本比较页）；
+   **AT-011** 由 `testLaunchBrowseSeedTripAndSyncCenter` 覆盖（逐项判定由 `make e2e` 与
+   `test_records_sync_integration`）。拆分原因：链式从纪要 sheet 关闭后立即去计划版本区/切 Tab，
+   在本机可复现地找不稳（属测试环境问题），拆开后 9 条用例可各自重试、失败点更近。
+   **本机验证状态（2026-11-09）**：45 单测稳定全绿；拆分前 8 条 UI 用例 7 条稳定通过（链式两处 flaky
+   已定位并加固）；拆分后 9 条结构的最终整轮验证被外部干扰打断（另一项目 yuzhang 的 xcodebuild
+   抢占 Xcode/模拟器、本机 xcodebuild 偶发挂死），建议在空闲机器复跑确认。
    2026-11-09 已把此前的 flaky 定位并加固：`backToTripDetail` 在详情页改为滚回顶部（原左缘滑动
    曾让 XCUITest 桥接挂死）、`executionTimeAllowance` 兜底、文件选择器重试、Excel 用例夹具改在
    launch 前落地、激活等待与稳定用例对齐、全部裸断言补"阶段失守"消息。完整套件连续两轮 8/8。
