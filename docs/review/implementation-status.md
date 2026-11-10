@@ -66,7 +66,7 @@
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 85 路径 / 141 schema；契约一致（S6：`unplaced`/`policy_violations`/`cards`/`data_gaps`/`actual_cost` 已从 `list[dict]` 收紧为显式模型，见 ADR-0030） |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
-| `make bench` | heuristic p50 0.6ms / p95 0.8ms；ortools p50 0.6ms / p95 0.7ms（2026-11-09 实测，亚毫秒级、随机器负载浮动）；6/6 覆盖、两求解器 hash 一致 |
+| `make bench` | N3 实例族 8 实例全门禁通过（覆盖/能力声明/确定性/金目标基线，2026-11-10 实测）：启发式全族 p50 ≤1.8ms；ortools 快实例 6.5ms~8.9s、corridor_rhine_12 39.4s。**实测发现**：`solver_budget_seconds` 是解数量预算而非墙钟，DFS+GLS 在 n≥12 后墙钟指数级（详见 `docs/architecture/performance.md` §3）。快速跑：`make bench ARGS="--skip-ortools"` |
 | `make ios-build` | BUILD SUCCEEDED |
 | `make ios-test` | **46 单测 + 9 条 UI 用例整轮全绿**（598s，连接真实后端，经 `scripts/ios_test_guard.sh` 保护；链式 207s、AT-007/008 专项 131s）。2026-11-09 八轮完整套件实证并修掉：费用横幅谓词过宽（误匹配正常区块头）、AT-006 加载时序、AT-011 同步 Tab 被 sheet 关闭动画吞掉、AT-007 计划版本区定位、`PlanDiff` 模型与契约漂移（契约样本门禁首次实战命中）、`backToTripDetail` 多元素匹配、Excel 文件选择器重试 |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
@@ -137,6 +137,15 @@
   新增通知中心，按等级分组、徽标与标记已读。
 - **客户端费用录入**：出行详情新增“记一笔费用”（类别/金额/币种/日期/备注），复用已有费用
   API 与幂等键；保存后刷新预算与实际费用。
+- **求解器基准集与回归（批次 3 的 N3，2026-11-10）**：`instance_family.py` 8 个具名实例
+  覆盖七个难度轴（规模/走廊、规模×容量、星形、洲际、窄窗、锁定顺序、夏令时切换日、
+  不可行），坐标由真实城市锚点算术插值、零随机源；`test_benchmark_family.py` 38 条回归
+  （行为门禁/确定性/金目标）纳入引擎套件（127→165）；`make bench` 升级为全族四类门禁
+  （覆盖/能力声明/确定性/金目标）；金目标基线 `regression_baselines.json` 由
+  `scripts/gen_regression_baselines.py` 生成（`--check` 校验漂移），治理方式与契约样本
+  门禁（ADR-0030）一致。实测校准了两条 S2 语义：`solver_budget_seconds` 是解数量预算
+  非墙钟；启发式在窄窗/夏令时实例上诚实失败，只有 ortools 可解（`min_solver` 声明入
+  门禁）。
 
 
 ## 7. 仍缺项（非本地代码可闭环）

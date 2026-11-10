@@ -28,17 +28,45 @@
 | 通知投递 | 每轮批量 50 | Outbox + 通知状态机，失败可重试 |
 | 指标快照 | 每小时 | 同窗口覆盖写 |
 
-## 3. 本地基准（2026-10-28，Apple Silicon，`make bench`）
+## 3. 本地基准（2026-11-10 实测，Apple Silicon，`make bench`）
 
-问题：6 个欧洲停靠、7 天窗口、航空模式、每日上限 4。
+N3 基准集：`packages/planning-engine/tests/instance_family.py` 的 8 个具名实例，
+覆盖七个难度轴（规模/走廊簇拥、规模×每日容量、星形放射、洲际长窗、时间窗紧度、
+锁定顺序、夏令时切换日、不可行）。坐标由真实城市锚点算术插值，无随机源；目标值的
+**金目标基线**在 `tests/regression_baselines.json`，求解器行为漂移即门禁失败。
 
-| 求解器 | p50 | p95 | 覆盖 | `problem_hash` |
+2026-11-10 实测（启发式 20 轮取 p50，ortools 1 轮）：
+
+| 实例 | 轴 | heuristic p50 | ortools | 覆盖 |
 |---|---|---|---|---|
-| heuristic | 0.4ms | 0.5ms | 6/6 | 稳定 |
-| ortools | 0.3ms | 0.4ms | 6/6 | 稳定 |
+| corridor_rhine_8 | 规模/走廊 | 0.8ms | 494ms | 8/8 |
+| corridor_rhine_12 | 规模×容量 | 1.5ms | 39.4s | 12/12 |
+| star_china_10 | 地理/星形 | 1.8ms | 7.5s | 10/10 |
+| global_air_10 | 洲际/长窗 | 1.3ms | 6.2s | 10/10 |
+| tight_windows_8 | 时间窗紧度 | 诚实失败 | 22ms | 8/8 |
+| locked_order_10 | 锁定顺序 | 1.1ms | 8.9s | 10/10 |
+| dst_spring_berlin_6 | 夏令时 | 诚实失败 | 6.5ms | 6/6 |
+| infeasible_window_4 | 诚实失败 | SolverFailed | SolverFailed | — |
 
-> 这是**小规模确定性实例**的基准，用于回归（确定性、覆盖、耗时量级），不代表大实例的绝对耗时。
-> OR-Tools 的预算由 `solver_budget_seconds` 控制，超时后沿兜底链降级并标 `degraded=true`。
+三个实测发现（S2 语义校准）：
+
+1. **`solver_budget_seconds` 不是墙钟预算**。OR-Tools 刻意不用 `time_limit`
+   （跨机器不确定），改用"解数量上限"（预算×40 个解，见
+   `ortools_solver.SOLUTION_LIMIT_PER_BUDGET_SECOND`）。每个解的搜索成本随
+   规模增长，且 DFS+GUIDED_LOCAL_SEARCH 在 n≥12 后墙钟呈指数级：12 站走廊
+   单次 39s、16 站可达分钟级。**生产含义**：大行程的 ortools 求解可能占用
+   Worker 数分钟 CPU——异步 job + `GET /v1/jobs/{id}` 轮询架构天然吸收这一点，
+   但容量规划必须按"解数量×规模"估算，不能按名义秒数。
+2. **两求解器能力有真实边界**。窄时间窗（tight_windows_8）与夏令时切换日
+   （dst_spring_berlin_6）实例上，贪心启发式排不进 eligible（诚实失败），
+   只有 ortools 可解；实例族用 `min_solver` 声明这一边界并纳入门禁。
+3. **目标值不保证一致**。star_china_10 上 ortools(1381.45) 优于启发式(1481.45)，
+   其余实例两者一致——与"不互相断言最优性"的既有约定一致，金目标按求解器
+   分别记录。
+
+> 回归门禁四类：覆盖 / 能力声明（`min_solver` 与 `kind="infeasible"` 的失败语义）/
+> 确定性（`problem_hash` 跨轮一致）/ 金目标基线。OR-Tools 求解失败或未安装时
+> 流水线沿兜底链降级并标 `degraded=true`。
 
 ## 4. LLM 成本预算
 
@@ -60,7 +88,12 @@
 ## 6. 回归方式
 
 ```bash
-make bench          # 求解器耗时/覆盖率/哈希稳定性
-make test           # 全量行为测试
+make bench          # N3 实例族：耗时/覆盖/能力声明/金目标基线（ortools 默认 1 轮，约 1 分钟）
+make bench ARGS="--skip-ortools"   # 只跑启发式（秒级）
+make test           # 全量行为测试（含 test_benchmark_family.py 的 38 条实例族回归）
 make e2e            # 真实 HTTP + DB + Worker 全链路
+.venv/bin/python scripts/gen_regression_baselines.py --check   # 金目标漂移校验
 ```
+
+求解器行为变化（哪怕看似改进）导致金目标漂移时：确认变更有意 → 重新生成基线
+（去掉 `--check`）→ 在提交说明里写明原因。与契约样本门禁（ADR-0030）同一治理方式。

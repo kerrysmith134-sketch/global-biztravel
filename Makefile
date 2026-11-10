@@ -71,8 +71,8 @@ ios-contract-check: ## 校验 iOS 契约样本与 openapi 同步（漂移即失�
 	@git diff --exit-code --quiet -- apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift \
 		|| (echo "契约样本已过期：make ios-contract-samples 后提交新样本"; exit 1)
 
-bench: ## 规划引擎基准：OR-Tools / 启发式 p50/p95（S2/N3）
-	$(PY) scripts/bench_planning.py
+bench: ## 规划引擎基准：N3 实例族（覆盖/能力声明/金目标；ARGS="--skip-ortools" 快跑）
+	$(PY) scripts/bench_planning.py $(ARGS)
 
 e2e: seed ## 真实后端全链路验收（需 make api 运行；自动先补齐种子数据）
 	$(PY) scripts/acceptance_e2e.py
