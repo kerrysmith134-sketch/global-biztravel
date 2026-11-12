@@ -64,10 +64,6 @@ echo "== 导出 App Store IPA（需要 Xcode 账号会话；No Accounts = 先在
 rm -rf build/export
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist ExportOptions.plist \
   -exportPath build/export -allowProvisioningUpdates -quiet
-IPA=$(find build/export -name "*.ipa" | head -1)
-[[ -n "$IPA" ]] || { echo "FAIL: 未找到 IPA"; exit 1; }
-echo "IPA: $IPA"
-
 if [[ "$MODE" != "--upload" ]]; then
   echo "完成。上传：重跑 --upload（exportArchive destination=upload）"
   exit 0
