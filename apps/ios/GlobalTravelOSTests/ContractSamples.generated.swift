@@ -293,7 +293,18 @@ enum ContractSamples {
       "message": "1"
     }
   ],
-  "trip_id": "11111111-1111-1111-1111-111111111111"
+  "trip_id": "11111111-1111-1111-1111-111111111111",
+  "weather": [
+    {
+      "observed_at": "1",
+      "place_id": "1",
+      "place_name": "1",
+      "precipitation_mm": 1.5,
+      "temperature_c": 1.5,
+      "weather_code": 1,
+      "wind_kmh": 1.5
+    }
+  ]
 }
 """
     static let minutesDraft = """

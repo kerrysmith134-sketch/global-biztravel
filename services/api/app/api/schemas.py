@@ -1403,10 +1403,23 @@ class DataGapRead(BaseModel):
     country_code: str | None = None
 
 
+class GuideWeatherRead(BaseModel):
+    """指南附带的实时天气观测（Open-Meteo，ADR-0034；源未接入时列表为空）。"""
+
+    place_id: str
+    place_name: str
+    temperature_c: float | None = None
+    wind_kmh: float | None = None
+    precipitation_mm: float | None = None
+    weather_code: int | None = None
+    observed_at: str | None = None
+
+
 class LocalGuideRead(BaseModel):
     trip_id: UUID
     countries: list[LocalGuideCountryRead] = Field(default_factory=list)
     cities_covered: list[str] = Field(default_factory=list)
+    weather: list[GuideWeatherRead] = Field(default_factory=list)
     data_gaps: list[DataGapRead] = Field(default_factory=list)
 
 

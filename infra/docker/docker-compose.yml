@@ -19,6 +19,11 @@ x-app-env: &app-env
   GBT_PLANNING_SOLVER: ortools
   GBT_LLM_PROVIDER: stub
   GBT_PUSH_PROVIDER: inapp
+  # 免钥公开源全开（ADR-0033/0034，2026-11-12 TestFlight 测试栈）
+  GBT_FX_PROVIDER: frankfurter        # FX 行情同步（ECB 免钥）
+  GBT_WEATHER_PROVIDER: open-meteo    # 天气信号 + 指南实时天气
+  GBT_FLIGHT_PROVIDER: opensky        # 航班信号（匿名速率，够测试用）
+  GBT_TRAVEL_PROVIDER: osrm           # GROUND 段真实驾车时间（OSRM demo，失败自动回退大圆估算）
   # SMTP 邮件通道联调：切到 smtp 并加两行（容器内指向 mailpit 服务名）
   # GBT_PUSH_PROVIDER: smtp
   # GBT_SMTP_HOST: mailpit

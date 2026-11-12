@@ -5607,6 +5607,45 @@ components:
         ``symbols`` 是显式的管理员意图（同步哪些币种），行情没覆盖的币种进任务结果
 
         `missing`，绝不伪造。无行情覆盖保证的币种（ECB 目录外）会一直留在缺口里。'
+    GuideWeatherRead:
+      properties:
+        place_id:
+          type: string
+          title: Place Id
+        place_name:
+          type: string
+          title: Place Name
+        temperature_c:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Temperature C
+        wind_kmh:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Wind Kmh
+        precipitation_mm:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Precipitation Mm
+        weather_code:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Weather Code
+        observed_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Observed At
+      type: object
+      required:
+      - place_id
+      - place_name
+      title: GuideWeatherRead
+      description: 指南附带的实时天气观测（Open-Meteo，ADR-0034；源未接入时列表为空）。
     HTTPValidationError:
       properties:
         detail:
@@ -6102,6 +6141,11 @@ components:
             type: string
           type: array
           title: Cities Covered
+        weather:
+          items:
+            $ref: '#/components/schemas/GuideWeatherRead'
+          type: array
+          title: Weather
         data_gaps:
           items:
             $ref: '#/components/schemas/DataGapRead'

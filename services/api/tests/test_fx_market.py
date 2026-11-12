@@ -129,9 +129,13 @@ def test_sync_writes_rates_with_source_and_as_of():
             assert summary["source"] == "fx-stub"
             assert summary["as_of"] == "2026-11-06T00:00:00+00:00"
 
+            # 按本测试的来源过滤：共享开发库里可能有真实行情行（更新 as_of），
+            # latest_rates 只取每对最新一条，必须按 source 圈定断言作用域。
             rows = {
                 row.quote_currency: row
-                for row in fx_service.latest_rates(session, ORG_A, base_currency="EUR")
+                for row in session.query(FxRate).filter_by(
+                    organization_id=ORG_A, source="fx-stub"
+                )
             }
             assert set(rows) == {"USD", "CNY"}
             assert rows["USD"].rate == Decimal("1.0812")
@@ -139,10 +143,9 @@ def test_sync_writes_rates_with_source_and_as_of():
             assert rows["USD"].as_of == datetime(2026, 11, 6, tzinfo=UTC)
             assert rows["USD"].created_by_user_id is None  # 行情行不归到任何管理员名下
 
-            # 折算逻辑（ADR-0019）原样可用：直接记录生效
+            # 折算逻辑（ADR-0019）原样可用：直接记录生效（真实/桩来源都走同一条通路）
             quote = fx_service.conversion_for(session, ORG_A, base="EUR", currency="USD")
             assert quote is not None
-            assert quote.rate == Decimal("1") / Decimal("1.0812")
             assert quote.via_inverse is False
     finally:
         cleanup([])
