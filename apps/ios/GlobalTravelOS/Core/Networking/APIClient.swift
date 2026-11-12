@@ -15,9 +15,12 @@ struct APIConfiguration: Equatable {
     var userId: String
     var deviceId: String
 
-    /// TestFlight 测试包默认直连开发机后端（与设置页可覆盖；生产包必须改回 https 域名）。
-    /// Mac 的局域网 IP 变化时需同步更新此处（`ipconfig getifaddr en0`）。
-    static let defaultBaseURLString = "http://10.128.29.211:8080"
+    /// TestFlight 测试包默认经 cloudflared 免费隧道连开发机后端（企业网 AP 隔离 /
+    /// 蜂窝网络均可连）。隧道进程在 Mac 上跑：
+    ///   nohup cloudflared tunnel --url http://localhost:8080 --no-autoupdate &
+    /// ⚠️ 隧道重启后 URL 会变——重发包或在 App 设置页手填新地址。
+    /// 生产包必须改回 https 域名。
+    static let defaultBaseURLString = "https://proceeds-suspended-geographic-diesel.trycloudflare.com"
     static let defaultOrgId = "11111111-1111-1111-1111-111111111111"
     static let defaultUserId = "22222222-2222-2222-2222-222222222222"
 
