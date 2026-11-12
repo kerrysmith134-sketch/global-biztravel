@@ -31,7 +31,8 @@ from app.models.reliability import BackgroundJob
 JOB_TYPE_PLAN_TRIP = "plan_trip"
 JOB_TYPE_DRAFT_MINUTES = "draft_minutes"
 JOB_TYPE_CRM_SYNC = "crm_sync"
-KNOWN_JOB_TYPES = (JOB_TYPE_PLAN_TRIP, JOB_TYPE_DRAFT_MINUTES, JOB_TYPE_CRM_SYNC)
+JOB_TYPE_FX_SYNC = "fx_rate_sync"
+KNOWN_JOB_TYPES = (JOB_TYPE_PLAN_TRIP, JOB_TYPE_DRAFT_MINUTES, JOB_TYPE_CRM_SYNC, JOB_TYPE_FX_SYNC)
 
 
 def enqueue(
@@ -327,6 +328,7 @@ def _running_job(session: Session, job_id: UUID | str) -> BackgroundJob:
 
 
 __all__ = [
+    "JOB_TYPE_FX_SYNC",
     "JOB_TYPE_PLAN_TRIP",
     "KNOWN_JOB_TYPES",
     "claim_next",

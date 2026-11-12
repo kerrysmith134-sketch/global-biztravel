@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     max_stops_per_day: int = 4
     # 交通估算 provider（PRD §5.1 / AT-003）：offline-haversine | unavailable（验证降级）
     travel_provider: str = "offline"
+    # FX 行情源（ADR-0033）：unavailable（默认，显式失败）| frankfurter（ECB 免钥公开源）
+    fx_provider: str = "unavailable"
 
     # 主动式运行时（第 8.4 章）
     suggestion_cooldown_hours: int = 24

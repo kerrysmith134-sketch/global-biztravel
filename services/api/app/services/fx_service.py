@@ -30,11 +30,16 @@ class FxQuote:
     via_inverse: bool
 
 
-def _normalize(currency: str) -> str:
+def normalize_currency(currency: str) -> str:
+    """3 位字母代码规范化（大写）；非法输入显式 422。行情同步（ADR-0033）共用。"""
     value = currency.strip().upper()
     if len(value) != 3 or not value.isalpha():
         raise Unprocessable("币种必须是 3 位字母代码", details={"currency": currency})
     return value
+
+
+#: 历史内部名，模块内既有调用点沿用。
+_normalize = normalize_currency
 
 
 def upsert_rate(
@@ -175,4 +180,4 @@ def conversion_for(
     return None
 
 
-__all__ = ["FxQuote", "conversion_for", "latest_rates", "upsert_rate"]
+__all__ = ["FxQuote", "conversion_for", "latest_rates", "normalize_currency", "upsert_rate"]

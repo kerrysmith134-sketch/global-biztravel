@@ -26,10 +26,12 @@ from travel_planner import SolverFailed, plan_trip
 from app.api.errors import ApiError
 from app.config import get_settings
 from app.integrations.crm import CrmUnavailable
+from app.integrations.fx import FxMarketUnavailable
 from app.models.reliability import BackgroundJob
 from app.models.trip import Trip
 from app.services import (
     crm_service,
+    fx_market_service,
     job_service,
     memory_service,
     minutes_service,
@@ -215,20 +217,47 @@ def handle_crm_sync(session: Session, job: BackgroundJob) -> dict[str, Any]:
         raise TaskFailed(exc.message, retryable=False) from exc
 
 
+def handle_fx_sync(session: Session, job: BackgroundJob) -> dict[str, Any]:
+    """把公开行情源的最新快照写进组织 `fx_rates`（ADR-0033）。
+
+    未配置行情源/网络不可用都按**不可重试失败**结算：行情是日期性快照，
+    下次手动同步自然拿到新数据，自动重试只会重复同一个错误。
+    """
+    payload = job.payload or {}
+    base = payload.get("base_currency")
+    symbols = payload.get("symbols")
+    if not base or not isinstance(symbols, list) or not symbols:
+        raise TaskFailed("任务载荷缺少 base_currency 或 symbols", retryable=False)
+    try:
+        summary = fx_market_service.sync_rates(
+            session,
+            job.organization_id,
+            base_currency=str(base),
+            symbols=[str(item) for item in symbols],
+        )
+    except FxMarketUnavailable as exc:
+        raise TaskFailed(str(exc), retryable=False) from exc
+    except ApiError as exc:
+        raise TaskFailed(exc.message, retryable=False) from exc
+    return {"status": "SUCCEEDED", **summary}
+
+
 #: 任务处理器注册表。新增 ``job_type`` 时必须同时在这里登记，否则任务会以
 #: "没有注册处理器"直接终态失败（这是刻意的：静默丢弃任务比报错更糟）。
 TASK_HANDLERS: Mapping[str, TaskHandler] = {
     job_service.JOB_TYPE_PLAN_TRIP: handle_plan_trip,
     job_service.JOB_TYPE_DRAFT_MINUTES: handle_draft_minutes,
     job_service.JOB_TYPE_CRM_SYNC: handle_crm_sync,
+    job_service.JOB_TYPE_FX_SYNC: handle_fx_sync,
 }
 
 
 __all__ = [
     "TASK_HANDLERS",
-    "handle_crm_sync",
     "TaskFailed",
     "TaskHandler",
+    "handle_crm_sync",
     "handle_draft_minutes",
+    "handle_fx_sync",
     "handle_plan_trip",
 ]

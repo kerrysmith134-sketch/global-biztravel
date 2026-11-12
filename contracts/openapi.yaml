@@ -2199,6 +2199,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/fx-rates:sync:
+    post:
+      tags:
+      - fx
+      summary: 从公开行情源同步最新汇率（异步 job；未配置源时任务显式失败）
+      description: 'ADR-0033：行情写入同一张 `fx_rates` 表（``source=fx-<provider>``）。
+
+
+        受理即返回 202；真正取数由 Worker 执行 ``fx_rate_sync`` 任务。行情源未配置
+
+        时任务终态 FAILED 并带原因——不伪造数据。幂等键回放受理响应；同一
+
+        ``(org, base, symbols)`` 的在途任务按 dedupe 复用。'
+      operationId: sync_fx_rates_v1_fx_rates_sync_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FxSyncRequest'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FxSyncRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/places:
     get:
       tags:
@@ -5222,6 +5264,68 @@ components:
       - as_of
       - created_at
       title: FxRateRead
+    FxSyncRead:
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          title: Job Id
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - SUCCEEDED
+          - FAILED
+          - DEAD
+          - CANCELLED
+          title: Status
+        base_currency:
+          type: string
+          title: Base Currency
+        symbols:
+          items:
+            type: string
+          type: array
+          title: Symbols
+        reused:
+          type: boolean
+          title: Reused
+          default: false
+      type: object
+      required:
+      - job_id
+      - status
+      - base_currency
+      - symbols
+      title: FxSyncRead
+      description: '``fx-rates:sync`` 的受理响应；结果经 ``GET /v1/jobs/{job_id}`` 轮询。'
+    FxSyncRequest:
+      properties:
+        base_currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          pattern: ^[A-Za-z]{3}$
+          title: Base Currency
+        symbols:
+          items:
+            type: string
+          type: array
+          maxItems: 32
+          minItems: 1
+          title: Symbols
+      type: object
+      required:
+      - base_currency
+      - symbols
+      title: FxSyncRequest
+      description: '行情同步请求：把 `symbols` 的最新行情写进组织 `fx_rates`（ADR-0033）。
+
+
+        ``symbols`` 是显式的管理员意图（同步哪些币种），行情没覆盖的币种进任务结果
+
+        `missing`，绝不伪造。无行情覆盖保证的币种（ECB 目录外）会一直留在缺口里。'
     HTTPValidationError:
       properties:
         detail:
@@ -5521,6 +5625,7 @@ components:
           - plan_trip
           - draft_minutes
           - crm_sync
+          - fx_rate_sync
           title: Job Type
         status:
           type: string

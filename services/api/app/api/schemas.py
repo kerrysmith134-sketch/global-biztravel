@@ -375,8 +375,29 @@ class ImportConfirmRead(BaseModel):
 PlanVersionStatus = Literal["DRAFT", "ACTIVE", "SUPERSEDED"]
 PlanSolutionStatus = Literal["OPTIMAL", "FEASIBLE", "PARTIAL", "INFEASIBLE", "UNKNOWN", "ERROR"]
 PlanSolver = Literal["ortools", "heuristic"]
-JobType = Literal["plan_trip", "draft_minutes", "crm_sync"]
+JobType = Literal["plan_trip", "draft_minutes", "crm_sync", "fx_rate_sync"]
 JobStatus = Literal["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "DEAD", "CANCELLED"]
+
+
+class FxSyncRequest(BaseModel):
+    """行情同步请求：把 `symbols` 的最新行情写进组织 `fx_rates`（ADR-0033）。
+
+    ``symbols`` 是显式的管理员意图（同步哪些币种），行情没覆盖的币种进任务结果
+    `missing`，绝不伪造。无行情覆盖保证的币种（ECB 目录外）会一直留在缺口里。
+    """
+
+    base_currency: str = Field(min_length=3, max_length=3, pattern="^[A-Za-z]{3}$")
+    symbols: list[str] = Field(min_length=1, max_length=32)
+
+
+class FxSyncRead(BaseModel):
+    """``fx-rates:sync`` 的受理响应；结果经 ``GET /v1/jobs/{job_id}`` 轮询。"""
+
+    job_id: UUID
+    status: JobStatus
+    base_currency: str
+    symbols: list[str]
+    reused: bool = False
 
 
 class PlanGenerateRead(BaseModel):
