@@ -91,17 +91,129 @@ final class LocalPlanRepository: PlanRepository {
         )
     }
 
-    /// 本地求解（P2 接入 Swift 规划引擎）；P1 阶段显式未就绪。
+    /// 本地求解：进程内跑规划引擎（启发式），同步产出计划版本 + 已完成 job。
+    /// GeneratePlanUseCase 的轮询逻辑对"立即 SUCCEEDED 的 job"零改动兼容。
     func generatePlan(tripId: String, request: GeneratePlanRequest) async throws -> GeneratePlanResponse {
-        throw LocalStorePendingError(method: "generatePlan（P2 接入本地规划引擎）")
+        let trips = try database.loadPayloads(table: "trips", where: "id = ?", bindings: [tripId])
+        guard let tripPayload = trips.first else {
+            throw APIError.serverError(code: "TRIP_NOT_FOUND", message: "出行不存在", traceId: nil, details: [:])
+        }
+        let trip = try DateCoding.decoder().decode(Trip.self, from: tripPayload)
+        let visitPayloads = try database.loadPayloads(
+            table: "visits", where: "trip_id = ?", bindings: [tripId]
+        )
+        let visits = try visitPayloads.map { try DateCoding.decoder().decode(TripVisit.self, from: $0) }
+        let placePayloads = try database.loadPayloads(table: "places")
+        let places = try placePayloads.map { try DateCoding.decoder().decode(Place.self, from: $0) }
+
+        let problem = EngineMapping.makeProblem(
+            trip: trip, visits: visits, places: places,
+            budgetSeconds: request.solverBudgetSeconds ?? 10
+        )
+        guard !problem.stops.isEmpty else {
+            throw APIError.serverError(
+                code: "NO_STOPS", message: "没有可规划的拜访（先添加带地点的拜访）",
+                traceId: nil, details: [:]
+            )
+        }
+
+        let result = try EnginePipeline.planTrip(problem, solver: .heuristic)
+        let planId = UUID().uuidString
+        let versionNumber = try database.count(table: "plan_versions", where: "trip_id = ?", bindings: [tripId]) + 1
+        let now = Date()
+
+        // 摘要行（列表用）+ 详情 payload（详情页用）同写。
+        let summary = PlanVersion(
+            id: planId,
+            versionNumber: versionNumber,
+            status: .draft,
+            solver: result.solver.rawValue,
+            feasible: result.validation.feasible,
+            degraded: result.degraded,
+            objectiveValue: result.objectiveValue,
+            solutionStatus: result.status.rawValue,
+            costTotal: nil,
+            costCurrency: trip.currency,
+            costUnknownCount: 0,
+            policyViolations: nil,
+            stopCount: result.placedVisitIds.count,
+            dayCount: result.days.count,
+            createdAt: now
+        )
+        let detailDays: [PlanDay] = EngineMapping.makePlanDays(
+            from: result.days, places: places, visits: visits
+        )
+        // StopPlan 与 visit 对齐后重映射会丢序号 → 直接用 makePlanDays 输出。
+        let detail = PlanVersionDetail(
+            id: planId,
+            tripId: tripId,
+            versionNumber: versionNumber,
+            status: .draft,
+            solver: result.solver.rawValue,
+            feasible: result.validation.feasible,
+            degraded: result.degraded,
+            objectiveValue: result.objectiveValue,
+            problemHash: result.problemHash,
+            createdAt: now,
+            validation: EngineMapping.makeValidationReport(from: result.validation),
+            unplaced: EngineMapping.makeUnplaced(
+                from: result.unplaced, places: places, visits: visits
+            ),
+            days: detailDays,
+            legs: EngineMapping.makeLegs(from: result.legs),
+            solutionStatus: result.status.rawValue,
+            costTotal: nil,
+            costCurrency: trip.currency,
+            costUnknownCount: 0,
+            policyViolations: nil
+        )
+        try database.transaction {
+            try database.upsert(
+                table: "plan_versions", id: planId,
+                columns: [
+                    "trip_id": tripId,
+                    "version": versionNumber,
+                    "status": summary.status?.rawValue ?? "DRAFT",
+                    "created_at": SQLTimestamp.basics.string(from: now),
+                ],
+                payload: try DateCoding.encode(detail)
+            )
+            // 合成 job（本地模式无后台队列）：GeneratePlanUseCase 轮询立即命中 SUCCEEDED。
+            let jobPayload: [String: Any] = [
+                "id": "local-job-\(planId)",
+                "job_type": "plan_trip",
+                "status": "SUCCEEDED",
+                "plan_version_id": planId,
+            ]
+            let jobData = try JSONSerialization.data(withJSONObject: jobPayload)
+            try database.upsert(
+                table: "kv", id: "local-job:\(planId)",
+                columns: ["value": String(decoding: jobData, as: UTF8.self)],
+                payload: jobData
+            )
+        }
+
+        return GeneratePlanResponse(jobId: "local-job-\(planId)", status: .succeeded)
     }
 
     func job(id: String) async throws -> PlanJob {
-        let payloads = try database.loadPayloads(table: "plan_versions", where: "id = ?", bindings: [id])
-        guard payloads.first != nil else {
+        let rows = try database.store.query(
+            "SELECT value FROM kv WHERE key = ?", bindings: [id]
+        ) { $0.string(0) }
+        guard let raw = rows.first,
+              let object = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any] else {
             throw APIError.serverError(code: "JOB_NOT_FOUND", message: "任务不存在", traceId: nil, details: [:])
         }
-        throw LocalStorePendingError(method: "job（P2）")
+        return PlanJob(
+            id: id,
+            jobType: object["job_type"] as? String,
+            status: JobStatus(rawValue: object["status"] as? String ?? "UNKNOWN"),
+            attempts: 1,
+            result: JobResult(planVersionId: object["plan_version_id"] as? String),
+            lastError: nil,
+            createdAt: nil,
+            updatedAt: nil
+        )
     }
 
     func createPlanChange(tripId: String, request: PlanChangeCreate) async throws -> PlanChangeAccepted {
