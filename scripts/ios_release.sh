@@ -60,16 +60,7 @@ if [[ "$MODE" != "--export" && "$MODE" != "--upload" ]]; then
   exit 0
 fi
 
-echo "== 导出 App Store IPA（需要 Xcode 账号会话；No Accounts = 先在 Xcode GUI 登录）=="
-rm -rf build/export
-xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist ExportOptions.plist \
-  -exportPath build/export -allowProvisioningUpdates -quiet
-if [[ "$MODE" != "--upload" ]]; then
-  echo "完成。上传：重跑 --upload（exportArchive destination=upload）"
-  exit 0
-fi
-
 echo "== 上传（tu-zhang 同款：ExportOptions destination=upload，Xcode 会话认证，免 API key）=="
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist ExportOptions.plist \
-  -allowProvisioningUpdates -quiet
+  -allowProvisioningUpdates
 echo "上传完成：ASC 处理 10–30 分钟后 TestFlight 可见。"
