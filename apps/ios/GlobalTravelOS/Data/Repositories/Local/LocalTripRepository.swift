@@ -245,11 +245,124 @@ final class LocalTripRepository: TripRepository {
     }
 
     func createExpense(tripId: String, body: TripExpenseCreateRequest) async throws -> TripExpense {
-        throw LocalStorePendingError(method: "createExpense")
+        let occurredOn = ISO8601.day(from: body.occurredOn)
+        let expense = TripExpense(
+            id: UUID().uuidString,
+            tripId: tripId,
+            category: body.category.rawValue,
+            amount: body.amount,
+            currency: body.currency.uppercased(),
+            occurredOn: occurredOn,
+            note: body.note,
+            receiptRef: nil
+        )
+        try database.upsert(
+            table: "trip_expenses", id: expense.id,
+            columns: [
+                "trip_id": tripId, "category": expense.category,
+                "currency": expense.currency,
+                "occurred_on": body.occurredOn,
+            ],
+            payload: try DateCoding.encode(expense)
+        )
+        return expense
     }
 
+    /// 预算折算（ADR-0019 语义直译）：按币种聚合；同币种直接差；
+    /// base 折算逐币种取最新汇率（含逆率）；缺汇率 conversion_complete=false 并列缺口。
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary {
-        throw LocalStorePendingError(method: "budgetSummary")
+        let trip = try await self.trip(id: tripId)
+        let expenses = try await self.expenses(tripId: tripId)
+
+        var byCurrency: [String: (amount: Decimal, count: Int)] = [:]
+        for expense in expenses {
+            let key = expense.currency.uppercased()
+            let current = byCurrency[key] ?? (Decimal.zero, 0)
+            byCurrency[key] = (current.amount + expense.amount, current.count + 1)
+        }
+        let totals = byCurrency.keys.sorted().map { key in
+            CurrencyTotal(
+                currency: key,
+                amount: (byCurrency[key]!.amount as NSDecimalNumber).doubleValue,
+                count: byCurrency[key]!.count
+            )
+        }
+
+        let base = (baseCurrency ?? trip.currency ?? "EUR").uppercased()
+        var unconverted: [String] = []
+        var convertedTotal = Decimal.zero
+        var conversions: [FxConversion] = []
+        var conversionComplete = true
+
+        for total in totals {
+            if total.currency == base {
+                convertedTotal += Decimal(string: String(total.amount)) ?? Decimal.zero
+                conversions.append(
+                    FxConversion(currency: total.currency, rate: 1.0, asOf: nil, source: nil, viaInverse: false)
+                )
+                continue
+            }
+            guard let quote = fxConversionFor(base: base, currency: total.currency) else {
+                unconverted.append(total.currency)
+                conversionComplete = false
+                continue
+            }
+            let rate = Decimal(string: String(quote.rate)) ?? 0
+            convertedTotal += (Decimal(string: String(total.amount)) ?? Decimal.zero) * rate
+            conversions.append(
+                FxConversion(
+                    currency: total.currency, rate: quote.rate, asOf: quote.asOf,
+                    source: quote.source, viaInverse: quote.viaInverse
+                )
+            )
+        }
+
+        // 本地 Trip DTO 未暴露预算字段（服务端 TripRead 亦未解码）⇒ 预算差额留空，折算照常。
+        let budgetAmount: Decimal? = nil
+        let variance = budgetAmount.map { $0 - convertedTotal }
+        return BudgetSummary(
+            budgetAmount: budgetAmount,
+            budgetCurrency: base,
+            plannedCostTotal: nil,
+            plannedCostCurrency: nil,
+            plannedCostUnknownCount: nil,
+            actualByCurrency: totals,
+            actualTotalInBudgetCurrency: conversionComplete ? convertedTotal : nil,
+            varianceVsBudget: conversionComplete ? variance : nil,
+            varianceVsPlan: nil,
+            conversionBaseCurrency: baseCurrency != nil ? base : nil,
+            convertedActualTotal: conversionComplete ? convertedTotal : nil,
+            convertedPlannedCostTotal: nil,
+            convertedVarianceVsBudget: conversionComplete ? variance : nil,
+            conversionComplete: baseCurrency != nil ? conversionComplete : nil,
+            unconvertedCurrencies: conversionComplete ? nil : unconverted,
+            fxConversions: conversions
+        )
+    }
+
+    /// 取 base→currency 最新汇率；支持反向记录（取倒数）。
+    private func fxConversionFor(base: String, currency: String)
+        -> (rate: Double, asOf: Date?, source: String?, viaInverse: Bool)?
+    {
+        let direct = try? database.store.query(
+            "SELECT rate, as_of, source FROM fx_rates WHERE base = ? AND quote = ? ORDER BY as_of DESC LIMIT 1",
+            bindings: [base, currency]
+        ) { row -> (Double, Date?, String?, Bool) in
+            (Double(row.string(0)) ?? 0, row.stringOpt(1).flatMap { ISO8601.date(from: $0) }, row.stringOpt(2), false)
+        }
+        if let hit = direct?.first {
+            return (rate: hit.0, asOf: hit.1, source: hit.2, viaInverse: hit.3)
+        }
+        let inverse = try? database.store.query(
+            "SELECT rate, as_of, source FROM fx_rates WHERE base = ? AND quote = ? ORDER BY as_of DESC LIMIT 1",
+            bindings: [currency, base]
+        ) { row -> (Double, Date?, String?, Bool) in
+            (Double(row.string(0)) ?? 0, row.stringOpt(1).flatMap { ISO8601.date(from: $0) }, row.stringOpt(2), true)
+        }
+        if let hit = inverse?.first, hit.0 > 0 {
+            return (rate: 1.0 / hit.0, asOf: hit.1, source: hit.2, viaInverse: hit.3)
+        }
+        return nil
     }
 
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {
@@ -259,12 +372,58 @@ final class LocalTripRepository: TripRepository {
         return try payloads.map { try decode(ExpenseReport.self, from: $0) }
     }
 
+    /// 报销单 = 费用快照（不可变）；提交后状态机 DRAFT→SUBMITTED。
     func createExpenseReport(tripId: String) async throws -> ExpenseReport {
-        throw LocalStorePendingError(method: "createExpenseReport")
+        let expenses = try await self.expenses(tripId: tripId)
+        let reportId = UUID().uuidString
+        let now = Date()
+        var byCurrency: [String: (Double, Int)] = [:]
+        for expense in expenses {
+            let key = expense.currency.uppercased()
+            let amountDouble = (expense.amount as NSDecimalNumber).doubleValue
+            let current = byCurrency[key] ?? (0.0, 0)
+            byCurrency[key] = (current.0 + amountDouble, current.1 + 1)
+        }
+        let totals = byCurrency.keys.sorted().map {
+            CurrencyTotal(currency: $0, amount: byCurrency[$0]!.0, count: byCurrency[$0]!.1)
+        }
+        var report = ExpenseReport(id: reportId, tripId: tripId)
+        report.status = .draft
+        report.totals = totals
+        report.createdAt = now
+        report.updatedAt = now
+        try database.upsert(
+            table: "expense_reports", id: reportId,
+            columns: [
+                "trip_id": tripId, "status": ExpenseReportStatus.draft.rawValue,
+                "created_at": SQLTimestamp.basics.string(from: now),
+            ],
+            payload: try DateCoding.encode(report)
+        )
+        return report
     }
 
     func submitExpenseReport(id: String) async throws -> ExpenseReport {
-        throw LocalStorePendingError(method: "submitExpenseReport")
+        let payloads = try database.loadPayloads(table: "expense_reports", where: "id = ?", bindings: [id])
+        guard let payload = payloads.first,
+              var report = try? DateCoding.decoder().decode(ExpenseReport.self, from: payload) else {
+            throw APIError.serverError(code: "NOT_FOUND", message: "报销单不存在", traceId: nil, details: [:])
+        }
+        guard report.status == .draft else {
+            throw APIError.serverError(
+                code: "CONFLICT", message: "仅草稿状态可提交（当前 \(report.status.rawValue)）",
+                traceId: nil, details: [:]
+            )
+        }
+        report.status = .submitted
+        report.submittedAt = Date()
+        report.updatedAt = Date()
+        try database.upsert(
+            table: "expense_reports", id: id,
+            columns: ["status": "SUBMITTED", "updated_at": SQLTimestamp.basics.string(from: Date())],
+            payload: try DateCoding.encode(report)
+        )
+        return report
     }
 
     func entryAssessments(tripId: String) async throws -> [EntryAssessment] {

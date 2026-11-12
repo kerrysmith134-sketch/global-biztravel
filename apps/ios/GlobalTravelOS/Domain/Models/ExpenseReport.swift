@@ -80,6 +80,32 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
     var createdAt: Date?
     var updatedAt: Date?
 
+    init(
+        id: String,
+        tripId: String,
+        status: ExpenseReportStatus = .draft,
+        notes: String? = nil,
+        submittedAt: Date? = nil,
+        decidedAt: Date? = nil,
+        decidedByUserId: String? = nil,
+        items: [ExpenseReportItem]? = nil,
+        totals: [CurrencyTotal]? = nil,
+        createdAt: Date? = nil,
+        updatedAt: Date? = nil
+    ) {
+        self.id = id
+        self.tripId = tripId
+        self.status = status
+        self.notes = notes
+        self.submittedAt = submittedAt
+        self.decidedAt = decidedAt
+        self.decidedByUserId = decidedByUserId
+        self.items = items
+        self.totals = totals
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
     var itemList: [ExpenseReportItem] { items ?? [] }
     var totalList: [CurrencyTotal] { totals ?? [] }
 

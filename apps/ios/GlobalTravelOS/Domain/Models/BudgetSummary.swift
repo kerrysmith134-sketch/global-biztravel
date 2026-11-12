@@ -14,6 +14,26 @@ struct TripExpense: Codable, Equatable, Identifiable {
         case id, tripId, category, amount, currency, occurredOn, note, receiptRef
     }
 
+    init(
+        id: String,
+        tripId: String,
+        category: String,
+        amount: Decimal,
+        currency: String,
+        occurredOn: Date? = nil,
+        note: String? = nil,
+        receiptRef: String? = nil
+    ) {
+        self.id = id
+        self.tripId = tripId
+        self.category = category
+        self.amount = amount
+        self.currency = currency
+        self.occurredOn = occurredOn
+        self.note = note
+        self.receiptRef = receiptRef
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -112,6 +132,42 @@ struct BudgetSummary: Codable, Equatable {
     var conversionComplete: Bool?
     var unconvertedCurrencies: [String]?
     var fxConversions: [FxConversion]?
+
+    init(
+        budgetAmount: Decimal? = nil,
+        budgetCurrency: String,
+        plannedCostTotal: Double? = nil,
+        plannedCostCurrency: String? = nil,
+        plannedCostUnknownCount: Int? = nil,
+        actualByCurrency: [CurrencyTotal]? = nil,
+        actualTotalInBudgetCurrency: Decimal? = nil,
+        varianceVsBudget: Decimal? = nil,
+        varianceVsPlan: Double? = nil,
+        conversionBaseCurrency: String? = nil,
+        convertedActualTotal: Decimal? = nil,
+        convertedPlannedCostTotal: Decimal? = nil,
+        convertedVarianceVsBudget: Decimal? = nil,
+        conversionComplete: Bool? = nil,
+        unconvertedCurrencies: [String]? = nil,
+        fxConversions: [FxConversion]? = nil
+    ) {
+        self.budgetAmount = budgetAmount
+        self.budgetCurrency = budgetCurrency
+        self.plannedCostTotal = plannedCostTotal
+        self.plannedCostCurrency = plannedCostCurrency
+        self.plannedCostUnknownCount = plannedCostUnknownCount
+        self.actualByCurrency = actualByCurrency
+        self.actualTotalInBudgetCurrency = actualTotalInBudgetCurrency
+        self.varianceVsBudget = varianceVsBudget
+        self.varianceVsPlan = varianceVsPlan
+        self.conversionBaseCurrency = conversionBaseCurrency
+        self.convertedActualTotal = convertedActualTotal
+        self.convertedPlannedCostTotal = convertedPlannedCostTotal
+        self.convertedVarianceVsBudget = convertedVarianceVsBudget
+        self.conversionComplete = conversionComplete
+        self.unconvertedCurrencies = unconvertedCurrencies
+        self.fxConversions = fxConversions
+    }
 
     private enum CodingKeys: String, CodingKey {
         case budgetAmount, budgetCurrency, plannedCostTotal, plannedCostCurrency
