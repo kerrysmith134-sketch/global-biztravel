@@ -38,7 +38,7 @@ def headers(user: str = ADMIN_USER, org: str = ORG_A) -> dict[str, str]:
 def test_fx_rates_and_budget_conversion(client: TestClient) -> None:
     now = datetime.now(UTC)
     tag = f"fx-test-{uuid.uuid4().hex[:8]}"
-    as_of = datetime(2026, 1, 1, tzinfo=UTC)
+    as_of = datetime.now(UTC)  # 用"现在"录入：保证它是最新生效行，不被共享库里的真实行情盖过
     traveler_id = uuid.uuid4()
     with owner_session() as session:
         session.add(

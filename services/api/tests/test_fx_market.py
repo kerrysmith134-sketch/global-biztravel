@@ -159,14 +159,14 @@ def test_sync_lists_missing_currencies_honestly():
                 session,
                 ORG_A,
                 base_currency="EUR",
-                symbols=["USD", "JPY"],
+                symbols=["USD", "KRW"],
                 provider=provider,
             )
             assert summary["synced"] == 1
-            assert summary["missing"] == ["JPY"]
+            assert summary["missing"] == ["KRW"]
 
             assert fx_service.conversion_for(
-                session, ORG_A, base="EUR", currency="JPY"
+                session, ORG_A, base="EUR", currency="KRW"
             ) is None
     finally:
         cleanup([])
