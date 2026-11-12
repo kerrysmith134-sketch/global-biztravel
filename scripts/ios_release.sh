@@ -69,26 +69,11 @@ IPA=$(find build/export -name "*.ipa" | head -1)
 echo "IPA: $IPA"
 
 if [[ "$MODE" != "--upload" ]]; then
-  echo "完成。上传：xcrun altool 或 Organizer"
+  echo "完成。上传：重跑 --upload（exportArchive destination=upload）"
   exit 0
 fi
 
-echo "== 上传 =="
-API_KEY_FILE=$(find "$HOME/private_keys" "$HOME/.appstoreconnect/private_keys" \
-  -name "AuthKey_*.p8" 2>/dev/null | head -1)
-if [[ -n "${API_KEY_FILE:-}" ]]; then
-  KEY_ID=$(basename "$API_KEY_FILE" | sed -E 's/AuthKey_(.*)\.p8/\1/')
-  ISSUER="${ASC_API_ISSUER:?需要 ASC_API_ISSUER 环境变量（App Store Connect → Integrations → Keys → Issuer ID）}"
-  echo "用 API key $KEY_ID 上传…"
-  xcrun altool --upload-app -f "$IPA" --type ios --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
-else
-  cat <<'HINT'
-未找到 ASC API key（~/private_keys/AuthKey_*.p8）。两条路：
-1)（推荐，一次性）App Store Connect → 用户与访问 → 集成 → App Store Connect API
-   → 新建密钥（App Manager 角色），下载 .p8 放到 ~/private_keys/，拿到 Issuer ID，然后：
-   ASC_API_ISSUER=<issuer-id> bash scripts/ios_release.sh --upload
-2) Organizer：Xcode → Window → Organizer → Archives → 选本包 → Distribute App
-HINT
-  exit 1
-fi
+echo "== 上传（tu-zhang 同款：ExportOptions destination=upload，Xcode 会话认证，免 API key）=="
+xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist ExportOptions.plist \
+  -allowProvisioningUpdates -quiet
 echo "上传完成：ASC 处理 10–30 分钟后 TestFlight 可见。"
