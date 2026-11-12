@@ -15,6 +15,13 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("工具") {
+                    NavigationLink {
+                        SyncCenterView(environment: environment)
+                    } label: {
+                        Label("同步中心", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
                 Section("服务端") {
                     TextField("Base URL", text: $baseURLString)
                         .textInputAutocapitalization(.never)

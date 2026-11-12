@@ -7,6 +7,8 @@ final class TodayViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
     @Published private(set) var busyIds: Set<String> = []
+    @Published private(set) var ongoingTrip: Trip?
+    @Published private(set) var upcomingTrips: [Trip] = []
 
     private let environment: AppEnvironment
 
@@ -28,8 +30,23 @@ final class TodayViewModel: ObservableObject {
             items = feed.items
             dailyCap = feed.dailyCap
             environment.refreshOfflineSummary()
+            await loadTrips()
         } catch {
             errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    /// 进行中/即将出发的行程，供"今日"仪表盘顶部卡片使用。
+    private func loadTrips() async {
+        do {
+            let page = try await environment.tripRepository.listTrips(page: PageRequest(limit: 50))
+            let trips = page.items
+            ongoingTrip = trips.first { $0.status == "ACTIVE" }
+            upcomingTrips = trips
+                .filter { $0.status == "DRAFT" || $0.status == "READY" || $0.status == "PLANNING" }
+                .sorted { ($0.window?.start ?? .distantFuture) < ($1.window?.start ?? .distantFuture) }
+        } catch {
+            // 行程卡加载失败不打断建议流：首页主体仍是决策列表。
         }
     }
 
@@ -80,35 +97,19 @@ struct TodayView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
+                    greetingHeader
                     offlineBanner
-                    if let cap = viewModel.dailyCap {
-                        Text(cap.displayText)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    if let trip = viewModel.ongoingTrip {
+                        OngoingTripCard(trip: trip)
                     }
                     if let error = viewModel.errorMessage {
                         ErrorBanner(message: error)
                     }
-                    if viewModel.items.isEmpty && !viewModel.isLoading {
-                        ContentUnavailableView(
-                            "今天没有需要处理的建议",
-                            systemImage: "checkmark.seal",
-                            description: Text("系统会持续盯签证时效、缺坐标与未排项；有变化才会打扰你。")
-                        )
-                        .padding(.top, 40)
-                    }
-                    ForEach(viewModel.items) { suggestion in
-                        SuggestionCard(
-                            suggestion: suggestion,
-                            isBusy: viewModel.busyIds.contains(suggestion.id),
-                            approve: { await viewModel.approve(suggestion) },
-                            dismiss: { await viewModel.dismiss(suggestion) }
-                        )
-                    }
+                    decisionSection
                 }
                 .padding()
             }
-            .navigationTitle("主动建议")
+            .navigationTitle("今日")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -126,36 +127,61 @@ struct TodayView: View {
                     }
                     .accessibilityLabel("通知")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showsActionCenter = true
-                    } label: {
-                        Image(systemName: "tray.full")
-                    }
-                    .accessibilityLabel("行动中心")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showsSettings = true
-                    } label: {
-                        Image(systemName: "person.crop.circle")
-                    }
-                }
             }
             .refreshable { await viewModel.load() }
             .task { await viewModel.load() }
-            .sheet(isPresented: $showsSettings) {
-                SettingsView()
-            }
-            .sheet(isPresented: $showsActionCenter) {
-                ActionCenterView(environment: environment)
-            }
             .sheet(isPresented: $showsNotifications) {
                 NotificationsView(environment: environment)
             }
             .sheet(isPresented: $showsAssistant) {
                 AssistantView(environment: environment)
             }
+        }
+    }
+
+    private var greetingHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(greeting)
+                .font(.title3.weight(.semibold))
+            if let cap = viewModel.dailyCap {
+                Text(cap.displayText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var decisionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if viewModel.items.isEmpty && !viewModel.isLoading {
+                ContentUnavailableView(
+                    "今天没有需要处理的建议",
+                    systemImage: "checkmark.seal",
+                    description: Text("系统会持续盯签证时效、缺坐标与未排项；有变化才会打扰你。")
+                )
+                .padding(.top, 40)
+            } else if !viewModel.items.isEmpty {
+                Text("需要你决策")
+                    .font(.headline)
+                ForEach(viewModel.items) { suggestion in
+                    SuggestionCard(
+                        suggestion: suggestion,
+                        isBusy: viewModel.busyIds.contains(suggestion.id),
+                        approve: { await viewModel.approve(suggestion) },
+                        dismiss: { await viewModel.dismiss(suggestion) }
+                    )
+                }
+            }
+        }
+    }
+
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<11: return "早上好"
+        case 11..<13: return "中午好"
+        case 13..<18: return "下午好"
+        default: return "晚上好"
         }
     }
 
@@ -167,6 +193,52 @@ struct TodayView: View {
             Spacer()
         }
         .foregroundStyle(.secondary)
+    }
+}
+
+private struct OngoingTripCard: View {
+    @EnvironmentObject private var environment: AppEnvironment
+    let trip: Trip
+
+    var body: some View {
+        NavigationLink {
+            TripDetailView(tripId: trip.id, environment: environment)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label(
+                        trip.status == "ACTIVE" ? "进行中" : "即将出发",
+                        systemImage: trip.status == "ACTIVE" ? "airplane.departure" : "clock.badge.exclamationmark"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(trip.status == "ACTIVE" ? .green : .orange)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                Text(trip.name)
+                    .font(.headline)
+                if let window = trip.window {
+                    Text(windowDisplay(window))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func windowDisplay(_ window: TripWindow) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M月d日 HH:mm"
+        let start = formatter.string(from: window.start)
+        formatter.dateFormat = "M月d日"
+        let end = formatter.string(from: window.end)
+        return "\(start) – \(end)"
     }
 }
 
