@@ -27,7 +27,7 @@ _AMOUNT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _DATE_PATTERNS = (
-    re.compile(r"(\d{4}[-/年.]\s*\d{1,2}[-/月.]\s*\d{1,2})"),
+    re.compile(r"(\d{4}[-/年.]\s*\d{1,2}[-/月.]\s*\d{1,2}\s*日?)"),
     re.compile(r"(\d{4}-\d{2}-\d{2})"),
 )
 

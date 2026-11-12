@@ -31,7 +31,7 @@ from uuid import UUID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -49,6 +49,18 @@ logger = logging.getLogger("app.notifications")
 
 class PushUnavailable(RuntimeError):
     """provider 未配置或发送失败。"""
+
+
+class ApnsUnregistered(PushUnavailable):
+    """APNs 410 Unregistered：Apple 明确告知 token 已失效，不应再向它发送。
+
+    dispatch 捕获后自动禁用对应 ``DeviceToken``——否则这条死 token 会让该用户的
+    每一条通知都烧掉重试次数直到 FAILED。
+    """
+
+    def __init__(self, message: str, *, token: str) -> None:
+        super().__init__(message)
+        self.token = token
 
 
 class PushProvider(Protocol):
@@ -134,6 +146,7 @@ class APNsPushProvider:
         self.team_id = settings.apns_team_id
         self.topic = settings.apns_topic
         self.sandbox = settings.apns_use_sandbox
+        self._api_base = (settings.apns_api_base or "").rstrip("/") or None
         raw = settings.apns_private_key
         if not (self.key_id and self.team_id and self.topic and raw):
             raise PushUnavailable("APNs 未配置 key_id/team_id/topic/private_key")
@@ -164,28 +177,38 @@ class APNsPushProvider:
         if not notification.recipient:
             raise PushUnavailable("通知缺少 APNs 设备 token")
         host = "api.sandbox.push.apple.com" if self.sandbox else "api.push.apple.com"
+        url = f"{self._api_base or f'https://{host}'}/3/device/{notification.recipient}"
+        aps_payload: dict = {
+            "aps": {
+                "alert": {"title": notification.title, "body": notification.body or ""},
+                "sound": "default",
+            }
+        }
+        if notification.suggestion_id:
+            # deep-link 预留：客户端按 suggestion_id 打开对应建议（未知键对旧客户端无害）。
+            aps_payload["suggestion_id"] = str(notification.suggestion_id)
         try:
             import httpx
 
             response = httpx.post(
-                f"https://{host}/3/device/{notification.recipient}",
+                url,
                 headers={
                     "authorization": f"bearer {self._token()}",
                     "apns-topic": self.topic,
                     "apns-push-type": "alert",
                     "apns-priority": "10",
                 },
-                json={
-                    "aps": {
-                        "alert": {"title": notification.title, "body": notification.body or ""},
-                        "sound": "default",
-                    }
-                },
+                json=aps_payload,
                 http2=True,
                 timeout=15,
             )
         except Exception as exc:  # noqa: BLE001
             raise PushUnavailable(f"APNs 请求失败：{type(exc).__name__}: {exc}") from exc
+        if response.status_code == 410:
+            raise ApnsUnregistered(
+                f"APNs 拒绝（token 失效）：410 {response.text[:200]}",
+                token=notification.recipient,
+            )
         if response.status_code >= 400:
             raise PushUnavailable(f"APNs 拒绝：{response.status_code} {response.text[:200]}")
 
@@ -321,6 +344,23 @@ def dispatch_pending(
         try:
             provider = build_push_provider(row.provider)
             provider.send(row)
+        except ApnsUnregistered as exc:
+            # Apple 明确告知 token 失效：禁用设备（通知仍按失败计数走终态）。
+            disabled = session.execute(
+                update(DeviceToken)
+                .where(
+                    DeviceToken.organization_id == str(organization_id),
+                    DeviceToken.token == exc.token,
+                    DeviceToken.enabled.is_(True),
+                )
+                .values(enabled=False)
+            )
+            if disabled.rowcount:
+                logger.warning("APNs token 失效已禁用 device user=%s", row.user_id)
+            # 410 是永久性失败（token 不会自愈），直接终态，不烧重试次数。
+            row.last_error = str(exc)
+            row.status = "FAILED"
+            report.failed += 1
         except PushUnavailable as exc:
             row.last_error = str(exc)
             if row.attempts >= settings.push_max_attempts:

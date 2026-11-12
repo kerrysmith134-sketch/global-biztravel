@@ -62,6 +62,21 @@ make stack-up
 客户端先调用 `POST /v1/devices` 注册设备 token；通知入队时会快照最近活跃的 token/邮箱。
 未配置或缺少 token 时通知进入重试/失败并保留 `last_error`，不会伪造送达。
 
+## APNs 推送（收口说明）
+
+代码链路完整（ES256 JWT + HTTP/2，token-based .p8），上线只剩三步操作：
+
+1. App Store Connect → Users and Access → Integrations → Keys：生成 APNs key（.p8），
+   记下 Key ID；
+2. `GBT_PUSH_PROVIDER=apns GBT_APNS_KEY_ID=... GBT_APNS_TEAM_ID=XC9LAN9MW9
+   GBT_APNS_TOPIC=com.anari.globaltravelos GBT_APNS_PRIVATE_KEY=/run/secrets/AuthKey.p8`；
+3. 客户端 `POST /v1/devices` 注册 token 后即真实推送。
+
+本地无 Apple 凭证时两条路：保持 `inapp`（通知中心即通道），或
+`GBT_APNS_API_BASE` 指向本地 APNs mock 端到端联调（JWT/请求结构不变，只换目标地址）。
+**410 Unregistered 语义**：Apple 回 410 时 dispatch 自动禁用该设备 token 并把通知
+直接转 FAILED（失效不会自愈，不烧重试次数）。
+
 ## SMTP 邮件通道（MailPit，开源）
 
 栈里自带 **MailPit**（开源 SMTP 收件池，ADR-0034）：`make stack-up` 后即运行，

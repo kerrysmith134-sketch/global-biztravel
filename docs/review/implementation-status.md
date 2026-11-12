@@ -182,10 +182,12 @@
    航班 = OpenSky（免钥匿名，FLIGHT_STATUS 信号）、地面交通 = OSRM（`GBT_TRAVEL_PROVIDER=osrm`，
    GROUND 段真实驾车时间，RAIL/AIR/SEA 保持大圆估算诚实标注）、汇率 = Frankfurter（ADR-0033）。
    拉取入口 ADMIN 显式触发；源未配置 503 显式失败。生产规模化前自托管对应开源组件。
-2. ~~**APNs/SMTP 生产凭证**~~：**SMTP 已本地闭环（ADR-0034）**——compose 自带开源 MailPit
-   （网页看信件 :8025），邮件通道端到端可联调，生产接免费档 SMTP 只改配置。
-   **APNs 是唯一保留项**：Apple 专有无开源替代，需要 `.p8`/Team ID/Topic；
-   未配置时 inapp 通知中心即兜底通道。
+2. ~~**APNs/SMTP 生产凭证**~~：**已收口（2026-11-12，ADR-0034 补篇 + 28 轮 TDD）**——
+   APNs 代码链路完整（ES256 JWT + HTTP/2 + JWT 50 分钟缓存 + payload 带 suggestion_id）；
+   `GBT_APNS_API_BASE` 可指向本地 mock 无凭证联调；**410 Unregistered 自动禁用失效
+   设备 token 且通知直接终态**（失效不自愈，不烧重试次数）。SMTP = MailPit 本地闭环。
+   剩余为**纯操作步骤**（非代码缺口）：用户在 App Store Connect 生成 .p8（随付费会员
+   免费）并配置环境变量；未配置时 inapp 通知中心即兜底通道。
 3. ~~**KMS 密钥托管**~~：**免费替代已落地（ADR-0034）**——`GBT_FIELD_ENCRYPTION_KEY_FILE`
    支持密钥文件（Docker secret/挂载文件，优先于环境变量）；自托管 Vault/Infisical 走同一路径。
 4. ~~**真实 embedding 凭证**~~：**开源本地模型路径（ADR-0034）**——Ollama（开源）本地跑

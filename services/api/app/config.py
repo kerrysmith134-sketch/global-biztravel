@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     apns_private_key: str | None = None       # PEM 内容或 .p8 文件路径
     apns_topic: str | None = None             # bundle id
     apns_use_sandbox: bool = True
+    # API 地址覆盖（ADR-0034 补篇）：空 = Apple 真实端点（sandbox/prod 由 apns_use_sandbox 定）；
+    # 指向本地 APNs mock 即可在没有 Apple 凭证的机器上端到端联调。
+    apns_api_base: str | None = None
 
     # LLM 网关（第 7 章）
     llm_provider: str = "stub"                # stub | openai_compatible

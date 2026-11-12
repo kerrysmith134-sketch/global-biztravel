@@ -41,7 +41,12 @@ class EncryptedText(TypeDecorator):
         key_file = settings.field_encryption_key_file
         if key_file and not self._explicit_key:
             # ADR-0034：KMS 免费替代——Docker secret / 挂载文件优先于环境变量。
-            key = Path(key_file).read_text(encoding="utf-8").strip()
+            try:
+                key = Path(key_file).read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise RuntimeError(
+                    f"GBT_FIELD_ENCRYPTION_KEY_FILE 指向的密钥文件不可读：{key_file}（{exc}）"
+                ) from exc
         if not key:
             return None
         try:
