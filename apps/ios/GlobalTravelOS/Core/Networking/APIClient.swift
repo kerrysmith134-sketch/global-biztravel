@@ -14,6 +14,7 @@ struct APIConfiguration: Equatable {
     var orgId: String
     var userId: String
     var deviceId: String
+    var apiToken: String? = APIConfiguration.defaultApiToken
 
     /// TestFlight 测试包默认经 cloudflared 免费隧道连开发机后端（企业网 AP 隔离 /
     /// 蜂窝网络均可连）。隧道进程在 Mac 上跑：
@@ -21,6 +22,9 @@ struct APIConfiguration: Equatable {
     /// ⚠️ 隧道重启后 URL 会变——重发包或在 App 设置页手填新地址。
     /// 生产包必须改回 https 域名。
     static let defaultBaseURLString = "https://proceeds-suspended-geographic-diesel.trycloudflare.com"
+    /// 部署级 token（ADR-0035）：与云上 GBT_API_TOKEN 一致；本地开发服务端未设 token 时
+    /// 服务端忽略此头。生产换强随机值并两端同步。
+    static let defaultApiToken = "gbt-os-demo-2026"
     static let defaultOrgId = "11111111-1111-1111-1111-111111111111"
     static let defaultUserId = "22222222-2222-2222-2222-222222222222"
 
@@ -33,7 +37,10 @@ struct APIConfiguration: Equatable {
         let url = URL(string: baseURLString)
             ?? URL(string: defaultBaseURLString)
             ?? URL(fileURLWithPath: "/")
-        return APIConfiguration(baseURL: url, orgId: orgId, userId: userId, deviceId: deviceId)
+        return APIConfiguration(
+            baseURL: url, orgId: orgId, userId: userId, deviceId: deviceId,
+            apiToken: defaultApiToken
+        )
     }
 }
 
@@ -115,6 +122,9 @@ final class APIClient {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue(configuration.orgId, forHTTPHeaderField: "X-Org-Id")
         urlRequest.setValue(configuration.userId, forHTTPHeaderField: "X-User-Id")
+        if let apiToken = configuration.apiToken {
+            urlRequest.setValue(apiToken, forHTTPHeaderField: "X-API-Key")
+        }
 
         if let body = request.body {
             urlRequest.httpBody = body

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     travel_provider: str = "offline"
     # FX 行情源（ADR-0033）：unavailable（默认，显式失败）| frankfurter（ECB 免钥公开源）
     fx_provider: str = "unavailable"
+    # 公网部署的部署级 token（ADR-0035）：未设置 = 不校验（本地开发）；设置后
+    # 除健康检查/docs 外所有请求必须带 X-API-Key。与业务身份（X-Org-Id/X-User-Id）正交。
+    api_token: str | None = None
     # 免钥公开源（ADR-0034）：天气 open-meteo / 航班 opensky；默认关闭（显式失败）
     weather_provider: str = "unavailable"
     flight_provider: str = "unavailable"

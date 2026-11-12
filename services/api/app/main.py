@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable, MutableMapping
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from starlette.datastructures import MutableHeaders
 
 from app import __version__
@@ -23,6 +24,7 @@ from app.api.errors import register_error_handlers
 from app.api.routes import api_router
 from app.api.trace import TRACE_HEADER, set_trace_id
 from app.api.transaction import CommitBeforeResponseMiddleware
+from app.config import get_settings
 from app.observability.logging import RequestLogMiddleware, configure_http_logging
 
 API_PREFIX = "/v1"
@@ -30,6 +32,41 @@ API_PREFIX = "/v1"
 Message = MutableMapping[str, Any]
 Receive = Callable[[], Awaitable[Message]]
 Send = Callable[[Message], Awaitable[None]]
+
+
+#: 部署 token 免检路径：健康检查与 API 文档。
+_TOKEN_EXEMPT_PATHS = ("/v1/health", "/healthz", "/docs", "/openapi.json", "/redoc")
+
+
+class ApiTokenMiddleware:
+    """公网部署的部署级门禁（ADR-0035）。
+
+    ``GBT_API_TOKEN`` 未设置 ⇒ 原样放行（本地开发零改动）；设置后除免检路径外，
+    所有请求必须携带 ``X-API-Key: <token>``。它校验的是"部署归属"，与业务层的
+    组织/用户身份（X-Org-Id/X-User-Id + RLS）正交——后者照常生效。
+    """
+
+    def __init__(self, app: Any, token: str) -> None:
+        self.app = app
+        self.token = token
+
+    async def __call__(self, scope: Message, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        if any(path == exempt or path.startswith(exempt + "/") for exempt in _TOKEN_EXEMPT_PATHS):
+            await self.app(scope, receive, send)
+            return
+        provided = MutableHeaders(scope=scope).get("X-API-Key")
+        if provided != self.token:
+            response = JSONResponse(
+                status_code=401,
+                content={"error": {"code": "UNAUTHORIZED", "message": "缺少或错误的 X-API-Key", "details": None, "trace_id": None}},
+            )
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 class TraceMiddleware:
@@ -79,6 +116,9 @@ def create_app() -> FastAPI:
     application.add_middleware(TraceMiddleware)
     # 最后加 → 最外层：先由 trace 写入 scope.state，再由本中间件在响应开始前提交事务。
     application.add_middleware(CommitBeforeResponseMiddleware)
+    if get_settings().api_token:
+        # 最后 add = 最外层：鉴权先于日志/trace 发生。
+        application.add_middleware(ApiTokenMiddleware, token=get_settings().api_token)
     register_error_handlers(application)
     application.include_router(api_router, prefix=API_PREFIX)
     # PRD MVP 基线使用 /api/v1，设计 v2.0 统一为 /v1。为兼容既有客户端与文档，额外挂一个
