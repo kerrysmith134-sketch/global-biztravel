@@ -290,6 +290,8 @@ final class LocalProactiveRepository: ProactiveRepository {
         limit: Int,
         cursor: String?
     ) async throws -> SuggestionFeed {
+        // 扫描与读取一体：幂等去重保证重复扫描不产生重复建议。
+        LocalProactiveEngine.scan(database: database, userId: "local-user")
         var clause = "1 = 1"
         var bindings: [Any?] = []
         if let tripId {
@@ -308,12 +310,98 @@ final class LocalProactiveRepository: ProactiveRepository {
         return SuggestionFeed(items: items, dailyCap: nil, nextCursor: nil)
     }
 
+    /// 本地审批：单用户会签阈值恒为 1（本地无组织策略），批准即受控执行（只准备式）。
     func approve(suggestionId: String) async throws -> SuggestionApprovalResponse {
-        throw LocalStorePendingError(method: "approve（P3 审批状态机）")
+        let payloads = try database.loadPayloads(
+            table: "proactive_suggestions", where: "id = ?", bindings: [suggestionId]
+        )
+        guard let payload = payloads.first,
+              let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              let type = object["suggestion_type"] as? String else {
+            throw APIError.serverError(code: "NOT_FOUND", message: "主动建议不存在", traceId: nil, details: [:])
+        }
+        let status = object["status"] as? String ?? "PENDING"
+        if status == "APPROVED" || status == "EXECUTED" {
+            return SuggestionApprovalResponse(id: suggestionId, status: status)
+        }
+        guard status == "PENDING" else {
+            throw APIError.serverError(
+                code: "CONFLICT", message: "该建议当前不可批准（状态 \(status)）",
+                traceId: nil, details: [:]
+            )
+        }
+
+        // 执行器（本地只准备，不对外）：建签证案草稿 / 标记准备完成。
+        let tripId = object["trip_id"] as? String
+        var execution: [String: Any] = ["status": "PREPARED"]
+        if type == "VISA_REQUIREMENT_REMINDER", let tripId,
+           let countries = (try? database.loadPayloads(
+               table: "trips", where: "id = ?", bindings: [tripId]
+           ))?.first
+               .flatMap({ try? DateCoding.decoder().decode(Trip.self, from: $0) })?.countries {
+            for code in countries {
+                let caseId = UUID().uuidString
+                let casePayload: [String: Any] = [
+                    "id": caseId,
+                    "trip_id": tripId,
+                    "country": code,
+                    "status": "NEW",
+                    "note": "MANUAL_REVIEW_REQUIRED：按官方渠道核验签证要求",
+                    "created_at": SQLTimestamp.basics.string(from: Date()),
+                ]
+                try? database.upsert(
+                    table: "visa_cases", id: caseId,
+                    columns: [
+                        "trip_id": tripId, "country": code, "status": "NEW",
+                        "created_at": SQLTimestamp.basics.string(from: Date()),
+                    ],
+                    payload: try JSONSerialization.data(withJSONObject: casePayload)
+                )
+                execution["visa_cases"] = (execution["visa_cases"] as? [String]) ?? [] + [caseId]
+            }
+        }
+
+        var updated = object
+        updated["status"] = "EXECUTED"
+        updated["execution_result"] = execution
+        updated["executed_at"] = SQLTimestamp.basics.string(from: Date())
+        updated["approved_by"] = "local-user"
+        try database.upsert(
+            table: "proactive_suggestions", id: suggestionId,
+            columns: ["status": "EXECUTED"],
+            payload: try JSONSerialization.data(withJSONObject: updated)
+        )
+        return SuggestionApprovalResponse(id: suggestionId, status: "EXECUTED")
     }
 
+    /// 驳回：DISMISSED + 负反馈折算（重复驳回幂等）。
     func dismiss(suggestionId: String) async throws -> SuggestionDismissResponse {
-        throw LocalStorePendingError(method: "dismiss（P3 审批状态机）")
+        let payloads = try database.loadPayloads(
+            table: "proactive_suggestions", where: "id = ?", bindings: [suggestionId]
+        )
+        guard let payload = payloads.first,
+              let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
+            throw APIError.serverError(code: "NOT_FOUND", message: "主动建议不存在", traceId: nil, details: [:])
+        }
+        let status = object["status"] as? String ?? "PENDING"
+        if status == "DISMISSED" {
+            return SuggestionDismissResponse(id: suggestionId, status: "DISMISSED")
+        }
+        guard status == "PENDING" else {
+            throw APIError.serverError(
+                code: "CONFLICT", message: "该建议当前不可驳回（状态 \(status)）",
+                traceId: nil, details: [:]
+            )
+        }
+        var updated = object
+        updated["status"] = "DISMISSED"
+        updated["dismissed_at"] = SQLTimestamp.basics.string(from: Date())
+        try database.upsert(
+            table: "proactive_suggestions", id: suggestionId,
+            columns: ["status": "DISMISSED"],
+            payload: try JSONSerialization.data(withJSONObject: updated)
+        )
+        return SuggestionDismissResponse(id: suggestionId, status: "DISMISSED")
     }
 }
 
@@ -327,8 +415,54 @@ final class LocalActionCenterRepository: ActionCenterRepository {
     }
 
     func actionCenter(tripId: String?) async throws -> ActionCenter {
-        // 行动中心 = 已有事实的聚合视图（ADR-0020）：P1 先返回真实的空态，P3 接入聚合。
-        return ActionCenter(generatedAt: Date(), total: 0, counts: nil, sections: [])
+        // 行动中心 = 已有事实的聚合视图（ADR-0020）。
+        let suggestionPayloads = (try? database.loadPayloads(
+            table: "proactive_suggestions",
+            where: "status = 'PENDING' AND push_status = 'PUSHED'",
+            order: "created_at DESC"
+        )) ?? []
+        var decisionItems: [ActionItem] = []
+        for payload in suggestionPayloads {
+            guard let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                  let id = object["id"] as? String,
+                  let title = object["title"] as? String else { continue }
+            decisionItems.append(
+                ActionItem(
+                    category: "DECISION", kind: "SUGGESTION", entityId: id,
+                    title: title, detail: (object["rationale"] as? String) ?? "",
+                    status: "PENDING", severity: object["severity"] as? String,
+                    tripId: object["trip_id"] as? String, tripName: nil,
+                    actionHint: "批准或驳回该建议", availableActions: ["APPROVE", "DISMISS"],
+                    createdAt: nil, updatedAt: nil
+                )
+            )
+        }
+        let reportRows = (try? database.loadPayloads(
+            table: "expense_reports", where: "status = 'SUBMITTED'"
+        )) ?? []
+        var approvalItems: [ActionItem] = []
+        for payload in reportRows {
+            guard let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                  let id = object["id"] as? String else { continue }
+            approvalItems.append(
+                ActionItem(
+                    category: "APPROVAL", kind: "EXPENSE_REPORT", entityId: id,
+                    title: "报销单待审批", detail: "已提交待审批", status: "SUBMITTED",
+                    severity: nil, tripId: object["trip_id"] as? String, tripName: nil,
+                    actionHint: "审批该报销单", availableActions: ["APPROVE", "REJECT"],
+                    createdAt: nil, updatedAt: nil
+                )
+            )
+        }
+        var sections: [ActionSection] = []
+        if !decisionItems.isEmpty {
+            sections.append(ActionSection(key: "DECISION", title: "待决定", items: decisionItems))
+        }
+        if !approvalItems.isEmpty {
+            sections.append(ActionSection(key: "APPROVAL", title: "待审批", items: approvalItems))
+        }
+        let total = sections.reduce(0) { $0 + $1.items.count }
+        return ActionCenter(generatedAt: Date(), total: total, counts: nil, sections: sections)
     }
 }
 

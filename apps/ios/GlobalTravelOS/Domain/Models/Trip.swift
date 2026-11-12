@@ -150,6 +150,7 @@ struct Trip: Codable, Equatable, Identifiable {
     var activePlan: PlanVersionDetail?
     var stats: TripStats?
     var currency: String?
+    var countries: [String]?
 
     init(
         id: String,
@@ -166,7 +167,8 @@ struct Trip: Codable, Equatable, Identifiable {
         updatedAt: Date? = nil,
         activePlan: PlanVersionDetail? = nil,
         stats: TripStats? = nil,
-        currency: String? = nil
+        currency: String? = nil,
+        countries: [String]? = nil
     ) {
         self.id = id
         self.organizationId = organizationId
@@ -183,6 +185,7 @@ struct Trip: Codable, Equatable, Identifiable {
         self.activePlan = activePlan
         self.stats = stats
         self.currency = currency
+        self.countries = countries
     }
 
     /// The backend returns `window_start` / `window_end`, not a nested `window`, and only an
@@ -206,6 +209,7 @@ struct Trip: Codable, Equatable, Identifiable {
         case stats
         case visitCount
         case currency
+        case countries
     }
 
     init(from decoder: Decoder) throws {

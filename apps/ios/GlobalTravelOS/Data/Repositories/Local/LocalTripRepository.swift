@@ -174,7 +174,8 @@ final class LocalTripRepository: TripRepository {
             updatedAt: now,
             activePlan: nil,
             stats: nil,
-            currency: nil
+            currency: nil,
+            countries: [origin.countryCode.uppercased()]
         )
 
         try database.transaction {
