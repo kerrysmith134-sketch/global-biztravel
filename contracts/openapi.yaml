@@ -778,6 +778,86 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/admin/visa-catalog:
+    get:
+      tags:
+      - admin
+      summary: 签证目录（离线基线 + 组织覆盖合并）
+      operationId: get_visa_catalog_v1_admin_visa_catalog_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /v1/admin/visa-catalog/{country_code}:
+    put:
+      tags:
+      - admin
+      summary: 覆盖一个国家的签证要求条目（人工确认语义强制保留）
+      operationId: put_visa_override_v1_admin_visa_catalog__country_code__put
+      parameters:
+      - name: country_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Country Code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisaOverrideUpsert'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - admin
+      summary: 删除一个国家的组织级覆盖（回落到离线基线）
+      operationId: delete_visa_override_v1_admin_visa_catalog__country_code__delete
+      parameters:
+      - name: country_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Country Code
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/admin/visa-catalog.html:
+    get:
+      tags:
+      - admin
+      summary: 签证目录维护页（网页形式，ADMIN）
+      operationId: visa_catalog_page_v1_admin_visa_catalog_html_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
   /v1/trips/{trip_id}/imports:parse:
     post:
       tags:
@@ -991,6 +1071,56 @@ paths:
                 items:
                   $ref: '#/components/schemas/ExternalSignalRead'
                 title: Response List Signals V1 Integrations Signals Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/integrations/signals:pull-weather:
+    post:
+      tags:
+      - integrations
+      summary: 从 Open-Meteo 拉取出行目的地天气；恶劣天气落 WEATHER_DISRUPTION 信号（ADR-0034）
+      operationId: pull_weather_signals_v1_integrations_signals_pull_weather_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeatherPullRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherPullRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/integrations/signals:pull-flight:
+    post:
+      tags:
+      - integrations
+      summary: 从 OpenSky 按 callsign 拉取航迹并落 FLIGHT_STATUS 信号（ADR-0034）
+      operationId: pull_flight_signals_v1_integrations_signals_pull_flight_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightPullRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightPullRead'
         '422':
           description: Validation Error
           content:
@@ -1837,6 +1967,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExpenseRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/expenses:ocr:
+    post:
+      tags:
+      - expenses
+      summary: 票据 OCR 提取候选字段（开源 Tesseract；未安装显式 503，ADR-0034）
+      description: 只产候选字段（金额/日期/商户提示），不自动创建费用——人确认后经常规录入入库。
+      operationId: ocr_receipt_v1_expenses_ocr_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_ocr_receipt_v1_expenses_ocr_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/trips/{trip_id}/expenses:export:
+    get:
+      tags:
+      - expenses
+      summary: 费用 CSV 导出（财务系统对接；网页形式兜底，ADR-0034）
+      operationId: export_expenses_csv_v1_trips__trip_id__expenses_export_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/plain:
+              schema:
+                type: string
         '422':
           description: Validation Error
           content:
@@ -3907,6 +4089,16 @@ components:
       - kind
       - action
       title: AuditEventRead
+    Body_ocr_receipt_v1_expenses_ocr_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_ocr_receipt_v1_expenses_ocr_post
     Body_parse_import_v1_trips__trip_id__imports_parse_post:
       properties:
         file:
@@ -5146,6 +5338,95 @@ components:
       - dedupe_key
       - created_at
       title: ExternalSignalRead
+    FlightPullItemRead:
+      properties:
+        icao24:
+          type: string
+          title: Icao24
+        callsign:
+          type: string
+          title: Callsign
+        origin_country:
+          type: string
+          title: Origin Country
+        latitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Latitude
+        longitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Longitude
+        altitude_m:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Altitude M
+        velocity_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Velocity Ms
+        on_ground:
+          type: boolean
+          title: On Ground
+          default: false
+        last_contact:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Contact
+      type: object
+      required:
+      - icao24
+      - callsign
+      - origin_country
+      title: FlightPullItemRead
+    FlightPullRead:
+      properties:
+        trip_id:
+          type: string
+          title: Trip Id
+        callsign:
+          type: string
+          title: Callsign
+        aircraft:
+          type: integer
+          title: Aircraft
+        signals_ingested:
+          type: integer
+          title: Signals Ingested
+        items:
+          items:
+            $ref: '#/components/schemas/FlightPullItemRead'
+          type: array
+          title: Items
+      type: object
+      required:
+      - trip_id
+      - callsign
+      - aircraft
+      - signals_ingested
+      title: FlightPullRead
+    FlightPullRequest:
+      properties:
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        callsign:
+          type: string
+          maxLength: 20
+          minLength: 1
+          title: Callsign
+      type: object
+      required:
+      - trip_id
+      - callsign
+      title: FlightPullRequest
+      description: 按 callsign 拉取航迹（OpenSky，免钥公开源，ADR-0034）；信号挂到出行。
     FollowUpTaskRead:
       properties:
         title:
@@ -8677,6 +8958,38 @@ components:
       - key
       - label
       title: VisaChecklistItem
+    VisaOverrideEntry:
+      properties:
+        label:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Label
+        business_entry:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Business Entry
+        review_hint:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Review Hint
+      additionalProperties: true
+      type: object
+      required:
+      - label
+      - business_entry
+      title: VisaOverrideEntry
+    VisaOverrideUpsert:
+      properties:
+        entry:
+          $ref: '#/components/schemas/VisaOverrideEntry'
+      type: object
+      required:
+      - entry
+      title: VisaOverrideUpsert
     VisitBriefingRead:
       properties:
         visit:
@@ -9060,3 +9373,82 @@ components:
           title: Status
       type: object
       title: VisitUpdate
+    WeatherPullItemRead:
+      properties:
+        place_id:
+          type: string
+          title: Place Id
+        place_name:
+          type: string
+          title: Place Name
+        temperature_c:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Temperature C
+        wind_kmh:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Wind Kmh
+        precipitation_mm:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Precipitation Mm
+        weather_code:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Weather Code
+        severe:
+          type: boolean
+          title: Severe
+          default: false
+        signal:
+          type: boolean
+          title: Signal
+          default: false
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - place_id
+      - place_name
+      title: WeatherPullItemRead
+    WeatherPullRead:
+      properties:
+        trip_id:
+          type: string
+          title: Trip Id
+        checked:
+          type: integer
+          title: Checked
+        signals_ingested:
+          type: integer
+          title: Signals Ingested
+        items:
+          items:
+            $ref: '#/components/schemas/WeatherPullItemRead'
+          type: array
+          title: Items
+      type: object
+      required:
+      - trip_id
+      - checked
+      - signals_ingested
+      title: WeatherPullRead
+    WeatherPullRequest:
+      properties:
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+      type: object
+      required:
+      - trip_id
+      title: WeatherPullRequest
+      description: 按出行拉取目的地当前天气（Open-Meteo，免钥公开源，ADR-0034）。

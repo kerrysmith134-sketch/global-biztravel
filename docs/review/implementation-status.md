@@ -96,6 +96,7 @@
                            0028_notification_preferences
                            0029_assistant_msg_updated_at
                            0030_traveler_nationality
+                           0031_visa_catalog_overrides
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -174,13 +175,22 @@
   （2026-11-11 行情，含 CNY/SGD/JPY 等商旅币种）。
 
 
-## 7. 仍缺项（非本地代码可闭环）
+## 7. 仍缺项（非本地代码可闭环）——2026-11-12 按 ADR-0034 逐项收口后仅剩 APNs
 
-1. **真实交通/签证/汇率/天气/航班供应商**：Provider/信号接口与降级已就绪，鉴权、字段映射与
-   服务商账号需接入。
-2. **APNs/SMTP 生产凭证**：代码与设备 token 管理已完成；需要 `.p8`/Team ID/Topic 或 SMTP 账号。
-3. **KMS 密钥托管**：字段加密与轮换脚本已就绪；key 仍来自环境变量。
-4. **真实 embedding 凭证**：hash/OpenAI-compatible provider 已就绪，需配置模型与 key。
+1. ~~**真实交通/签证/汇率/天气/航班供应商**~~：**免费开源源已接入（ADR-0034）**——
+   天气 = Open-Meteo（免钥，信号拉取 + 指南实时天气，消除 `WEATHER_NOT_CONNECTED` gap）、
+   航班 = OpenSky（免钥匿名，FLIGHT_STATUS 信号）、地面交通 = OSRM（`GBT_TRAVEL_PROVIDER=osrm`，
+   GROUND 段真实驾车时间，RAIL/AIR/SEA 保持大圆估算诚实标注）、汇率 = Frankfurter（ADR-0033）。
+   拉取入口 ADMIN 显式触发；源未配置 503 显式失败。生产规模化前自托管对应开源组件。
+2. ~~**APNs/SMTP 生产凭证**~~：**SMTP 已本地闭环（ADR-0034）**——compose 自带开源 MailPit
+   （网页看信件 :8025），邮件通道端到端可联调，生产接免费档 SMTP 只改配置。
+   **APNs 是唯一保留项**：Apple 专有无开源替代，需要 `.p8`/Team ID/Topic；
+   未配置时 inapp 通知中心即兜底通道。
+3. ~~**KMS 密钥托管**~~：**免费替代已落地（ADR-0034）**——`GBT_FIELD_ENCRYPTION_KEY_FILE`
+   支持密钥文件（Docker secret/挂载文件，优先于环境变量）；自托管 Vault/Infisical 走同一路径。
+4. ~~**真实 embedding 凭证**~~：**开源本地模型路径（ADR-0034）**——Ollama（开源）本地跑
+   `nomic-embed-text`，`GBT_MEMORY_EMBEDDING_PROVIDER=openai_compatible` 指向
+   `http://localhost:11434/v1` 即用；任何失败回退 hash（既有行为不变）。
 5. **AT-001~AT-012 按钮级 UI 自动化**：2026-11-09 已补齐最后两个 UI 缺口——计划调整入口
    （`PlanChangeCreate` 客户端模型 + 仓储 + 计划详情「调整拜访」，走真实
    `POST /v1/trips/{id}/plan-changes`）与版本比较页（`PlanDiffView`）。
@@ -199,9 +209,14 @@
    launch 前落地、激活等待与稳定用例对齐、全部裸断言补"阶段失守"消息。完整套件连续两轮 8/8。
    剩余：本机 Xcode 偶发构建挂死（`waitForBuildWithBuildLog` / `PruneExplicitPrecompiledModules`）
    属环境问题，遇到时清 `XCBuildData` 缓存重跑。
-6. **签证官方数据源与预约渠道**：当前用离线目录做要求建模，真实官方核验/预约未接入。
-7. **费用深度集成**：报销单快照、审批与显式汇率折算已闭环；实时汇率源、票据 OCR 与财务系统
-   对接未接入。
+6. ~~**签证官方数据源与预约渠道**~~：**网页形式兜底（ADR-0034）**——无免费官方 API
+   （Timatic 收费）；离线目录保持只读基线，新增 `visa_catalog_overrides` 表（迁移 0031，
+   RLS 同款策略）+ ADMIN 维护页 `/v1/admin/visa-catalog.html`（网页增删改覆盖条目，
+   `manual_confirmation_required` 强制为真，ADR-0027 语义不变）；删除覆盖即回落基线。
+7. ~~**费用深度集成**~~：**开源 OCR + 网页形式财务对接（ADR-0034）**——票据 OCR 用
+   开源 Tesseract（可选外部二进制，`POST /v1/expenses:ocr` 只产候选字段不自动建费用，
+   未装 503 显式指引安装）；财务系统对接 = `GET /v1/trips/{id}/expenses:export` CSV 导出
+   （列头固定、全字段引号转义、公式前缀防注入，ADMIN 专属）。报销单/审批/汇率折算此前已闭环。
 8. ~~**汇率行情源**~~：**已闭环（2026-11-12，ADR-0033）**——Frankfurter（ECB 参考汇率，
    免钥）经 `POST /v1/fx-rates:sync` 写入同一 `fx_rates` 表并保留 `source`/`as_of`，
    折算与缺口逻辑不变。管理员手工录入保留为兜底路径。

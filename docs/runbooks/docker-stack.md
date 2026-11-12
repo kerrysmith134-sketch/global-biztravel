@@ -62,6 +62,35 @@ make stack-up
 客户端先调用 `POST /v1/devices` 注册设备 token；通知入队时会快照最近活跃的 token/邮箱。
 未配置或缺少 token 时通知进入重试/失败并保留 `last_error`，不会伪造送达。
 
+## SMTP 邮件通道（MailPit，开源）
+
+栈里自带 **MailPit**（开源 SMTP 收件池，ADR-0034）：`make stack-up` 后即运行，
+网页界面 http://localhost:8025 可以直接看发出的邮件。切换邮件通道：
+
+```bash
+# 在 x-app-env（compose）或 .env 里：
+GBT_PUSH_PROVIDER=smtp
+GBT_SMTP_HOST=mailpit      # 容器网络内用服务名；宿主机跑 API 时用 localhost
+GBT_SMTP_PORT=1025
+GBT_SMTP_FROM=dev@example.local
+```
+
+生产换真实 SMTP（Brevo/Mailgun 免费档或自有服务器）只需改 host/port/凭证；
+未配置或发送失败保留 `last_error`，不伪造送达。APNs 无开源替代（Apple 专有），
+未配置时 app 内通知中心（inapp）即为兜底通道。
+
+## 免钥公开数据源（ADR-0034）
+
+| 源 | 开关 | 用途 |
+|---|---|---|
+| Open-Meteo | `GBT_WEATHER_PROVIDER=open-meteo` | 天气信号拉取 + 指南实时天气（免 key） |
+| OpenSky | `GBT_FLIGHT_PROVIDER=opensky` | FLIGHT_STATUS 信号（匿名低速率，可免费注册） |
+| OSRM | `GBT_TRAVEL_PROVIDER=osrm` | GROUND 段真实驾车时间（demo 限速，生产自托管） |
+| Frankfurter | `GBT_FX_PROVIDER=frankfurter` | FX 行情同步（见 ADR-0033） |
+
+拉取入口（ADMIN）：`POST /v1/integrations/signals:pull-weather`（body: trip_id）、
+`signals:pull-flight`（body: trip_id + callsign）。源未配置时端点 503 显式失败。
+
 ## 迁移与回滚
 
 - 迁移只由 API 容器启动时执行；多副本部署时应改为独立的 one-shot 迁移 Job，避免并发升级。

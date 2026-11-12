@@ -105,8 +105,13 @@ def _estimate_pairs(
 
 
 def get_travel_provider() -> TravelProvider:
-    if get_settings().travel_provider == "unavailable":
+    settings = get_settings()
+    if settings.travel_provider == "unavailable":
         return UnavailableTravelProvider()
+    if settings.travel_provider == "osrm":
+        from app.integrations.roads import OSRM_BASE_URL, OsrmRoadProvider
+
+        return OsrmRoadProvider(base_url=settings.osrm_base_url or OSRM_BASE_URL)
     return OfflineTravelProvider()
 
 

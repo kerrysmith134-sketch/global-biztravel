@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     travel_provider: str = "offline"
     # FX 行情源（ADR-0033）：unavailable（默认，显式失败）| frankfurter（ECB 免钥公开源）
     fx_provider: str = "unavailable"
+    # 免钥公开源（ADR-0034）：天气 open-meteo / 航班 opensky；默认关闭（显式失败）
+    weather_provider: str = "unavailable"
+    flight_provider: str = "unavailable"
+    # OSRM 自托管实例（ADR-0034）；默认 demo 服务器（限速，仅轻量使用）
+    osrm_base_url: str | None = None
 
     # 主动式运行时（第 8.4 章）
     suggestion_cooldown_hours: int = 24
@@ -55,6 +60,9 @@ class Settings(BaseSettings):
 
     # PII 字段加密（Fernet key，base64 32 字节）。未设置时本地开发明文，生产必须设置。
     field_encryption_key: str | None = None
+    # 密钥文件路径（ADR-0034：KMS 免费替代——Docker secret / 挂载文件 / 自托管 Vault 落盘）。
+    # 设置后优先于环境变量；文件内容为 Fernet key（去首尾空白）。
+    field_encryption_key_file: str | None = None
     # 数据留存：超过天数的现场笔记与记忆正文自动脱敏。
     retention_days: int = 365
     retention_interval_seconds: int = 86400

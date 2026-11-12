@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi.responses import PlainTextResponse
 
 from app.api.deps import (
+    ROLE_ADMIN,
     ROLE_TRAVELER,
     ROLE_VIEWER,
     ContextDep,
@@ -14,6 +17,7 @@ from app.api.deps import (
     SessionDep,
     require_role,
 )
+from app.api.errors import ServiceUnavailable
 from app.api.idempotent import IdempotentWrite
 from app.api.schemas import (
     BudgetSummaryRead,
@@ -21,7 +25,17 @@ from app.api.schemas import (
     ExpenseCreate,
     ExpenseRead,
 )
-from app.services import expense_service, trip_service
+from app.services import expense_service, receipt_ocr_service, trip_service
+
+CSV_HEADERS = ("occurred_on", "category", "amount", "currency", "note", "receipt_ref")
+
+
+def _csv_cell(value) -> str:
+    """CSV 单元格转义：包裹引号并翻倍内部引号（防注入，含公式前缀）。"""
+    text = "" if value is None else str(value)
+    if text.startswith(("=", "+", "-", "@")):
+        text = "'" + text  # Excel 公式注入防护（OWASP CSV 导出规范）
+    return '"' + text.replace('"', '""') + '"'
 
 router = APIRouter(tags=["expenses"])
 
@@ -38,6 +52,51 @@ def list_expenses(trip_id: UUID, context: ContextDep, session: SessionDep):
         ExpenseRead.model_validate(row)
         for row in expense_service.list_expenses(session, context.organization_id, trip_id)
     ]
+
+
+@router.post(
+    "/expenses:ocr",
+    summary="票据 OCR 提取候选字段（开源 Tesseract；未安装显式 503，ADR-0034）",
+)
+async def ocr_receipt(
+    context: ContextDep,
+    file: Annotated[UploadFile, File(...)],
+):
+    """只产候选字段（金额/日期/商户提示），不自动创建费用——人确认后经常规录入入库。"""
+    require_role(context, ROLE_TRAVELER)
+    image = await file.read()
+    try:
+        return receipt_ocr_service.extract_receipt_fields(image)
+    except receipt_ocr_service.OcrUnavailable as exc:
+        raise ServiceUnavailable(str(exc)) from exc
+
+
+
+@router.get(
+    "/trips/{trip_id}/expenses:export",
+    response_class=PlainTextResponse,
+    summary="费用 CSV 导出（财务系统对接；网页形式兜底，ADR-0034）",
+)
+def export_expenses_csv(trip_id: UUID, context: ContextDep, session: SessionDep):
+    require_role(context, ROLE_ADMIN)
+    trip_service.require_trip(session, context.organization_id, trip_id)
+    lines = [",".join(_csv_cell(header) for header in CSV_HEADERS)]
+    for row in expense_service.list_expenses(session, context.organization_id, trip_id):
+        fields = (
+            row.occurred_on.isoformat(),
+            row.category,
+            str(row.amount),
+            row.currency,
+            row.note,
+            row.receipt_ref,
+        )
+        lines.append(",".join(_csv_cell(field) for field in fields))
+    return PlainTextResponse(
+        "\n".join(lines) + "\n",
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="expenses-{trip_id}.csv"'},
+    )
+
 
 
 @router.post(

@@ -39,6 +39,7 @@ from app.models.reliability import (
 )
 from app.models.trip import ImportBatch, ImportRow, Trip, Visit
 from app.models.visa import EntryAssessment, VisaCase
+from app.models.visa_override import VisaCatalogOverride
 from app.models.workflow import (
     AgentRun,
     Evidence,
@@ -61,6 +62,7 @@ __all__ = [
     "CustomerPlace",
     "DeviceToken",
     "EntryAssessment",
+    "VisaCatalogOverride",
     "Evidence",
     "ExpenseReport",
     "ExpenseReportItem",

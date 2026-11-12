@@ -938,6 +938,58 @@ ExternalSignalType = Literal[
 ExternalSubjectType = Literal["COUNTRY", "TRIP", "CUSTOMER"]
 
 
+class WeatherPullRequest(BaseModel):
+    """按出行拉取目的地当前天气（Open-Meteo，免钥公开源，ADR-0034）。"""
+
+    trip_id: UUID
+
+
+class WeatherPullItemRead(BaseModel):
+    place_id: str
+    place_name: str
+    temperature_c: float | None = None
+    wind_kmh: float | None = None
+    precipitation_mm: float | None = None
+    weather_code: int | None = None
+    severe: bool = False
+    signal: bool = False
+    error: str | None = None
+
+
+class WeatherPullRead(BaseModel):
+    trip_id: str
+    checked: int
+    signals_ingested: int
+    items: list[WeatherPullItemRead] = Field(default_factory=list)
+
+
+class FlightPullRequest(BaseModel):
+    """按 callsign 拉取航迹（OpenSky，免钥公开源，ADR-0034）；信号挂到出行。"""
+
+    trip_id: UUID
+    callsign: str = Field(min_length=1, max_length=20)
+
+
+class FlightPullItemRead(BaseModel):
+    icao24: str
+    callsign: str
+    origin_country: str
+    latitude: float | None = None
+    longitude: float | None = None
+    altitude_m: float | None = None
+    velocity_ms: float | None = None
+    on_ground: bool = False
+    last_contact: str | None = None
+
+
+class FlightPullRead(BaseModel):
+    trip_id: str
+    callsign: str
+    aircraft: int
+    signals_ingested: int
+    items: list[FlightPullItemRead] = Field(default_factory=list)
+
+
 class ExternalSignalCreate(BaseModel):
     """外部源上报的一条事实。
 

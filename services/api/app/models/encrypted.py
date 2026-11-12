@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -35,14 +36,20 @@ class EncryptedText(TypeDecorator):
         self._explicit_key = key
 
     def _fernet(self) -> Fernet | None:
-        key = self._explicit_key or get_settings().field_encryption_key
+        settings = get_settings()
+        key = self._explicit_key or settings.field_encryption_key
+        key_file = settings.field_encryption_key_file
+        if key_file and not self._explicit_key:
+            # ADR-0034：KMS 免费替代——Docker secret / 挂载文件优先于环境变量。
+            key = Path(key_file).read_text(encoding="utf-8").strip()
         if not key:
             return None
         try:
             return Fernet(key.encode("utf-8"))
         except (ValueError, TypeError) as exc:
             raise RuntimeError(
-                "GBT_FIELD_ENCRYPTION_KEY 不是合法的 Fernet key（应为 base64 32 字节）"
+                "字段加密 key 不是合法的 Fernet key（应为 base64 32 字节）；"
+                "检查 GBT_FIELD_ENCRYPTION_KEY 或 GBT_FIELD_ENCRYPTION_KEY_FILE"
             ) from exc
 
     def process_bind_param(self, value: Any, dialect: Any) -> str | None:  # noqa: ARG002

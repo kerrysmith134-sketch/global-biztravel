@@ -83,6 +83,13 @@ class PreconditionFailed(ApiError):
     code = "PRECONDITION_FAILED"
 
 
+class ServiceUnavailable(ApiError):
+    """外部依赖不可用（免钥源未配置/超时，ADR-0034）：诚实失败，不伪造数据。"""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "EXTERNAL_SOURCE_UNAVAILABLE"
+
+
 class PlanNotFeasible(ApiError):
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "PLAN_NOT_FEASIBLE"

@@ -15,14 +15,21 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.api.deps import ROLE_ADMIN, ROLE_VIEWER, ContextDep, SessionDep, require_role
+from app.api.errors import ServiceUnavailable
 from app.api.schemas import (
     ExternalSignalCreate,
     ExternalSignalRead,
+    FlightPullRead,
+    FlightPullRequest,
     IntegrationConnectionCreate,
     IntegrationConnectionRead,
+    WeatherPullRead,
+    WeatherPullRequest,
 )
+from app.integrations.flights import FlightDataUnavailable
+from app.integrations.weather import WeatherUnavailable
 from app.models.workflow import IntegrationConnection
-from app.services import external_service
+from app.services import external_service, signal_pull_service
 
 router = APIRouter(tags=["integrations"])
 
@@ -39,6 +46,47 @@ def ingest_signal(
     require_role(context, ROLE_ADMIN)
     signal = external_service.ingest(session, context.organization_id, payload)
     return ExternalSignalRead.model_validate(signal)
+
+
+@router.post(
+    "/integrations/signals:pull-weather",
+    response_model=WeatherPullRead,
+    status_code=status.HTTP_200_OK,
+    summary="从 Open-Meteo 拉取出行目的地天气；恶劣天气落 WEATHER_DISRUPTION 信号（ADR-0034）",
+)
+def pull_weather_signals(
+    payload: WeatherPullRequest, context: ContextDep, session: SessionDep
+):
+    require_role(context, ROLE_ADMIN)
+    try:
+        summary = signal_pull_service.pull_weather(
+            session, context.organization_id, trip_id=payload.trip_id
+        )
+    except WeatherUnavailable as exc:
+        raise ServiceUnavailable(str(exc)) from exc
+    return WeatherPullRead.model_validate(summary)
+
+
+@router.post(
+    "/integrations/signals:pull-flight",
+    response_model=FlightPullRead,
+    status_code=status.HTTP_200_OK,
+    summary="从 OpenSky 按 callsign 拉取航迹并落 FLIGHT_STATUS 信号（ADR-0034）",
+)
+def pull_flight_signals(
+    payload: FlightPullRequest, context: ContextDep, session: SessionDep
+):
+    require_role(context, ROLE_ADMIN)
+    try:
+        summary = signal_pull_service.pull_flight(
+            session,
+            context.organization_id,
+            trip_id=payload.trip_id,
+            callsign=payload.callsign,
+        )
+    except FlightDataUnavailable as exc:
+        raise ServiceUnavailable(str(exc)) from exc
+    return FlightPullRead.model_validate(summary)
 
 
 @router.get(

@@ -20,6 +20,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.geo import Place
 from app.models.trip import Trip, Visit
 from app.services import trip_service
@@ -93,12 +94,62 @@ def build_guide(
         )
 
     gaps = [dict(gap) for gap in GAPS] + missing
+    weather = _current_weather(session, str(organization_id), trip_id)
+    if weather:
+        # 实时天气接入成功（ADR-0034）：按城市附带当前观测，摘除既有 gap。
+        gaps = [gap for gap in gaps if gap.get("code") != "WEATHER_NOT_CONNECTED"]
     return {
         "trip_id": str(trip.id),
         "countries": countries,
         "cities_covered": cities,
+        "weather": weather,
         "data_gaps": gaps,
     }
+
+
+#: 指南页最多带的天气观测数（请求时长预算内，超出城市不查询）。
+_MAX_WEATHER_LOOKUPS = 8
+
+
+def _current_weather(session: Session, organization_id: str, trip_id: UUID | str) -> list[dict]:
+    """逐拜访地点取 Open-Meteo 当前天气；源未配置/失败时返回空列表（gap 保留）。"""
+    from app.integrations.weather import WeatherUnavailable, get_weather_provider
+
+    if get_settings().weather_provider != "open-meteo":
+        return []
+    rows = session.execute(
+        select(Place.id, Place.name, Place.lat, Place.lon)
+        .join(Visit, Visit.place_id == Place.id)
+        .where(
+            Visit.organization_id == organization_id,
+            Visit.trip_id == trip_id,
+            Place.lat.isnot(None),
+            Place.lon.isnot(None),
+        )
+        .order_by(Visit.time_window_start)
+        .limit(_MAX_WEATHER_LOOKUPS)
+    ).all()
+    provider = get_weather_provider()
+    observations: list[dict] = []
+    for place_id, name, lat, lon in rows:
+        try:
+            observation = provider.fetch_current(lat, lon)
+        except WeatherUnavailable:
+            return []  # 源不可用 ⇒ 整体回到 gap 状态，不输出半份天气
+        observations.append(
+            {
+                "place_id": str(place_id),
+                "place_name": name,
+                "temperature_c": observation.temperature_c,
+                "wind_kmh": observation.wind_kmh,
+                "precipitation_mm": observation.precipitation_mm,
+                "weather_code": observation.weather_code,
+                "observed_at": (
+                    observation.observed_at.isoformat() if observation.observed_at else None
+                ),
+            }
+        )
+    return observations
 
 
 __all__ = ["build_guide", "load_catalog"]

@@ -36,6 +36,7 @@ from app.api.routes import (
     sync,
     trips,
     visa,
+    visa_admin,
     visits,
 )
 
@@ -44,6 +45,7 @@ api_router.include_router(health.router)
 api_router.include_router(trips.router)
 api_router.include_router(visits.router)
 api_router.include_router(visa.router)
+api_router.include_router(visa_admin.router)
 api_router.include_router(imports.router)
 api_router.include_router(local_guide.router)
 api_router.include_router(integrations.router)
