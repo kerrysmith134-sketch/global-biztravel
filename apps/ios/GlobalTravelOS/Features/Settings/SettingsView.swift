@@ -11,10 +11,38 @@ struct SettingsView: View {
     @State private var loaded = false
     @State private var nationality = ""
     @State private var profileError: String?
+    @State private var runMode = "cloud"
+    @State private var llmBaseUrl = ""
+    @State private var llmApiKey = ""
+    @State private var llmModel = ""
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("运行模式", selection: $runMode) {
+                        Text("云端（服务端后端）").tag("cloud")
+                        Text("本地（App 内 SQLite）").tag("local")
+                    }
+                    .pickerStyle(.inline)
+                } header: {
+                    Text("运行模式")
+                } footer: {
+                    Text("本地模式：数据存 App 内 SQLite，无需服务端。AI（纪要/助手）仍按下方 LLM 配置调用 API；未配置时走离线降级。切换后立即生效。")
+                }
+                Section {
+                    TextField("LLM Base URL", text: $llmBaseUrl)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("LLM API Key", text: $llmApiKey)
+                    TextField("模型（如 gpt-4o-mini）", text: $llmModel)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("AI（LLM）直连")
+                } footer: {
+                    Text("OpenAI 兼容端点。Key 只存在本机设置，不上传。留空时纪要/助手使用内置离线模板。")
+                }
                 Section("工具") {
                     NavigationLink {
                         SyncCenterView(environment: environment)
@@ -78,6 +106,7 @@ struct SettingsView: View {
                             let name = operatorName.trimmingCharacters(in: .whitespaces)
                             settings.operatorName = name.isEmpty ? nil : name
                             settings.isAuthenticated = true
+                            settings.runMode = runMode
                         }
                         let nat = nationality.trimmingCharacters(in: .whitespaces).uppercased()
                         Task {
@@ -105,6 +134,10 @@ struct SettingsView: View {
                 orgId = environment.settings.orgId
                 userId = environment.settings.userId
                 operatorName = environment.settings.operatorName ?? ""
+                runMode = environment.settings.runMode
+                llmBaseUrl = environment.settings.llmBaseUrl ?? ""
+                llmApiKey = environment.settings.llmApiKey ?? ""
+                llmModel = environment.settings.llmModel ?? ""
                 do {
                     let profile = try await environment.memoryRepository.travelerProfile()
                     nationality = profile.nationality ?? ""

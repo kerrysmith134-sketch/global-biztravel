@@ -15,6 +15,7 @@ final class AppEnvironment: ObservableObject {
     let settingsStore: AppSettingsStore
     let indicator: OfflineIndicator
     let offlineStore: OfflineStore
+    private(set) var localDatabase: LocalDatabase?
 
     private(set) var apiClient: APIClient
     private(set) var tripRepository: TripRepository
@@ -63,43 +64,135 @@ final class AppEnvironment: ObservableObject {
         self.indicator = indicator
         self.offlineStore = offline
         self.apiClient = client
+        self.localDatabase = nil
 
+        let bundle = Self.makeBundle(
+            settings: loaded, client: client, directory: directory,
+            offlineStore: offline, indicator: indicator
+        )
+        self.tripRepository = bundle.trips
+        self.planRepository = bundle.plans
+        self.visitRepository = bundle.visits
+        self.proactiveRepository = bundle.proactive
+        self.memoryRepository = bundle.memory
+        self.actionCenterRepository = bundle.actionCenter
+        self.notificationRepository = bundle.notifications
+        self.assistantRepository = bundle.assistant
+        self.tripListUseCase = bundle.tripList
+        self.createTripUseCase = bundle.createTrip
+        self.generatePlanUseCase = bundle.generatePlan
+        self.activatePlanUseCase = bundle.activatePlan
+        self.submitVisitRecordUseCase = bundle.submitRecord
+        self.syncPushUseCase = bundle.syncPush
+
+        if loaded.runMode == "local" {
+            offlineSummary = "本地模式"
+        }
+    }
+
+    /// updateSettings 重建时套用新 bundle（init 场景直接内联赋值以满足两段式）。
+    private func apply(_ bundle: RepositoryBundle) {
+        tripRepository = bundle.trips
+        planRepository = bundle.plans
+        visitRepository = bundle.visits
+        proactiveRepository = bundle.proactive
+        memoryRepository = bundle.memory
+        actionCenterRepository = bundle.actionCenter
+        notificationRepository = bundle.notifications
+        assistantRepository = bundle.assistant
+        tripListUseCase = bundle.tripList
+        createTripUseCase = bundle.createTrip
+        generatePlanUseCase = bundle.generatePlan
+        activatePlanUseCase = bundle.activatePlan
+        submitVisitRecordUseCase = bundle.submitRecord
+        syncPushUseCase = bundle.syncPush
+        if settings.runMode == "local" {
+            offlineSummary = "本地模式"
+        }
+    }
+
+    /// 组合根：按运行模式构造仓储（ADR-0036）。
+    /// cloud = 远端 + offline read-through；local = SQLite 本地仓储（阶段推进中，
+    /// 未实现的方法显式抛 LocalStorePendingError）。static：init 两段式约束下不借 self。
+    private struct RepositoryBundle {
+        let trips: TripRepository
+        let plans: PlanRepository
+        let visits: VisitRepository
+        let proactive: ProactiveRepository
+        let memory: MemoryRepository
+        let actionCenter: ActionCenterRepository
+        let notifications: NotificationRepository
+        let assistant: AssistantRepository
+        let tripList: TripListUseCase
+        let createTrip: CreateTripUseCase
+        let generatePlan: GeneratePlanUseCase
+        let activatePlan: ActivatePlanUseCase
+        let submitRecord: SubmitVisitRecordUseCase
+        let syncPush: SyncPushUseCase
+    }
+
+    private static func makeBundle(
+        settings: AppSettings,
+        client: APIClient,
+        directory: URL,
+        offlineStore: OfflineStore,
+        indicator: OfflineIndicator
+    ) -> RepositoryBundle {
+        if settings.runMode == "local" {
+            do {
+                let database = try LocalDatabase.open(path: SQLiteStore.defaultPath())
+                let trips = LocalTripRepository(database: database)
+                let plans = LocalPlanRepository(database: database)
+                let visits = LocalVisitRepository(database: database)
+                return RepositoryBundle(
+                    trips: trips,
+                    plans: plans,
+                    visits: visits,
+                    proactive: LocalProactiveRepository(database: database),
+                    memory: RemoteMemoryRepository(client: client),
+                    actionCenter: LocalActionCenterRepository(database: database),
+                    notifications: RemoteNotificationRepository(client: client),
+                    assistant: RemoteAssistantRepository(client: client),
+                    tripList: TripListUseCase(repository: trips),
+                    createTrip: CreateTripUseCase(repository: trips),
+                    generatePlan: GeneratePlanUseCase(repository: plans),
+                    activatePlan: ActivatePlanUseCase(planRepository: plans, tripRepository: trips),
+                    submitRecord: SubmitVisitRecordUseCase(repository: visits, store: offlineStore),
+                    syncPush: SyncPushUseCase(store: offlineStore, transport: LocalSyncTransport())
+                )
+            } catch {
+                // 本地库打不开（磁盘损坏等）：回退云端，不让 App 起不来。
+            }
+        }
         let remoteTrips = RemoteTripRepository(client: client)
         let remotePlans = RemotePlanRepository(client: client)
         let remoteVisits = RemoteVisitRepository(client: client)
-        let remoteProactive = RemoteProactiveRepository(client: client)
-        let remoteMemory = RemoteMemoryRepository(client: client)
-        let remoteActionCenter = RemoteActionCenterRepository(client: client)
-        let remoteNotifications = RemoteNotificationRepository(client: client)
-        let remoteAssistant = RemoteAssistantRepository(client: client)
-
         let trips = OfflineTripRepository(remote: remoteTrips, directory: directory, indicator: indicator)
         let plans = OfflinePlanRepository(remote: remotePlans, directory: directory, indicator: indicator)
         let visits = OfflineVisitRepository(remote: remoteVisits, directory: directory, indicator: indicator)
-        let proactive = OfflineProactiveRepository(
-            remote: remoteProactive,
-            directory: directory,
-            indicator: indicator
-        )
-        let memory = OfflineMemoryRepository(remote: remoteMemory, directory: directory, indicator: indicator)
-
-        self.tripRepository = trips
-        self.planRepository = plans
-        self.visitRepository = visits
-        self.proactiveRepository = proactive
-        self.memoryRepository = memory
-        self.actionCenterRepository = remoteActionCenter
-        self.notificationRepository = remoteNotifications
-        self.assistantRepository = remoteAssistant
-
-        self.tripListUseCase = TripListUseCase(repository: trips)
-        self.createTripUseCase = CreateTripUseCase(repository: trips)
-        self.generatePlanUseCase = GeneratePlanUseCase(repository: plans)
-        self.activatePlanUseCase = ActivatePlanUseCase(planRepository: plans, tripRepository: trips)
-        self.submitVisitRecordUseCase = SubmitVisitRecordUseCase(repository: visits, store: offline)
-        self.syncPushUseCase = SyncPushUseCase(
-            store: offline,
-            transport: RemoteSyncTransport(client: client)
+        return RepositoryBundle(
+            trips: trips,
+            plans: plans,
+            visits: visits,
+            proactive: OfflineProactiveRepository(
+                remote: RemoteProactiveRepository(client: client),
+                directory: directory,
+                indicator: indicator
+            ),
+            memory: OfflineMemoryRepository(
+                remote: RemoteMemoryRepository(client: client),
+                directory: directory,
+                indicator: indicator
+            ),
+            actionCenter: RemoteActionCenterRepository(client: client),
+            notifications: RemoteNotificationRepository(client: client),
+            assistant: RemoteAssistantRepository(client: client),
+            tripList: TripListUseCase(repository: trips),
+            createTrip: CreateTripUseCase(repository: trips),
+            generatePlan: GeneratePlanUseCase(repository: plans),
+            activatePlan: ActivatePlanUseCase(planRepository: plans, tripRepository: trips),
+            submitRecord: SubmitVisitRecordUseCase(repository: visits, store: offlineStore),
+            syncPush: SyncPushUseCase(store: offlineStore, transport: RemoteSyncTransport(client: client))
         )
     }
 
@@ -121,49 +214,21 @@ final class AppEnvironment: ObservableObject {
         mutate(&next)
         settingsStore.save(next)
         settings = next
-        // Rebuild everything that carries the old identity.
+        // Rebuild everything that carries the old identity / mode.
         let client = APIClient(configuration: next.apiConfiguration)
         apiClient = client
-        let trips = OfflineTripRepository(
-            remote: RemoteTripRepository(client: client),
-            directory: directory,
-            indicator: indicator
+        let bundle = Self.makeBundle(
+            settings: next, client: client, directory: directory,
+            offlineStore: offlineStore, indicator: indicator
         )
-        let plans = OfflinePlanRepository(
-            remote: RemotePlanRepository(client: client),
-            directory: directory,
-            indicator: indicator
-        )
-        let visits = OfflineVisitRepository(
-            remote: RemoteVisitRepository(client: client),
-            directory: directory,
-            indicator: indicator
-        )
-        tripRepository = trips
-        planRepository = plans
-        visitRepository = visits
-        proactiveRepository = OfflineProactiveRepository(
-            remote: RemoteProactiveRepository(client: client),
-            directory: directory,
-            indicator: indicator
-        )
-        memoryRepository = OfflineMemoryRepository(
-            remote: RemoteMemoryRepository(client: client),
-            directory: directory,
-            indicator: indicator
-        )
-        actionCenterRepository = RemoteActionCenterRepository(client: client)
-        notificationRepository = RemoteNotificationRepository(client: client)
-        assistantRepository = RemoteAssistantRepository(client: client)
-        tripListUseCase = TripListUseCase(repository: trips)
-        createTripUseCase = CreateTripUseCase(repository: trips)
-        generatePlanUseCase = GeneratePlanUseCase(repository: plans)
-        activatePlanUseCase = ActivatePlanUseCase(planRepository: plans, tripRepository: trips)
-        submitVisitRecordUseCase = SubmitVisitRecordUseCase(repository: visits, store: offlineStore)
-        syncPushUseCase = SyncPushUseCase(
-            store: offlineStore,
-            transport: RemoteSyncTransport(client: client)
-        )
+        if next.runMode == "local" {
+            // 重建时补挂本地库引用（bundle 内部持有，这里只留强引用）。
+            localDatabase = (bundle.trips as? LocalTripRepository)?.database
+                ?? (bundle.plans as? LocalPlanRepository)?.database
+        } else {
+            localDatabase = nil
+        }
+        apply(bundle)
     }
 
     func errorMessage(_ error: Error) -> String {

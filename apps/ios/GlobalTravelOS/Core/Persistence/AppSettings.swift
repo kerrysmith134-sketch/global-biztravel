@@ -11,6 +11,39 @@ struct AppSettings: Codable, Equatable {
     var isAuthenticated: Bool
     var lastTripId: String?
     var prefersMiles: Bool
+    /// 运行模式（ADR-0036）：cloud = 服务端后端；local = App 内 SQLite 本地模式。
+    var runMode: String
+    var llmBaseUrl: String?
+    var llmApiKey: String?
+    var llmModel: String?
+
+    init(
+        baseURLString: String,
+        orgId: String,
+        userId: String,
+        deviceId: String,
+        operatorName: String? = nil,
+        isAuthenticated: Bool = false,
+        lastTripId: String? = nil,
+        prefersMiles: Bool = false,
+        runMode: String = "cloud",
+        llmBaseUrl: String? = nil,
+        llmApiKey: String? = nil,
+        llmModel: String? = nil
+    ) {
+        self.baseURLString = baseURLString
+        self.orgId = orgId
+        self.userId = userId
+        self.deviceId = deviceId
+        self.operatorName = operatorName
+        self.isAuthenticated = isAuthenticated
+        self.lastTripId = lastTripId
+        self.prefersMiles = prefersMiles
+        self.runMode = runMode
+        self.llmBaseUrl = llmBaseUrl
+        self.llmApiKey = llmApiKey
+        self.llmModel = llmModel
+    }
 
     static let standard = AppSettings(
         baseURLString: APIConfiguration.defaultBaseURLString,
@@ -20,8 +53,47 @@ struct AppSettings: Codable, Equatable {
         operatorName: nil,
         isAuthenticated: false,
         lastTripId: nil,
-        prefersMiles: false
+        prefersMiles: false,
+        runMode: "cloud"
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case baseURLString, orgId, userId, deviceId, operatorName
+        case isAuthenticated, lastTripId, prefersMiles, runMode
+        case llmBaseUrl, llmApiKey, llmModel
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        baseURLString = try container.decode(String.self, forKey: .baseURLString)
+        orgId = try container.decode(String.self, forKey: .orgId)
+        userId = try container.decode(String.self, forKey: .userId)
+        deviceId = try container.decode(String.self, forKey: .deviceId)
+        operatorName = try container.decodeIfPresent(String.self, forKey: .operatorName)
+        isAuthenticated = try container.decodeIfPresent(Bool.self, forKey: .isAuthenticated) ?? false
+        lastTripId = try container.decodeIfPresent(String.self, forKey: .lastTripId)
+        prefersMiles = try container.decodeIfPresent(Bool.self, forKey: .prefersMiles) ?? false
+        runMode = try container.decodeIfPresent(String.self, forKey: .runMode) ?? "cloud"
+        llmBaseUrl = try container.decodeIfPresent(String.self, forKey: .llmBaseUrl)
+        llmApiKey = try container.decodeIfPresent(String.self, forKey: .llmApiKey)
+        llmModel = try container.decodeIfPresent(String.self, forKey: .llmModel)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(baseURLString, forKey: .baseURLString)
+        try container.encode(orgId, forKey: .orgId)
+        try container.encode(userId, forKey: .userId)
+        try container.encode(deviceId, forKey: .deviceId)
+        try container.encodeIfPresent(operatorName, forKey: .operatorName)
+        try container.encode(isAuthenticated, forKey: .isAuthenticated)
+        try container.encodeIfPresent(lastTripId, forKey: .lastTripId)
+        try container.encode(prefersMiles, forKey: .prefersMiles)
+        try container.encode(runMode, forKey: .runMode)
+        try container.encodeIfPresent(llmBaseUrl, forKey: .llmBaseUrl)
+        try container.encodeIfPresent(llmApiKey, forKey: .llmApiKey)
+        try container.encodeIfPresent(llmModel, forKey: .llmModel)
+    }
 
     var apiConfiguration: APIConfiguration {
         APIConfiguration.make(
