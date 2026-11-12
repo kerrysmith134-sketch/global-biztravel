@@ -225,9 +225,11 @@ final class LocalPlanRepository: PlanRepository {
 
 final class LocalVisitRepository: VisitRepository {
     let database: LocalDatabase
+    var environmentSettings: AppSettings?
 
-    init(database: LocalDatabase) {
+    init(database: LocalDatabase, settings: AppSettings? = nil) {
         self.database = database
+        self.environmentSettings = settings
     }
 
     func listVisits(tripId: String) async throws -> [TripVisit] {
@@ -254,8 +256,100 @@ final class LocalVisitRepository: VisitRepository {
         return record
     }
 
+    /// 纪要草稿：LLM 直连（设置页配置）或离线模板降级——功能不断。
     func draftMinutes(visitId: String) async throws -> MinutesDraft {
-        throw LocalStorePendingError(method: "draftMinutes（P5 接入 LLMService）")
+        let visitRows = try database.loadPayloads(
+            table: "visits", where: "id = ?", bindings: [visitId]
+        )
+        guard let visitPayload = visitRows.first,
+              let visit = try? DateCoding.decoder().decode(TripVisit.self, from: visitPayload) else {
+            throw APIError.serverError(code: "NOT_FOUND", message: "拜访不存在", traceId: nil, details: [:])
+        }
+        // 找最近一条现场记录作输入（本地模式：records 表）。
+        let recordPayloads = (try? database.loadPayloads(
+            table: "visit_records", where: "visit_id = ?", bindings: [visitId]
+        )) ?? []
+        var notes = ""
+        var followUps: [String] = []
+        for payload in recordPayloads {
+            if let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] {
+                notes = (object["notes"] as? String) ?? notes
+                if let tasks = object["follow_up_tasks"] as? [[String: Any]] {
+                    followUps.append(contentsOf: tasks.compactMap { $0["title"] as? String })
+                }
+            }
+        }
+
+        let settings = environmentSettings
+        let service = settings.flatMap { LLMService.fromSettings($0) }
+        var output: [String: Any]
+        var degraded = true
+        if let service {
+            do {
+                output = try LLMService.completeJson(
+                    service: service,
+                    systemPrompt: LLMPrompts.meetingMinutesSystem,
+                    userPayload: [
+                        "visit_id": visitId,
+                        "visit_title": visit.title ?? "",
+                        "outcome": "MET",
+                        "notes": notes,
+                        "follow_up_tasks": followUps,
+                        "tone": "professional",
+                    ]
+                )
+                degraded = false
+            } catch {
+                output = LLMDegrade.fallbackMinutes(notes: notes, followUps: followUps)
+            }
+        } else {
+            output = LLMDegrade.fallbackMinutes(notes: notes, followUps: followUps)
+        }
+
+        let draftId = UUID().uuidString
+        let now = Date()
+        var insights = (output["insights"] as? [[String: Any]]) ?? []
+        // 非 SUMMARY 洞察强制人工确认（服务端语义）。
+        insights = insights.map { insight in
+            var item = insight
+            if let kind = item["kind"] as? String, kind != "SUMMARY" {
+                item["requires_confirmation"] = true
+            }
+            return item
+        }
+        var body: [String: Any] = [
+            "id": draftId,
+            "visit_id": visitId,
+            "title": output["title"] as? String ?? "会议纪要",
+            "summary": output["summary"] as? String ?? "",
+            "decisions": output["decisions"] ?? [],
+            "follow_up_tasks": output["follow_up_tasks"] ?? [],
+            "insights": insights,
+            "degraded": degraded,
+            "created_at": SQLTimestamp.basics.string(from: now),
+        ]
+        if degraded { body["degraded_note"] = "LLM 未配置或失败，已用离线模板生成" }
+
+        try database.upsert(
+            table: "kv", id: "minutes:\(visitId)",
+            columns: ["value": String(decoding: JSONSerialization.data(withJSONObject: body), as: UTF8.self)],
+            payload: JSONSerialization.data(withJSONObject: body)
+        )
+        return MinutesDraft(
+            draftId: draftId,
+            llmInvocationId: nil,
+            title: body["title"] as? String ?? "会议纪要",
+            summary: body["summary"] as? String ?? "",
+            decisions: output["decisions"] as? [String],
+            followUpTasks: followUps.map { FollowUpTask(title: $0, dueDate: nil) },
+            insights: insights.compactMap { insight in
+                guard let text = insight["text"] as? String,
+                      let kind = insight["kind"] as? String else { return nil }
+                let requiresConfirmation = (insight["requires_confirmation"] as? Bool) ?? (kind != "SUMMARY")
+                return MinutesInsight(kind: kind, text: text, requiresConfirmation: requiresConfirmation)
+            },
+            degraded: degraded
+        )
     }
 
     func syncToCRM(recordId: String) async throws -> CrmSyncJob {
