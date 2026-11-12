@@ -227,8 +227,10 @@ def corridor_rhine_8() -> PlanningProblem:
 def corridor_rhine_12() -> PlanningProblem:
     """阿姆斯特丹→慕尼黑走廊等分 12 站（约 780km），每日上限 4 ⇒ 至少摊 3 天。
 
-    规模封顶在 12：ortools 的 DFS+GLS 在 n≥14 后墙钟呈指数级（见
-    docs/architecture/performance.md §3），实例族必须保持基准可负担。
+    本实例是**规模护栏（ADR-0031）**的活样本：n=12 超出 `ORTOOLS_MAX_ELIGIBLE`，
+    ortools 入口即拒绝（基线记 null），流水线落到启发式（`degraded=true`）。
+    保留它的原因：锁死"护栏拒绝是诚实失败、不是质量回归"这一语义，
+    并让 bench 在规模轴上始终有一个超出护栏的成员。
     """
     stops = _corridor_stops(
         ("amsterdam", "munich"),

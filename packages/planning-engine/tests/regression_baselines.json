@@ -1,5 +1,5 @@
 {
-  "note": "N3 金目标基线：由 scripts/gen_regression_baselines.py 生成，求解器行为漂移（含改进）必须重新生成并在提交说明写明原因。值为 null 表示该求解器按能力声明（min_solver / kind）不求解此实例。",
+  "note": "N3 金目标基线：由 scripts/gen_regression_baselines.py 生成，求解器行为漂移（含改进）必须重新生成并在提交说明写明原因。值为 null 表示该求解器按能力声明（min_solver / kind / ADR-0031 规模护栏）不求解此实例。",
   "instances": {
     "corridor_rhine_8": {
       "heuristic": 395.0,
@@ -7,7 +7,7 @@
     },
     "corridor_rhine_12": {
       "heuristic": 746.2,
-      "ortools": 746.2
+      "ortools": null
     },
     "star_china_10": {
       "heuristic": 1481.45,

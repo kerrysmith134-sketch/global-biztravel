@@ -40,7 +40,7 @@ N3 基准集：`packages/planning-engine/tests/instance_family.py` 的 8 个具�
 | 实例 | 轴 | heuristic p50 | ortools | 覆盖 |
 |---|---|---|---|---|
 | corridor_rhine_8 | 规模/走廊 | 0.8ms | 494ms | 8/8 |
-| corridor_rhine_12 | 规模×容量 | 1.5ms | 39.4s | 12/12 |
+| corridor_rhine_12 | 规模×容量 | 1.4ms | 拒绝（规模护栏） | 12/12 |
 | star_china_10 | 地理/星形 | 1.8ms | 7.5s | 10/10 |
 | global_air_10 | 洲际/长窗 | 1.3ms | 6.2s | 10/10 |
 | tight_windows_8 | 时间窗紧度 | 诚实失败 | 22ms | 8/8 |
@@ -48,21 +48,28 @@ N3 基准集：`packages/planning-engine/tests/instance_family.py` 的 8 个具�
 | dst_spring_berlin_6 | 夏令时 | 诚实失败 | 6.5ms | 6/6 |
 | infeasible_window_4 | 诚实失败 | SolverFailed | SolverFailed | — |
 
-三个实测发现（S2 语义校准）：
+四个实测发现（S2 语义校准）：
 
 1. **`solver_budget_seconds` 不是墙钟预算**。OR-Tools 刻意不用 `time_limit`
    （跨机器不确定），改用"解数量上限"（预算×40 个解，见
    `ortools_solver.SOLUTION_LIMIT_PER_BUDGET_SECOND`）。每个解的搜索成本随
    规模增长，且 DFS+GUIDED_LOCAL_SEARCH 在 n≥12 后墙钟呈指数级：12 站走廊
-   单次 39s、16 站可达分钟级。**生产含义**：大行程的 ortools 求解可能占用
-   Worker 数分钟 CPU——异步 job + `GET /v1/jobs/{id}` 轮询架构天然吸收这一点，
-   但容量规划必须按"解数量×规模"估算，不能按名义秒数。
-2. **两求解器能力有真实边界**。窄时间窗（tight_windows_8）与夏令时切换日
+   单次 39s、16 站可达分钟级。**治理（ADR-0031）**：ortools 入口按问题内容
+   封顶 `ORTOOLS_MAX_ELIGIBLE=10`，超出即拒绝、流水线落启发式
+   （`degraded=true`）——把指数因子钉死在护栏内，`solver_budget_seconds`
+   退为线性调节旋钮。corridor_rhine_12 由此从"ortools 39s"变为"入口拒绝"，
+   金目标基线记 null。
+2. **墙钟本身不可作为预算**。同一实例（global_air_10，同预算）2026-11-10 实测
+   6.2s、2026-11-12 高负载实测 253s——同机不同负载差 40 倍。这既坐实了
+   "不用墙钟 time_limit"的既有设计，也意味着护栏封规模之外，剩余的
+   budget×机器负载波动只能靠异步 job（HTTP 不等待）吸收。
+3. **两求解器能力有真实边界**。窄时间窗（tight_windows_8）与夏令时切换日
    （dst_spring_berlin_6）实例上，贪心启发式排不进 eligible（诚实失败），
    只有 ortools 可解；实例族用 `min_solver` 声明这一边界并纳入门禁。
-3. **目标值不保证一致**。star_china_10 上 ortools(1381.45) 优于启发式(1481.45)，
+4. **目标值不保证一致**。star_china_10 上 ortools(1381.45) 优于启发式(1481.45)，
    其余实例两者一致——与"不互相断言最优性"的既有约定一致，金目标按求解器
-   分别记录。
+   分别记录。护栏溢出到启发式的质量损失实测有限（族内可解实例仅此 1 例有差，
+   差距 ~7%）。
 
 > 回归门禁四类：覆盖 / 能力声明（`min_solver` 与 `kind="infeasible"` 的失败语义）/
 > 确定性（`problem_hash` 跨轮一致）/ 金目标基线。OR-Tools 求解失败或未安装时

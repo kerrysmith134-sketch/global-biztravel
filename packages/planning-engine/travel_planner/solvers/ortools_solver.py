@@ -22,7 +22,10 @@
 确定性策略（第 6.4 节）：
 - 不使用 `random_seed`（OR-Tools 9.15 的 `RoutingSearchParameters` 无该字段）；
 - 不使用墙钟 `time_limit`（跨机器不确定），改用 **解数量上限** `solution_limit`，
-  其值由 `solver_budget_seconds` 线性推导，而该字段已计入 `problem_hash`。
+  其值由 `solver_budget_seconds` 线性推导，而该字段已计入 `problem_hash`；
+- **规模护栏**（ADR-0031）：解数量预算管不住 DFS+GLS 单解成本随规模的指数增长
+  （N3 基准集实测：n=12 走廊单次 39s、n=16 分钟级），故按问题内容封顶
+  `ORTOOLS_MAX_ELIGIBLE`，超出在入口处拒绝（`SolverFailed`），流水线落到启发式。
 
 出行模式口径（**本模块唯一的最高风险点**）：
 - 行程分钟必须与 `scheduling.build_schedule` **逐段同源**：`build_schedule`
@@ -76,6 +79,15 @@ from travel_planner.scheduling import build_schedule, make_objective_value
 
 SOLUTION_LIMIT_PER_BUDGET_SECOND = 40
 MAX_SOLUTION_LIMIT = 5000
+
+#: 确定性规模护栏（ADR-0031）：ortools 只接受 `len(eligible) <= ORTOOLS_MAX_ELIGIBLE`。
+#: 依据（N3 基准集实测，见 docs/architecture/performance.md §3）：DFS+GUIDED_LOCAL_SEARCH
+#: 的**单解**搜索成本随规模指数增长——n=8 ≈ 6ms/解、n=10 ≈ 150ms/解、n=12 ≈ 1s/解
+#: （12 站走廊单次 39s、16 站分钟级）。`solver_budget_seconds` 只是解数量预算（线性），
+#: 管不住这个指数因子；墙钟 `time_limit` 又会破坏跨机器确定性（第 6.4 节）。
+#: 因此按**问题内容**封顶规模：超出即拒绝，流水线沿兜底链落到启发式（`degraded=true`）。
+#: 溢出的质量损失实测有限（族内 7 实例仅 1 个 ortools 更优，差距 ~7%）。
+ORTOOLS_MAX_ELIGIBLE = 10
 
 #: 单车的车场节点：0 = 起点（`origin`），1 = 终点（`origin`，返程弧计 0）。
 _START_DEPOT = 0
@@ -141,6 +153,15 @@ def solve(problem: PlanningProblem, eligible: tuple[UUID, ...]) -> SolveOutcome:
         from ortools.constraint_solver import pywrapcp, routing_enums_pb2
     except Exception as exc:  # pragma: no cover - 依赖缺失路径
         raise SolverUnavailable(f"ortools unavailable: {exc}") from exc
+
+    # 确定性规模护栏（ADR-0031）：规模按问题内容判定，在建模之前拒绝，
+    # 与"依赖缺失 ⇒ SolverUnavailable"一样属于求解器的能力边界。
+    if len(eligible) > ORTOOLS_MAX_ELIGIBLE:
+        raise SolverFailed(
+            f"ortools refused: {len(eligible)} eligible stops exceed the "
+            f"deterministic scale guard (ORTOOLS_MAX_ELIGIBLE="
+            f"{ORTOOLS_MAX_ELIGIBLE}); the pipeline falls back to the heuristic"
+        )
 
     if not eligible:
         empty = build_schedule(problem, ())

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 from fixtures import air_stop, at, four_city_problem, make_problem, two_city_problem, vid
+from travel_planner import plan_trip
 from travel_planner.contracts import MovementMode, SolverKind, TimeWindow
 from travel_planner.feasibility import check_feasibility
 from travel_planner.geometry import haversine_km, travel_minutes
@@ -195,6 +196,61 @@ def test_heuristic_empty_eligible():
     outcome = heuristic.solve(make_problem(()), ())
     assert outcome.days
     assert outcome.objective_value == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 确定性规模护栏（ADR-0031）：ortools 只服务小规模实例
+# ---------------------------------------------------------------------------
+
+
+@ORTOOLS_MARK
+def test_ortools_refuses_above_scale_guard():
+    """n > `ORTOOLS_MAX_ELIGIBLE` 时 ortools 必须入口处拒绝（`SolverFailed`）。
+
+    依据：DFS+GUIDED_LOCAL_SEARCH 的单解成本随规模指数增长（N3 基准集实测，
+    12 站走廊单次 39s、16 站分钟级），而 `solver_budget_seconds` 是解数量
+    预算、不是墙钟。护栏按**问题内容**判定，跨机器一致，不破坏确定性。
+    """
+    from instance_family import corridor_rhine_12
+
+    problem = corridor_rhine_12()
+    assert len(problem.stops) > ortools_solver.ORTOOLS_MAX_ELIGIBLE
+
+    with pytest.raises(SolverFailed) as excinfo:
+        ortools_solver.solve(problem, _eligible(problem))
+
+    assert "scale guard" in str(excinfo.value)
+
+
+@ORTOOLS_MARK
+def test_ortools_refusal_falls_back_to_heuristic_degraded():
+    """护栏拒绝后流水线沿既有兜底链落到启发式：结果可行、全覆盖、`degraded=True`。"""
+    from instance_family import corridor_rhine_12
+
+    problem = corridor_rhine_12()
+
+    result = plan_trip(problem, solver=SolverKind.ORTOOLS)
+
+    assert result.solver is SolverKind.HEURISTIC
+    assert result.degraded is True
+    assert result.validation.feasible is True
+    assert sorted(result.placed_visit_ids) == sorted(
+        stop.visit_id for stop in problem.stops
+    )
+
+
+@ORTOOLS_MARK
+def test_ortools_scale_guard_accepts_boundary_size():
+    """恰好 `ORTOOLS_MAX_ELIGIBLE` 个 eligible 的实例仍由 ortools 求解（边界不收缩）。"""
+    from instance_family import global_air_10
+
+    problem = global_air_10()
+    eligible = _eligible(problem)
+    assert len(eligible) == ortools_solver.ORTOOLS_MAX_ELIGIBLE
+
+    outcome = ortools_solver.solve(problem, eligible)
+
+    assert _placed_count(outcome) == len(eligible)
 
 
 # ---------------------------------------------------------------------------

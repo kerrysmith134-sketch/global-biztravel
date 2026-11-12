@@ -30,17 +30,22 @@ sys.path.insert(0, str(ROOT / "packages" / "planning-engine" / "tests"))
 from instance_family import INSTANCES  # noqa: E402
 from travel_planner import SolverFailed, plan_trip  # noqa: E402
 from travel_planner.contracts import SolverKind  # noqa: E402
+from travel_planner.solvers.ortools_solver import ORTOOLS_MAX_ELIGIBLE  # noqa: E402
 
 BASELINES_PATH = ROOT / "packages" / "planning-engine" / "tests" / "regression_baselines.json"
 
 NOTE = (
     "N3 金目标基线：由 scripts/gen_regression_baselines.py 生成，"
     "求解器行为漂移（含改进）必须重新生成并在提交说明写明原因。"
-    "值为 null 表示该求解器按能力声明（min_solver / kind）不求解此实例。"
+    "值为 null 表示该求解器按能力声明（min_solver / kind / ADR-0031 规模护栏）不求解此实例。"
 )
 
 
 def solve_objective(problem, solver: SolverKind) -> float | None:
+    # ADR-0031：超出规模护栏的实例 ortools 入口即拒绝；必须显式跳过，
+    # 否则 plan_trip 会静默兜底到启发式，把启发式目标值误记成 ortools 基线。
+    if solver is SolverKind.ORTOOLS and len(problem.stops) > ORTOOLS_MAX_ELIGIBLE:
+        return None
     try:
         return round(plan_trip(problem, solver=solver).objective_value, 6)
     except SolverFailed:

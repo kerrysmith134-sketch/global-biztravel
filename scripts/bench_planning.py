@@ -7,7 +7,9 @@ p50/p95/max 与目标值，并做四类门禁：
 
 - **覆盖**：成功解必须覆盖全部 eligible 停靠（成功解不允许丢停靠）；
 - **能力声明**：``min_solver="ortools"`` 的实例上启发式必须诚实失败；
-  ``kind="infeasible"`` 的实例两个求解器都必须 `SolverFailed`；
+  ``kind="infeasible"`` 的实例两个求解器都必须失败；超出规模护栏
+  （ADR-0031，`ORTOOLS_MAX_ELIGIBLE`）的实例 ortools 必须入口拒绝；
+  失败语义在**裸求解器**层断言（`plan_trip` 会静默兜底，验证不了）；
 - **确定性**：两次运行的 ``problem_hash`` 一致；
 - **金目标**：目标值与 `regression_baselines.json` 一致（漂移即失败，与
   `gen_regression_baselines.py --check` 同一口径）。
@@ -83,6 +85,37 @@ def golden_objective(name: str, solver: SolverKind) -> float | None:
     return baselines["instances"][name][key]
 
 
+def ortools_expected_to_refuse(problem) -> bool:
+    """ADR-0031 规模护栏：超出 `ORTOOLS_MAX_ELIGIBLE` 的实例 ortools 入口即拒绝。"""
+    from travel_planner.solvers.ortools_solver import ORTOOLS_MAX_ELIGIBLE
+
+    return len(problem.stops) > ORTOOLS_MAX_ELIGIBLE
+
+
+def assert_raw_solver_failure(problem, solver: SolverKind) -> str | None:
+    """在**裸求解器**层验证诚实失败语义（`plan_trip` 会静默兜底，验证不了）。
+
+    - heuristic：返回**覆盖不满**的结果（unplaced 非空，不抛异常）——
+      流水线据此拒绝并沿兜底链抛 `SolverFailed`；
+    - ortools：抛 `SolverFailed`（规模护栏拒绝或模型不可行）。
+    返回 None 表示语义正确；返回字符串表示违规描述。
+    """
+    from travel_planner.feasibility import check_feasibility
+    from travel_planner.solvers import heuristic, ortools_solver
+
+    eligible = check_feasibility(problem).eligible_stop_ids
+    try:
+        if solver is KIND_HEURISTIC:
+            outcome = heuristic.solve(problem, eligible)
+            if not outcome.unplaced:
+                return "heuristic 全覆盖成功，但按能力声明应当排不进"
+            return None
+        ortools_solver.solve(problem, eligible)
+    except SolverFailed as exc:
+        return None if solver is KIND_ORTOOLS else f"heuristic 不应抛异常：{exc}"
+    return f"{solver.value} 应当失败，却成功求解"
+
+
 def run_instance(item, heuristic_rounds: int, ortools_rounds: int, skip_ortools: bool) -> bool:
     """测一个实例的两轨，打印行；返回是否全部通过门禁。"""
     problem = item.problem
@@ -97,21 +130,21 @@ def run_instance(item, heuristic_rounds: int, ortools_rounds: int, skip_ortools:
         if rounds <= 0:
             cells.append(f"{solver.value}=skip")
             continue
-        stats = measure(problem, solver, rounds)
         expected_fail = (
             (solver is KIND_HEURISTIC and item.min_solver == "ortools")
             or item.kind == "infeasible"
+            or (solver is KIND_ORTOOLS and ortools_expected_to_refuse(problem))
         )
         if expected_fail:
-            if stats is not None:
-                print(
-                    f"[FAIL] {item.name}/{solver.value}: 按能力声明应当失败，"
-                    f"却得到了 objective={stats['objective']}"
-                )
+            violation = assert_raw_solver_failure(problem, solver)
+            if violation:
+                print(f"[FAIL] {item.name}/{solver.value}: {violation}")
                 ok = False
             else:
                 cells.append(f"{solver.value}=诚实失败✓")
             continue
+
+        stats = measure(problem, solver, rounds)
 
         if stats is None:
             print(f"[FAIL] {item.name}/{solver.value}: 意外求解失败（应全覆盖）")
