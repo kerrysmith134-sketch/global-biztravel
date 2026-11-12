@@ -26,7 +26,7 @@ struct AppSettings: Codable, Equatable {
         isAuthenticated: Bool = false,
         lastTripId: String? = nil,
         prefersMiles: Bool = false,
-        runMode: String = "cloud",
+        runMode: String = "local",
         llmBaseUrl: String? = nil,
         llmApiKey: String? = nil,
         llmModel: String? = nil
@@ -54,7 +54,7 @@ struct AppSettings: Codable, Equatable {
         isAuthenticated: false,
         lastTripId: nil,
         prefersMiles: false,
-        runMode: "cloud"
+        runMode: "local"
     )
 
     private enum CodingKeys: String, CodingKey {
@@ -73,7 +73,7 @@ struct AppSettings: Codable, Equatable {
         isAuthenticated = try container.decodeIfPresent(Bool.self, forKey: .isAuthenticated) ?? false
         lastTripId = try container.decodeIfPresent(String.self, forKey: .lastTripId)
         prefersMiles = try container.decodeIfPresent(Bool.self, forKey: .prefersMiles) ?? false
-        runMode = try container.decodeIfPresent(String.self, forKey: .runMode) ?? "cloud"
+        runMode = try container.decodeIfPresent(String.self, forKey: .runMode) ?? "local"
         llmBaseUrl = try container.decodeIfPresent(String.self, forKey: .llmBaseUrl)
         llmApiKey = try container.decodeIfPresent(String.self, forKey: .llmApiKey)
         llmModel = try container.decodeIfPresent(String.self, forKey: .llmModel)
