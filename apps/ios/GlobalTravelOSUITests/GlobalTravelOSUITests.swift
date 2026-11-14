@@ -96,7 +96,8 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.navigationBars["行动中心"].waitForExistence(timeout: 15),
             "行动中心未加载"
         )
-        app.buttons["关闭"].tap()
+        // 行动中心是标签页（不是弹层），返回方式切回今日标签。
+        app.buttons["今日"].tap()
 
         let tripsTab = app.buttons["出行"]
         XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")
@@ -113,9 +114,14 @@ final class GlobalTravelOSUITests: XCTestCase {
             "出行详情未加载"
         )
 
-        let syncTab = app.buttons["同步"]
-        XCTAssertTrue(syncTab.waitForExistence(timeout: 10), "未找到同步标签")
-        syncTab.tap()
+        // 同步中心已从独立标签收进「我的 → 同步中心」（审计 5.4 信息架构调整）。
+        let settingsTab = app.buttons["我的"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 10), "未找到我的标签")
+        settingsTab.tap()
+        expectNav(app, "设置", stage: "打开我的")
+        let syncEntry = app.buttons["同步中心"]
+        XCTAssertTrue(syncEntry.waitForExistence(timeout: 10), "未找到同步中心入口")
+        syncEntry.tap()
         expectNav(app, "离线同步", stage: "打开同步页")
         XCTAssertTrue(app.staticTexts["离线队列"].waitForExistence(timeout: 5), "阶段失守：文本 离线队列 未出现")
     }

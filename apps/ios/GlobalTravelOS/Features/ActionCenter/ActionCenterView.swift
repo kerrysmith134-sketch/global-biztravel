@@ -50,7 +50,6 @@ final class ActionCenterViewModel: ObservableObject {
 struct ActionCenterView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: ActionCenterViewModel
-    @Environment(\.dismiss) private var dismiss
 
     init(environment: AppEnvironment) {
         _viewModel = StateObject(wrappedValue: ActionCenterViewModel(environment: environment))
@@ -97,9 +96,7 @@ struct ActionCenterView: View {
             }
             .navigationTitle("行动中心")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
-                }
+                // 行动中心已是标签页根视图：dismiss 在 TabView 根上无效果，不再放「关闭」。
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await viewModel.load() }

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
-    @Environment(\.dismiss) private var dismiss
 
     @State private var baseURLString = ""
     @State private var orgId = ""
@@ -16,10 +15,18 @@ struct SettingsView: View {
     @State private var llmBaseUrl = ""
     @State private var llmApiKey = ""
     @State private var llmModel = ""
+    @State private var savedMessage: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                if let savedMessage {
+                    Section {
+                        Label(savedMessage, systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
                 Section {
                     Picker("运行模式", selection: $runMode) {
                         Text("云端（服务端后端）").tag("cloud")
@@ -115,9 +122,7 @@ struct SettingsView: View {
             }
             .navigationTitle("设置")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
+                // 设置是标签页根视图：不再提供「取消」（dismiss 无效果），保存后就地提示。
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
                         environment.updateSettings { settings in
@@ -129,6 +134,7 @@ struct SettingsView: View {
                             settings.isAuthenticated = true
                             settings.runMode = runMode
                         }
+                        savedMessage = "设置已保存"
                         let nat = nationality.trimmingCharacters(in: .whitespaces).uppercased()
                         Task {
                             do {
@@ -142,8 +148,8 @@ struct SettingsView: View {
                                 )
                             } catch {
                                 // 画像保存失败不阻断身份保存（用户可重试）。
+                                savedMessage = "身份已保存；出行人画像同步失败，可稍后重试"
                             }
-                            dismiss()
                         }
                     }
                 }
