@@ -238,6 +238,23 @@ final class TripDetailViewModel: ObservableObject {
     }
 }
 
+/// 行程详情分区（审计 5.2：515 行超长聚合页 → 5 个工作任务分区）。
+enum TripSection: String, CaseIterable, Identifiable {
+    case overview, schedule, plan, money, visa
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .overview: return "概览"
+        case .schedule: return "日程"
+        case .plan: return "计划"
+        case .money: return "费用"
+        case .visa: return "签证"
+        }
+    }
+}
+
 struct TripDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: TripDetailViewModel
@@ -247,6 +264,7 @@ struct TripDetailView: View {
     @State private var showsAddVisit = false
     @State private var showsExpense = false
     @State private var showsAssistant = false
+    @State private var section: TripSection = .overview
 
     init(tripId: String, environment: AppEnvironment) {
         _viewModel = StateObject(
@@ -256,6 +274,14 @@ struct TripDetailView: View {
 
     var body: some View {
         List {
+            Section {
+                Picker("分区", selection: $section) {
+                    ForEach(TripSection.allCases) { item in
+                        Text(item.title).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
             if let error = viewModel.errorMessage {
                 Section { ErrorBanner(message: error) }
             }
@@ -268,275 +294,285 @@ struct TripDetailView: View {
             }
 
             if let trip = viewModel.trip {
-                Section("概览") {
-                    LabeledContent("状态", value: trip.statusLabel)
-                    LabeledContent("时间窗口", value: trip.windowLabel)
-                    LabeledContent("出发地", value: trip.originLabel)
-                    LabeledContent("版本", value: "v\(trip.version)")
+            if section == .overview {
+                    Section("概览") {
+                        LabeledContent("状态", value: trip.statusLabel)
+                        LabeledContent("时间窗口", value: trip.windowLabel)
+                        LabeledContent("出发地", value: trip.originLabel)
+                        LabeledContent("版本", value: "v\(trip.version)")
+                    }
+                }
+
+                if let trip = viewModel.trip {
+                    Section("出行状态") {
+                        let status = (trip.status ?? "").uppercased()
+                        if ["DRAFT", "PLANNING", "READY", "ACTIVE"].contains(status) {
+                            Button(role: .destructive) {
+                                Task { await viewModel.hold() }
+                            } label: {
+                                Label("暂停出行", systemImage: "pause.circle")
+                            }
+                        }
+                        if status == "HOLD" {
+                            Button {
+                                Task { await viewModel.resume() }
+                            } label: {
+                                Label("恢复出行", systemImage: "play.circle")
+                            }
+                        }
+                        if status != "COMPLETED" && status != "CANCELLED" {
+                            Button {
+                                Task { await viewModel.complete() }
+                            } label: {
+                                Label("标记完成", systemImage: "checkmark.circle")
+                            }
+                        }
+                    }
+                }
+
+                Section("客户导入") {
+                    Button {
+                        showsImport = true
+                    } label: {
+                        Label("导入 Excel 客户名单", systemImage: "doc.badge.plus")
+                    }
+                }
+
+                Section("当地与记忆") {
+                    NavigationLink {
+                        TripOutcomeView(tripId: viewModel.tripId, environment: environment)
+                    } label: {
+                        Label("结果复盘", systemImage: "chart.bar.doc.horizontal")
+                    }
+                    NavigationLink {
+                        LocalGuideView(tripId: viewModel.tripId, environment: environment)
+                    } label: {
+                        Label("当地生活指南", systemImage: "map")
+                    }
+                    NavigationLink {
+                        TripMemoryView(tripId: viewModel.tripId, environment: environment)
+                    } label: {
+                        Label("查看复盘记忆", systemImage: "brain.head.profile")
+                    }
                 }
             }
-
-            if let trip = viewModel.trip {
-                Section("出行状态") {
-                    let status = (trip.status ?? "").uppercased()
-                    if ["DRAFT", "PLANNING", "READY", "ACTIVE"].contains(status) {
-                        Button(role: .destructive) {
-                            Task { await viewModel.hold() }
-                        } label: {
-                            Label("暂停出行", systemImage: "pause.circle")
-                        }
+            if section == .schedule {
+                Section("拜访") {
+                    if let error = viewModel.sectionError("visits") {
+                        Text(error).font(.caption).foregroundStyle(.red)
                     }
-                    if status == "HOLD" {
-                        Button {
-                            Task { await viewModel.resume() }
-                        } label: {
-                            Label("恢复出行", systemImage: "play.circle")
-                        }
+                    Button {
+                        showsAddVisit = true
+                    } label: {
+                        Label("新增拜访（新建客户地点）", systemImage: "person.badge.plus")
                     }
-                    if status != "COMPLETED" && status != "CANCELLED" {
-                        Button {
-                            Task { await viewModel.complete() }
-                        } label: {
-                            Label("标记完成", systemImage: "checkmark.circle")
-                        }
+                    if viewModel.visits.isEmpty {
+                        Text("还没有拜访。导入客户或新增拜访后再生成计划。")
+                            .foregroundStyle(.secondary)
                     }
-                }
-            }
-
-            Section("签证与入境") {
-                if viewModel.visaCases.isEmpty {
-                    Text("还没有签证案件。创建后会按目的国生成材料清单。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(viewModel.visaCases) { item in
-                    VStack(alignment: .leading, spacing: 4) {
+                    ForEach(viewModel.visits) { visit in
                         HStack {
-                            Text(item.countryCode).font(.headline)
-                            Text(item.status.label)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(visit.displayName).font(.body)
+                                Text("\(visit.statusLabel) · \(visit.timeWindowLabel)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             Spacer()
-                            Text(item.checklistLabel)
+                            Button("简报") { briefingVisit = visit }
+                                .buttonStyle(.bordered)
+                            Button("记录") { selectedVisit = visit }
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                }
+
+            }
+            if section == .plan {
+                Section("计划版本") {
+                    if let error = viewModel.sectionError("plans") {
+                        Text(error).font(.caption).foregroundStyle(.red)
+                    }
+                    if viewModel.plans.isEmpty {
+                        Text("还没有计划版本。").foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(viewModel.plans.enumerated()), id: \.element.id) { index, plan in
+                        NavigationLink {
+                            PlanDetailView(
+                                tripId: viewModel.tripId,
+                                planId: plan.id,
+                                tripVersion: viewModel.trip?.version ?? 1,
+                                environment: environment
+                            )
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text(plan.versionLabel).font(.headline)
+                                    Spacer()
+                                    Text(plan.status?.label ?? "草稿")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text("\(plan.feasibilityLabel) · \(plan.stopCountLabel)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        // AT-008：有更早版本时给出「与上一版比较」入口（列表最新在前）。
+                        if index + 1 < viewModel.plans.count {
+                            NavigationLink {
+                                PlanDiffView(
+                                    tripId: viewModel.tripId,
+                                    planId: plan.id,
+                                    against: viewModel.plans[index + 1].id,
+                                    environment: environment
+                                )
+                            } label: {
+                                Label("与上一版比较", systemImage: "arrow.left.arrow.right")
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    Button {
+                        Task { await viewModel.generatePlan() }
+                    } label: {
+                        Label(
+                            viewModel.generating ? "求解中…" : "生成新计划",
+                            systemImage: "wand.and.stars"
+                        )
+                    }
+                    .disabled(viewModel.generating)
+                }
+
+            }
+            if section == .money {
+                if let budget = viewModel.budget {
+                    Section("费用与预算") {
+                    if let error = viewModel.sectionError("expenses") ?? viewModel.sectionError("budget") {
+                        Text(error).font(.caption).foregroundStyle(.red)
+                    }
+                        LabeledContent("预算", value: budget.budgetLabel)
+                        LabeledContent("计划估算", value: budget.plannedLabel)
+                        LabeledContent("实际费用", value: budget.actualLabel)
+                        if let converted = budget.convertedActualLabel {
+                            LabeledContent("折算实际", value: converted)
+                        }
+                        LabeledContent("预算差额", value: budget.varianceLabel)
+                        if let note = budget.conversionNote {
+                            Text(note)
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            if !item.status.nextStatuses.isEmpty {
-                                Menu("推进") {
-                                    ForEach(item.status.nextStatuses) { next in
-                                        Button(next.label) {
-                                            Task { await viewModel.advanceVisaCase(item, to: next) }
-                                        }
-                                    }
+                                .foregroundStyle(budget.conversionComplete == true ? Color.secondary : Color.orange)
+                        }
+                        ForEach(viewModel.expenses) { expense in
+                            HStack {
+                                Text(expense.categoryLabel)
+                                Spacer()
+                                Text(expense.amountLabel)
+                                    .font(.caption.monospacedDigit())
+                            }
+                        }
+                        Button {
+                            showsExpense = true
+                        } label: {
+                            Label("记一笔费用", systemImage: "plus.circle")
+                        }
+                    }
+                }
+
+                Section("报销单") {
+                    if let error = viewModel.sectionError("reports") {
+                        Text(error).font(.caption).foregroundStyle(.red)
+                    }
+                    if viewModel.expenseReports.isEmpty {
+                        Text("还没有报销单。可从当前费用记录生成草稿。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(viewModel.expenseReports) { report in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(report.status.label) · \(report.itemList.count) 项")
+                                    .font(.subheadline)
+                                Text(report.totalsLabel)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if report.canSubmit {
+                                Button("提交") {
+                                    Task { await viewModel.submitExpenseReport(report) }
                                 }
                                 .font(.caption)
                             }
                         }
-                        if let notes = item.notes, !notes.isEmpty {
-                            Text(notes).font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                HStack {
-                    Button {
-                        Task { await viewModel.createVisaCases() }
-                    } label: {
-                        Label("创建签证案件", systemImage: "doc.badge.plus")
-                    }
-                    Spacer()
-                    Button {
-                        Task { await viewModel.refreshAssessments() }
-                    } label: {
-                        Label("刷新入境评估", systemImage: "arrow.clockwise")
-                    }
-                }
-                ForEach(viewModel.entryAssessments) { assessment in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("\(assessment.countryCode) · \(assessment.sourceLabel)")
-                            .font(.caption.weight(.semibold))
-                        Text(assessment.summary).font(.caption)
-                        Text("\(assessment.confidenceLabel) · 需人工复核")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                    }
-                }
-            }
-
-            if let budget = viewModel.budget {
-                Section("费用与预算") {
-                if let error = viewModel.sectionError("expenses") ?? viewModel.sectionError("budget") {
-                    Text(error).font(.caption).foregroundStyle(.red)
-                }
-                    LabeledContent("预算", value: budget.budgetLabel)
-                    LabeledContent("计划估算", value: budget.plannedLabel)
-                    LabeledContent("实际费用", value: budget.actualLabel)
-                    if let converted = budget.convertedActualLabel {
-                        LabeledContent("折算实际", value: converted)
-                    }
-                    LabeledContent("预算差额", value: budget.varianceLabel)
-                    if let note = budget.conversionNote {
-                        Text(note)
-                            .font(.caption2)
-                            .foregroundStyle(budget.conversionComplete == true ? Color.secondary : Color.orange)
-                    }
-                    ForEach(viewModel.expenses) { expense in
-                        HStack {
-                            Text(expense.categoryLabel)
-                            Spacer()
-                            Text(expense.amountLabel)
-                                .font(.caption.monospacedDigit())
-                        }
                     }
                     Button {
-                        showsExpense = true
+                        Task { await viewModel.createExpenseReport() }
                     } label: {
-                        Label("记一笔费用", systemImage: "plus.circle")
+                        Label("从费用记录生成报销单", systemImage: "doc.text")
                     }
                 }
-            }
 
-            Section("报销单") {
-                if let error = viewModel.sectionError("reports") {
-                    Text(error).font(.caption).foregroundStyle(.red)
-                }
-                if viewModel.expenseReports.isEmpty {
-                    Text("还没有报销单。可从当前费用记录生成草稿。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(viewModel.expenseReports) { report in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(report.status.label) · \(report.itemList.count) 项")
-                                .font(.subheadline)
-                            Text(report.totalsLabel)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if report.canSubmit {
-                            Button("提交") {
-                                Task { await viewModel.submitExpenseReport(report) }
-                            }
-                            .font(.caption)
-                        }
+            }
+            if section == .visa {
+                Section("签证与入境") {
+                    if viewModel.visaCases.isEmpty {
+                        Text("还没有签证案件。创建后会按目的国生成材料清单。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                }
-                Button {
-                    Task { await viewModel.createExpenseReport() }
-                } label: {
-                    Label("从费用记录生成报销单", systemImage: "doc.text")
-                }
-            }
-
-            Section("客户导入") {
-                Button {
-                    showsImport = true
-                } label: {
-                    Label("导入 Excel 客户名单", systemImage: "doc.badge.plus")
-                }
-            }
-
-            Section("拜访") {
-                if let error = viewModel.sectionError("visits") {
-                    Text(error).font(.caption).foregroundStyle(.red)
-                }
-                Button {
-                    showsAddVisit = true
-                } label: {
-                    Label("新增拜访（新建客户地点）", systemImage: "person.badge.plus")
-                }
-                if viewModel.visits.isEmpty {
-                    Text("还没有拜访。导入客户或新增拜访后再生成计划。")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(viewModel.visits) { visit in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(visit.displayName).font(.body)
-                            Text("\(visit.statusLabel) · \(visit.timeWindowLabel)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("简报") { briefingVisit = visit }
-                            .buttonStyle(.bordered)
-                        Button("记录") { selectedVisit = visit }
-                            .buttonStyle(.bordered)
-                    }
-                }
-            }
-
-            Section("计划版本") {
-                if let error = viewModel.sectionError("plans") {
-                    Text(error).font(.caption).foregroundStyle(.red)
-                }
-                if viewModel.plans.isEmpty {
-                    Text("还没有计划版本。").foregroundStyle(.secondary)
-                }
-                ForEach(Array(viewModel.plans.enumerated()), id: \.element.id) { index, plan in
-                    NavigationLink {
-                        PlanDetailView(
-                            tripId: viewModel.tripId,
-                            planId: plan.id,
-                            tripVersion: viewModel.trip?.version ?? 1,
-                            environment: environment
-                        )
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
+                    ForEach(viewModel.visaCases) { item in
+                        VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(plan.versionLabel).font(.headline)
-                                Spacer()
-                                Text(plan.status?.label ?? "草稿")
+                                Text(item.countryCode).font(.headline)
+                                Text(item.status.label)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(item.checklistLabel)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                if !item.status.nextStatuses.isEmpty {
+                                    Menu("推进") {
+                                        ForEach(item.status.nextStatuses) { next in
+                                            Button(next.label) {
+                                                Task { await viewModel.advanceVisaCase(item, to: next) }
+                                            }
+                                        }
+                                    }
+                                    .font(.caption)
+                                }
                             }
-                            Text("\(plan.feasibilityLabel) · \(plan.stopCountLabel)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            if let notes = item.notes, !notes.isEmpty {
+                                Text(notes).font(.caption2).foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    // AT-008：有更早版本时给出「与上一版比较」入口（列表最新在前）。
-                    if index + 1 < viewModel.plans.count {
-                        NavigationLink {
-                            PlanDiffView(
-                                tripId: viewModel.tripId,
-                                planId: plan.id,
-                                against: viewModel.plans[index + 1].id,
-                                environment: environment
-                            )
+                    HStack {
+                        Button {
+                            Task { await viewModel.createVisaCases() }
                         } label: {
-                            Label("与上一版比较", systemImage: "arrow.left.arrow.right")
-                                .font(.caption)
+                            Label("创建签证案件", systemImage: "doc.badge.plus")
+                        }
+                        Spacer()
+                        Button {
+                            Task { await viewModel.refreshAssessments() }
+                        } label: {
+                            Label("刷新入境评估", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    ForEach(viewModel.entryAssessments) { assessment in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("\(assessment.countryCode) · \(assessment.sourceLabel)")
+                                .font(.caption.weight(.semibold))
+                            Text(assessment.summary).font(.caption)
+                            Text("\(assessment.confidenceLabel) · 需人工复核")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
                         }
                     }
                 }
-                Button {
-                    Task { await viewModel.generatePlan() }
-                } label: {
-                    Label(
-                        viewModel.generating ? "求解中…" : "生成新计划",
-                        systemImage: "wand.and.stars"
-                    )
-                }
-                .disabled(viewModel.generating)
-            }
 
-            Section("当地与记忆") {
-                NavigationLink {
-                    TripOutcomeView(tripId: viewModel.tripId, environment: environment)
-                } label: {
-                    Label("结果复盘", systemImage: "chart.bar.doc.horizontal")
-                }
-                NavigationLink {
-                    LocalGuideView(tripId: viewModel.tripId, environment: environment)
-                } label: {
-                    Label("当地生活指南", systemImage: "map")
-                }
-                NavigationLink {
-                    TripMemoryView(tripId: viewModel.tripId, environment: environment)
-                } label: {
-                    Label("查看复盘记忆", systemImage: "brain.head.profile")
-                }
             }
         }
         .navigationTitle(viewModel.trip?.name ?? "出行详情")
