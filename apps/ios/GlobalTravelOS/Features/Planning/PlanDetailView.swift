@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor
 final class PlanDetailViewModel: ObservableObject {
     @Published private(set) var plan: PlanVersionDetail?
+    @Published private(set) var originPlace: Place?
     @Published private(set) var isLoading = false
     @Published private(set) var activating = false
     @Published private(set) var submittingChange = false
@@ -23,6 +24,9 @@ final class PlanDetailViewModel: ObservableObject {
 
     func load() async {
         isLoading = true
+        if originPlace == nil {
+            originPlace = (try? await environment.tripRepository.trip(id: tripId))?.originPlace
+        }
         errorMessage = nil
         defer { isLoading = false }
         do {
@@ -110,7 +114,7 @@ struct PlanDetailView: View {
             if let plan = viewModel.plan {
                 Section("视图") {
                     NavigationLink {
-                        PlanMapView(plan: plan)
+                        PlanMapView(plan: plan, origin: viewModel.originPlace)
                     } label: {
                         Label("行程地图", systemImage: "map")
                     }
