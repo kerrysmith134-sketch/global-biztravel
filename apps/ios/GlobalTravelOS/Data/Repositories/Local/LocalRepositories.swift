@@ -404,7 +404,7 @@ final class LocalVisitRepository: VisitRepository {
     }
 
     func briefing(visitId: String) async throws -> VisitBriefing {
-        throw LocalStorePendingError(method: "briefing（P7）")
+        try LocalAggregations.visitBriefing(database: database, visitId: visitId)
     }
 
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {

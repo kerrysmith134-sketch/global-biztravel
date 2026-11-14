@@ -23,38 +23,88 @@ final class TripDetailViewModel: ObservableObject {
         self.environment = environment
     }
 
+    /// 分域加载错误（审计七·额外可靠性）：空区块必须能区分"确实没有"与"加载失败"。
+    @Published private(set) var sectionErrors: [String: String] = [:]
+
+    private func capture<T>(_ work: () async throws -> T) async -> Result<T, Error> {
+        do { return .success(try await work()) } catch { return .failure(error) }
+    }
+
     func load() async {
         isLoading = true
         errorMessage = nil
+        sectionErrors = [:]
         defer { isLoading = false }
-        do {
-            let loaded = try await environment.tripRepository.trip(id: tripId)
+
+        // 并行加载 + 逐域收集错误（此前串行 8 个请求且 try? 静默吞错）。
+        async let tripResult = capture { try await environment.tripRepository.trip(id: tripId) }
+        async let visitsResult = capture {
+            try await environment.visitRepository.listVisits(tripId: tripId)
+        }
+        async let plansResult = capture {
+            try await environment.planRepository.listPlans(
+                tripId: tripId, page: PageRequest(limit: 50, cursor: nil)
+            ).items
+        }
+        async let visaResult = capture {
+            try await environment.tripRepository.visaCases(tripId: tripId)
+        }
+        async let assessmentsResult = capture {
+            try await environment.tripRepository.entryAssessments(tripId: tripId)
+        }
+        async let expensesResult = capture {
+            try await environment.tripRepository.expenses(tripId: tripId)
+        }
+        async let reportsResult = capture {
+            try await environment.tripRepository.expenseReports(tripId: tripId)
+        }
+
+        switch await tripResult {
+        case .success(let loaded):
             trip = loaded
             environment.rememberTrip(tripId)
-        } catch {
+        case .failure(let error):
             errorMessage = environment.errorMessage(error)
         }
-        visits = (try? await environment.visitRepository.listVisits(tripId: tripId)) ?? visits
-        plans = (try? await environment.planRepository.listPlans(
-            tripId: tripId,
-            page: PageRequest(limit: 50, cursor: nil)
-        ).items) ?? plans
-        visaCases = (try? await environment.tripRepository.visaCases(tripId: tripId)) ?? visaCases
-        entryAssessments = (try? await environment.tripRepository.entryAssessments(tripId: tripId))
-            ?? entryAssessments
-        expenses = (try? await environment.tripRepository.expenses(tripId: tripId)) ?? expenses
+        switch await visitsResult {
+        case .success(let value): visits = value
+        case .failure(let error): sectionErrors["visits"] = environment.errorMessage(error)
+        }
+        switch await plansResult {
+        case .success(let value): plans = value
+        case .failure(let error): sectionErrors["plans"] = environment.errorMessage(error)
+        }
+        switch await visaResult {
+        case .success(let value): visaCases = value
+        case .failure(let error): sectionErrors["visa"] = environment.errorMessage(error)
+        }
+        switch await assessmentsResult {
+        case .success(let value): entryAssessments = value
+        case .failure(let error): sectionErrors["visa"] = environment.errorMessage(error)
+        }
+        switch await expensesResult {
+        case .success(let value): expenses = value
+        case .failure(let error): sectionErrors["expenses"] = environment.errorMessage(error)
+        }
+        switch await reportsResult {
+        case .success(let value): expenseReports = value
+        case .failure(let error): sectionErrors["reports"] = environment.errorMessage(error)
+        }
+        // 预算单独加载（依赖 trip.currency，本就在 trip 之后执行）。
         do {
-            // 预算失败要显式暴露：try? 静默吞掉会让"预算区永远不出现"无法诊断。
             budget = try await environment.tripRepository.budgetSummary(
                 tripId: tripId,
                 baseCurrency: trip?.currency
             )
         } catch {
-            errorMessage = environment.errorMessage(error)
+            sectionErrors["budget"] = environment.errorMessage(error)
         }
-        expenseReports = (try? await environment.tripRepository.expenseReports(tripId: tripId))
-            ?? expenseReports
         environment.refreshOfflineSummary()
+    }
+
+    /// 某区块的加载错误（nil 表示该域加载成功或无错误）。
+    func sectionError(_ key: String) -> String? {
+        sectionErrors[key]
     }
 
     func addExpense(
@@ -313,6 +363,9 @@ struct TripDetailView: View {
 
             if let budget = viewModel.budget {
                 Section("费用与预算") {
+                if let error = viewModel.sectionError("expenses") ?? viewModel.sectionError("budget") {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
                     LabeledContent("预算", value: budget.budgetLabel)
                     LabeledContent("计划估算", value: budget.plannedLabel)
                     LabeledContent("实际费用", value: budget.actualLabel)
@@ -342,6 +395,9 @@ struct TripDetailView: View {
             }
 
             Section("报销单") {
+                if let error = viewModel.sectionError("reports") {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
                 if viewModel.expenseReports.isEmpty {
                     Text("还没有报销单。可从当前费用记录生成草稿。")
                         .font(.footnote)
@@ -381,6 +437,9 @@ struct TripDetailView: View {
             }
 
             Section("拜访") {
+                if let error = viewModel.sectionError("visits") {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
                 Button {
                     showsAddVisit = true
                 } label: {
@@ -408,6 +467,9 @@ struct TripDetailView: View {
             }
 
             Section("计划版本") {
+                if let error = viewModel.sectionError("plans") {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
                 if viewModel.plans.isEmpty {
                     Text("还没有计划版本。").foregroundStyle(.secondary)
                 }

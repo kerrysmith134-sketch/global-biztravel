@@ -423,7 +423,7 @@ final class LocalTripRepository: TripRepository {
     }
 
     func tripOutcome(tripId: String) async throws -> TripOutcome {
-        throw LocalStorePendingError(method: "tripOutcome")
+        try LocalAggregations.tripOutcome(database: database, tripId: tripId)
     }
 
     func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult {
