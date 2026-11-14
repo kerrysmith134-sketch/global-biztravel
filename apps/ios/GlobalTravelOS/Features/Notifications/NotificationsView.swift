@@ -195,12 +195,7 @@ private struct NotificationRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(item.priorityLabel)
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(tint.opacity(0.15), in: Capsule())
-                    .foregroundStyle(tint)
+                DSBadge(text: item.priorityLabel, color: tint)
                 if let created = item.createdAt {
                     Text(ISO8601.shortDisplay(from: created))
                         .font(.caption2)

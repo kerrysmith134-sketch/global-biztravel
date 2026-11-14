@@ -157,11 +157,7 @@ private struct TripRow: View {
             HStack {
                 Text(trip.name).font(.headline)
                 Spacer()
-                Text(trip.statusLabel)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: Capsule())
+                DSBadge(text: trip.statusLabel, color: DS.ColorToken.status(trip.status ?? ""))
             }
             Text(trip.windowLabel)
                 .font(.subheadline)

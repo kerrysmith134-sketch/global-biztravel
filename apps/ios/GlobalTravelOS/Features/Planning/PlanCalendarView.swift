@@ -121,16 +121,10 @@ struct PlanCalendarView: View {
     }
 
     private func gapView(_ gap: (startMinute: Int, minutes: Int)) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "clock.badge.questionmark")
-                .font(.caption2)
-            Text("空档 \(minutesLabel(gap.minutes))")
-                .font(.caption2)
-        }
-        .foregroundStyle(.secondary)
-        .padding(.vertical, 2)
-        .padding(.horizontal, 6)
-        .background(.quaternary.opacity(0.4), in: Capsule())
+        DSDataQualityTag(kind: .gap, text: "空档 \(minutesLabel(gap.minutes))")
+            .padding(.vertical, 2)
+            .padding(.horizontal, 6)
+            .background(.quaternary.opacity(0.4), in: Capsule())
     }
 
     // MARK: - 时间计算（设备时区展示；分钟数以当日 00:00 为基准的本地偏移）

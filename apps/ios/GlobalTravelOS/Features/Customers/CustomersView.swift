@@ -31,11 +31,10 @@ struct CustomersView: View {
                                     HStack {
                                         Text(customer.name).font(.body)
                                         Spacer()
-                                        Text(customer.tier)
-                                            .font(.caption2.weight(.bold))
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(.blue.opacity(0.12), in: Capsule())
+                                        DSBadge(
+                                            text: customer.tier,
+                                            color: DS.ColorToken.tier(customer.tier)
+                                        )
                                     }
                                     HStack(spacing: 8) {
                                         if let industry = customer.industry, !industry.isEmpty {
