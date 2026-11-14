@@ -301,9 +301,6 @@ struct TripDetailView: View {
                         LabeledContent("出发地", value: trip.originLabel)
                         LabeledContent("版本", value: "v\(trip.version)")
                     }
-                }
-
-                if let trip = viewModel.trip {
                     Section("出行状态") {
                         let status = (trip.status ?? "").uppercased()
                         if ["DRAFT", "PLANNING", "READY", "ACTIVE"].contains(status) {
@@ -330,29 +327,31 @@ struct TripDetailView: View {
                     }
                 }
 
-                Section("客户导入") {
-                    Button {
-                        showsImport = true
-                    } label: {
-                        Label("导入 Excel 客户名单", systemImage: "doc.badge.plus")
+                if section == .overview {
+                    Section("客户导入") {
+                        Button {
+                            showsImport = true
+                        } label: {
+                            Label("导入 Excel 客户名单", systemImage: "doc.badge.plus")
+                        }
                     }
-                }
 
-                Section("当地与记忆") {
-                    NavigationLink {
-                        TripOutcomeView(tripId: viewModel.tripId, environment: environment)
-                    } label: {
-                        Label("结果复盘", systemImage: "chart.bar.doc.horizontal")
-                    }
-                    NavigationLink {
-                        LocalGuideView(tripId: viewModel.tripId, environment: environment)
-                    } label: {
-                        Label("当地生活指南", systemImage: "map")
-                    }
-                    NavigationLink {
-                        TripMemoryView(tripId: viewModel.tripId, environment: environment)
-                    } label: {
-                        Label("查看复盘记忆", systemImage: "brain.head.profile")
+                    Section("当地与记忆") {
+                        NavigationLink {
+                            TripOutcomeView(tripId: viewModel.tripId, environment: environment)
+                        } label: {
+                            Label("结果复盘", systemImage: "chart.bar.doc.horizontal")
+                        }
+                        NavigationLink {
+                            LocalGuideView(tripId: viewModel.tripId, environment: environment)
+                        } label: {
+                            Label("当地生活指南", systemImage: "map")
+                        }
+                        NavigationLink {
+                            TripMemoryView(tripId: viewModel.tripId, environment: environment)
+                        } label: {
+                            Label("查看复盘记忆", systemImage: "brain.head.profile")
+                        }
                     }
                 }
             }

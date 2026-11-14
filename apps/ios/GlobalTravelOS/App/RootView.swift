@@ -16,5 +16,7 @@ struct RootView: View {
             SettingsView()
                 .tabItem { Label("我的", systemImage: "person.crop.circle") }
         }
+        // 本地模式首启空库自动载入示例数据，保证打开就能测；只执行一次。
+        .task { await environment.seedDemoIfNeeded() }
     }
 }

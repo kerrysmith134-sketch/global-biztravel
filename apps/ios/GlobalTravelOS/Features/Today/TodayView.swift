@@ -99,8 +99,13 @@ struct TodayView: View {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     greetingHeader
                     offlineBanner
-                    if let trip = viewModel.ongoingTrip {
+                    if let trip = viewModel.ongoingTrip ?? viewModel.upcomingTrips.first {
                         OngoingTripCard(trip: trip)
+                        if viewModel.ongoingTrip == nil, viewModel.upcomingTrips.count > 1 {
+                            Text("另有 \(viewModel.upcomingTrips.count - 1) 个待出发行程，见「出行」。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     if let error = viewModel.errorMessage {
                         ErrorBanner(message: error)
@@ -157,7 +162,11 @@ struct TodayView: View {
                 ContentUnavailableView(
                     "今天没有需要处理的建议",
                     systemImage: "checkmark.seal",
-                    description: Text("系统会持续盯签证时效、缺坐标与未排项；有变化才会打扰你。")
+                    description: Text(
+                        viewModel.ongoingTrip != nil || !viewModel.upcomingTrips.isEmpty
+                            ? "系统会持续盯签证时效、缺坐标与未排项；有变化才会打扰你。当前行程与拜访见「出行」。"
+                            : "系统会持续盯签证时效、缺坐标与未排项；有变化才会打扰你。"
+                    )
                 )
                 .padding(.top, 40)
             } else if !viewModel.items.isEmpty {
@@ -187,12 +196,17 @@ struct TodayView: View {
 
     private var offlineBanner: some View {
         HStack(spacing: 8) {
-            Image(systemName: environment.offlineSummary == "数据来自服务端" ? "wifi" : "wifi.slash")
+            Image(systemName: bannerIcon)
             Text(environment.offlineSummary)
                 .font(.caption)
             Spacer()
         }
         .foregroundStyle(.secondary)
+    }
+
+    private var bannerIcon: String {
+        if environment.isLocalMode { return "internaldrive" }
+        return environment.offlineSummary == "数据来自服务端" ? "wifi" : "wifi.slash"
     }
 }
 
@@ -234,6 +248,8 @@ private struct OngoingTripCard: View {
 
     private func windowDisplay(_ window: TripWindow) -> String {
         let formatter = DateFormatter()
+        // 差旅窗口按出发地时区展示（与规划引擎 timezoneHome 口径一致，避免设备时区把 08:00 显示成 04:00）。
+        formatter.timeZone = trip.originPlace?.timeZone() ?? .current
         formatter.dateFormat = "M月d日 HH:mm"
         let start = formatter.string(from: window.start)
         formatter.dateFormat = "M月d日"

@@ -293,7 +293,12 @@ struct Trip: Codable, Equatable, Identifiable {
     }
 
     var windowLabel: String {
-        window?.displayRange ?? "未设置差旅窗口"
+        // 按出发地时区展示：跨洲行程用设备时区会把出发/到达日整体挪一天。
+        guard let window else { return "未设置差旅窗口" }
+        let formatter = DateFormatter()
+        formatter.timeZone = originPlace?.timeZone() ?? .current
+        formatter.dateFormat = "M月d日"
+        return "\(formatter.string(from: window.start)) → \(formatter.string(from: window.end))"
     }
 
     var originLabel: String {

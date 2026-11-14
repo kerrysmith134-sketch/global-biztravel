@@ -47,6 +47,9 @@ final class AppEnvironment: ObservableObject {
         let overrides = ProcessInfo.processInfo.environment
         if let value = overrides["GBT_UI_TEST_BASE_URL"], !value.isEmpty {
             loaded.baseURLString = value
+            // UI 冒烟全部针对真实后端：地址覆盖隐含云端模式（否则默认 local 会让用例
+            // 连到一个空的本地库，断言"后端种子数据"必然失败）。
+            loaded.runMode = "cloud"
         }
         if let value = overrides["GBT_UI_TEST_ORG"], !value.isEmpty {
             loaded.orgId = value
@@ -91,8 +94,10 @@ final class AppEnvironment: ObservableObject {
         self.syncPushUseCase = bundle.syncPush
 
         if loaded.runMode == "local" {
-            offlineSummary = "本地模式"
+            // 本地模式的库引用必须在启动时就挂上：设置页与自动示例数据都依赖它。
+            localDatabase = Self.localDatabase(from: bundle)
         }
+        refreshOfflineSummary()
     }
 
     /// updateSettings 重建时套用新 bundle（init 场景直接内联赋值以满足两段式）。
@@ -112,9 +117,7 @@ final class AppEnvironment: ObservableObject {
         activatePlanUseCase = bundle.activatePlan
         submitVisitRecordUseCase = bundle.submitRecord
         syncPushUseCase = bundle.syncPush
-        if settings.runMode == "local" {
-            offlineSummary = "本地模式"
-        }
+        refreshOfflineSummary()
     }
 
     /// 账户级数据目录：cloud 模式按 org+user 隔离；local 模式独立单用户目录。
@@ -215,8 +218,12 @@ final class AppEnvironment: ObservableObject {
         )
     }
 
+    /// 本地模式（ADR-0036）：仓储全部落在 App 内 SQLite。
+    var isLocalMode: Bool { settings.runMode == "local" }
+
     func refreshOfflineSummary() {
-        offlineSummary = indicator.summary
+        // 本地模式没有服务端可"回退"，缓存指示器语义不适用：固定显示本地口径。
+        offlineSummary = isLocalMode ? "本地模式（数据在设备内）" : indicator.summary
     }
 
     /// Remember the last opened trip without rebuilding the repositories.
@@ -244,12 +251,34 @@ final class AppEnvironment: ObservableObject {
         )
         if next.runMode == "local" {
             // 重建时补挂本地库引用（bundle 内部持有，这里只留强引用）。
-            localDatabase = (bundle.trips as? LocalTripRepository)?.database
-                ?? (bundle.plans as? LocalPlanRepository)?.database
+            localDatabase = Self.localDatabase(from: bundle)
         } else {
             localDatabase = nil
         }
         apply(bundle)
+    }
+
+    private static func localDatabase(from bundle: RepositoryBundle) -> LocalDatabase? {
+        (bundle.trips as? LocalTripRepository)?.database
+            ?? (bundle.plans as? LocalPlanRepository)?.database
+    }
+
+    /// 本地模式首次启动：空库自动载入示例数据（只做一次，用户清空后不再注入）。
+    func seedDemoIfNeeded() async {
+        guard isLocalMode, let database = localDatabase else { return }
+        let flagKey = "local-demo-auto-seeded"
+        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
+        let existing = (try? database.count(table: "trips")) ?? 0
+        guard existing == 0 else {
+            UserDefaults.standard.set(true, forKey: flagKey)
+            return
+        }
+        do {
+            _ = try await LocalDemoSeeder.seed(environment: self)
+            UserDefaults.standard.set(true, forKey: flagKey)
+        } catch {
+            // 自动注入失败不阻断首屏：设置页仍可手动载入，错误已在下一轮启动重试。
+        }
     }
 
     func errorMessage(_ error: Error) -> String {

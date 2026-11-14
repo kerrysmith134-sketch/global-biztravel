@@ -21,7 +21,18 @@ final class LocalPlanRepository: PlanRepository {
             bindings: [tripId],
             order: "created_at DESC"
         )
-        let plans = try payloads.map { try DateCoding.decoder().decode(PlanVersion.self, from: $0) }
+        // 本地只存详情载荷（days/legs），列表的停靠/天数在服务端是独立列；
+        // 这里按详情回算，避免列表显示 "0 停靠 / 0 天"。
+        let plans = try payloads.map { data -> PlanVersion in
+            var plan = try DateCoding.decoder().decode(PlanVersion.self, from: data)
+            if plan.stopCount == nil || plan.dayCount == nil,
+               let detail = try? DateCoding.decoder().decode(PlanVersionDetail.self, from: data) {
+                let days = detail.days ?? []
+                plan.stopCount = plan.stopCount ?? days.reduce(0) { $0 + $1.stops.count }
+                plan.dayCount = plan.dayCount ?? days.count
+            }
+            return plan
+        }
         return Page(items: Array(plans.prefix(page.limit)))
     }
 
