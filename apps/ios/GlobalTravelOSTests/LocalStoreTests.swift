@@ -194,18 +194,100 @@ final class LocalStoreTests: XCTestCase {
         let budget = try await repository.budgetSummary(tripId: trip.id, baseCurrency: "EUR")
         XCTAssertEqual(budget.budgetCurrency, "EUR")
         XCTAssertEqual(budget.actualByCurrency?.count ?? 0, 0)
-        // 诊断断言保留：localGuide 仍待 P7 实现。
+
+        // localGuide 已在 P7 本地化：返回指南（空拜访时国家有目录条目、带实时源缺口标注）。
+        let guide = try await repository.localGuide(tripId: trip.id)
+        XCTAssertEqual(guide.tripId, trip.id)
+        XCTAssertTrue(guide.gapList.contains { $0.code == "LIVE_POI_NOT_CONNECTED" })
+
+        // 仍待实现的入口继续显式 pending（诚实占位）。
         do {
-            _ = try await repository.localGuide(tripId: trip.id)
-            XCTFail("localGuide 应显式未实现（P7 前）")
+            _ = try await repository.createVisaCases(tripId: trip.id, countries: nil)
+            XCTFail("createVisaCases 应显式未实现")
         } catch is LocalStorePendingError {
             // 预期
         }
-        do {
-            _ = try await repository.localGuide(tripId: trip.id)
-            XCTFail("localGuide 应显式未实现")
-        } catch is LocalStorePendingError {
-            // 预期
+    }
+
+    // MARK: - P7 聚合（复盘/简报/版本比较）
+
+    func testLocalTripOutcomeAggregatesLocalFacts() async throws {
+        let repository = makeRepository()
+        let trip = try await repository.createTrip(makeRequest(name: "复盘行程"))
+
+        // 直接写入一条拜访 + 一条现场记录（聚合读取本地事实）。
+        let visit = TripVisit(
+            id: UUID().uuidString, tripId: trip.id, placeId: trip.originPlaceId,
+            title: "客户拜访", objective: nil, serviceMinutes: 60,
+            timeWindowStart: nil, timeWindowEnd: nil, priority: 1,
+            movementMode: "AIR", status: "COMPLETED", createdAt: Date()
+        )
+        try database.upsert(
+            table: "visits", id: visit.id,
+            columns: ["trip_id": trip.id, "place_id": visit.placeId, "title": "客户拜访", "status": "COMPLETED"],
+            payload: try DateCoding.encode(visit)
+        )
+        try database.upsert(
+            table: "visit_records", id: UUID().uuidString,
+            columns: ["visit_id": visit.id, "client_record_id": "rec-1"],
+            payload: try JSONSerialization.data(withJSONObject: ["outcome": "MET", "notes": "确认续约"])
+        )
+
+        let outcome = try await repository.tripOutcome(tripId: trip.id)
+        XCTAssertEqual(outcome.visits?["COMPLETED"], 1)
+        XCTAssertEqual(outcome.recordOutcomes?["MET"], 1)
+        XCTAssertEqual(outcome.visitLabels?["COMPLETED"], "已完成")
+    }
+
+    func testLocalPlanDiffDetectsChanges() async throws {
+        let repository = makeRepository()
+        let trip = try await repository.createTrip(makeRequest(name: "diff 行程"))
+
+        func plan(id: String, version: Int, stops: [(String, Int, Int)]) -> PlanVersionDetail {
+            let days = stops.map { visitId, day, seq in
+                PlanDay(
+                    date: "2026-11-20",
+                    stops: [
+                        PlanStop(
+                            visitId: visitId, sequence: seq, placeId: nil, placeName: nil,
+                            city: nil, countryCode: nil, latitude: nil, longitude: nil,
+                            arrive: Date(timeIntervalSince1970: Double(day * 3600 + seq * 60)),
+                            depart: Date(timeIntervalSince1970: Double(day * 3600 + seq * 60 + 1800)),
+                            travelMinutes: 30, distanceKm: nil
+                        )
+                    ]
+                )
+            }
+            return PlanVersionDetail(
+                id: id, tripId: trip.id, versionNumber: version, status: .draft,
+                solver: "heuristic", feasible: true, degraded: false, objectiveValue: 100,
+                problemHash: "hash", createdAt: Date(), validation: nil, unplaced: nil,
+                days: days, legs: nil, solutionStatus: "FEASIBLE",
+                costTotal: nil, costCurrency: nil, costUnknownCount: nil, policyViolations: nil
+            )
         }
+
+        let baseId = UUID().uuidString
+        let targetId = UUID().uuidString
+        try database.upsert(
+            table: "plan_versions", id: baseId,
+            columns: ["trip_id": trip.id, "version": 1, "status": "DRAFT", "created_at": "2026-11-20T00:00:00Z"],
+            payload: try DateCoding.encode(plan(id: baseId, version: 1, stops: [("v1", 1, 1), ("v2", 1, 2)]))
+        )
+        try database.upsert(
+            table: "plan_versions", id: targetId,
+            columns: ["trip_id": trip.id, "version": 2, "status": "DRAFT", "created_at": "2026-11-21T00:00:00Z"],
+            payload: try DateCoding.encode(plan(id: targetId, version: 2, stops: [("v2", 1, 1), ("v3", 2, 1)]))
+        )
+
+        let planRepository = LocalPlanRepository(database: database)
+        let diff = try await planRepository.planDiff(tripId: trip.id, planId: targetId, against: baseId)
+        let changes = Dictionary(uniqueKeysWithValues: diff.stopList.map { ($0.visitId, $0.change) })
+        XCTAssertEqual(changes["v1"], .removed)
+        XCTAssertEqual(changes["v2"], .moved)   // 日/序号变化
+        XCTAssertEqual(changes["v3"], .added)
+        XCTAssertEqual(diff.summary?.added, 1)
+        XCTAssertEqual(diff.summary?.removed, 1)
+        XCTAssertEqual(diff.summary?.moved, 1)
     }
 }

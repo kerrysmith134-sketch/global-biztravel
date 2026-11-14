@@ -36,7 +36,9 @@ final class LocalPlanRepository: PlanRepository {
     }
 
     func planDiff(tripId: String, planId: String, against: String) async throws -> PlanDiff {
-        throw LocalStorePendingError(method: "planDiff（P2）")
+        try LocalAggregations.planDiff(
+            database: database, tripId: tripId, basePlanId: against, targetPlanId: planId
+        )
     }
 
     /// 本地激活：版本令牌校验 + 置 ACTIVE + 行程回写 active_plan_id。

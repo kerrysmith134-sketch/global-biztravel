@@ -419,7 +419,7 @@ final class LocalTripRepository: TripRepository {
     }
 
     func localGuide(tripId: String) async throws -> LocalGuide {
-        throw LocalStorePendingError(method: "localGuide")
+        try LocalGuideBuilder.build(database: database, tripId: tripId)
     }
 
     func tripOutcome(tripId: String) async throws -> TripOutcome {

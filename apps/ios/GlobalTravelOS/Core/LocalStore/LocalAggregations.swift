@@ -254,3 +254,136 @@ enum LocalAggregations {
         }
     }
 }
+
+// MARK: - 计划版本比较（P7）
+
+extension LocalAggregations {
+    /// 两个计划版本的确定性 diff：逐停靠判定 ADDED/REMOVED/MOVED/RETIMED/UNCHANGED。
+    /// 判定口径（与服务端一致）：日归属或序号变化 ⇒ MOVED（优先）；时间变化 ⇒ RETIMED。
+    static func planDiff(
+        database: LocalDatabase,
+        tripId: String,
+        basePlanId: String,
+        targetPlanId: String
+    ) throws -> PlanDiff {
+        let base = try loadPlan(database: database, id: basePlanId)
+        let target = try loadPlan(database: database, id: targetPlanId)
+
+        struct Location {
+            var dayIndex: Int
+            var sequence: Int
+            var arrive: Date?
+            var depart: Date?
+            var travelMinutes: Int?
+            var serviceMinutes: Int?
+        }
+
+        func locations(_ plan: PlanVersionDetail) -> [String: Location] {
+            var result: [String: Location] = [:]
+            for (dayIndex, day) in (plan.days ?? []).enumerated() {
+                for stop in day.stops {
+                    result[stop.visitId] = Location(
+                        dayIndex: dayIndex,
+                        sequence: stop.sequence,
+                        arrive: stop.arrive,
+                        depart: stop.depart,
+                        travelMinutes: stop.travelMinutes,
+                        serviceMinutes: stop.serviceMinutes
+                    )
+                }
+            }
+            return result
+        }
+
+        let baseLocations = locations(base)
+        let targetLocations = locations(target)
+        var deltas: [PlanStopDelta] = []
+        var added = 0
+        var removed = 0
+        var moved = 0
+        var retimed = 0
+        var unchanged = 0
+
+        for visitId in Set(baseLocations.keys).union(targetLocations.keys).sorted() {
+            let from = baseLocations[visitId]
+            let to = targetLocations[visitId]
+            let change: PlanStopChange
+            if from == nil {
+                change = .added
+                added += 1
+            } else if to == nil {
+                change = .removed
+                removed += 1
+            } else if from!.dayIndex != to!.dayIndex || from!.sequence != to!.sequence {
+                change = .moved
+                moved += 1
+            } else if from!.arrive != to!.arrive || from!.depart != to!.depart {
+                change = .retimed
+                retimed += 1
+            } else {
+                change = .unchanged
+                unchanged += 1
+            }
+            deltas.append(
+                PlanStopDelta(
+                    visitId: visitId,
+                    change: change,
+                    dayIndexFrom: from?.dayIndex,
+                    dayIndexTo: to?.dayIndex,
+                    sequenceFrom: from?.sequence,
+                    sequenceTo: to?.sequence,
+                    arriveAtFrom: from?.arrive,
+                    arriveAtTo: to?.arrive,
+                    departAtFrom: from?.depart,
+                    departAtTo: to?.depart,
+                    travelMinutesFrom: from?.travelMinutes,
+                    travelMinutesTo: to?.travelMinutes,
+                    serviceMinutesFrom: from?.serviceMinutes,
+                    serviceMinutesTo: to?.serviceMinutes
+                )
+            )
+        }
+
+        func totalTravel(_ plan: PlanVersionDetail) -> Int {
+            (plan.days ?? []).flatMap { $0.stops }.reduce(0) { $0 + ($1.travelMinutes ?? 0) }
+        }
+
+        let travelFrom = totalTravel(base)
+        let travelTo = totalTravel(target)
+        return PlanDiff(
+            tripId: tripId,
+            basePlanVersionId: basePlanId,
+            targetPlanVersionId: targetPlanId,
+            baseVersionNumber: base.versionNumber,
+            targetVersionNumber: target.versionNumber,
+            baseStatus: base.status?.rawValue,
+            targetStatus: target.status?.rawValue,
+            baseSolver: base.solver,
+            targetSolver: target.solver,
+            baseDegraded: base.degraded,
+            targetDegraded: target.degraded,
+            objectiveFrom: base.objectiveValue,
+            objectiveTo: target.objectiveValue,
+            objectiveDelta: (base.objectiveValue != nil && target.objectiveValue != nil)
+                ? (target.objectiveValue! - base.objectiveValue!) : nil,
+            travelMinutesFrom: travelFrom,
+            travelMinutesTo: travelTo,
+            travelMinutesDelta: travelTo - travelFrom,
+            stops: deltas,
+            unplaced: nil,
+            summary: PlanDiffSummary(
+                added: added, removed: removed, moved: moved,
+                retimed: retimed, unchanged: unchanged,
+                total: deltas.count
+            )
+        )
+    }
+
+    private static func loadPlan(database: LocalDatabase, id: String) throws -> PlanVersionDetail {
+        let payloads = try database.loadPayloads(table: "plan_versions", where: "id = ?", bindings: [id])
+        guard let payload = payloads.first else {
+            throw APIError.serverError(code: "PLAN_NOT_FOUND", message: "计划版本不存在", traceId: nil, details: [:])
+        }
+        return try DateCoding.decoder().decode(PlanVersionDetail.self, from: payload)
+    }
+}
