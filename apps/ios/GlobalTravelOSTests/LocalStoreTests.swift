@@ -200,12 +200,20 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(guide.tripId, trip.id)
         XCTAssertTrue(guide.gapList.contains { $0.code == "LIVE_POI_NOT_CONNECTED" })
 
-        // 仍待实现的入口继续显式 pending（诚实占位）。
+        // 签证案件已本地化（P7）：按目的地国家创建 NEW 案件 + 材料清单。
+        let cases = try await repository.createVisaCases(tripId: trip.id, countries: ["DE"])
+        XCTAssertEqual(cases.count, 1)
+        XCTAssertEqual(cases.first?.status, .new)
+        XCTAssertEqual(cases.first?.checklistItems.count, 7)
+        // 幂等：再次创建不新增
+        let again = try await repository.createVisaCases(tripId: trip.id, countries: ["DE"])
+        XCTAssertEqual(again.first?.id, cases.first?.id)
+        // 非法状态迁移必须拒绝（NEW → APPROVED 直跳）
         do {
-            _ = try await repository.createVisaCases(tripId: trip.id, countries: nil)
-            XCTFail("createVisaCases 应显式未实现")
-        } catch is LocalStorePendingError {
-            // 预期
+            _ = try await repository.updateVisaCase(id: cases.first!.id, status: .approved)
+            XCTFail("NEW→APPROVED 应被状态机拒绝")
+        } catch let error as APIError {
+            XCTAssertEqual(error.errorCode, "CASE_TRANSITION_INVALID")
         }
     }
 
