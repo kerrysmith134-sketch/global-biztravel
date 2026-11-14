@@ -121,12 +121,21 @@ struct CreateTripRequest: Codable, Equatable {
     var purpose: String
     var originPlace: PlaceRef
     var window: TripWindow
+    /// 目的地国家列表（ISO alpha-2，大写）。与出发地国家语义分离（P0-2）。
+    var countries: [String]
 
-    init(name: String, purpose: String, originPlace: PlaceRef, window: TripWindow) {
+    init(
+        name: String,
+        purpose: String,
+        originPlace: PlaceRef,
+        window: TripWindow,
+        countries: [String] = []
+    ) {
         self.name = name
         self.purpose = purpose
         self.originPlace = originPlace
         self.window = window
+        self.countries = countries
     }
 }
 

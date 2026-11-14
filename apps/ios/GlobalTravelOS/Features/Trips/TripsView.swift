@@ -50,18 +50,19 @@ final class TripsViewModel: ObservableObject {
         }
     }
 
-    func create(name: String, countryCode: String, start: Date, end: Date) async -> Bool {
+    func create(name: String, destinationCountries: [String], start: Date, end: Date) async -> Bool {
         do {
             let trip = try await environment.createTripUseCase.create(
                 name: name,
                 purpose: "商务拜访",
                 originName: "上海总部",
-                countryCode: countryCode,
+                countryCode: "CN",              // 出发地国家（P0-2 语义分离）
                 timezone: "Asia/Shanghai",
                 latitude: 31.2304,
                 longitude: 121.4737,
                 start: start,
-                end: end
+                end: end,
+                destinationCountries: destinationCountries
             )
             // 列表按窗口开始时间倒序分页；刚建的近期出行可能落在下一页。先把它放到可见位置，
             // 而不是让用户创建成功后看不到自己刚建的出行。
@@ -135,10 +136,10 @@ struct TripsView: View {
             .refreshable { await viewModel.load() }
             .task { await viewModel.load() }
             .sheet(isPresented: $viewModel.showsCreate) {
-                CreateTripSheet { name, country, start, end in
+                CreateTripSheet { name, countries, start, end in
                     await viewModel.create(
                         name: name,
-                        countryCode: country,
+                        destinationCountries: countries,
                         start: start,
                         end: end
                     )
@@ -175,10 +176,10 @@ private struct TripRow: View {
 
 private struct CreateTripSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let onCreate: (String, String, Date, Date) async -> Bool
+    let onCreate: (String, [String], Date, Date) async -> Bool
 
     @State private var name = ""
-    @State private var countryCode = "DE"
+    @State private var destinationCountries = "DE"
     @State private var start = Date().addingTimeInterval(86_400 * 7)
     @State private var end = Date().addingTimeInterval(86_400 * 10)
     @State private var saving = false
@@ -188,7 +189,7 @@ private struct CreateTripSheet: View {
             Form {
                 Section("基本信息") {
                     TextField("出行名称", text: $name)
-                    TextField("目的国代码（如 DE / SG）", text: $countryCode)
+                    TextField("目的国家（可多个，逗号分隔，如 DE, NL）", text: $destinationCountries)
                         .textInputAutocapitalization(.characters)
                 }
                 Section("时间窗口") {
@@ -196,7 +197,7 @@ private struct CreateTripSheet: View {
                     DatePicker("结束", selection: $end, displayedComponents: .date)
                 }
                 Section {
-                    Text("出发地默认使用上海总部坐标（31.2304, 121.4737）。新建后可再调整。")
+                    Text("出发地：上海总部（31.2304, 121.4737，Asia/Shanghai）。出发地国家与目的国家是两回事，可分开编辑。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -210,12 +211,11 @@ private struct CreateTripSheet: View {
                     Button("创建") {
                         saving = true
                         Task {
-                            let ok = await onCreate(
-                                name,
-                                countryCode.uppercased(),
-                                start,
-                                end
-                            )
+                            let parsed = destinationCountries
+                                .split(whereSeparator: { ",，;； ".contains($0) })
+                                .map { $0.uppercased() }
+                                .filter { $0.count == 2 }
+                            let ok = await onCreate(name, parsed, start, end)
                             saving = false
                             if ok { dismiss() }
                         }

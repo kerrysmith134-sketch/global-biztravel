@@ -64,7 +64,8 @@ final class CreateTripUseCase {
         name: String,
         purpose: String,
         origin: PlaceRef,
-        window: TripWindow
+        window: TripWindow,
+        destinationCountries: [String] = []
     ) async throws -> Trip {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
@@ -79,12 +80,16 @@ final class CreateTripUseCase {
                 ? CreateTripUseCase.defaultPurpose
                 : purpose.trimmingCharacters(in: .whitespacesAndNewlines),
             originPlace: origin,
-            window: window
+            window: window,
+            countries: destinationCountries
+                .map { $0.trimmingCharacters(in: .whitespaces).uppercased() }
+                .filter { $0.count == 2 }
         )
         return try await repository.createTrip(request)
     }
 
     /// Convenience for the form: builds a `PlaceRef` and rejects half-filled coordinates.
+    /// `countryCode` 是**出发地**国家；目的地国家经 `destinationCountries` 传入（P0-2 纠正语义）。
     func create(
         name: String,
         purpose: String,
@@ -94,7 +99,8 @@ final class CreateTripUseCase {
         latitude: Double?,
         longitude: Double?,
         start: Date,
-        end: Date
+        end: Date,
+        destinationCountries: [String] = []
     ) async throws -> Trip {
         guard let latitude, let longitude else {
             throw TripValidationError.missingCoordinates
@@ -112,7 +118,8 @@ final class CreateTripUseCase {
             name: name,
             purpose: purpose,
             origin: origin,
-            window: TripWindow(start: start, end: end)
+            window: TripWindow(start: start, end: end),
+            destinationCountries: destinationCountries
         )
     }
 }

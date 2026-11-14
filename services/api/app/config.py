@@ -8,6 +8,7 @@ from __future__ import annotations
 from functools import lru_cache
 from uuid import UUID
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DEV_ORG = UUID("11111111-1111-1111-1111-111111111111")
@@ -25,6 +26,19 @@ class Settings(BaseSettings):
     migration_database_url: str = "postgresql+psycopg://gbt_owner:gbt_owner_pw@localhost:55432/gbt_os"
 
     dev_auth: bool = True
+
+    @model_validator(mode="after")
+    def _guard_dev_auth(self) -> Settings:
+        """P0 安全护栏：非本地环境禁止开发态认证（伪造身份头）。
+
+        生产/预发必须以网关或 OIDC 注入已验签身份；dev_auth 只允许 local/docker/test。
+        """
+        if self.dev_auth and self.env.lower() not in ("local", "docker", "test"):
+            raise ValueError(
+                "GBT_DEV_AUTH=true 仅允许在 local/docker/test 环境；"
+                f"当前 env={self.env!r}。生产必须关闭开发认证并接入可信身份来源。"
+            )
+        return self
     dev_org_id: UUID = DEFAULT_DEV_ORG
     dev_user_id: UUID = DEFAULT_DEV_USER
 

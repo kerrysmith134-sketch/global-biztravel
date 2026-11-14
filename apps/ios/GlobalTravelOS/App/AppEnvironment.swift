@@ -11,10 +11,10 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var settings: AppSettings
     @Published private(set) var offlineSummary: String = "数据来自服务端"
 
-    let directory: URL
+    private(set) var directory: URL
     let settingsStore: AppSettingsStore
     let indicator: OfflineIndicator
-    let offlineStore: OfflineStore
+    private(set) var offlineStore: OfflineStore
     private(set) var localDatabase: LocalDatabase?
 
     private(set) var apiClient: APIClient
@@ -35,9 +35,12 @@ final class AppEnvironment: ObservableObject {
     private(set) var syncPushUseCase: SyncPushUseCase
 
     init() {
-        let directory = AppSettingsStore.defaultDirectory()
-        let store = AppSettingsStore(directory: directory)
+        // 设置文件是全局的；缓存/离线队列按账户（org+user）分区（P0-1：
+        // 身份切换不得复用其他账户的缓存或队列）。
+        let settingsRoot = AppSettingsStore.defaultDirectory()
+        let store = AppSettingsStore(directory: settingsRoot)
         var loaded = store.load()
+        let directory = Self.accountDirectory(root: settingsRoot, settings: loaded)
 
         // UI 测试用启动参数覆盖身份/地址：不写回磁盘，避免测试污染用户设置。
         let overrides = ProcessInfo.processInfo.environment
@@ -109,6 +112,16 @@ final class AppEnvironment: ObservableObject {
         if settings.runMode == "local" {
             offlineSummary = "本地模式"
         }
+    }
+
+    /// 账户级数据目录：cloud 模式按 org+user 隔离；local 模式独立单用户目录。
+    static func accountDirectory(root: URL, settings: AppSettings) -> URL {
+        if settings.runMode == "local" {
+            return root.appendingPathComponent("local", isDirectory: true)
+        }
+        let fingerprint = "\(settings.orgId)_\(settings.userId)"
+            .replacingOccurrences(of: "/", with: "_")
+        return root.appendingPathComponent("accounts/\(fingerprint)", isDirectory: true)
     }
 
     /// 组合根：按运行模式构造仓储（ADR-0036）。
@@ -214,9 +227,11 @@ final class AppEnvironment: ObservableObject {
         mutate(&next)
         settingsStore.save(next)
         settings = next
-        // Rebuild everything that carries the old identity / mode.
+        // Rebuild everything that carries the old identity / mode（P0-1：目录随身份切换）。
         let client = APIClient(configuration: next.apiConfiguration)
         apiClient = client
+        directory = Self.accountDirectory(root: AppSettingsStore.defaultDirectory(), settings: next)
+        offlineStore = OfflineStore(directory: directory)
         let bundle = Self.makeBundle(
             settings: next, client: client, directory: directory,
             offlineStore: offlineStore, indicator: indicator

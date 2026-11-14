@@ -179,7 +179,7 @@ final class RemoteTripRepository: TripRepository {
             originPlaceId: createdPlace.id,
             windowStart: request.window.start,
             windowEnd: request.window.end,
-            countries: [origin.countryCode.uppercased()],
+            countries: request.countries,
             currency: nil
         )
         return try await client.send(try Endpoints.createTrip(body), as: Trip.self)
