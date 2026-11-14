@@ -166,7 +166,7 @@ final class AppEnvironment: ObservableObject {
                     plans: plans,
                     visits: visits,
                     proactive: LocalProactiveRepository(database: database),
-                    memory: RemoteMemoryRepository(client: client),
+                    memory: LocalMemoryRepository(database: database),
                     actionCenter: LocalActionCenterRepository(database: database),
                     notifications: RemoteNotificationRepository(client: client),
                     assistant: RemoteAssistantRepository(client: client),

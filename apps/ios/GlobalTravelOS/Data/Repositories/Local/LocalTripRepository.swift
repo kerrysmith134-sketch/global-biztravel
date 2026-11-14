@@ -211,11 +211,11 @@ final class LocalTripRepository: TripRepository {
     }
 
     func createVisaCases(tripId: String, countries: [String]?) async throws -> [VisaCase] {
-        throw LocalStorePendingError(method: "createVisaCases")
+        try LocalVisaService.createCases(database: database, tripId: tripId, countries: countries)
     }
 
     func updateVisaCase(id: String, status: VisaCaseStatus) async throws -> VisaCase {
-        throw LocalStorePendingError(method: "updateVisaCase")
+        try LocalVisaService.updateCase(database: database, id: id, status: status)
     }
 
     func expenses(tripId: String) async throws -> [TripExpense] {
@@ -415,7 +415,10 @@ final class LocalTripRepository: TripRepository {
     }
 
     func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment] {
-        throw LocalStorePendingError(method: "refreshEntryAssessments")
+        let nationality = LocalTravelerProfile.load(database: database).nationality
+        return try LocalVisaService.assessEntry(
+            database: database, tripId: tripId, nationality: nationality
+        )
     }
 
     func localGuide(tripId: String) async throws -> LocalGuide {

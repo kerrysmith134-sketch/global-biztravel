@@ -217,7 +217,9 @@ final class LocalPlanRepository: PlanRepository {
     }
 
     func createPlanChange(tripId: String, request: PlanChangeCreate) async throws -> PlanChangeAccepted {
-        throw LocalStorePendingError(method: "createPlanChange（P7）")
+        try await LocalPlanChangeService.createPlanChange(
+            database: database, tripId: tripId, request: request, planRepository: self
+        )
     }
 }
 
@@ -398,11 +400,30 @@ final class LocalVisitRepository: VisitRepository {
     }
 
     func syncToCRM(recordId: String) async throws -> CrmSyncJob {
-        throw LocalStorePendingError(method: "syncToCRM")
+        // 需要记录所属 trip/visit 信息；从记录 payload 读。
+        let payloads = try database.loadPayloads(
+            table: "visit_records", where: "id = ?", bindings: [recordId]
+        )
+        guard let payload = payloads.first,
+              let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
+            throw APIError.serverError(code: "NOT_FOUND", message: "现场记录不存在", traceId: nil, details: [:])
+        }
+        let visitId = (object["visit_id"] as? String) ?? ""
+        let tripId = (try? database.loadPayloads(
+            table: "visits", where: "id = ?", bindings: [visitId]
+        ).first.flatMap { try? DateCoding.decoder().decode(TripVisit.self, from: $0) })?.tripId ?? ""
+        return try LocalCrmService.syncToCRM(
+            database: database, recordId: recordId, visitId: visitId, tripId: tripId
+        )
     }
 
     func crmSyncJob(id: String) async throws -> CrmSyncJob {
-        throw LocalStorePendingError(method: "crmSyncJob")
+        guard let raw = database.keyValue("crm_job:\(id)"),
+              let data = raw.data(using: .utf8),
+              let job = try? DateCoding.decoder().decode(CrmSyncJob.self, from: data) else {
+            throw APIError.serverError(code: "NOT_FOUND", message: "CRM 任务不存在", traceId: nil, details: [:])
+        }
+        return job
     }
 
     func briefing(visitId: String) async throws -> VisitBriefing {
@@ -410,7 +431,18 @@ final class LocalVisitRepository: VisitRepository {
     }
 
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {
-        throw LocalStorePendingError(method: "updateObjective（P7）")
+        let payloads = try database.loadPayloads(table: "visits", where: "id = ?", bindings: [visitId])
+        guard let payload = payloads.first,
+              var visit = try? DateCoding.decoder().decode(TripVisit.self, from: payload) else {
+            throw APIError.serverError(code: "NOT_FOUND", message: "拜访不存在", traceId: nil, details: [:])
+        }
+        visit.objective = objective
+        try database.upsert(
+            table: "visits", id: visitId,
+            columns: ["title": visit.title],
+            payload: try DateCoding.encode(visit)
+        )
+        return visit
     }
 }
 
