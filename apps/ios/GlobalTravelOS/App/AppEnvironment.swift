@@ -26,6 +26,7 @@ final class AppEnvironment: ObservableObject {
     private(set) var actionCenterRepository: ActionCenterRepository
     private(set) var notificationRepository: NotificationRepository
     private(set) var assistantRepository: AssistantRepository
+    private(set) var customerRepository: CustomerRepository
 
     private(set) var tripListUseCase: TripListUseCase
     private(set) var createTripUseCase: CreateTripUseCase
@@ -81,6 +82,7 @@ final class AppEnvironment: ObservableObject {
         self.actionCenterRepository = bundle.actionCenter
         self.notificationRepository = bundle.notifications
         self.assistantRepository = bundle.assistant
+        self.customerRepository = bundle.customers
         self.tripListUseCase = bundle.tripList
         self.createTripUseCase = bundle.createTrip
         self.generatePlanUseCase = bundle.generatePlan
@@ -103,6 +105,7 @@ final class AppEnvironment: ObservableObject {
         actionCenterRepository = bundle.actionCenter
         notificationRepository = bundle.notifications
         assistantRepository = bundle.assistant
+        customerRepository = bundle.customers
         tripListUseCase = bundle.tripList
         createTripUseCase = bundle.createTrip
         generatePlanUseCase = bundle.generatePlan
@@ -136,6 +139,7 @@ final class AppEnvironment: ObservableObject {
         let actionCenter: ActionCenterRepository
         let notifications: NotificationRepository
         let assistant: AssistantRepository
+        let customers: CustomerRepository
         let tripList: TripListUseCase
         let createTrip: CreateTripUseCase
         let generatePlan: GeneratePlanUseCase
@@ -166,6 +170,7 @@ final class AppEnvironment: ObservableObject {
                     actionCenter: LocalActionCenterRepository(database: database),
                     notifications: RemoteNotificationRepository(client: client),
                     assistant: RemoteAssistantRepository(client: client),
+                    customers: LocalCustomerRepository(database: database),
                     tripList: TripListUseCase(repository: trips),
                     createTrip: CreateTripUseCase(repository: trips),
                     generatePlan: GeneratePlanUseCase(repository: plans),
@@ -200,6 +205,7 @@ final class AppEnvironment: ObservableObject {
             actionCenter: RemoteActionCenterRepository(client: client),
             notifications: RemoteNotificationRepository(client: client),
             assistant: RemoteAssistantRepository(client: client),
+            customers: RemoteCustomerRepository(client: client),
             tripList: TripListUseCase(repository: trips),
             createTrip: CreateTripUseCase(repository: trips),
             generatePlan: GeneratePlanUseCase(repository: plans),

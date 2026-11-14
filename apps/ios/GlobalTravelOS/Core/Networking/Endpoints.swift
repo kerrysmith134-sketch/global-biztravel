@@ -166,6 +166,31 @@ enum Endpoints {
         )
     }
 
+    // MARK: - Customers（审计 5.5：客户端客户管理）
+
+    static func listCustomers(query: String?, page: PageRequest) -> APIRequest {
+        var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(page.limit))]
+        if let query, !query.isEmpty {
+            items.append(URLQueryItem(name: "query", value: query))
+        }
+        if let cursor = page.cursor {
+            items.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        return APIRequest(method: .get, path: "/v1/customers", queryItems: items)
+    }
+
+    static func createCustomer(_ body: CustomerCreateRequest) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/customers",
+            body: try JSONEncoder().encode(body)
+        )
+    }
+
+    static func customerDetail(id: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/customers/\(id)")
+    }
+
     // MARK: - Assistant
 
     static func createAssistantConversation(body: [String: String]) throws -> APIRequest {

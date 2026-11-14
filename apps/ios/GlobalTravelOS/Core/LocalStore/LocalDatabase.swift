@@ -166,6 +166,14 @@ struct LocalDatabase {
             UNIQUE (subject_id, approver_id)
         );
         """),
+        ("0004_customers", """
+        CREATE TABLE IF NOT EXISTS customers (
+            id   TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            tier TEXT NOT NULL DEFAULT 'C',
+            payload TEXT NOT NULL
+        );
+        """),
     ]
 
     func migrate() throws {

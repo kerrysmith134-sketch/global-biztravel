@@ -9,6 +9,8 @@ struct RootView: View {
                 .tabItem { Label("今日", systemImage: "sparkles") }
             TripsView(environment: environment)
                 .tabItem { Label("出行", systemImage: "airplane") }
+            CustomersView(environment: environment)
+                .tabItem { Label("客户", systemImage: "person.2") }
             ActionCenterView(environment: environment)
                 .tabItem { Label("行动中心", systemImage: "tray.full") }
             SettingsView()
