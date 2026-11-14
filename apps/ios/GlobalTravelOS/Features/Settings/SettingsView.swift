@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var nationality = ""
     @State private var profileError: String?
     @State private var runMode = "cloud"
+    @State private var demoMessage: String?
     @State private var llmBaseUrl = ""
     @State private var llmApiKey = ""
     @State private var llmModel = ""
@@ -48,6 +49,26 @@ struct SettingsView: View {
                         SyncCenterView(environment: environment)
                     } label: {
                         Label("同步中心", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    if environment.settings.runMode == "local" {
+                        Button {
+                            Task {
+                                demoMessage = "载入中…"
+                                do {
+                                    let summary = try await LocalDemoSeeder.seed(environment: environment)
+                                    demoMessage = "已载入：\(summary.tripName)（\(summary.visitCount) 个拜访\(summary.planCreated ? " + 计划" : "")）"
+                                } catch {
+                                    demoMessage = environment.errorMessage(error)
+                                }
+                            }
+                        } label: {
+                            Label("载入示例数据（本地）", systemImage: "sparkles")
+                        }
+                        if let demoMessage {
+                            Text(demoMessage)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 Section("服务端") {

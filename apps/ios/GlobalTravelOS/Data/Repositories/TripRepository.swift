@@ -22,7 +22,7 @@ struct BackendTripCreate: Encodable {
     var currency: String?
 }
 
-private struct PlaceCreated: Decodable {
+struct PlaceCreated: Decodable {
     var id: String
 }
 

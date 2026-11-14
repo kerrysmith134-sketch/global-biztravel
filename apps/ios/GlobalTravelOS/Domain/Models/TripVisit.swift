@@ -81,3 +81,50 @@ struct TripVisit: Codable, Equatable, Identifiable {
         }
     }
 }
+
+
+/// 新增拜访请求（客户端本地组装；服务端契约 POST /trips/{id}/visits 的字段子集）。
+struct VisitCreateRequest: Codable, Equatable {
+    var placeId: String?
+    /// 新客户地点（placeId 为空时由仓储先创建地点）。
+    var placeName: String?
+    var city: String?
+    var countryCode: String?
+    var latitude: Double?
+    var longitude: Double?
+    var timezone: String?
+    var title: String
+    var serviceMinutes: Int
+    var priority: Int
+    var businessValue: Double?
+    /// 交通方式（GROUND/RAIL/AIR/SEA）；跨洲拜访必须 AIR，否则陆路估算不可行。
+    var movementMode: String
+
+    init(
+        placeId: String? = nil,
+        placeName: String? = nil,
+        city: String? = nil,
+        countryCode: String? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        timezone: String? = nil,
+        title: String,
+        serviceMinutes: Int = 60,
+        priority: Int = 2,
+        businessValue: Double? = nil,
+        movementMode: String = "GROUND"
+    ) {
+        self.placeId = placeId
+        self.placeName = placeName
+        self.city = city
+        self.countryCode = countryCode
+        self.latitude = latitude
+        self.longitude = longitude
+        self.timezone = timezone
+        self.title = title
+        self.serviceMinutes = serviceMinutes
+        self.priority = priority
+        self.businessValue = businessValue
+        self.movementMode = movementMode
+    }
+}

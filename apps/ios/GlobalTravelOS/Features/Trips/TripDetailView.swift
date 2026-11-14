@@ -194,6 +194,7 @@ struct TripDetailView: View {
     @State private var selectedVisit: TripVisit?
     @State private var briefingVisit: TripVisit?
     @State private var showsImport = false
+    @State private var showsAddVisit = false
     @State private var showsExpense = false
     @State private var showsAssistant = false
 
@@ -380,6 +381,11 @@ struct TripDetailView: View {
             }
 
             Section("拜访") {
+                Button {
+                    showsAddVisit = true
+                } label: {
+                    Label("新增拜访（新建客户地点）", systemImage: "person.badge.plus")
+                }
                 if viewModel.visits.isEmpty {
                     Text("还没有拜访。导入客户或新增拜访后再生成计划。")
                         .foregroundStyle(.secondary)
@@ -489,6 +495,11 @@ struct TripDetailView: View {
         }
         .sheet(item: $briefingVisit) { visit in
             VisitBriefingView(visitId: visit.id, environment: environment)
+        }
+        .sheet(isPresented: $showsAddVisit) {
+            VisitCreateSheet(tripId: viewModel.tripId, environment: environment) {
+                await viewModel.load()
+            }
         }
         .sheet(isPresented: $showsImport) {
             ImportSheet(tripId: viewModel.tripId) {

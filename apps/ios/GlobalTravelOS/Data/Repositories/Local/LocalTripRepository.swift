@@ -23,43 +23,24 @@ final class LocalTripRepository: TripRepository {
 
     // MARK: - 编解码
 
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }()
-
-    private static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }()
-
     private func encode<T: Encodable>(_ value: T) throws -> Data {
-        try Self.encoder.encode(value)
+        try DateCoding.encoder().encode(value)
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        try Self.decoder.decode(type, from: data)
+        try DateCoding.decoder().decode(type, from: data)
     }
 
     // MARK: - 行程读写（P1 本地化）
 
     func listTrips(page: PageRequest) async throws -> Page<Trip> {
         let offset = page.cursor.flatMap { Int($0.replacingOccurrences(of: "offset:", with: "")) } ?? 0
-        let payloads = try database.loadPayloads(
-            table: "trips",
-            order: "updated_at DESC",
-            limit: page.limit + 1
-        )
-        var trips = try payloads.map { try decode(Trip.self, from: $0) }
-        var next: String?
-        if trips.count > page.limit {
-            trips = Array(trips.dropLast())
-            next = "offset:\(offset + page.limit)"
-        }
-        let skipped = Array(trips.dropFirst(offset))
-        let windowed = Array(skipped.prefix(page.limit))
+        let payloads = try database.loadPayloads(table: "trips", order: "updated_at DESC")
+        let all = try payloads.map { try decode(Trip.self, from: $0) }
+        let windowed = Array(all.dropFirst(offset).prefix(page.limit))
+        let next = offset + page.limit < all.count
+            ? "offset:\(offset + page.limit)"
+            : nil
         return Page(items: windowed, nextCursor: next)
     }
 
@@ -200,7 +181,7 @@ final class LocalTripRepository: TripRepository {
             table: "visits",
             where: "trip_id = ?",
             bindings: [tripId],
-            order: "created_at"
+            order: "id"
         )
         return try payloads.map { try decode(TripVisit.self, from: $0) }
     }

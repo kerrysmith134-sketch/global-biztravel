@@ -158,6 +158,14 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/visits")
     }
 
+    static func createVisit(tripId: String, body: [String: Any]) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/trips/\(tripId)/visits",
+            body: try JSONSerialization.data(withJSONObject: body)
+        )
+    }
+
     // MARK: - Assistant
 
     static func createAssistantConversation(body: [String: String]) throws -> APIRequest {

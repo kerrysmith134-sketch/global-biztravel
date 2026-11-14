@@ -6,6 +6,8 @@ import Foundation
 /// queue, so `submitRecord` throwing is never data loss — it just means “still queued”.
 protocol VisitRepository {
     func listVisits(tripId: String) async throws -> [TripVisit]
+    /// 新增拜访（P0 审计 5.5：客户端此前没有创建入口）。
+    func createVisit(tripId: String, request: VisitCreateRequest) async throws -> TripVisit
     func submitRecord(visitId: String, request: VisitRecordRequest) async throws -> VisitRecord
     func draftMinutes(visitId: String) async throws -> MinutesDraft
     func syncToCRM(recordId: String) async throws -> CrmSyncJob
@@ -23,6 +25,36 @@ final class RemoteVisitRepository: VisitRepository {
 
     func listVisits(tripId: String) async throws -> [TripVisit] {
         try await client.send(Endpoints.listVisits(tripId: tripId), as: [TripVisit].self)
+    }
+
+    func createVisit(tripId: String, request: VisitCreateRequest) async throws -> TripVisit {
+        var placeId = request.placeId
+        if placeId == nil {
+            // 客户端没有独立地点 API 的公开模型——复用 BackendPlaceCreate（与建行程同路径）。
+            let placeBody = BackendPlaceCreate(
+                name: request.placeName ?? request.title,
+                city: request.city,
+                countryCode: (request.countryCode ?? "").uppercased(),
+                timezone: request.timezone,
+                lat: request.latitude ?? 0,
+                lon: request.longitude ?? 0
+            )
+            let place: PlaceCreated = try await client.send(
+                try Endpoints.createPlace(placeBody), as: PlaceCreated.self
+            )
+            placeId = place.id
+        }
+        var body: [String: Any] = [
+            "place_id": placeId ?? "",
+            "title": request.title,
+            "service_minutes": request.serviceMinutes,
+            "priority": request.priority,
+            "movement_mode": request.movementMode,
+        ]
+        if let value = request.businessValue { body["business_value"] = value }
+        return try await client.send(
+            try Endpoints.createVisit(tripId: tripId, body: body), as: TripVisit.self
+        )
     }
 
     func submitRecord(visitId: String, request: VisitRecordRequest) async throws -> VisitRecord {
@@ -108,6 +140,11 @@ final class OfflineVisitRepository: VisitRepository {
             indicator.markServedFromCache("拜访列表")
             return cached
         }
+    }
+
+    /// 新增拜访不做离线：写操作需要服务端确认（与 createTrip 同策略）。
+    func createVisit(tripId: String, request: VisitCreateRequest) async throws -> TripVisit {
+        try await remote.createVisit(tripId: tripId, request: request)
     }
 
     func submitRecord(visitId: String, request: VisitRecordRequest) async throws -> VisitRecord {

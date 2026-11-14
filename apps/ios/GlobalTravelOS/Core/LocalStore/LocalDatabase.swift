@@ -192,7 +192,9 @@ struct LocalDatabase {
         let names = ["id"] + columns.keys.sorted() + ["payload"]
         let values: [Any?] = [id] + columns.keys.sorted().map { columns[$0] ?? nil } + [String(decoding: payload, as: UTF8.self)]
         let placeholders = names.map { _ in "?" }.joined(separator: ",")
-        let updates = columns.keys.sorted().map { "\($0) = excluded.\($0)" }.joined(separator: ", ")
+        let updates = (columns.keys.sorted() + ["payload"])
+            .map { "\($0) = excluded.\($0)" }
+            .joined(separator: ", ")
         try store.run(
             "INSERT INTO \(table) (\(names.joined(separator: ", "))) VALUES (\(placeholders)) " +
                 "ON CONFLICT(id) DO UPDATE SET \(updates)",

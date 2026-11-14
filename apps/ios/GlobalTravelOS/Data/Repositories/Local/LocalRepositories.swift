@@ -186,10 +186,8 @@ final class LocalPlanRepository: PlanRepository {
                 "plan_version_id": planId,
             ]
             let jobData = try JSONSerialization.data(withJSONObject: jobPayload)
-            try database.upsert(
-                table: "kv", id: "local-job:\(planId)",
-                columns: ["value": String(decoding: jobData, as: UTF8.self)],
-                payload: jobData
+            try database.setKeyValue(
+                "local-job:\(planId)", value: String(decoding: jobData, as: UTF8.self)
             )
         }
 
@@ -234,12 +232,58 @@ final class LocalVisitRepository: VisitRepository {
 
     func listVisits(tripId: String) async throws -> [TripVisit] {
         let payloads = try database.loadPayloads(
-            table: "visits", where: "trip_id = ?", bindings: [tripId], order: "created_at"
+            table: "visits", where: "trip_id = ?", bindings: [tripId], order: "id"
         )
         return try payloads.map { try DateCoding.decoder().decode(TripVisit.self, from: $0) }
     }
 
     /// 现场记录：clientRecordId 幂等写入本地（LWW 冲突矩阵 P3 补）。
+    func createVisit(tripId: String, request: VisitCreateRequest) async throws -> TripVisit {
+        var placeId = request.placeId
+        if placeId == nil {
+            let newPlaceId = UUID().uuidString
+            let place = Place(
+                id: newPlaceId,
+                name: request.placeName ?? request.title,
+                countryCode: request.countryCode?.uppercased(),
+                timezone: request.timezone,
+                latitude: request.latitude,
+                longitude: request.longitude,
+                city: request.city
+            )
+            try database.upsert(
+                table: "places", id: newPlaceId,
+                columns: ["name": place.name, "city": place.city],
+                payload: try DateCoding.encode(place)
+            )
+            placeId = newPlaceId
+        }
+        let visit = TripVisit(
+            id: UUID().uuidString,
+            tripId: tripId,
+            placeId: placeId,
+            title: request.title,
+            objective: nil,
+            serviceMinutes: request.serviceMinutes,
+            timeWindowStart: nil,
+            timeWindowEnd: nil,
+            priority: request.priority,
+            movementMode: request.movementMode,
+            status: "PLANNED",
+            createdAt: Date()
+        )
+        try database.upsert(
+            table: "visits", id: visit.id,
+            columns: [
+                "trip_id": tripId, "place_id": placeId, "title": visit.title,
+                "status": "PLANNED",
+                "lat": request.latitude, "lon": request.longitude,
+            ],
+            payload: try DateCoding.encode(visit)
+        )
+        return visit
+    }
+
     func submitRecord(visitId: String, request: VisitRecordRequest) async throws -> VisitRecord {
         let recordId = UUID().uuidString
         // 本地记录即最终事实（服务端 serverVersion 概念不适用）。
@@ -330,10 +374,9 @@ final class LocalVisitRepository: VisitRepository {
         ]
         if degraded { body["degraded_note"] = "LLM 未配置或失败，已用离线模板生成" }
 
-        try database.upsert(
-            table: "kv", id: "minutes:\(visitId)",
-            columns: ["value": String(decoding: JSONSerialization.data(withJSONObject: body), as: UTF8.self)],
-            payload: JSONSerialization.data(withJSONObject: body)
+        try database.setKeyValue(
+            "minutes:\(visitId)",
+            value: String(decoding: try JSONSerialization.data(withJSONObject: body), as: UTF8.self)
         )
         return MinutesDraft(
             draftId: draftId,

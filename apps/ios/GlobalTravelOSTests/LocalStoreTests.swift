@@ -135,14 +135,27 @@ final class LocalStoreTests: XCTestCase {
         try database.upsert(
             table: "trips",
             id: activated.id,
-            columns: ["status": "ACTIVE", "version": activated.version, "active_plan_id": "plan-1"],
-            payload: try JSONEncoder().encode(activated)
+            columns: [
+                "name": activated.name,
+                "status": "ACTIVE",
+                "version": activated.version,
+                "active_plan_id": "plan-1",
+                "updated_at": SQLTimestamp.basics.string(from: Date()),
+            ],
+            payload: try DateCoding.encoder().encode(activated)
         )
 
         let held = try await repository.holdTrip(id: trip.id, version: activated.version)
         XCTAssertEqual(held.status, "HOLD")
         XCTAssertEqual(held.version, activated.version + 1)
 
+        // 诊断：resume 前 payload 里 activePlanVersionId 是否存在
+        let checkPayload = try database.loadPayloads(table: "trips", where: "id = ?", bindings: [trip.id])
+        let checked = try DateCoding.decoder().decode(Trip.self, from: checkPayload[0])
+        XCTAssertEqual(
+            checked.activePlanVersionId, "plan-1",
+            "hold 后 payload 应保留 activePlanVersionId；payload=\(String(decoding: checkPayload[0], as: UTF8.self))"
+        )
         let resumed = try await repository.resumeTrip(id: trip.id, version: held.version)
         XCTAssertEqual(resumed.status, "ACTIVE") // 有激活计划 ⇒ 回 ACTIVE
         let completed = try await repository.completeTrip(id: trip.id, version: resumed.version)
@@ -177,11 +190,16 @@ final class LocalStoreTests: XCTestCase {
         let repository = makeRepository()
         let trip = try await repository.createTrip(makeRequest(name: "pending 行程"))
 
+        // budgetSummary 已在 P4 本地化：无费用时返回空摘要（不是 pending）。
+        let budget = try await repository.budgetSummary(tripId: trip.id, baseCurrency: "EUR")
+        XCTAssertEqual(budget.budgetCurrency, "EUR")
+        XCTAssertEqual(budget.actualByCurrency?.count ?? 0, 0)
+        // 诊断断言保留：localGuide 仍待 P7 实现。
         do {
-            _ = try await repository.budgetSummary(tripId: trip.id, baseCurrency: "EUR")
-            XCTFail("budgetSummary 应显式未实现")
-        } catch let error as LocalStorePendingError {
-            XCTAssertTrue(error.errorDescription?.contains("budgetSummary") == true)
+            _ = try await repository.localGuide(tripId: trip.id)
+            XCTFail("localGuide 应显式未实现（P7 前）")
+        } catch is LocalStorePendingError {
+            // 预期
         }
         do {
             _ = try await repository.localGuide(tripId: trip.id)

@@ -9,6 +9,12 @@ import SQLite3
 final class SQLiteStore {
     private var handle: OpaquePointer?
     private let queue = DispatchQueue(label: "com.anari.globaltravelos.localstore")
+    private let queueKey = DispatchSpecificKey<UInt8>()
+
+    /// 当前线程是否已在该串行队列上（transaction 内嵌 run/query 时避免 sync 重入死锁）。
+    private var isOnQueue: Bool {
+        DispatchQueue.getSpecific(key: queueKey) != nil
+    }
 
     static func defaultPath() -> URL {
         let directory = AppSettingsStore.defaultDirectory()
@@ -21,6 +27,7 @@ final class SQLiteStore {
         guard sqlite3_open_v2(path.path, &handle, flags, nil) == SQLITE_OK else {
             throw LocalStoreError.openFailed(path.path)
         }
+        queue.setSpecific(key: queueKey, value: 1)
         try run("PRAGMA journal_mode=WAL")
         try run("PRAGMA foreign_keys=ON")
     }
@@ -40,7 +47,8 @@ final class SQLiteStore {
     /// 执行无结果语句（DDL/DML）。`bindings` 支持 String/Int/Double/Bool/Data/nil。
     @discardableResult
     func run(_ sql: String, bindings: [Any?] = []) throws -> Int {
-        try queue.sync {
+        if isOnQueue { return try runUnlocked(sql, bindings: bindings) }
+        return try queue.sync {
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
                 throw LocalStoreError.queryFailed(lastError(), code: sqlite3_errcode(handle))
@@ -63,7 +71,15 @@ final class SQLiteStore {
     /// 执行多条语句（迁移脚本用）。脚本由本仓库维护（分号分隔、无嵌入分号字符串），
     /// 因此按分号拆分逐条执行——比 pzTail 指针推进简单且无内存生命周期风险。
     func executeScript(_ sql: String) throws {
-        try queue.sync {
+        if isOnQueue {
+            try executeScriptUnlocked(sql)
+            return
+        }
+        try queue.sync { try executeScriptUnlocked(sql) }
+    }
+
+    private func executeScriptUnlocked(_ sql: String) throws {
+        do {
             for statement in sql.split(separator: ";") {
                 let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
@@ -74,7 +90,16 @@ final class SQLiteStore {
 
     /// 查询多行；`row` 把当前 statement 转成领域值。
     func query<T>(_ sql: String, bindings: [Any?] = [], row: (StatementRow) -> T) throws -> [T] {
-        try queue.sync {
+        if isOnQueue { return try queryUnlocked(sql, bindings: bindings, row: row) }
+        return try queue.sync {
+            try queryUnlocked(sql, bindings: bindings, row: row)
+        }
+    }
+
+    private func queryUnlocked<T>(
+        _ sql: String, bindings: [Any?], row: (StatementRow) -> T
+    ) throws -> [T] {
+        do {
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
                 throw LocalStoreError.queryFailed("PREPARE[\(sql.prefix(80))]: \(lastError())", code: sqlite3_errcode(handle))
