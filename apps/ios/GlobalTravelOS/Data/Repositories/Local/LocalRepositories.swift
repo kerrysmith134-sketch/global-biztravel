@@ -154,7 +154,10 @@ final class LocalPlanRepository: PlanRepository {
             createdAt: now
         )
         let detailDays: [PlanDay] = EngineMapping.makePlanDays(
-            from: result.days, places: places, visits: visits
+            from: result.days,
+            places: places,
+            visits: visits,
+            timeZone: trip.originPlace?.timeZone() ?? .current
         )
         // StopPlan 与 visit 对齐后重映射会丢序号 → 直接用 makePlanDays 输出。
         let detail = PlanVersionDetail(

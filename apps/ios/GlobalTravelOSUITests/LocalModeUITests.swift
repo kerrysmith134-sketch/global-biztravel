@@ -9,8 +9,18 @@ final class LocalModeUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // 本地模式会在首启请求通知权限（主动建议推送）：系统弹窗会挡住后续点击，
+        // 用中断监视器统一允许，避免用例在真机/模拟器首次运行时假失败。
+        addUIInterruptionMonitor(withDescription: "通知权限") { alert in
+            for label in ["允许", "Allow"] where alert.buttons[label].exists {
+                alert.buttons[label].tap()
+                return true
+            }
+            return false
+        }
         // 不注入 GBT_UI_TEST_BASE_URL：保持默认的本地模式（App 内 SQLite）。
         app.launch()
+        app.tap() // 触发中断监视器（若有系统弹窗在此关闭）。
     }
 
     func testLocalModeSeededTripSections() throws {
@@ -25,6 +35,26 @@ final class LocalModeUITests: XCTestCase {
             ).firstMatch.waitForExistence(timeout: 10),
             "首屏未显示本地模式标识"
         )
+
+        // 差旅驾驶舱（审计 5.1）：英雄卡倒计时 + 今日分区 + 待处理风险。
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS '出发' OR label CONTAINS '第 '")
+            ).firstMatch.waitForExistence(timeout: 15),
+            "驾驶舱缺少倒计时/进度"
+        )
+        XCTAssertTrue(app.staticTexts["今天"].waitForExistence(timeout: 10), "驾驶舱缺少今日分区")
+        XCTAssertTrue(app.staticTexts["待处理"].waitForExistence(timeout: 10), "驾驶舱缺少待处理分区")
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS '签证' OR label CONTAINS '计划'")
+            ).firstMatch.exists,
+            "待处理分区没有风险条目"
+        )
+        let cockpitShot = XCTAttachment(screenshot: app.screenshot())
+        cockpitShot.name = "今日驾驶舱"
+        cockpitShot.lifetime = .keepAlways
+        add(cockpitShot)
 
         let tripsTab = app.buttons["出行"]
         XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")

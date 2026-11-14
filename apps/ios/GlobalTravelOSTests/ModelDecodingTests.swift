@@ -461,4 +461,21 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(visitId, "visit-1")
         XCTAssertEqual(queued.item.entity, .visitRecord)
     }
+
+    /// 回归：本地库与离线缓存都靠 Trip 的 payload 还原，encode 漏 countries 会让
+    /// 驾驶舱的签证风险与目的国展示静默失效。
+    func testTripEncodeRoundTripKeepsCountries() throws {
+        let trip = Trip(
+            id: "t1",
+            name: "柏林客户周",
+            status: "DRAFT",
+            version: 1,
+            window: TripWindow(start: Date(), end: Date().addingTimeInterval(86_400)),
+            originPlace: Place(name: "上海总部", countryCode: "CN", timezone: "Asia/Shanghai"),
+            countries: ["DE", "NL"]
+        )
+        let data = try DateCoding.encode(trip)
+        let decoded = try DateCoding.decode(Trip.self, from: data)
+        XCTAssertEqual(decoded.countries, ["DE", "NL"])
+    }
 }

@@ -238,6 +238,7 @@ struct Trip: Codable, Equatable, Identifiable {
         self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
         self.activePlan = try container.decodeIfPresent(PlanVersionDetail.self, forKey: .activePlan)
         self.currency = try container.decodeIfPresent(String.self, forKey: .currency)
+        self.countries = try container.decodeIfPresent([String].self, forKey: .countries)
 
         let start = try container.decodeIfPresent(Date.self, forKey: .windowStart)
         let end = try container.decodeIfPresent(Date.self, forKey: .windowEnd)
@@ -277,6 +278,9 @@ struct Trip: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(stats, forKey: .stats)
         try container.encodeIfPresent(stats?.visitCount, forKey: .visitCount)
         try container.encodeIfPresent(currency, forKey: .currency)
+        // 目的国必须回写：本地库与离线缓存都靠 payload 还原，漏掉会让驾驶舱与签证规则
+        // 失去目的国（历史上就是这里漏了 countries）。
+        try container.encodeIfPresent(countries, forKey: .countries)
     }
 
     var statusLabel: String {

@@ -198,4 +198,26 @@ final class PlanningEngineTests: XCTestCase {
         modified.constraints.maxStopsPerDay += 1
         XCTAssertNotEqual(EnginePipeline.problemHash(problem), EnginePipeline.problemHash(modified))
     }
+
+    /// 回归：计划日期的键必须按出发地时区取日，而不是设备时区。
+    /// 引擎给出的 day.date 是"该时区午夜"的瞬时（上海 11/17 00:00 = 11/16T16:00Z），
+    /// 用设备时区格式化会串成 11/16，日历/驾驶舱的"今天"随之错位。
+    func testPlanDayKeysUseHomeTimeZoneNotDeviceZone() {
+        let visitId = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+        let dayStart = date(17, 0)
+        let days = [
+            EngineDayPlan(date: dayStart, stops: [
+                EngineStopPlan(
+                    visitId: visitId, sequence: 1,
+                    arrive: date(17, 9), depart: date(17, 10), travelMinutes: 0
+                )
+            ])
+        ]
+        let mapped = EngineMapping.makePlanDays(
+            from: days, places: [], visits: [],
+            timeZone: TimeZone(identifier: timezoneHome)!
+        )
+        XCTAssertEqual(mapped.first?.date, "2026-11-17")
+        XCTAssertEqual(mapped.first?.stops.first?.visitId, visitId.uuidString)
+    }
 }

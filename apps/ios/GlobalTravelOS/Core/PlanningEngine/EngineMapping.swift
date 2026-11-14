@@ -2,12 +2,6 @@ import Foundation
 
 /// 领域 DTO ⇄ 引擎契约转换（本地模式，对应服务端 planning_service.py 的转换职责）。
 enum EngineMapping {
-    static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter
-    }()
 
     /// 行程 + 拜访 + 地点 → 引擎规划问题。
     /// 拜访坐标从地点表查（visits 本身无坐标列，与服务端联查语义一致）。
@@ -79,9 +73,19 @@ enum EngineMapping {
     }
 
     /// 引擎日计划 → UI PlanDay（含地点名称增强）。
+    /// 日期键必须按**行程出发地时区**格式化：引擎的 day.date 是该时区的午夜瞬时，
+    /// 用设备时区格式化会让日期整体偏移（跨洲时区差会串天，日历/驾驶舱随之错位）。
     static func makePlanDays(
-        from days: [EngineDayPlan], places: [Place], visits: [TripVisit]
+        from days: [EngineDayPlan],
+        places: [Place],
+        visits: [TripVisit],
+        timeZone: TimeZone
     ) -> [PlanDay] {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+
         var visitPlaceId: [UUID: String] = [:]
         for visit in visits {
             visitPlaceId[visitUUID(visit.id, fallbackIndex: 0)] = visit.placeId
@@ -108,7 +112,7 @@ enum EngineMapping {
                     distanceKm: nil
                 )
             }
-            return PlanDay(date: dateFormatter.string(from: day.date), stops: stops)
+            return PlanDay(date: formatter.string(from: day.date), stops: stops)
         }
     }
 
