@@ -6,6 +6,7 @@ protocol CustomerRepository {
     func customer(id: String) async throws -> Customer
     func createCustomer(_ request: CustomerCreateRequest) async throws -> Customer
     func customerPlaces(customerId: String) async throws -> [CustomerPlace]
+    func linkCustomerPlace(customerId: String, request: CustomerPlaceLinkRequest) async throws -> CustomerPlace
 }
 
 final class RemoteCustomerRepository: CustomerRepository {
@@ -29,6 +30,16 @@ final class RemoteCustomerRepository: CustomerRepository {
 
     func customerPlaces(customerId: String) async throws -> [CustomerPlace] {
         try await client.send(Endpoints.customerPlaces(customerId: customerId), as: [CustomerPlace].self)
+    }
+
+    func linkCustomerPlace(
+        customerId: String,
+        request: CustomerPlaceLinkRequest
+    ) async throws -> CustomerPlace {
+        try await client.send(
+            try Endpoints.linkCustomerPlace(customerId: customerId, request: request),
+            as: CustomerPlace.self
+        )
     }
 }
 
@@ -68,6 +79,15 @@ final class LocalCustomerRepository: CustomerRepository {
     func customerPlaces(customerId: String) async throws -> [CustomerPlace] {
         _ = customerId
         throw LocalStorePendingError(method: "customerPlaces")
+    }
+
+    func linkCustomerPlace(
+        customerId: String,
+        request: CustomerPlaceLinkRequest
+    ) async throws -> CustomerPlace {
+        _ = customerId
+        _ = request
+        throw LocalStorePendingError(method: "linkCustomerPlace")
     }
 
     func createCustomer(_ request: CustomerCreateRequest) async throws -> Customer {
