@@ -12213,30 +12213,6 @@
             ],
             "title": "Observation"
           },
-          "verification_status": {
-            "type": "string",
-            "enum": [
-              "UNVERIFIED",
-              "PARTIALLY_VERIFIED",
-              "VERIFIED",
-              "DISPUTED",
-              "REJECTED"
-            ],
-            "title": "Verification Status",
-            "default": "UNVERIFIED"
-          },
-          "quality": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quality"
-          },
           "payload": {
             "additionalProperties": true,
             "type": "object",
