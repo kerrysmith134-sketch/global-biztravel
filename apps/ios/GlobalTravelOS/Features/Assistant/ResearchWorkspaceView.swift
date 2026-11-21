@@ -5,6 +5,7 @@ final class ResearchWorkspaceViewModel: ObservableObject {
     @Published var request = ""
     @Published var sourceScope: ResearchSourceScope = .automatic
     @Published var contextText = ""
+    @Published var reviewedQueriesText = ""
     @Published private(set) var plan: ResearchPlan?
     @Published private(set) var isSubmitting = false
     @Published private(set) var isExecutingResearch = false
@@ -41,7 +42,7 @@ final class ResearchWorkspaceViewModel: ObservableObject {
 
         do {
             let context = contextText.trimmingCharacters(in: .whitespacesAndNewlines)
-            plan = try await repository.createPlan(
+            let createdPlan = try await repository.createPlan(
                 ResearchPlanCreateRequest(
                     request: trimmedRequest,
                     sourceScope: sourceScope,
@@ -50,18 +51,45 @@ final class ResearchWorkspaceViewModel: ObservableObject {
                     contextText: context.isEmpty ? nil : context
                 )
             )
+            plan = createdPlan
+            reviewedQueriesText = createdPlan.plan.searchQueries.joined(separator: "\n")
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
+    var confirmedSearchQueries: [String] {
+        var seen: Set<String> = []
+        return reviewedQueriesText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { query in
+                guard !query.isEmpty, query.count <= 500 else { return false }
+                return seen.insert(query.casefolded).inserted
+            }
+    }
+
     func executeResearch() async {
         guard let currentPlan = plan, currentPlan.plan.externalResearchNeeded else { return }
+        let queries = confirmedSearchQueries
+        guard !queries.isEmpty else {
+            errorMessage = "请至少保留一条有效搜索查询。"
+            return
+        }
+        let rawCount = reviewedQueriesText.components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+        if rawCount > 12 || queries.count != rawCount {
+            errorMessage = "查询最多 12 条；请删除重复项，并确保每条不超过 500 个字符。"
+            return
+        }
         isExecutingResearch = true
         errorMessage = nil
         defer { isExecutingResearch = false }
         do {
-            _ = try await repository.executePlan(id: currentPlan.id)
+            _ = try await repository.executePlan(
+                id: currentPlan.id,
+                searchQueries: queries
+            )
             plan = try await repository.plan(id: currentPlan.id)
         } catch {
             errorMessage = error.localizedDescription
@@ -265,13 +293,9 @@ struct ResearchWorkspaceView: View {
                     symbol: "questionmark.circle"
                 )
             }
-            if !plan.plan.searchQueries.isEmpty {
-                listCard(
-                    title: "检索查询草案",
-                    subtitle: "这是待执行的查询，不代表已经检索",
-                    items: plan.plan.searchQueries,
-                    symbol: "magnifyingglass"
-                )
+            if plan.plan.externalResearchNeeded {
+                queryReviewCard(plan)
+                executionControls(plan)
             }
             if !plan.plan.sourceTypes.isEmpty {
                 listCard(
@@ -313,59 +337,106 @@ struct ResearchWorkspaceView: View {
                 }
                 Text(
                     plan.plan.externalResearchNeeded
-                        ? "计划已生成。外部检索只会使用本次审阅过的查询。"
+                        ? "计划已生成。请先审阅并确认下方查询，再启动外部检索。"
                         : "计划已生成，本次请求无需外部检索。"
                 )
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DS.ColorToken.textPrimary)
-                if plan.plan.externalResearchNeeded {
-                    if plan.retrievalStatus == "NOT_STARTED" || plan.retrievalStatus == "FAILED" {
-                        Button {
-                            Task { await model.executeResearch() }
-                        } label: {
-                            Label(
-                                model.isExecutingResearch ? "正在启动…" : "开始检索",
-                                systemImage: "magnifyingglass"
-                            )
-                            .font(.caption.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .foregroundStyle(.white)
-                            .background(
-                                DS.ColorToken.brand,
-                                in: RoundedRectangle(cornerRadius: DS.Radius.control)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(model.isExecutingResearch)
-                        .accessibilityIdentifier("research-start-execution")
-                    }
-                    if plan.jobId != nil {
-                        Button {
-                            Task { await model.refreshPlan() }
-                        } label: {
-                            Label(
-                                model.isRefreshingPlan ? "正在刷新…" : "刷新执行状态",
-                                systemImage: "arrow.clockwise"
-                            )
-                            .font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(model.isRefreshingPlan || model.isExecutingResearch)
-                    }
-                    if plan.resultsCount > 0 {
-                        Text("已保存 \(plan.resultsCount) 条搜索来源。搜索摘要是研究线索，尚未完成事实核验。")
-                            .font(.caption2)
-                            .foregroundStyle(DS.ColorToken.warning)
-                    }
-                    if let retrievalError = plan.retrievalError {
-                        Text(retrievalError)
-                            .font(.caption2)
-                            .foregroundStyle(DS.ColorToken.warning)
-                    }
-                }
-                Text("规划器：\(plan.planner.model)\(plan.planner.degraded ? " · 已降级" : "")")
+                Text("规划器：\\(plan.planner.model)\\(plan.planner.degraded ? " · 已降级" : "")")
                     .font(.caption2)
                     .foregroundStyle(DS.ColorToken.textSecondary)
+            }
+        }
+    }
+
+    private func queryReviewCard(_ plan: ResearchPlan) -> some View {
+        let isLocked = ["QUEUED", "RUNNING", "COMPLETED"].contains(plan.retrievalStatus)
+        return DSCard(padding: DS.Spacing.md) {
+            VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                DSSectionHeader(
+                    title: "检索查询审阅",
+                    subtitle: "一行一条。你可以修改、删除或增加查询；开始检索时只执行这里确认的内容。"
+                )
+                TextEditor(text: $model.reviewedQueriesText)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 120)
+                    .font(.caption)
+                    .disabled(isLocked || model.isExecutingResearch)
+                    .accessibilityIdentifier("research-reviewed-queries")
+                HStack {
+                    Text("\\(model.confirmedSearchQueries.count) 条有效查询")
+                    Spacer()
+                    Text("最多 12 条 · 每条最多 500 字")
+                }
+                .font(.caption2)
+                .foregroundStyle(DS.ColorToken.textSecondary)
+                if !isLocked {
+                    Text("确认前请检查对象名称、地区和时间范围，避免检索范围偏离你的原始目标。")
+                        .font(.caption2)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+                if !plan.reviewedSearchQueries.isEmpty {
+                    Text("已提交执行的查询：")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.ColorToken.textPrimary)
+                    ForEach(Array(plan.reviewedSearchQueries.enumerated()), id: \\.offset) { index, query in
+                        Text("\\(index + 1). \\(query)")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func executionControls(_ plan: ResearchPlan) -> some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            if plan.retrievalStatus == "NOT_STARTED" || plan.retrievalStatus == "FAILED" {
+                Button {
+                    Task { await model.executeResearch() }
+                } label: {
+                    HStack(spacing: DS.Spacing.sm) {
+                        if model.isExecutingResearch {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "magnifyingglass")
+                        }
+                        Text(model.isExecutingResearch ? "正在启动…" : "确认查询并开始检索")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .foregroundStyle(.white)
+                    .background(
+                        DS.ColorToken.brand,
+                        in: RoundedRectangle(cornerRadius: DS.Radius.control)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isExecutingResearch || model.confirmedSearchQueries.isEmpty)
+                .accessibilityIdentifier("research-start-execution")
+            }
+            if plan.jobId != nil {
+                Button {
+                    Task { await model.refreshPlan() }
+                } label: {
+                    Label(
+                        model.isRefreshingPlan ? "正在刷新…" : "刷新执行状态",
+                        systemImage: "arrow.clockwise"
+                    )
+                    .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isRefreshingPlan || model.isExecutingResearch)
+            }
+            if plan.resultsCount > 0 {
+                Text("已保存 \\(plan.resultsCount) 条搜索来源。搜索摘要是研究线索，尚未完成事实核验。")
+                    .font(.caption2)
+                    .foregroundStyle(DS.ColorToken.warning)
+            }
+            if let retrievalError = plan.retrievalError {
+                Text(retrievalError)
+                    .font(.caption2)
+                    .foregroundStyle(DS.ColorToken.warning)
             }
         }
     }
