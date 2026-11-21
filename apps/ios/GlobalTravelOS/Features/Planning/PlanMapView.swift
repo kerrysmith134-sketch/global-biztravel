@@ -1,7 +1,7 @@
 import MapKit
 import SwiftUI
 
-/// Selectable, read-only map projection of a specific plan version.
+/// Read-only map projection: planned visits when a plan exists, CRM addresses independently.
 /// Selecting a pin changes the inspection drawer only; it never mutates the plan.
 struct PlanMapView: View {
     let plan: PlanVersionDetail?
@@ -220,7 +220,7 @@ struct PlanMapView: View {
                         }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    routeLegend
+                    if !visibleDayRoutes.isEmpty { routeLegend }
                 }
                 .animation(.easeInOut(duration: DS.Motion.standard), value: selectedStopID)
             }
