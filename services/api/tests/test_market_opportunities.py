@@ -88,19 +88,19 @@ def cleanup(workspace_ids: list[str], trip_ids: list[str]) -> None:
     with org_session(UUID(ORG_A)) as session:
         if workspace_ids:
             workspace_uuids = [UUID(item) for item in workspace_ids]
-            # Evidence uses a legacy polymorphic subject key, not a Workspace FK.
-            # Explicitly clean those rows so repeated test runs do not accumulate orphans.
+            # Delete Workspace first: cascading deletes Opportunity/Insight evidence links.
+            # Then remove legacy polymorphic Evidence rows, which have no Workspace FK.
+            session.execute(
+                delete(MarketWorkspace).where(
+                    MarketWorkspace.organization_id == UUID(ORG_A),
+                    MarketWorkspace.id.in_(workspace_uuids),
+                )
+            )
             session.execute(
                 delete(Evidence).where(
                     Evidence.organization_id == UUID(ORG_A),
                     Evidence.subject_type == "market_workspace",
                     Evidence.subject_id.in_(workspace_uuids),
-                )
-            )
-            session.execute(
-                delete(MarketWorkspace).where(
-                    MarketWorkspace.organization_id == UUID(ORG_A),
-                    MarketWorkspace.id.in_(workspace_uuids),
                 )
             )
         if trip_ids:
