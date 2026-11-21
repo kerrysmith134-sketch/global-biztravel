@@ -92,7 +92,7 @@ def enqueue_claim_verification(
     ).all()
     if not answer_links:
         raise Conflict("该答案没有关联 Evidence，不能启动主张级核验")
-    evidence_ids = [link.evidence_id for link in answer_links]
+    evidence_ids = list(dict.fromkeys(link.evidence_id for link in answer_links))
     if len(evidence_ids) > MAX_EVIDENCE_PER_VERIFICATION:
         raise Unprocessable(
             f"一次主张核验最多使用 {MAX_EVIDENCE_PER_VERIFICATION} 条 Evidence"
