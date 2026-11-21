@@ -8,6 +8,8 @@ final class MapWorkspaceViewModel: ObservableObject {
     @Published private(set) var customers: [Customer] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingPlan = false
+    @Published private(set) var isSubmittingChange = false
+    @Published var planChangeMessage: String?
     @Published var errorMessage: String?
     @Published var selectedTripID: String?
 
@@ -64,13 +66,47 @@ final class MapWorkspaceViewModel: ObservableObject {
             query: nil,
             page: PageRequest(limit: 200)
         )
-        let loadedVisits = await visitResult ?? []
-        let loadedCustomers = await customerResult?.items ?? []
+        let visitResponse = await visitResult
+        let customerResponse = await customerResult
+        let loadedVisits = visitResponse ?? []
+        let loadedCustomers = customerResponse?.items ?? []
 
         guard selectedTripID == tripId else { return }
         visits = loadedVisits
         let referencedCustomerIDs = Set(loadedVisits.compactMap(\.customerId))
         customers = loadedCustomers.filter { referencedCustomerIDs.contains($0.id) }
+    }
+
+
+    /// The server is the only authority that mutates visit inputs and produces a new plan version.
+    func cancelVisit(_ stop: PlanStop) async {
+        guard let trip = selectedTrip, let plan, plan.status == .active else {
+            errorMessage = "只能从当前已激活的计划发起拜访调整"
+            return
+        }
+        guard !isSubmittingChange else { return }
+
+        isSubmittingChange = true
+        errorMessage = nil
+        planChangeMessage = nil
+        defer { isSubmittingChange = false }
+
+        do {
+            let accepted = try await environment.planRepository.createPlanChange(
+                tripId: trip.id,
+                request: PlanChangeCreate(
+                    basePlanVersionId: plan.id,
+                    baseTripVersion: trip.version,
+                    operationType: .cancelVisit,
+                    payload: ["visit_id": stop.visitId],
+                    source: "MAP",
+                    reason: "地图工作区取消拜访并重新优化路线"
+                )
+            )
+            planChangeMessage = "变更已受理 · \(accepted.status) · 优化任务 \(accepted.optimizationJobId.prefix(8))"
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
     }
 
     private func loadSelectedPlan() async {
@@ -114,6 +150,8 @@ final class MapWorkspaceViewModel: ObservableObject {
 struct MapWorkspaceView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: MapWorkspaceViewModel
+    @State private var pendingCancelStop: PlanStop?
+    @State private var showsCancelConfirmation = false
 
     init(environment: AppEnvironment) {
         _viewModel = StateObject(wrappedValue: MapWorkspaceViewModel(environment: environment))
@@ -155,6 +193,24 @@ struct MapWorkspaceView: View {
             }
             .task { await viewModel.load() }
             .refreshable { await viewModel.load() }
+            .confirmationDialog(
+                "取消这次拜访并重新优化计划？",
+                isPresented: $showsCancelConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("取消拜访并重新求解", role: .destructive) {
+                    guard let stop = pendingCancelStop else { return }
+                    Task {
+                        await viewModel.cancelVisit(stop)
+                        pendingCancelStop = nil
+                    }
+                }
+                Button("保留拜访", role: .cancel) {
+                    pendingCancelStop = nil
+                }
+            } message: {
+                Text("服务器会修改拜访输入并排队生成新计划版本。当前计划不会被客户端直接修改；新版本生成后仍需审核与激活。")
+            }
         }
     }
 
@@ -164,6 +220,14 @@ struct MapWorkspaceView: View {
             if let error = viewModel.errorMessage {
                 DSErrorState(message: error) {
                     Task { await viewModel.load() }
+                }
+            }
+            if let message = viewModel.planChangeMessage {
+                DSCard(padding: DS.Spacing.md) {
+                    Label(message, systemImage: "clock.badge.checkmark")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(DS.ColorToken.success)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             if let trip = viewModel.selectedTrip {
@@ -192,7 +256,13 @@ struct MapWorkspaceView: View {
                         origin: trip.originPlace,
                         title: "地图",
                         visits: viewModel.visits,
-                        customers: viewModel.customers
+                        customers: viewModel.customers,
+                        isPlanActive: plan.status == .active,
+                        isSubmittingChange: viewModel.isSubmittingChange,
+                        onCancelVisit: { stop in
+                            pendingCancelStop = stop
+                            showsCancelConfirmation = true
+                        }
                     )
                         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card))
                         .overlay(
