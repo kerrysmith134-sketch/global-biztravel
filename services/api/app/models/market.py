@@ -524,7 +524,7 @@ class MarketInsight(Base):
         ForeignKeyConstraint(
             ["organization_id", "workspace_id", "supersedes_id"],
             ["market_insights.organization_id", "market_insights.workspace_id", "market_insights.id"],
-            ondelete="RESTRICT",
+            ondelete="NO ACTION",
             name="fk_market_insight_supersedes_same_workspace",
         ),
         UniqueConstraint("organization_id", "id", name="uq_market_insights_org_id"),
