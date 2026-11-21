@@ -194,132 +194,17 @@ struct PlanMapView: View {
     }
 
     private func selectedStopDrawer(_ stop: PlanStop) -> some View {
-        DSCard(padding: DS.Spacing.md) {
-            VStack(alignment: .leading, spacing: DS.Spacing.sm) {
-                HStack(alignment: .top, spacing: DS.Spacing.sm) {
-                    Text(String(format: "%02d", stop.sequence))
-                        .font(.subheadline.weight(.bold).monospacedDigit())
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(DS.ColorToken.brand, in: RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(stop.displayName)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(DS.ColorToken.textPrimary)
-                            .lineLimit(2)
-                        Text([stop.city, stop.countryCode].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(.caption)
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                    }
-                    Spacer(minLength: 2)
-                    Button {
-                        selectedStopID = nil
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                            .frame(width: 32, height: 32)
-                            .background(DS.ColorToken.surfaceSecondary, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("关闭拜访详情")
-                }
-
-                if let customer = selectedCustomer {
-                    Label(customer.name, systemImage: "building.2")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(DS.ColorToken.textPrimary)
-                    if let industry = customer.industry, !industry.isEmpty {
-                        Text(industry)
-                            .font(.caption2)
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                    }
-                }
-
-                if let selectedVisit {
-                    HStack(spacing: DS.Spacing.xs) {
-                        DSBadge(text: selectedVisit.statusLabel, color: DS.ColorToken.status(selectedVisit.status ?? ""))
-                        if let priority = selectedVisit.priority {
-                            DSBadge(text: "优先级 \(priority)", color: DS.ColorToken.priority("P\(priority)"))
-                        }
-                        if let customer = selectedCustomer {
-                            DSBadge(text: customer.tierLabel, color: DS.ColorToken.tier(customer.tier))
-                        }
-                    }
-                    if let objective = selectedVisit.objective, !objective.isEmpty {
-                        Text(objective)
-                            .font(.footnote)
-                            .foregroundStyle(DS.ColorToken.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if selectedVisit.timeWindowStart != nil || selectedVisit.timeWindowEnd != nil {
-                        Label(selectedVisit.timeWindowLabel, systemImage: "clock")
-                            .font(.caption)
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                    }
-                }
-
-                HStack(spacing: DS.Spacing.md) {
-                    if let day = selectedDayRoute?.date {
-                        Text(day)
-                    }
-                    Label(stop.arrive.map { time($0) } ?? "到达时间未知", systemImage: "clock")
-                    if let depart = stop.depart {
-                        Text("离开 \(time(depart))")
-                    }
-                    Spacer(minLength: 0)
-                    if let minutes = stop.serviceMinutes {
-                        Text("停留 \(duration(minutes))")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(DS.ColorToken.textSecondary)
-
-                HStack(alignment: .center, spacing: DS.Spacing.sm) {
-                    if let travel = stop.travelMinutes {
-                        Label("路程 \(duration(travel))", systemImage: "car")
-                            .font(.caption)
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                    }
-                    if stop.distanceKm != nil {
-                        Text(stop.distanceLabel)
-                            .font(.caption2)
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                    }
-                    if stop.travelIsStale {
-                        DSDataQualityTag(kind: .stale, text: "交通数据需复核")
-                    } else if let source = stop.travelSource {
-                        DSDataQualityTag(kind: source == "osrm-road" ? .live : .estimate,
-                                         text: source == "osrm-road" ? "路网路线" : "路线估算")
-                    }
-                    Spacer(minLength: 0)
-                    if let cost = stop.costAmount {
-                        Text("\(stop.costCurrency ?? "") \(String(format: "%.2f", cost))")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(DS.ColorToken.textPrimary)
-                    }
-                }
-
-                if isPlanActive, let onCancelVisit, selectedVisit?.isOpen ?? true {
-                    Divider()
-                    Button(role: .destructive) {
-                        onCancelVisit(stop)
-                    } label: {
-                        Label(
-                            isSubmittingChange ? "正在处理计划变更…" : "取消此拜访并重新优化路线",
-                            systemImage: "arrow.clockwise"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 42)
-                    }
-                    .disabled(isSubmittingChange)
-                    .accessibilityHint("提交前会要求再次确认，服务端将生成新的计划版本")
-                }
-            }
-        }
-        .padding(.horizontal, DS.Spacing.sm)
-        .padding(.vertical, DS.Spacing.xs)
-        .accessibilityElement(children: .contain)
+        MapVisitDetailDrawer(
+            stop: stop,
+            visit: selectedVisit,
+            customer: selectedCustomer,
+            dayDate: selectedDayRoute?.date,
+            timeZone: planTimeZone,
+            isPlanActive: isPlanActive,
+            isSubmittingChange: isSubmittingChange,
+            onCancelVisit: onCancelVisit,
+            onClose: { selectedStopID = nil }
+        )
     }
 
     private var routeLegend: some View {
