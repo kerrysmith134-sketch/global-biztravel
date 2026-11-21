@@ -236,9 +236,8 @@ def create_answer(
     evidence_gap: str | None,
     created_by_user_id: UUID | None,
 ) -> dict[str, Any]:
-    workspace = _workspace(session, organization_id, workspace_id, lock=True)
+    _workspace(session, organization_id, workspace_id, lock=True)
     question = _question(session, organization_id, workspace_id, question_id, lock=True)
-    del workspace
     if question.status in {"BLOCKED", "CANCELLED"}:
         raise Conflict(
             "已阻塞或取消的问题不能创建答案版本",
