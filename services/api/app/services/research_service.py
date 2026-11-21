@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.errors import NotFound
+from app.api.errors import Conflict, NotFound, ServiceUnavailable, Unprocessable
 from app.api.schemas import (
     ResearchEvidenceRead,
     ResearchPlanCreate,
@@ -30,8 +30,9 @@ from app.llm.prompts import (
     RESEARCH_PLAN_SYSTEM,
     RESEARCH_PLAN_TEMPLATE_ID,
 )
+from app.integrations.research_search import get_research_search_provider
 from app.models.workflow import AgentRun, WorkflowInstance
-from app.services import customer_service, evidence_service, trip_service
+from app.services import customer_service, evidence_service, job_service, trip_service
 
 WORKFLOW_TYPE = "research_plan"
 AGENT_TYPE = "research_planner"
@@ -420,16 +421,35 @@ def get_research_plan(
         subject_type="RESEARCH_PLAN",
         subject_id=workflow.id,
     )
+    retrieval_status = str(payload.get("retrieval_status") or "NOT_STARTED")
+    retrieval_error = payload.get("retrieval_error")
+    if workflow.job_id is not None:
+        try:
+            job = job_service.get_job(session, organization_id, workflow.job_id)
+            if job.status == "PENDING":
+                retrieval_status = "QUEUED"
+            elif job.status == "RUNNING":
+                retrieval_status = "RUNNING"
+            elif job.status in {"FAILED", "DEAD"}:
+                retrieval_status = "FAILED"
+                retrieval_error = job.last_error or retrieval_error
+        except NotFound:
+            retrieval_status = "FAILED"
+            retrieval_error = "研究任务记录不存在"
+
     return ResearchPlanRead(
         id=workflow.id,
         trip_id=workflow.trip_id,
         customer_id=(
             UUID(str(payload["customer_id"])) if payload.get("customer_id") else None
         ),
+        job_id=workflow.job_id,
+        retrieval_error=str(retrieval_error) if retrieval_error else None,
+        results_count=int(payload.get("results_count") or 0),
         request=str(payload.get("request") or ""),
         requested_scope=str(payload.get("requested_scope") or "AUTO"),
         recommended_scope=str(payload.get("recommended_scope") or "INTERNAL_ONLY"),
-        retrieval_status="NOT_STARTED",
+        retrieval_status=retrieval_status,
         status="PLANNED",
         plan=ResearchPlanIntentRead.model_validate(raw_plan),
         planner=ResearchPlannerAuditRead.model_validate(raw_audit),
@@ -438,4 +458,76 @@ def get_research_plan(
     )
 
 
-__all__ = ["create_research_plan", "get_research_plan"]
+def enqueue_research_execution(
+    session: Session,
+    organization_id: UUID | str,
+    plan_id: UUID | str,
+    *,
+    user_id: UUID | str,
+) -> dict[str, Any]:
+    """Enqueue external retrieval only after the user explicitly starts the reviewed plan."""
+    workflow = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == str(organization_id),
+            WorkflowInstance.id == str(plan_id),
+            WorkflowInstance.workflow_type == WORKFLOW_TYPE,
+        ).with_for_update()
+    ).one_or_none()
+    if workflow is None:
+        raise NotFound("研究计划不存在", details={"plan_id": str(plan_id)})
+
+    payload = dict(workflow.payload or {})
+    plan = payload.get("plan") or {}
+    if not bool(plan.get("external_research_needed")):
+        raise Unprocessable(
+            "本次研究计划未要求外部资料，无需启动外部检索。",
+            code="RESEARCH_EXTERNAL_NOT_REQUIRED",
+        )
+    queries = _string_list(plan.get("search_queries"), limit=MAX_QUERIES)
+    if not queries:
+        raise Unprocessable(
+            "研究计划没有可执行的搜索查询，请先补充研究问题或重新生成计划。",
+            code="RESEARCH_QUERIES_MISSING",
+        )
+    provider = get_research_search_provider()
+    if not provider.configured:
+        raise ServiceUnavailable(
+            "尚未配置通用研究搜索 Provider。部署者需配置 GBT_RESEARCH_SEARCH_PROVIDER=searxng "
+            "和 GBT_RESEARCH_SEARCH_BASE_URL 后才能启动外部检索。"
+        )
+
+    current_status = str(payload.get("retrieval_status") or "NOT_STARTED")
+    if current_status == "COMPLETED":
+        raise Conflict("该研究计划的外部资料已采集完成；如需更新，请创建新的研究计划。")
+    query_digest = _sha256("\n".join(queries))
+    dedupe_key = f"research_execute:{workflow.id}:{query_digest}"
+    in_flight = job_service.find_inflight(session, organization_id, dedupe_key)
+    job = job_service.enqueue(
+        session,
+        organization_id,
+        job_type=job_service.JOB_TYPE_RESEARCH_EXECUTE,
+        payload={"plan_id": str(workflow.id)},
+        dedupe_key=dedupe_key,
+        created_by_user_id=user_id,
+    )
+    workflow.job_id = job.id
+    workflow.status = "RUNNING"
+    payload["retrieval_status"] = "QUEUED"
+    payload["retrieval_error"] = None
+    payload["retrieval_started_at"] = datetime.now(UTC).isoformat()
+    payload["results_count"] = int(payload.get("results_count") or 0)
+    workflow.payload = payload
+    session.flush()
+    return {
+        "plan_id": workflow.id,
+        "job_id": job.id,
+        "status": job.status,
+        "reused": in_flight is not None,
+    }
+
+
+__all__ = [
+    "create_research_plan",
+    "enqueue_research_execution",
+    "get_research_plan",
+]
