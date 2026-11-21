@@ -22,6 +22,7 @@
 | 长任务 | 现有 BackgroundJob / Worker |
 | 模型调用 | 现有 LLMInvocation / LLM Gateway |
 | 通用证据存储 | 现有 Evidence（兼容扩展） |
+| 单次研究计划/执行 | 现有 WorkflowInstance（workflow_type=research_plan）+ AgentRun + BackgroundJob |
 | 市场探索工作空间 | 新增 MarketWorkspace |
 | 市场候选实体 | 新增 MarketEntity |
 | 市场判断 | 新增 MarketInsight |
@@ -313,6 +314,12 @@ Market Workspace 级来源可通过现有 Evidence subject 多态关联（subjec
 
 ---
 
+### 4.4 ResearchPlan 的持久化表达
+
+ResearchPlan 不是独立 ORM 主表。现有用户意图驱动研究以 WorkflowInstance（workflow_type = research_plan）作为单次研究运行记录，研究问题、检索意图和来源范围保留在该 Workflow 的版本化 payload / AgentRun 输出中；外部检索仍使用现有 BackgroundJob，并将初始来源结果写入 Evidence。
+
+MarketWorkspace 通过 MarketWorkspaceWorkflow 关联一个或多个 ResearchPlan Workflow。Workspace 不复制检索查询、Job 或 Evidence 内容；它只负责长期组织研究目标、上下文版本、问题和后续洞察/机会。
+
 ## 5. 关系表与既有业务对象连接
 
 首批关系表：
@@ -323,7 +330,7 @@ Market Workspace 级来源可通过现有 Evidence subject 多态关联（subjec
 | MarketOpportunityEntity | Opportunity ↔ 一个或多个 MarketEntity |
 | MarketEntityCustomerLink | MarketEntity ↔ 现有 Customer，记录 MATCH_CANDIDATE / USER_CONFIRMED / REJECTED / CONFLICTED |
 | MarketWorkspaceTripLink | Workspace ↔ 现有 Trip，多对多 |
-| MarketWorkspaceWorkflow | Workspace ↔ 现有 WorkflowInstance，多对多 |
+| MarketWorkspaceWorkflow | Workspace ↔ 现有 WorkflowInstance，多对多；ResearchPlan 是其中一种 workflow_type |
 
 关联规则：
 - TargetAccount 不新建，使用 MarketEntity + 用户确认的 Customer link。
