@@ -311,10 +311,10 @@ def create_research_plan(
             "requested_scope": requested_scope,
             "retrieval_status": "NOT_STARTED",
             "customer_id": (
-            str(payload.customer_id)
-            if include_internal and payload.customer_id is not None
-            else None
-        ),
+                str(payload.customer_id)
+                if include_internal and payload.customer_id is not None
+                else None
+            ),
         },
         created_by_user_id=str(user_id),
     )
