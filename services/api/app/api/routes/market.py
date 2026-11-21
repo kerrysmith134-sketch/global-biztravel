@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import (
+    ROLE_ADMIN,
     ROLE_TRAVELER,
     ROLE_VIEWER,
     ContextDep,
@@ -20,16 +21,20 @@ from app.api.pagination import clamp_limit, decode_cursor
 from app.api.pagination import next_cursor as page_cursor
 from app.api.schemas import (
     MarketActivityEventRead,
+    MarketEntityCustomerLinkCreate,
+    MarketEntityCustomerLinkRead,
     MarketContextCreate,
     MarketContextRead,
     MarketResearchQuestionCreate,
     MarketResearchQuestionRead,
     MarketWorkspaceCreate,
+    MarketWorkspaceEntityCreate,
+    MarketWorkspaceEntityRead,
     MarketWorkspaceRead,
     Page,
     ResearchPlanRead,
 )
-from app.services import market_workspace_service, research_service
+from app.services import market_entity_service, market_workspace_service, research_service
 
 router = APIRouter(tags=["market intelligence"])
 
@@ -260,6 +265,139 @@ def create_question(
     return guard.finish(
         status_code=status.HTTP_201_CREATED,
         body=MarketResearchQuestionRead.model_validate(item),
+    )
+
+
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/entities",
+    response_model=list[MarketWorkspaceEntityRead],
+    summary="工作空间候选实体列表",
+)
+def list_workspace_entities(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    return market_entity_service.list_workspace_entities(
+        session, context.organization_id, workspace_id
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/entities",
+    response_model=MarketWorkspaceEntityRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="向工作空间添加候选实体",
+)
+def create_workspace_entity(
+    workspace_id: UUID,
+    payload: MarketWorkspaceEntityCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"POST /v1/market/workspaces/{workspace_id}/entities"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    item = market_entity_service.create_workspace_entity(
+        session,
+        context.organization_id,
+        workspace_id,
+        entity_kind=payload.entity_kind,
+        display_name=payload.display_name,
+        description=payload.description,
+        canonical_domain=payload.canonical_domain,
+        country_code=payload.country_code,
+        attributes=payload.attributes,
+        discovery_reason=payload.discovery_reason,
+        relevance_note=payload.relevance_note,
+        created_by_user_id=context.user_id,
+    )
+    return guard.finish(status_code=status.HTTP_201_CREATED, body=item)
+
+
+@router.post(
+    "/market/entities/{entity_id}/customer-links",
+    response_model=MarketEntityCustomerLinkRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建候选实体与正式客户的匹配建议",
+)
+def create_customer_link_candidate(
+    entity_id: UUID,
+    payload: MarketEntityCustomerLinkCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"POST /v1/market/entities/{entity_id}/customer-links"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"entity_id": str(entity_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    link = market_entity_service.create_customer_link_candidate(
+        session,
+        context.organization_id,
+        entity_id,
+        customer_id=payload.customer_id,
+        matching_basis=payload.matching_basis,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketEntityCustomerLinkRead.model_validate(link),
+    )
+
+
+@router.post(
+    "/market/entities/{entity_id}/customer-links/{link_id}:confirm",
+    response_model=MarketEntityCustomerLinkRead,
+    summary="明确确认候选实体与正式客户的关联",
+)
+def confirm_customer_link(
+    entity_id: UUID,
+    link_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_ADMIN)
+    endpoint = f"POST /v1/market/entities/{entity_id}/customer-links/{link_id}:confirm"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"entity_id": str(entity_id), "link_id": str(link_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    link = market_entity_service.confirm_customer_link(
+        session,
+        context.organization_id,
+        entity_id,
+        link_id,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketEntityCustomerLinkRead.model_validate(link),
     )
 
 
