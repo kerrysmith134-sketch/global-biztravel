@@ -250,11 +250,14 @@ struct GlobalCustomerMapView: View {
             ForEach(countryGroups, id: \.key) { group in
                 Section(group.key) {
                     ForEach(group.value) { item in
-                        NavigationLink {
-                            CustomerDetailView(customer: domainCustomer(item.customer))
+                        Button {
+                            model.selectedID = item.id
+                            model.mode = "map"
                         } label: {
                             locationRow(item)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("在地图上定位 \(item.customer.name)，\(item.place.name)")
                     }
                 }
             }

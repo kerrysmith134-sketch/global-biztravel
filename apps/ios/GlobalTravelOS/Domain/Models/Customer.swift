@@ -407,6 +407,29 @@ struct GlobalMapPlace: Decodable, Equatable, Identifiable {
     var geocodeSource: String?
     var geocodeConfidence: Decimal?
 
+    private enum CodingKeys: String, CodingKey {
+        case id, label, isPrimary, name, addressLine, city, region, countryCode
+        case timezone, lat, lon, geocodeStatus, geocodeSource, geocodeConfidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        label = try values.decodeIfPresent(String.self, forKey: .label)
+        isPrimary = try values.decodeIfPresent(Bool.self, forKey: .isPrimary) ?? false
+        name = try values.decode(String.self, forKey: .name)
+        addressLine = try values.decodeIfPresent(String.self, forKey: .addressLine)
+        city = try values.decodeIfPresent(String.self, forKey: .city)
+        region = try values.decodeIfPresent(String.self, forKey: .region)
+        countryCode = try values.decodeIfPresent(String.self, forKey: .countryCode)
+        timezone = try values.decodeIfPresent(String.self, forKey: .timezone)
+        lat = try values.decodeIfPresent(Double.self, forKey: .lat)
+        lon = try values.decodeIfPresent(Double.self, forKey: .lon)
+        geocodeStatus = try values.decodeIfPresent(String.self, forKey: .geocodeStatus) ?? "MISSING"
+        geocodeSource = try values.decodeIfPresent(String.self, forKey: .geocodeSource)
+        geocodeConfidence = try values.decodeDecimalIfPresent(forKey: .geocodeConfidence)
+    }
+
     var hasValidCoordinates: Bool {
         guard let lat, let lon else { return false }
         return (-90.0...90.0).contains(lat) && (-180.0...180.0).contains(lon)

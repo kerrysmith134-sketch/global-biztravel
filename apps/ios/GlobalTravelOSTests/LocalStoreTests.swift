@@ -233,6 +233,65 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(retained.items.map(\.id), [created.placeId])
     }
 
+    func testLocalGlobalCustomerMapAggregatesAndFiltersAddresses() async throws {
+        let repository = LocalCustomerRepository(database: database)
+        let customerA = try await repository.createCustomer(
+            CustomerCreateRequest(name: "Map Customer A", tier: "A", countryCode: "DE", industry: "Energy")
+        )
+        let customerB = try await repository.createCustomer(
+            CustomerCreateRequest(name: "Map Customer B", tier: "C", countryCode: "NL")
+        )
+        let berlin = Place(
+            id: "map-berlin-hq", name: "Berlin HQ", countryCode: "DE",
+            latitude: 52.52, longitude: 13.405, city: "Berlin",
+            region: "Berlin", address: "Industriestrasse 12",
+            geocodeStatus: "RESOLVED", geocodeSource: "client"
+        )
+        let rotterdam = Place(
+            id: "map-rotterdam-factory", name: "Rotterdam Factory",
+            countryCode: "NL", city: "Rotterdam", geocodeStatus: "MISSING"
+        )
+        for place in [berlin, rotterdam] {
+            try database.upsert(
+                table: "places", id: place.id ?? "",
+                columns: ["name": place.name, "city": place.city],
+                payload: try DateCoding.encode(place)
+            )
+        }
+        _ = try await repository.linkCustomerPlace(
+            customerId: customerA.id,
+            request: CustomerPlaceLinkRequest(placeId: berlin.id ?? "", label: "总部", isPrimary: true)
+        )
+        _ = try await repository.linkCustomerPlace(
+            customerId: customerA.id,
+            request: CustomerPlaceLinkRequest(placeId: rotterdam.id ?? "", label: "工厂", isPrimary: false)
+        )
+        _ = try await repository.linkCustomerPlace(
+            customerId: customerB.id,
+            request: CustomerPlaceLinkRequest(placeId: berlin.id ?? "", label: "合作办公室", isPrimary: true)
+        )
+
+        let all = try await repository.listGlobalCustomerMapLocations(
+            filters: .all, page: PageRequest(limit: 50)
+        )
+        XCTAssertEqual(all.items.count, 3)
+        XCTAssertEqual(all.summary.customersWithLocations, 2)
+        XCTAssertEqual(all.summary.customersWithoutLocations, 0)
+        XCTAssertEqual(all.summary.locationsMapped, 2)
+        XCTAssertEqual(all.summary.locationsMissingCoordinates, 1)
+
+        let aTier = try await repository.listGlobalCustomerMapLocations(
+            filters: GlobalCustomerMapFilters(tier: "A"), page: PageRequest(limit: 50)
+        )
+        XCTAssertEqual(aTier.items.count, 2)
+        XCTAssertTrue(aTier.items.allSatisfy { $0.customer.tier == "A" })
+
+        let missing = try await repository.listGlobalCustomerMapLocations(
+            filters: GlobalCustomerMapFilters(geocodeStatus: "MISSING"), page: PageRequest(limit: 50)
+        )
+        XCTAssertEqual(missing.items.map(\.place.id), ["map-rotterdam-factory"])
+    }
+
     func testLocalVisitKeepsCRMCustomerAssociation() async throws {
         let trip = try await makeRepository().createTrip(makeRequest(name: "CRM 关联行程"))
         let customer = try await LocalCustomerRepository(database: database).createCustomer(
