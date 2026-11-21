@@ -154,7 +154,7 @@ struct MapWorkspaceView: View {
                 .padding(.horizontal, 2)
 
                 if let plan = viewModel.plan {
-                    PlanMapView(plan: plan, origin: trip.originPlace)
+                    PlanMapView(plan: plan, origin: trip.originPlace, title: "地图")
                         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card))
                         .overlay(
                             RoundedRectangle(cornerRadius: DS.Radius.card)
