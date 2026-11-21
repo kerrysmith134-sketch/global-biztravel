@@ -176,3 +176,109 @@ struct MapVisitDetailDrawer: View {
         Distance.formatDuration(minutes: minutes)
     }
 }
+
+
+/// Inspection panel for a customer address pin. This is deliberately separate from a planned visit:
+/// linking a customer to an address does not imply that a visit has been scheduled there.
+struct MapCustomerPlaceDrawer: View {
+    let location: CustomerMapLocation
+    let onClose: () -> Void
+
+    private var coordinateLabel: String? {
+        guard location.place.hasValidCoordinates,
+              let latitude = location.place.lat,
+              let longitude = location.place.lon else { return nil }
+        return String(format: "%.5f, %.5f", latitude, longitude)
+    }
+
+    var body: some View {
+        DSCard(padding: DS.Spacing.md) {
+            VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                    Image(systemName: "building.2.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(DS.ColorToken.info, in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(location.customer.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textPrimary)
+                            .lineLimit(2)
+                        Text(location.place.name)
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                    Spacer(minLength: 2)
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                            .frame(width: 32, height: 32)
+                            .background(DS.ColorToken.surfaceSecondary, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("关闭客户地址详情")
+                }
+
+                HStack(spacing: DS.Spacing.xs) {
+                    DSBadge(text: location.customer.tierLabel, color: DS.ColorToken.tier(location.customer.tier))
+                    if let label = location.place.label, !label.isEmpty {
+                        DSBadge(text: label, color: DS.ColorToken.info)
+                    }
+                    if location.place.isPrimary {
+                        DSBadge(text: "主地址", color: DS.ColorToken.success)
+                    }
+                }
+
+                if location.place.displayAddress.isEmpty {
+                    Text("尚未登记完整地址")
+                        .font(.caption)
+                        .foregroundStyle(DS.ColorToken.warning)
+                } else {
+                    Text(location.place.displayAddress)
+                        .font(.footnote)
+                        .foregroundStyle(DS.ColorToken.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Divider()
+                VStack(alignment: .leading, spacing: 5) {
+                    metadataRow("地理编码状态", location.place.geocodeStatus)
+                    if let source = location.place.geocodeSource, !source.isEmpty {
+                        metadataRow("坐标来源", source)
+                    }
+                    if let confidence = location.place.confidenceLabel {
+                        metadataRow("来源可信度", confidence)
+                    }
+                    if let coordinateLabel {
+                        metadataRow("坐标", coordinateLabel)
+                    } else {
+                        metadataRow("坐标", "缺失或无效")
+                    }
+                }
+
+                Text("客户地址仅表示 CRM 中已关联的地点，不代表已纳入当前 Mission 的拜访计划。")
+                    .font(.caption2)
+                    .foregroundStyle(DS.ColorToken.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, DS.Spacing.sm)
+        .padding(.vertical, DS.Spacing.xs)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func metadataRow(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.sm) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(DS.ColorToken.textSecondary)
+            Spacer(minLength: 4)
+            Text(value)
+                .font(.caption2.weight(.medium).monospacedDigit())
+                .foregroundStyle(DS.ColorToken.textPrimary)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+}
