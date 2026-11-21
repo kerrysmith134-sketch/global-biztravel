@@ -42,6 +42,8 @@ def test_research_plan_is_user_intent_driven_and_does_not_fake_retrieval(client:
     payload = {
         "request": "研究 ACME GmbH 的企业背景，并为下周拜访准备 8 个问题",
         "source_scope": "EXTERNAL_ONLY",
+        "trip_id": "55555555-5555-5555-5555-555555555555",
+        "customer_id": "66666666-6666-6666-6666-666666666666",
         "context_text": "用户补充：希望关注对方近期业务变化。",
     }
     created = client.post(
@@ -57,6 +59,8 @@ def test_research_plan_is_user_intent_driven_and_does_not_fake_retrieval(client:
     assert body["retrieval_status"] == "NOT_STARTED"
     assert body["requested_scope"] == "EXTERNAL_ONLY"
     assert body["recommended_scope"] == "EXTERNAL_ONLY"
+    assert body["trip_id"] is None
+    assert body["customer_id"] is None
     assert body["plan"]["subject"]
     assert body["plan"]["search_queries"]
     assert body["plan"]["external_research_needed"] is True
