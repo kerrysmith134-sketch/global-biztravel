@@ -1,6 +1,6 @@
 # Sprint H1 — Domain Foundation & Evidence Data Architecture
 
-> 状态：H1.0 源码审计已完成；H1.1 领域契约已冻结；H1.2 Workspace 后端首批纵向切片已实现，叠加在用户驱动 ResearchPlan 基线上，待 CI / PostgreSQL 验证  
+> 状态：H1.0 源码审计已完成；H1.1 领域契约已冻结；H1.2 Workspace 与候选实体后端纵向切片已实现，正在执行严格 CI / PostgreSQL 验证  
 > 关联设计：`docs/design/market-intelligence-engine-v1.0.md`  
 > 仓库基线：`main`，核对到的最新提交 `c5e98e2b567f54705a8569d0ef7ced138d7f88b2`  
 > 计划日期：2026-11-21
@@ -365,19 +365,19 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 
 - 分支：feat/sprint-h1.2-market-workspace-on-research-plan（基于 ui-foundation-2026-11）。
 - Draft PR：#3 https://github.com/kerrysmith134-sketch/global-biztravel/pull/3；之前从 main 创建的 PR #2 已关闭并标记为被 PR #3 替代，未合并任何代码。
-- 新增 ORM：MarketWorkspace、MarketContextSnapshot、MarketResearchQuestion、MarketQuestionDependency、MarketActivityEvent、MarketWorkspaceWorkflow。
-- 新增迁移：0032_market_workspace_foundation，从 0031_visa_catalog_overrides 向前；WorkflowInstance 增加 (organization_id,id) 复合唯一约束，供 Workspace-Workflow 复合外键强制同租户关联。
-- 新增 API：Workspace、Context 快照、ResearchQuestion、活动事件，以及关联 ResearchPlan 列表。
+- 新增 ORM：MarketWorkspace、MarketContextSnapshot、MarketResearchQuestion、MarketQuestionDependency、MarketActivityEvent、MarketWorkspaceWorkflow、MarketEntity、MarketEntityAlias、MarketWorkspaceEntity、MarketEntityCustomerLink。
+- 新增迁移：0032_market_workspace_foundation 与 0033_market_entities，从 0031_visa_catalog_overrides 顺序向前；WorkflowInstance、Customer、Evidence 增加 (organization_id,id) 复合唯一约束，供新关系复合外键强制同租户关联；全部新增组织表 FORCE RLS。
+- 新增 API：Workspace、Context 快照、ResearchQuestion、活动事件、候选实体列表/创建、候选实体与 Customer 的匹配建议/人工确认，以及关联 ResearchPlan 列表；实体列表分页并批量加载别名，避免 N+1。
 - Research API 增加可选 workspace_id；只有同组织 Workspace 存在时才创建关联；外部研究依旧由现有用户确认查询工作流执行。
 - iOS ResearchPlan 请求模型与 ResearchWorkspaceView 支持可选 workspaceId；默认 nil 保持旧调用兼容。
-- 集成测试新增 Workspace 生命周期、上下文版本采纳、研究问题父子关系、幂等、活动事件、Workspace ↔ ResearchPlan 关联和 API/数据库 RLS 隔离场景。
+- 集成测试新增 Workspace 生命周期、上下文版本采纳、研究问题父子关系、幂等、活动事件、Workspace ↔ ResearchPlan 关联、Entity 候选发现/域名重复提示/显式复用/Customer 确认、跨租户 API/RLS 和数据库复合外键负向场景。
 
 ### 10.3 尚未完成 / 不得宣称完成
 
-- MarketEntity、MarketInsight、MarketOpportunity 与 Evidence 版本化仍未实现。
+- MarketInsight、MarketOpportunity、Evidence 内容版本化及其支持/反驳关联仍未实现；MarketEntity 候选实体与 Customer 确认关系已实现。
 - H1.3 Workspace 原生列表/详情/Context Review 的完整 iOS 界面尚未实现；当前 iOS 只支持把 ResearchPlan 请求可选关联到已知 Workspace ID。
 - OpenAPI YAML/JSON 需由项目流程重新导出并执行 make contract-check。
-- 本轮没有本地 checkout、PostgreSQL 迁移执行或自动化命令结果；PR #3 以 PR #1 的分支为 base，当前未取得该 stacked PR 的 CI 运行结果，不能声称测试通过。
+- 本轮未在此执行环境本地 checkout 或直接运行数据库命令；GitHub Actions 已验证 Ruff、MyPy、OpenAPI 生成与 contract-check（107 paths / 182 schemas）。CI #196 的 docs-check 因迁移清单未更新而失败，当前已登记 0032/0033；新一轮严格 CI 仍需执行 docs-check、PostgreSQL migrate、Alembic check、全量测试与 iOS build/test，不能提前宣称全绿。
 
 ### 10.4 合并顺序
 
