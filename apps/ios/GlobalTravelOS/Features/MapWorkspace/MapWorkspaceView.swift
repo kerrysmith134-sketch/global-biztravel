@@ -40,12 +40,9 @@ final class MapWorkspaceViewModel: ObservableObject {
 
     func selectTrip(_ id: String) {
         guard id != selectedTripID else { return }
+        errorMessage = nil
         selectedTripID = id
         Task { await loadSelectedPlan() }
-    }
-
-    func openTripDetails() -> Trip? {
-        selectedTrip
     }
 
     private func loadSelectedPlan() async {
@@ -97,6 +94,10 @@ struct MapWorkspaceView: View {
             Group {
                 if viewModel.isLoading && viewModel.trips.isEmpty {
                     DSLoadingState(message: "正在载入行程与地图…")
+                } else if let error = viewModel.errorMessage, viewModel.trips.isEmpty {
+                    DSErrorState(message: error) {
+                        Task { await viewModel.load() }
+                    }
                 } else if viewModel.trips.isEmpty {
                     DSEmptyState(
                         title: "还没有可展示的行程",
@@ -147,8 +148,10 @@ struct MapWorkspaceView: View {
                     }
                     Spacer(minLength: 4)
                     DSBadge(
-                        text: trip.activePlanVersionId == nil ? "计划预览" : "已激活计划",
-                        color: trip.activePlanVersionId == nil ? DS.ColorToken.warning : DS.ColorToken.success
+                        text: (trip.activePlan != nil || trip.activePlanVersionId != nil)
+                            ? "已激活计划" : "计划预览",
+                        color: (trip.activePlan != nil || trip.activePlanVersionId != nil)
+                            ? DS.ColorToken.success : DS.ColorToken.warning
                     )
                 }
                 .padding(.horizontal, 2)
