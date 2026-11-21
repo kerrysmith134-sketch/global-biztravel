@@ -5,6 +5,7 @@ protocol CustomerRepository {
     func listCustomers(query: String?, page: PageRequest) async throws -> Page<Customer>
     func customer(id: String) async throws -> Customer
     func createCustomer(_ request: CustomerCreateRequest) async throws -> Customer
+    func customerPlaces(customerId: String) async throws -> [CustomerPlace]
 }
 
 final class RemoteCustomerRepository: CustomerRepository {
@@ -24,6 +25,10 @@ final class RemoteCustomerRepository: CustomerRepository {
 
     func createCustomer(_ request: CustomerCreateRequest) async throws -> Customer {
         try await client.send(try Endpoints.createCustomer(request), as: Customer.self)
+    }
+
+    func customerPlaces(customerId: String) async throws -> [CustomerPlace] {
+        try await client.send(Endpoints.customerPlaces(customerId: customerId), as: [CustomerPlace].self)
     }
 }
 
@@ -57,6 +62,12 @@ final class LocalCustomerRepository: CustomerRepository {
             throw APIError.serverError(code: "NOT_FOUND", message: "客户不存在", traceId: nil, details: [:])
         }
         return try DateCoding.decoder().decode(Customer.self, from: payload)
+    }
+
+    /// Local SQLite has no customer_places relation. Report this capability gap explicitly.
+    func customerPlaces(customerId: String) async throws -> [CustomerPlace] {
+        _ = customerId
+        throw LocalStorePendingError(method: "customerPlaces")
     }
 
     func createCustomer(_ request: CustomerCreateRequest) async throws -> Customer {
