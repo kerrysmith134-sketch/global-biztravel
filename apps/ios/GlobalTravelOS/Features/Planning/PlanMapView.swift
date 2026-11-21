@@ -247,13 +247,13 @@ struct PlanMapView: View {
                     }
                 }
 
-                if isPlanActive, let onCancelVisit {
+                if isPlanActive, let onCancelVisit, selectedVisit?.isOpen ?? true {
                     Divider()
                     Button(role: .destructive) {
                         onCancelVisit(stop)
                     } label: {
                         Label(
-                            isSubmittingChange ? "正在提交变更…" : "取消此拜访并重新优化路线",
+                            isSubmittingChange ? "正在处理计划变更…" : "取消此拜访并重新优化路线",
                             systemImage: "arrow.clockwise"
                         )
                         .font(.caption.weight(.semibold))
@@ -283,7 +283,7 @@ struct PlanMapView: View {
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(DS.ColorToken.textPrimary)
                             }
-                            Text("\(route.stops.count) 次拜访 · \(dayDuration(route))")
+                            Text("\(route.stops.count) 次拜访 · 服务时长 \(dayDuration(route))")
                                 .font(.caption2)
                                 .foregroundStyle(DS.ColorToken.textSecondary)
                             if let leg = legs.first(where: { $0.dayIndex == route.dayIndex - 1 }) {
