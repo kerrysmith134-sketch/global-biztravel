@@ -11,6 +11,7 @@ struct PlanMapView: View {
     var customers: [Customer] = []
     var customerLocations: [CustomerMapLocation] = []
     var customerPlacesMessage: String?
+    var isLoadingCustomerPlaces = false
     var isPlanActive = false
     var isSubmittingChange = false
     var onCancelVisit: ((PlanStop) -> Void)?
@@ -232,7 +233,7 @@ struct PlanMapView: View {
 
     @ViewBuilder
     private var customerPlacesNotice: some View {
-        if !customerLocations.isEmpty || customerPlacesMessage != nil {
+        if !customerLocations.isEmpty || customerPlacesMessage != nil || isLoadingCustomerPlaces {
             let mappedCount = mappedCustomerLocations.count
             HStack(alignment: .top, spacing: DS.Spacing.sm) {
                 Image(systemName: "building.2")
@@ -241,6 +242,11 @@ struct PlanMapView: View {
                     Text("客户地址图层 · \(mappedCount)/\(customerLocations.count) 个地址有有效坐标")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ColorToken.textPrimary)
+                    if isLoadingCustomerPlaces {
+                        Text("正在同步当前 Mission 的客户地址…")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
                     if let customerPlacesMessage {
                         Text(customerPlacesMessage)
                             .font(.caption2)
