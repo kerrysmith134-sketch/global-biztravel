@@ -186,7 +186,7 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE INDEX ix_market_activity_org_workspace_created "
-        "ON market_activity_events (organization_id, workspace_id, created_at DESC)"
+        "ON market_activity_events (organization_id, workspace_id, created_at)"
     )
     op.execute(
         "CREATE INDEX ix_market_activity_org_aggregate "
