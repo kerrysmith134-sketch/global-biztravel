@@ -7,8 +7,11 @@ from uuid import UUID
 
 import pytest
 from app.db import org_session
+from app.integrations.research_search import ResearchSearchResult
 from app.main import app
+from app.models.reliability import BackgroundJob
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
+from app.services import job_service
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
@@ -150,6 +153,142 @@ def test_auto_scope_does_not_mistake_user_material_for_internal_records(client: 
         "USER_PROVIDED_CONTEXT",
     }
     assert not any(item["kind"] == "INTERNAL_CUSTOMER_CONTEXT" for item in body["evidence"])
+    with org_session(UUID(ORG_A)) as session:
+        session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
+        session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(plan_id)))
+        session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == UUID(plan_id)))
+
+
+def test_research_execution_uses_reviewed_queries_and_persists_unverified_sources(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeProvider:
+        name = "test-search"
+        configured = True
+
+        def search(self, query: str, *, language: str | None = None):
+            return [
+                ResearchSearchResult(
+                    url="https://source.example.test/company",
+                    title="Company profile",
+                    snippet=f"Search snippet for: {query}",
+                    provider=self.name,
+                    engine="fixture",
+                    published_at="2026-11-20",
+                )
+            ]
+
+    provider = FakeProvider()
+    monkeypatch.setattr(
+        "app.services.research_service.get_research_search_provider", lambda: provider
+    )
+    monkeypatch.setattr(
+        "app.workers.tasks.get_research_search_provider", lambda: provider
+    )
+
+    created = client.post(
+        "/v1/research/plans",
+        headers=headers(),
+        json={
+            "request": "Research the public background of Example Holdings and prepare visit questions",
+            "source_scope": "EXTERNAL_ONLY",
+        },
+    )
+    assert created.status_code == 201, created.text
+    plan_id = created.json()["id"]
+
+    accepted = client.post(
+        f"/v1/research/plans/{plan_id}:execute",
+        headers=headers(),
+    )
+    assert accepted.status_code == 202, accepted.text
+    accepted_body = accepted.json()
+    assert accepted_body["status"] == "PENDING"
+    job_id = accepted_body["job_id"]
+
+    replay = client.post(
+        f"/v1/research/plans/{plan_id}:execute",
+        headers={
+            **headers(),
+            "Idempotency-Key": accepted.request.headers.get("Idempotency-Key", ""),
+        },
+    )
+    # A different key is a second idempotent request, but the in-flight dedupe key reuses
+    # the same job instead of creating a second search task.
+    assert replay.status_code == 202, replay.text
+    assert replay.json()["job_id"] == job_id
+    queued = client.get(f"/v1/research/plans/{plan_id}", headers=headers())
+    assert queued.status_code == 200
+    assert queued.json()["retrieval_status"] == "QUEUED"
+    assert queued.json()["job_id"] == job_id
+
+    with org_session(UUID(ORG_A)) as session:
+        job = session.get(BackgroundJob, UUID(job_id))
+        assert job is not None
+        job.status = "RUNNING"
+        job.locked_by = "research-test-worker"
+        result = __import__("app.workers.tasks", fromlist=["handle_research_execute"]).handle_research_execute(
+            session, job
+        )
+        job_service.complete(session, job.id, result=result)
+        assert result["retrieval_status"] == "COMPLETED"
+        assert result["results_count"] == 1
+        evidence = session.scalars(
+            select(Evidence).where(
+                Evidence.organization_id == UUID(ORG_A),
+                Evidence.subject_type == "RESEARCH_PLAN",
+                Evidence.subject_id == UUID(plan_id),
+                Evidence.kind == "WEB_SEARCH_RESULT",
+            )
+        ).all()
+        assert len(evidence) == 1
+        assert evidence[0].source == "test-search"
+        assert evidence[0].ref == "https://source.example.test/company"
+        assert evidence[0].payload["evidence_state"] == "UNVERIFIED_SEARCH_RESULT"
+
+    completed = client.get(f"/v1/research/plans/{plan_id}", headers=headers())
+    assert completed.status_code == 200
+    assert completed.json()["retrieval_status"] == "COMPLETED"
+    assert completed.json()["results_count"] == 1
+    assert any(item["kind"] == "WEB_SEARCH_RESULT" for item in completed.json()["evidence"])
+
+    with org_session(UUID(ORG_A)) as session:
+        session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
+        session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(plan_id)))
+        session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == UUID(plan_id)))
+        session.execute(delete(BackgroundJob).where(BackgroundJob.id == UUID(job_id)))
+
+
+def test_research_execution_fails_closed_when_provider_is_not_configured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class MissingProvider:
+        configured = False
+        name = "unavailable"
+
+    monkeypatch.setattr(
+        "app.services.research_service.get_research_search_provider",
+        lambda: MissingProvider(),
+    )
+    created = client.post(
+        "/v1/research/plans",
+        headers=headers(),
+        json={
+            "request": "Research the public background of Example Holdings",
+            "source_scope": "EXTERNAL_ONLY",
+        },
+    )
+    assert created.status_code == 201, created.text
+    plan_id = created.json()["id"]
+    denied = client.post(
+        f"/v1/research/plans/{plan_id}:execute",
+        headers=headers(),
+    )
+    assert denied.status_code == 503, denied.text
+    detail = client.get(f"/v1/research/plans/{plan_id}", headers=headers())
+    assert detail.status_code == 200
+    assert detail.json()["retrieval_status"] == "NOT_STARTED"
+    assert detail.json()["job_id"] is None
     with org_session(UUID(ORG_A)) as session:
         session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
         session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(plan_id)))
