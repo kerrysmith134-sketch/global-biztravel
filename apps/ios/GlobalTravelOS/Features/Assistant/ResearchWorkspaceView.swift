@@ -65,7 +65,7 @@ final class ResearchWorkspaceViewModel: ObservableObject {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { query in
                 guard !query.isEmpty, query.count <= 500 else { return false }
-                return seen.insert(query.casefolded).inserted
+                return seen.insert(query.lowercased()).inserted
             }
     }
 
@@ -342,7 +342,7 @@ struct ResearchWorkspaceView: View {
                 )
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DS.ColorToken.textPrimary)
-                Text("规划器：\\(plan.planner.model)\\(plan.planner.degraded ? " · 已降级" : "")")
+                Text("规划器：\(plan.planner.model)\(plan.planner.degraded ? " · 已降级" : "")")
                     .font(.caption2)
                     .foregroundStyle(DS.ColorToken.textSecondary)
             }
@@ -364,7 +364,7 @@ struct ResearchWorkspaceView: View {
                     .disabled(isLocked || model.isExecutingResearch)
                     .accessibilityIdentifier("research-reviewed-queries")
                 HStack {
-                    Text("\\(model.confirmedSearchQueries.count) 条有效查询")
+                    Text("\(model.confirmedSearchQueries.count) 条有效查询")
                     Spacer()
                     Text("最多 12 条 · 每条最多 500 字")
                 }
@@ -379,8 +379,8 @@ struct ResearchWorkspaceView: View {
                     Text("已提交执行的查询：")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ColorToken.textPrimary)
-                    ForEach(Array(plan.reviewedSearchQueries.enumerated()), id: \\.offset) { index, query in
-                        Text("\\(index + 1). \\(query)")
+                    ForEach(Array(plan.reviewedSearchQueries.enumerated()), id: \.offset) { index, query in
+                        Text("\(index + 1). \(query)")
                             .font(.caption2)
                             .foregroundStyle(DS.ColorToken.textSecondary)
                     }
@@ -429,7 +429,7 @@ struct ResearchWorkspaceView: View {
                 .disabled(model.isRefreshingPlan || model.isExecutingResearch)
             }
             if plan.resultsCount > 0 {
-                Text("已保存 \\(plan.resultsCount) 条搜索来源。搜索摘要是研究线索，尚未完成事实核验。")
+                Text("已保存 \(plan.resultsCount) 条搜索来源。搜索摘要是研究线索，尚未完成事实核验。")
                     .font(.caption2)
                     .foregroundStyle(DS.ColorToken.warning)
             }
@@ -503,12 +503,12 @@ struct ResearchWorkspaceView: View {
                                         .foregroundStyle(DS.ColorToken.textSecondary)
                                 }
                                 if let engine = item.engine {
-                                    Text("引擎：\\(engine)")
+                                    Text("引擎：\(engine)")
                                         .font(.caption2)
                                         .foregroundStyle(DS.ColorToken.textSecondary)
                                 }
                                 if let publishedAt = item.publishedAt {
-                                    Text("发布：\\(publishedAt)")
+                                    Text("发布：\(publishedAt)")
                                         .font(.caption2)
                                         .foregroundStyle(DS.ColorToken.textSecondary)
                                 }
