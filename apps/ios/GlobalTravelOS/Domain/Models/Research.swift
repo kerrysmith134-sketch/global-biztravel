@@ -159,6 +159,10 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
     }
 }
 
+struct ResearchExecutionRequest: Codable, Equatable {
+    var searchQueries: [String]
+}
+
 struct ResearchPlan: Decodable, Equatable, Identifiable {
     var id: String
     var tripId: String?
@@ -166,6 +170,7 @@ struct ResearchPlan: Decodable, Equatable, Identifiable {
     var jobId: String?
     var retrievalError: String?
     var resultsCount: Int
+    var reviewedSearchQueries: [String]
     var request: String
     var requestedScope: String
     var recommendedScope: String
