@@ -134,7 +134,10 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
             json={"review_note": "Reviewed, but only one independent source is available."},
         )
         assert not_enough.status_code == 409, not_enough.text
-        assert "independent" in not_enough.text.lower()
+        assert not_enough.json()["error"]["details"] == {
+            "required_sources": 2,
+            "actual_sources": 1,
+        }
 
         # Contradictory evidence puts the answer into CONFLICTED, regardless of support count.
         version_two = create_answer(
