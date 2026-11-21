@@ -9,8 +9,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.errors import Conflict, NotFound, Unprocessable
-from app.integrations.research_page import EXTRACTOR_VERSION
+from app.api.errors import Conflict, NotFound, ServiceUnavailable, Unprocessable
+from app.integrations.research_page import EXTRACTOR_VERSION, get_research_page_provider
 from app.models.market import (
     MarketActivityEvent,
     MarketWorkspace,
@@ -31,6 +31,8 @@ def enqueue_page_extraction(
     created_by_user_id: UUID,
 ) -> dict[str, Any]:
     """Queue extraction for exactly one search Evidence explicitly selected by a user."""
+    if not get_research_page_provider().configured:
+        raise ServiceUnavailable("网页正文提取未在当前部署环境启用")
     workspace = session.scalars(
         select(MarketWorkspace)
         .where(
