@@ -30,7 +30,7 @@ final class LocalStoreTests: XCTestCase {
             path: temporaryDirectory.appendingPathComponent("test.sqlite3")
         )
         let count = try reopened.count(table: "schema_migrations")
-        XCTAssertGreaterThanOrEqual(count, 3)
+        XCTAssertGreaterThanOrEqual(count, 5)
         let again = try reopened.count(table: "schema_migrations")
         XCTAssertEqual(again, count)
     }
@@ -105,6 +105,107 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(second.items.first?.name, "行程-1")
     }
 
+    func testLocalCustomerPlacesPersistAndEnforceSinglePrimaryAddress() async throws {
+        let repository = LocalCustomerRepository(database: database)
+        let customer = try await repository.createCustomer(
+            CustomerCreateRequest(name: "Local Customer", tier: "A")
+        )
+        let headOffice = Place(
+            id: "place-local-hq",
+            name: "Head Office",
+            countryCode: "DE",
+            latitude: 52.5200,
+            longitude: 13.4050,
+            city: "Berlin",
+            address: "Industriestrasse 12"
+        )
+        let factory = Place(
+            id: "place-local-factory",
+            name: "Factory",
+            countryCode: "DE",
+            latitude: 51.4416,
+            longitude: 5.4697,
+            city: "Eindhoven"
+        )
+        for place in [headOffice, factory] {
+            try database.upsert(
+                table: "places",
+                id: place.id ?? "",
+                columns: ["name": place.name, "city": place.city],
+                payload: try DateCoding.encode(place)
+            )
+        }
+
+        let firstLink = try await repository.linkCustomerPlace(
+            customerId: customer.id,
+            request: CustomerPlaceLinkRequest(
+                placeId: headOffice.id ?? "",
+                label: "总部",
+                isPrimary: true
+            )
+        )
+        XCTAssertTrue(firstLink.isPrimary)
+        XCTAssertTrue(firstLink.hasValidCoordinates)
+        XCTAssertEqual(firstLink.geocodeStatus, "RESOLVED")
+        XCTAssertNil(firstLink.geocodeSource) // 本地存储不伪造地理编码来源
+
+        _ = try await repository.linkCustomerPlace(
+            customerId: customer.id,
+            request: CustomerPlaceLinkRequest(
+                placeId: factory.id ?? "",
+                label: "工厂",
+                isPrimary: true
+            )
+        )
+
+        // Re-linking an existing pair updates it instead of creating a duplicate row.
+        _ = try await repository.linkCustomerPlace(
+            customerId: customer.id,
+            request: CustomerPlaceLinkRequest(
+                placeId: factory.id ?? "",
+                label: "生产基地",
+                isPrimary: true
+            )
+        )
+
+        let places = try await repository.customerPlaces(customerId: customer.id)
+        XCTAssertEqual(places.count, 2)
+        XCTAssertEqual(places.first?.placeId, factory.id)
+        XCTAssertEqual(places.first?.label, "生产基地")
+        XCTAssertTrue(places.first?.isPrimary == true)
+        XCTAssertFalse(places.first(where: { $0.placeId == headOffice.id })?.isPrimary ?? true)
+
+        let storedCount = try database.count(
+            table: "customer_places",
+            where: "customer_id = ?",
+            bindings: [customer.id]
+        )
+        XCTAssertEqual(storedCount, 2)
+    }
+
+    func testLocalVisitKeepsCRMCustomerAssociation() async throws {
+        let trip = try await makeRepository().createTrip(makeRequest(name: "CRM 关联行程"))
+        let customer = try await LocalCustomerRepository(database: database).createCustomer(
+            CustomerCreateRequest(name: "Visit Customer")
+        )
+        let visit = try await LocalVisitRepository(database: database).createVisit(
+            tripId: trip.id,
+            request: VisitCreateRequest(
+                customerId: customer.id,
+                placeName: "Customer Site",
+                city: "Berlin",
+                countryCode: "DE",
+                latitude: 52.52,
+                longitude: 13.405,
+                title: "Customer review"
+            )
+        )
+
+        let stored = try await LocalVisitRepository(database: database).listVisits(tripId: trip.id)
+        XCTAssertEqual(stored.first?.id, visit.id)
+        XCTAssertEqual(stored.first?.customerId, customer.id)
+        XCTAssertNotNil(stored.first?.placeId)
+    }
     // MARK: - hold/resume/complete 状态机与版本令牌
 
     func testHoldResumeCompleteStateMachine() async throws {
