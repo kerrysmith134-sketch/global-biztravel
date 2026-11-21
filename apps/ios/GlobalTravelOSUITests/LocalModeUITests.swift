@@ -48,7 +48,7 @@ final class LocalModeUITests: XCTestCase {
 
     func testLocalModeSeededTripSections() throws {
         XCTAssertTrue(
-            app.navigationBars["今日"].waitForExistence(timeout: 20),
+            app.navigationBars["任务"].waitForExistence(timeout: 20),
             "本地模式首屏未出现"
         )
         // 本地模式标识（不是"数据来自服务端"）。
@@ -66,8 +66,8 @@ final class LocalModeUITests: XCTestCase {
             ).firstMatch.waitForExistence(timeout: 15),
             "驾驶舱缺少倒计时/进度"
         )
-        XCTAssertTrue(app.staticTexts["今天"].waitForExistence(timeout: 10), "驾驶舱缺少今日分区")
-        XCTAssertTrue(app.staticTexts["待处理"].waitForExistence(timeout: 10), "驾驶舱缺少待处理分区")
+        XCTAssertTrue(app.staticTexts["今日拜访"].waitForExistence(timeout: 10), "驾驶舱缺少今日分区")
+        XCTAssertTrue(app.staticTexts["AI 洞察与待决策"].waitForExistence(timeout: 10), "驾驶舱缺少待处理分区")
         XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS '签证' OR label CONTAINS '计划'")
