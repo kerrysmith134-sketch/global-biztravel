@@ -315,7 +315,7 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 
 **Exit Gate**：真机或模拟器连接真实后端完成创建、修改、关闭再打开恢复和跨租户权限验证。
 
-### H1.5 — 回归与交付
+### H1.5 — Research Worker 版本化证据集成
 
 交付：
 - 上述测试全部执行记录；
@@ -423,3 +423,18 @@ MarketInsight 采用 `workspace_id + insight_key + version` 建立版本链；�
 评估维度采用开放 JSON 对象；每个维度至少有 value、rationale，允许 UNKNOWN。引用证据必须已关联到当前 Opportunity；未知值不会被当作 0，也不会生成成交概率分数。评估每次追加新版本，不覆盖历史。
 
 **验证状态：** 最新完成的 H1.4 严格 CI 已通过 Ruff、MyPy、OpenAPI / iOS contract、docs、0035 PostgreSQL migration、Alembic drift 与 Backend pytest（416 passed / 1 skipped）；SwiftLint 与 Xcode Build 通过。为补强集成测试的多次运行清理和 Workspace 删除语义，已追加一项测试修正，最终 iOS Unit Tests 与全量 CI 将在该最新 head 再次确认后方可关闭 PR。原生 iOS Opportunity UI 和 Research/Evidence 自动化仍在后续阶段。
+
+
+## 13. H1.5 Research Worker → Evidence Graph
+
+现有 `research_execute` Worker 在 Workspace 绑定的场景下不再调用旧 `record_many()` 保存原始 URL ref。它改为：
+1. 从 ResearchPlan Workflow 找到已关联的 Workspace；
+2. 对每个搜索结果保守规范化来源 URL，对标题 + 搜索摘要原文计算 SHA-256；
+3. 复用现有 `Evidence` 表，使用 `market-source:v1:<source+content hash>` 作为不可变版本 ref；
+4. 通过新增 `MarketResearchPlanEvidence` 关联表记录 ResearchPlan、Evidence、采集 AgentRun 与每条用户已审阅 query；
+5. 同 URL 同内容跨不同 ResearchPlan 只共享一条 Workspace Evidence；内容变化新增 Evidence 版本，不覆盖旧行；
+6. ResearchPlan 详情将自身旧 Evidence 与新关联的 Workspace Evidence 合并返回；未绑定 Workspace 的独立 ResearchPlan 继续走兼容路径。
+
+迁移 `0036_market_plan_ev` 对 Workflow 关联、Evidence 与 AgentRun 全部使用同组织复合外键并启用 FORCE RLS。新增集成测试验证共享去重、查询归因、内容变化版本、详情读取和活动事件幂等。
+
+**验证纪律：** 该分支需要对最新 H1.5 head 重新执行 Ruff、MyPy、文档/契约检查、0036 PostgreSQL migration、Alembic drift、全量 Backend pytest 与 iOS Build/Unit Tests。此时不宣称该新切片已通过 CI。
