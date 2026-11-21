@@ -9,6 +9,9 @@ struct PlanMapView: View {
     var title = "行程地图"
     var visits: [TripVisit] = []
     var customers: [Customer] = []
+    var isPlanActive = false
+    var isSubmittingChange = false
+    var onCancelVisit: ((PlanStop) -> Void)?
 
     @State private var position: MapCameraPosition = .automatic
     @State private var selectedStopID: String?
@@ -243,12 +246,23 @@ struct PlanMapView: View {
                             .foregroundStyle(DS.ColorToken.textPrimary)
                     }
                 }
+
+                if isPlanActive, let onCancelVisit {
+                    Divider()
+                    Button(role: .destructive) {
+                        onCancelVisit(stop)
+                    } label: {
+                        Label(
+                            isSubmittingChange ? "正在提交变更…" : "取消此拜访并重新优化路线",
+                            systemImage: "arrow.trianglehead.2.clockwise"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 42)
+                    }
+                    .disabled(isSubmittingChange)
+                    .accessibilityHint("提交前会要求再次确认，服务端将生成新的计划版本")
+                }
             }
-        }
-        .padding(.horizontal, DS.Spacing.sm)
-        .padding(.vertical, DS.Spacing.xs)
-        .accessibilityElement(children: .contain)
-    }
 
     private var routeLegend: some View {
         ScrollView(.horizontal, showsIndicators: false) {
