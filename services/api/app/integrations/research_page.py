@@ -96,8 +96,13 @@ def _system_resolve(host: str, port: int) -> list[str]:
 
 
 def _normalise_target_url(value: str) -> tuple[str, str, int]:
-    if not isinstance(value, str) or not value.strip() or len(value) > MAX_URL_LENGTH:
-        raise ResearchPageFetchError("INVALID_URL", "来源 URL 为空或超过长度限制")
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value) > MAX_URL_LENGTH
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+    ):
+        raise ResearchPageFetchError("INVALID_URL", "来源 URL 为空、含控制字符或超过长度限制")
     try:
         parts = urlsplit(value.strip())
         scheme = parts.scheme.lower()
