@@ -159,6 +159,8 @@ def update_workspace(
             if value is None or not str(value).strip():
                 raise Unprocessable("工作空间名称不能为空")
             setattr(workspace, field, str(value).strip())
+        elif field == "settings" and value is None:
+            workspace.settings = {}
         else:
             setattr(workspace, field, value)
     session.flush()
@@ -428,6 +430,10 @@ def update_question(
             if value is None or not str(value).strip():
                 raise Unprocessable("研究问题不能为空")
             setattr(row, field, str(value).strip())
+        elif field == "priority" and value is None:
+            raise Unprocessable("研究问题优先级不能为空")
+        elif field == "acceptance_criteria" and value is None:
+            row.acceptance_criteria = {}
         else:
             setattr(row, field, value)
     session.flush()
