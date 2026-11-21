@@ -4047,6 +4047,555 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/opportunities:
+    post:
+      tags:
+      - market intelligence
+      summary: 创建市场商业机会候选
+      operationId: create_market_opportunity_v1_market_workspaces__workspace_id__opportunities_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketOpportunityCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketOpportunityRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - market intelligence
+      summary: 读取 Workspace 商业机会
+      operationId: list_market_opportunities_v1_market_workspaces__workspace_id__opportunities_get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - DISCOVERED
+            - RESEARCHING
+            - EVIDENCE_READY
+            - QUALIFICATION_PENDING
+            - QUALIFIED
+            - ACTION_PLANNED
+            - WON
+            - LOST
+            - DISQUALIFIED
+            - ON_HOLD
+            type: string
+          - type: 'null'
+          title: Status
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_MarketOpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:
+    get:
+      tags:
+      - market intelligence
+      summary: 读取商业机会详情、证据、实体和评估历史
+      operationId: get_market_opportunity_v1_market_workspaces__workspace_id__opportunities__opportunity_id__get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketOpportunityDetailRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/evidence:
+    post:
+      tags:
+      - market intelligence
+      summary: 为商业机会关联支持、反驳或上下文证据
+      operationId: add_market_opportunity_evidence_v1_market_workspaces__workspace_id__opportunities__opportunity_id__evidence_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketOpportunityEvidenceCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketOpportunityEvidenceRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/entities:
+    post:
+      tags:
+      - market intelligence
+      summary: 将当前 Workspace 候选实体关联到商业机会
+      operationId: attach_market_opportunity_entities_v1_market_workspaces__workspace_id__opportunities__opportunity_id__entities_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketOpportunityEntitiesAttach'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MarketEntityRead'
+                title: Response Attach Market Opportunity Entities V1 Market Workspaces  Workspace
+                  Id  Opportunities  Opportunity Id  Entities Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:assess:
+    post:
+      tags:
+      - market intelligence
+      summary: 追加一版商业机会评估快照
+      operationId: assess_market_opportunity_v1_market_workspaces__workspace_id__opportunities__opportunity_id__assess_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketOpportunityAssessmentCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketOpportunityAssessmentRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:transition:
+    post:
+      tags:
+      - market intelligence
+      summary: 按服务端状态机推进或退回商业机会
+      operationId: transition_market_opportunity_v1_market_workspaces__workspace_id__opportunities__opportunity_id__transition_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketOpportunityTransition'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketOpportunityRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:qualify:
+    post:
+      tags:
+      - market intelligence
+      summary: 人工确认商业机会资格
+      operationId: qualify_market_opportunity_v1_market_workspaces__workspace_id__opportunities__opportunity_id__qualify_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketOpportunityQualify'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketOpportunityRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:outcome:
+    post:
+      tags:
+      - market intelligence
+      summary: 记录商业机会 WON/LOST 的实际业务结果
+      operationId: record_market_opportunity_outcome_v1_market_workspaces__workspace_id__opportunities__opportunity_id__outcome_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketOpportunityOutcome'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketOpportunityRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/trips:
+    get:
+      tags:
+      - market intelligence
+      summary: 读取工作空间关联的出差任务
+      operationId: list_workspace_trips_v1_market_workspaces__workspace_id__trips_get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: include_unlinked
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Include Unlinked
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MarketWorkspaceTripLinkRead'
+                title: Response List Workspace Trips V1 Market Workspaces  Workspace
+                  Id  Trips Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - market intelligence
+      summary: 关联现有 Trip 到市场工作空间
+      operationId: link_trip_to_workspace_v1_market_workspaces__workspace_id__trips_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketWorkspaceTripLinkCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketWorkspaceTripLinkRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/trips/{trip_id}:
+    delete:
+      tags:
+      - market intelligence
+      summary: 解除 Workspace 与 Trip 关联并保留历史
+      operationId: unlink_trip_from_workspace_v1_market_workspaces__workspace_id__trips__trip_id__delete
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Trip Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketWorkspaceTripLinkRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/market/workspaces/{workspace_id}/research-plans:
     get:
       tags:
@@ -8081,6 +8630,422 @@ components:
           title: Review Note
       type: object
       title: MarketInsightReview
+    MarketOpportunityAssessmentCreate:
+      properties:
+        dimensions:
+          additionalProperties:
+            additionalProperties: true
+            type: object
+          type: object
+          title: Dimensions
+        summary:
+          anyOf:
+          - type: string
+            maxLength: 5000
+          - type: 'null'
+          title: Summary
+        confidence_level:
+          type: string
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - INSUFFICIENT
+          title: Confidence Level
+          default: INSUFFICIENT
+        assessed_by_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assessed By Run Id
+      type: object
+      required:
+      - dimensions
+      title: MarketOpportunityAssessmentCreate
+    MarketOpportunityAssessmentRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        opportunity_id:
+          type: string
+          format: uuid
+          title: Opportunity Id
+        version:
+          type: integer
+          title: Version
+        dimensions:
+          additionalProperties: true
+          type: object
+          title: Dimensions
+        summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Summary
+        confidence_level:
+          type: string
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - INSUFFICIENT
+          title: Confidence Level
+        assessed_by_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assessed By Run Id
+        assessed_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assessed By User Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - opportunity_id
+      - version
+      - dimensions
+      - summary
+      - confidence_level
+      - assessed_by_run_id
+      - assessed_by_user_id
+      - created_at
+      title: MarketOpportunityAssessmentRead
+    MarketOpportunityCreate:
+      properties:
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        description:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Description
+        next_action:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Next Action
+        owner_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owner User Id
+        created_by_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Created By Run Id
+      type: object
+      required:
+      - title
+      title: MarketOpportunityCreate
+    MarketOpportunityDetailRead:
+      properties:
+        opportunity:
+          $ref: '#/components/schemas/MarketOpportunityRead'
+        evidence:
+          items:
+            $ref: '#/components/schemas/MarketOpportunityEvidenceRead'
+          type: array
+          title: Evidence
+        entities:
+          items:
+            $ref: '#/components/schemas/MarketEntityRead'
+          type: array
+          title: Entities
+        assessments:
+          items:
+            $ref: '#/components/schemas/MarketOpportunityAssessmentRead'
+          type: array
+          title: Assessments
+      type: object
+      required:
+      - opportunity
+      - evidence
+      - entities
+      - assessments
+      title: MarketOpportunityDetailRead
+    MarketOpportunityEntitiesAttach:
+      properties:
+        entity_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Entity Ids
+        relationship_note:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Relationship Note
+      type: object
+      required:
+      - entity_ids
+      title: MarketOpportunityEntitiesAttach
+    MarketOpportunityEvidenceCreate:
+      properties:
+        evidence_id:
+          type: string
+          format: uuid
+          title: Evidence Id
+        relation_type:
+          type: string
+          enum:
+          - SUPPORTS
+          - CONTRADICTS
+          - CONTEXT
+          title: Relation Type
+        rationale:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Rationale
+      type: object
+      required:
+      - evidence_id
+      - relation_type
+      title: MarketOpportunityEvidenceCreate
+    MarketOpportunityEvidenceRead:
+      properties:
+        relation_type:
+          type: string
+          enum:
+          - SUPPORTS
+          - CONTRADICTS
+          - CONTEXT
+          title: Relation Type
+        rationale:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rationale
+        evidence:
+          $ref: '#/components/schemas/MarketEvidenceRead'
+      type: object
+      required:
+      - relation_type
+      - rationale
+      - evidence
+      title: MarketOpportunityEvidenceRead
+    MarketOpportunityOutcome:
+      properties:
+        outcome:
+          type: string
+          enum:
+          - WON
+          - LOST
+          title: Outcome
+        outcome_note:
+          type: string
+          maxLength: 5000
+          minLength: 1
+          title: Outcome Note
+      type: object
+      required:
+      - outcome
+      - outcome_note
+      title: MarketOpportunityOutcome
+    MarketOpportunityQualify:
+      properties:
+        qualification_reason:
+          type: string
+          maxLength: 3000
+          minLength: 1
+          title: Qualification Reason
+      type: object
+      required:
+      - qualification_reason
+      title: MarketOpportunityQualify
+    MarketOpportunityRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        workspace_id:
+          type: string
+          format: uuid
+          title: Workspace Id
+        title:
+          type: string
+          title: Title
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        status:
+          type: string
+          enum:
+          - DISCOVERED
+          - RESEARCHING
+          - EVIDENCE_READY
+          - QUALIFICATION_PENDING
+          - QUALIFIED
+          - ACTION_PLANNED
+          - WON
+          - LOST
+          - DISQUALIFIED
+          - ON_HOLD
+          title: Status
+        next_action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Action
+        qualification_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Qualification Reason
+        disqualification_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Disqualification Reason
+        assessment_version:
+          type: integer
+          title: Assessment Version
+        assessment_dimensions:
+          additionalProperties: true
+          type: object
+          title: Assessment Dimensions
+        assessment_summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assessment Summary
+        assessment_confidence:
+          type: string
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - INSUFFICIENT
+          title: Assessment Confidence
+        created_by_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Created By Run Id
+        owner_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owner User Id
+        created_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Created By User Id
+        qualified_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Qualified By User Id
+        qualified_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Qualified At
+        outcome_recorded_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Outcome Recorded By User Id
+        outcome_recorded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Outcome Recorded At
+        outcome_note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Outcome Note
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - workspace_id
+      - title
+      - description
+      - status
+      - next_action
+      - qualification_reason
+      - disqualification_reason
+      - assessment_version
+      - assessment_dimensions
+      - assessment_summary
+      - assessment_confidence
+      - created_by_run_id
+      - owner_user_id
+      - created_by_user_id
+      - qualified_by_user_id
+      - qualified_at
+      - outcome_recorded_by_user_id
+      - outcome_recorded_at
+      - outcome_note
+      - created_at
+      - updated_at
+      title: MarketOpportunityRead
+    MarketOpportunityTransition:
+      properties:
+        target_status:
+          type: string
+          enum:
+          - RESEARCHING
+          - EVIDENCE_READY
+          - QUALIFICATION_PENDING
+          - ACTION_PLANNED
+          - ON_HOLD
+          - DISQUALIFIED
+          title: Target Status
+        note:
+          anyOf:
+          - type: string
+            maxLength: 3000
+          - type: 'null'
+          title: Note
+      type: object
+      required:
+      - target_status
+      title: MarketOpportunityTransition
     MarketResearchQuestionCreate:
       properties:
         question:
@@ -8390,6 +9355,121 @@ components:
       - created_at
       - updated_at
       title: MarketWorkspaceRead
+    MarketWorkspaceTripLinkCreate:
+      properties:
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        link_note:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Link Note
+      type: object
+      required:
+      - trip_id
+      title: MarketWorkspaceTripLinkCreate
+    MarketWorkspaceTripLinkRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        workspace_id:
+          type: string
+          format: uuid
+          title: Workspace Id
+        trip_id:
+          type: string
+          format: uuid
+          title: Trip Id
+        link_status:
+          type: string
+          enum:
+          - LINKED
+          - UNLINKED
+          title: Link Status
+        link_note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Link Note
+        linked_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Linked By User Id
+        linked_at:
+          type: string
+          format: date-time
+          title: Linked At
+        unlinked_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Unlinked By User Id
+        unlinked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Unlinked At
+        trip_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trip Name
+        trip_status:
+          anyOf:
+          - type: string
+            enum:
+            - DRAFT
+            - PLANNING
+            - READY
+            - ACTIVE
+            - HOLD
+            - COMPLETED
+            - CANCELLED
+          - type: 'null'
+          title: Trip Status
+        window_start:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Window Start
+        window_end:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Window End
+        countries:
+          items:
+            type: string
+          type: array
+          title: Countries
+      type: object
+      required:
+      - id
+      - workspace_id
+      - trip_id
+      - link_status
+      - link_note
+      - linked_by_user_id
+      - linked_at
+      - unlinked_by_user_id
+      - unlinked_at
+      - trip_name
+      - trip_status
+      - window_start
+      - window_end
+      - countries
+      title: MarketWorkspaceTripLinkRead
     MemberAdd:
       properties:
         user_id:
@@ -8988,6 +10068,22 @@ components:
       required:
       - items
       title: Page[MarketInsightRead]
+    Page_MarketOpportunityRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/MarketOpportunityRead'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      title: Page[MarketOpportunityRead]
     Page_MarketResearchQuestionRead_:
       properties:
         items:
