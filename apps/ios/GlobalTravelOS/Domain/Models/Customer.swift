@@ -154,11 +154,15 @@ struct CustomerPlace: Decodable, Equatable, Identifiable {
 
     var displayAddress: String {
         let normalizedCity = city?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let distinctRegion = region?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .flatMap { value in
-                value.isEmpty || value.caseInsensitiveCompare(normalizedCity ?? "") == .orderedSame
-                    ? nil : value
-            }
+        let normalizedRegion = region?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let distinctRegion: String?
+        if let normalizedRegion,
+           !normalizedRegion.isEmpty,
+           normalizedRegion.caseInsensitiveCompare(normalizedCity ?? "") != .orderedSame {
+            distinctRegion = normalizedRegion
+        } else {
+            distinctRegion = nil
+        }
         return [addressLine, normalizedCity, distinctRegion, countryCode]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
