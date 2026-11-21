@@ -100,6 +100,7 @@ def test_research_plan_is_user_intent_driven_and_does_not_fake_retrieval(client:
         assert "user_provided_context" not in runs[0].input
         assert runs[0].input["user_provided_context_sha256"]
         assert {row.kind for row in evidence} == {"USER_REQUEST", "USER_PROVIDED_CONTEXT"}
+        assert {row.source for row in evidence} == {"user_input"}
 
     with org_session(UUID(ORG_A)) as session:
         session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
