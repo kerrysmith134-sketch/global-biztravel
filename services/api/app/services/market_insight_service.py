@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -78,7 +78,7 @@ def record_market_evidence(
 ) -> Evidence:
     _workspace(session, organization_id, workspace_id)
     canonical = canonicalize_source_ref(canonical_ref)
-    digest = sha256(content.encode("utf-8")).hexdigest()
+    digest = sha256(content.encode()).hexdigest()
     identity = sha256(f"{canonical}\n{digest}".encode("utf-8")).hexdigest()
     version_ref = f"market-source:v1:{identity}"
     stored_payload = {**payload, "content": content}
@@ -92,7 +92,7 @@ def record_market_evidence(
             ref=version_ref,
             source=source.strip() if source and source.strip() else None,
             payload=stored_payload,
-            retrieved_at=datetime.now(timezone.utc),
+            retrieved_at=datetime.now(UTC),
             published_at=published_at,
             canonical_ref=canonical,
             content_hash=digest,
