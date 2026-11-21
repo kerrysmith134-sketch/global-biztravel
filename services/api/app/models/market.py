@@ -38,7 +38,7 @@ class MarketWorkspace(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", name="fk_market_workspaces_org", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -46,7 +46,7 @@ class MarketWorkspace(Base):
     objective: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="DRAFT")
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+        PGUUID(as_uuid=True), ForeignKey("users.id", name="fk_market_workspaces_owner", ondelete="SET NULL"), index=True
     )
     current_context_version: Mapped[int | None] = mapped_column(Integer)
     settings: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
@@ -86,7 +86,7 @@ class MarketContextSnapshot(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", name="fk_market_context_org", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -104,7 +104,7 @@ class MarketContextSnapshot(Base):
     extraction_prompt_version: Mapped[str | None] = mapped_column(Text)
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("users.id", name="fk_market_context_creator", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = created_at()
 
@@ -150,7 +150,7 @@ class MarketResearchQuestion(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", name="fk_market_questions_org", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -165,7 +165,7 @@ class MarketResearchQuestion(Base):
     answer_summary: Mapped[str | None] = mapped_column(Text)
     blocked_reason: Mapped[str | None] = mapped_column(Text)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("users.id", name="fk_market_questions_creator", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
@@ -198,14 +198,14 @@ class MarketActivityEvent(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", name="fk_market_activity_org", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     actor_type: Mapped[str] = mapped_column(Text, nullable=False)
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("users.id", name="fk_market_activity_actor", ondelete="SET NULL")
     )
     aggregate_type: Mapped[str] = mapped_column(Text, nullable=False)
     aggregate_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
