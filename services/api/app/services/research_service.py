@@ -83,10 +83,15 @@ def _fallback_plan(
     *,
     requested_scope: str,
     has_internal_context: bool,
+    has_user_context: bool,
 ) -> dict[str, Any]:
     """Offline/stub plan: generic, explicit, and intentionally non-industry-specific."""
     external = _external_needed(request, requested_scope)
-    sources = ["用户提供的上下文"] if has_internal_context else []
+    sources: list[str] = []
+    if has_internal_context:
+        sources.append("用户明确选定的内部客户/行程记录")
+    if has_user_context:
+        sources.append("用户主动提供的材料")
     if external:
         sources.append("与用户问题直接相关的公开一手或权威来源")
     if not sources:
@@ -253,11 +258,13 @@ def create_research_plan(
     selected_context, context_evidence = _selected_context(
         session, organization_id, payload, include_internal=include_internal
     )
-    has_internal_context = bool(selected_context) or bool(payload.context_text)
+    # User-pasted material is a separate input source, not an internal CRM/Trip record.
+    has_internal_context = bool(selected_context)
     fallback = _fallback_plan(
         payload.request,
         requested_scope=requested_scope,
         has_internal_context=has_internal_context,
+        has_user_context=bool(payload.context_text),
     )
     variables = {
         "user_request": payload.request,
