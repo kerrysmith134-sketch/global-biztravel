@@ -1507,6 +1507,33 @@ class ResearchEvidenceRead(ORMModel):
     created_at: datetime
 
 
+class ResearchExecuteCreate(BaseModel):
+    """用户审阅后确认的查询。执行器只允许使用此列表。"""
+
+    search_queries: list[str] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def _normalise_queries(self) -> ResearchExecuteCreate:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in self.search_queries:
+            query = raw.strip()
+            if not query:
+                continue
+            if len(query) > 500:
+                raise ValueError("每条搜索查询不能超过 500 个字符")
+            key = query.casefold()
+            if key not in seen:
+                seen.add(key)
+                normalized.append(query)
+        if not normalized:
+            raise ValueError("至少需要一条非空搜索查询")
+        if len(normalized) > 12:
+            raise ValueError("搜索查询最多 12 条")
+        self.search_queries = normalized
+        return self
+
+
 class ResearchExecuteAccepted(BaseModel):
     plan_id: UUID
     job_id: UUID
