@@ -67,6 +67,11 @@ struct PlanMapView: View {
         return allStops.first { $0.visitId == selectedStopID }
     }
 
+    private var selectedDayRoute: DayRoute? {
+        guard let selectedStop else { return nil }
+        return dayRoutes.first { $0.stops.contains(where: { $0.visitId == selectedStop.visitId }) }
+    }
+
     private var selectedVisit: TripVisit? {
         guard let selectedStop else { return nil }
         return visits.first { $0.id == selectedStop.visitId }
@@ -164,6 +169,17 @@ struct PlanMapView: View {
                     .accessibilityLabel("关闭拜访详情")
                 }
 
+                if let customer = selectedCustomer {
+                    Label(customer.name, systemImage: "building.2")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(DS.ColorToken.textPrimary)
+                    if let industry = customer.industry, !industry.isEmpty {
+                        Text(industry)
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                }
+
                 if let selectedVisit {
                     HStack(spacing: DS.Spacing.xs) {
                         DSBadge(text: selectedVisit.statusLabel, color: DS.ColorToken.status(selectedVisit.status ?? ""))
@@ -188,6 +204,9 @@ struct PlanMapView: View {
                 }
 
                 HStack(spacing: DS.Spacing.md) {
+                    if let day = selectedDayRoute?.date {
+                        Text(day)
+                    }
                     Label(stop.arrive.map { time($0) } ?? "到达时间未知", systemImage: "clock")
                     if let depart = stop.depart {
                         Text("离开 \(time(depart))")
@@ -204,6 +223,11 @@ struct PlanMapView: View {
                     if let travel = stop.travelMinutes {
                         Label("路程 \(duration(travel))", systemImage: "car")
                             .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                    if stop.distanceKm != nil {
+                        Text(stop.distanceLabel)
+                            .font(.caption2)
                             .foregroundStyle(DS.ColorToken.textSecondary)
                     }
                     if stop.travelIsStale {
