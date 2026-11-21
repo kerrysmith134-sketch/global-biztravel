@@ -39,7 +39,12 @@ from app.api.schemas import (
     Page,
     ResearchPlanRead,
 )
-from app.services import market_entity_service, market_insight_service, market_workspace_service, research_service
+from app.services import (
+    market_entity_service,
+    market_insight_service,
+    market_workspace_service,
+    research_service,
+)
 
 router = APIRouter(tags=["market intelligence"])
 
