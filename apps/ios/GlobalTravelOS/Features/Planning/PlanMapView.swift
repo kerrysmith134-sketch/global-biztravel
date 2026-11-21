@@ -136,7 +136,7 @@ struct PlanMapView: View {
                             .padding(.horizontal, DS.Spacing.lg)
                     }
                     if !customerLocations.isEmpty {
-                        Text("已读取客户地址 (customerLocations.count) 个，其中 (customerLocations.filter { !$0.place.hasValidCoordinates }.count) 个缺少有效坐标。")
+                        Text("已读取客户地址 \(customerLocations.count) 个，其中 \(customerLocations.filter { !$0.place.hasValidCoordinates }.count) 个缺少有效坐标。")
                             .font(.caption2)
                             .foregroundStyle(DS.ColorToken.warning)
                     }
@@ -194,7 +194,7 @@ struct PlanMapView: View {
                                             }
                                         }
                                         .buttonStyle(.plain)
-                                        .accessibilityLabel("(location.customer.name)，(location.place.label ?? location.place.name)")
+                                        .accessibilityLabel("\(location.customer.name)，\(location.place.label ?? location.place.name)")
                                     }
                                 }
                             }
@@ -238,7 +238,7 @@ struct PlanMapView: View {
                 Image(systemName: "building.2")
                     .foregroundStyle(DS.ColorToken.info)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("客户地址图层 · (mappedCount)/(customerLocations.count) 个地址有有效坐标")
+                    Text("客户地址图层 · \(mappedCount)/\(customerLocations.count) 个地址有有效坐标")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ColorToken.textPrimary)
                     if let customerPlacesMessage {
@@ -303,7 +303,7 @@ struct PlanMapView: View {
                     selectedCustomerPlaceID = nil
                 }
                 if !customerLocations.isEmpty {
-                    filterChip(title: "客户地址 · (mappedCustomerLocations.count)", selected: showsCustomerLayer) {
+                    filterChip(title: "客户地址 · \(mappedCustomerLocations.count)", selected: showsCustomerLayer) {
                         showsCustomerLayer.toggle()
                         selectedCustomerPlaceID = nil
                     }
