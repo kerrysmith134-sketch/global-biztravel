@@ -27,6 +27,13 @@ from sqlalchemy.orm import Session
 from travel_planner import SolverFailed, plan_trip
 
 from app.api.errors import ApiError
+from app.config import get_settings
+from app.integrations.crm import CrmUnavailable
+from app.integrations.fx import FxMarketUnavailable
+from app.integrations.research_search import (
+    ResearchSearchUnavailable,
+    get_research_search_provider,
+)
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
 from app.llm.prompts import (
@@ -34,13 +41,6 @@ from app.llm.prompts import (
     MARKET_QUESTION_ANSWER_SCHEMA,
     MARKET_QUESTION_ANSWER_SYSTEM,
     MARKET_QUESTION_ANSWER_TEMPLATE_ID,
-)
-from app.config import get_settings
-from app.integrations.crm import CrmUnavailable
-from app.integrations.fx import FxMarketUnavailable
-from app.integrations.research_search import (
-    ResearchSearchUnavailable,
-    get_research_search_provider,
 )
 from app.models.market import MarketWorkspaceWorkflow
 from app.models.reliability import BackgroundJob
