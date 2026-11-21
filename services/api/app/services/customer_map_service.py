@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.geo import Customer, CustomerPlace, Place
@@ -29,7 +29,7 @@ def _filters(
     if tier:
         predicates.append(Customer.tier == tier.upper())
     if country_code:
-        predicates.append(Place.country_code == country_code.upper())
+        predicates.append(func.coalesce(Place.country_code, Customer.country_code) == country_code.upper())
     if geocode_status:
         predicates.append(Place.geocode_status == geocode_status.upper())
     if query and query.strip():
@@ -121,18 +121,55 @@ def list_customer_map_locations(
         )
     ) or 0
 
+    # Prefer the actual linked-place country; fall back to the customer's declared country.
+    # A customer with multiple sites in one country is counted once in that country's customer total.
+    country_key = func.coalesce(Place.country_code, Customer.country_code, "UNKNOWN")
     country_rows = session.execute(
-        select(Place.country_code, func.count(CustomerPlace.id))
+        select(country_key.label("country_code"), func.count(CustomerPlace.id))
         .select_from(CustomerPlace)
         .join(Customer, Customer.id == CustomerPlace.customer_id)
         .join(Place, Place.id == CustomerPlace.place_id)
         .where(*predicates)
-        .group_by(Place.country_code)
+        .group_by(country_key)
     ).all()
-    countries = {
-        (country or "UNKNOWN"): int(count)
-        for country, count in country_rows
-    }
+    countries = {(country or "UNKNOWN"): int(count) for country, count in country_rows}
+
+    coverage_rows = session.execute(
+        select(
+            country_key.label("country_code"),
+            func.count(func.distinct(Customer.id)).label("customers_total"),
+            func.count(CustomerPlace.id).label("locations_total"),
+            func.count(case((and_(Place.lat.is_not(None), Place.lon.is_not(None)), CustomerPlace.id)))
+                .label("locations_mapped"),
+            func.count(func.distinct(case((Customer.tier == "A", Customer.id)))).label("tier_a_customers"),
+            func.count(func.distinct(case((Customer.tier == "B", Customer.id)))).label("tier_b_customers"),
+            func.count(func.distinct(case((Customer.tier == "C", Customer.id)))).label("tier_c_customers"),
+            func.count(func.distinct(case((Customer.status == "ACTIVE", Customer.id)))).label("active_customers"),
+            func.count(func.distinct(case((Customer.status == "PROSPECT", Customer.id)))).label("prospect_customers"),
+            func.count(func.distinct(case((Customer.status == "INACTIVE", Customer.id)))).label("inactive_customers"),
+        )
+        .select_from(CustomerPlace)
+        .join(Customer, Customer.id == CustomerPlace.customer_id)
+        .join(Place, Place.id == CustomerPlace.place_id)
+        .where(*predicates)
+        .group_by(country_key)
+        .order_by(country_key.asc())
+    ).all()
+    country_stats = [
+        {
+            "country_code": row.country_code,
+            "customers_total": int(row.customers_total or 0),
+            "tier_a_customers": int(row.tier_a_customers or 0),
+            "tier_b_customers": int(row.tier_b_customers or 0),
+            "tier_c_customers": int(row.tier_c_customers or 0),
+            "active_customers": int(row.active_customers or 0),
+            "prospect_customers": int(row.prospect_customers or 0),
+            "inactive_customers": int(row.inactive_customers or 0),
+            "locations_total": int(row.locations_total or 0),
+            "locations_mapped": int(row.locations_mapped or 0),
+        }
+        for row in coverage_rows
+    ]
 
     return {
         "rows": rows,
@@ -142,6 +179,6 @@ def list_customer_map_locations(
             "locations_total": int(locations_total),
             "locations_mapped": int(locations_mapped),
             "locations_missing_coordinates": int(locations_total - locations_mapped),
-            "countries": countries,
+            "countries": countries,\n            "country_stats": country_stats,
         },
     }
