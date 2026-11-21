@@ -177,7 +177,6 @@ struct MapVisitDetailDrawer: View {
     }
 }
 
-
 /// Inspection panel for a customer address pin. This is deliberately separate from a planned visit:
 /// linking a customer to an address does not imply that a visit has been scheduled there.
 struct MapCustomerPlaceDrawer: View {
