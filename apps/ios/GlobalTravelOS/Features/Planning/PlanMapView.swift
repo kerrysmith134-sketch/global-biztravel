@@ -37,10 +37,11 @@ struct PlanMapView: View {
             guard let origin, let lat = origin.latitude, let lon = origin.longitude else { return nil }
             return CLLocationCoordinate2D(latitude: lat, longitude: lon)
         }()
-        var previousCoordinate = originCoordinate
         for (dayIndex, day) in plan.dayList.enumerated() {
             var coordinates: [CLLocationCoordinate2D] = []
-            if let start = previousCoordinate { coordinates.append(start) }
+            // The origin is a valid first-day anchor only. Never draw a synthetic
+            // overnight transfer from yesterday's final stop to today's first stop.
+            if dayIndex == 0, let originCoordinate { coordinates.append(originCoordinate) }
             let dayStops = day.stops.filter(\.hasCoordinates)
             for stop in dayStops {
                 guard let lat = stop.latitude, let lon = stop.longitude else { continue }
@@ -56,7 +57,6 @@ struct PlanMapView: View {
                         color: Self.palette[dayIndex % Self.palette.count]
                     )
                 )
-                if let last = coordinates.last { previousCoordinate = last }
             }
         }
         return routes
