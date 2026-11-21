@@ -614,7 +614,7 @@ def handle_market_question_answer_draft(
     session.add(run)
     session.flush()
 
-    fallback = {
+    fallback: dict[str, Any] = {
         "answer_summary": (
             "当前工作空间尚无可引用的来源材料，无法形成有证据支持的答案。"
             if not evidence_context
