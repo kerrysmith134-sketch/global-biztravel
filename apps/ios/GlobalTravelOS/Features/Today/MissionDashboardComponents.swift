@@ -46,7 +46,7 @@ struct MissionHomeHeader: View {
             }
         }
         .padding(.bottom, DS.Spacing.xs)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
