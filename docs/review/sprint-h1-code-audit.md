@@ -331,3 +331,72 @@ Evidence 的原始 payload 必须保留，版本化不能覆盖历史来源内�
 - [ ] 生产客户端内置部署 token / 固定身份 / 临时隧道列入独立安全整改。
 
 **H1.0 结论：可进入 H1.1；先冻结 Evidence 版本与关联设计，再写 DDL。**
+
+
+---
+
+## 9. H1.0 集成接线审查（补充）
+
+本节补充第二轮对 Worker、RLS helper、API 装配、iOS Repository 组合根和导航的源码核对。
+
+### 9.1 模型注册与 Alembic 漂移门禁
+
+- `services/api/app/models/__init__.py` 是模型注册入口；新增 ORM 模型必须导入并加入导出列表，否则 `migrations/env.py` 的 Base.metadata 不会包含它，Alembic drift check 可能漏报。
+- `services/api/migrations/env.py` 将 `Base.metadata` 设为 target_metadata，且 migrations 以显式 DDL 为准；`make check` 用于核对模型/数据库漂移。
+- 新迁移必须沿用 `services/api/migrations/helpers.py` 的 `enable_org_rls(table, force=True)`，该 helper 会创建 `tenant_isolation` policy，并在角色存在时授予 `gbt_app` DML 权限。
+- 应用会话通过 `app.db.bind_org()` 和事务级 GUC 设置 `app.current_org`；RLS 与应用层组织过滤应同时保留。
+
+### 9.2 API 与权限装配
+
+- `services/api/app/api/routes/__init__.py` 明确汇总所有资源 router；新增 Market router 必须在此 import 并 include。
+- `services/api/app/main.py` 只装配 `api_router`，不应直接在 main.py 编写市场业务逻辑。
+- `services/api/app/api/deps.py` 每个请求从 X-Org-Id / X-User-Id 解析身份，并验证 membership；关闭开发身份模式后，身份头缺失会 401。所有新 Market 路由必须调用现有 `require_role`。
+- 写接口应沿用 `IdempotencyKeyDep` + `IdempotentWrite`；列表接口沿用统一 Page/cursor 语义。
+- `contracts/openapi.yaml` 是服务端契约文件；实现后必须通过项目既有 OpenAPI 导出及 contract-check 流程同步，而不是手工维护另一套契约。
+
+### 9.3 Worker 注册是双重白名单
+
+实际检查 `services/api/app/workers/main.py`、`services/api/app/workers/tasks.py` 和 `services/api/app/services/job_service.py`：
+
+- Worker 通过 `TASK_HANDLERS` 查找实际 handler。
+- 找不到 handler 会把 job 终态标记失败，不会静默等待。
+- 任务类型还由 `job_service.KNOWN_JOB_TYPES` 集中登记。
+
+因此每种新增异步研究任务必须同步更新任务类型常量、入队逻辑、TASK_HANDLERS 和对应 handler 测试。不能只创建 BackgroundJob 就宣称任务可以被 Worker 执行。
+
+### 9.4 iOS 数据接线与信息架构
+
+实际检查：
+- `apps/ios/GlobalTravelOS/Core/Networking/APIClient.swift`
+- `apps/ios/GlobalTravelOS/Core/Networking/Endpoints.swift`
+- `apps/ios/GlobalTravelOS/Data/Repositories/CustomerRepository.swift`
+- `apps/ios/GlobalTravelOS/App/AppEnvironment.swift`
+- `apps/ios/GlobalTravelOS/App/RootView.swift`
+- `apps/ios/GlobalTravelOS/Features/Customers/CustomersView.swift`
+- `apps/ios/GlobalTravelOS/Features/DesignSystem/DesignSystem.swift`
+
+确认的模式：
+- Endpoint 定义集中在 Endpoints.swift；每个写请求应生成幂等键。
+- Repository 有 Remote 与 Local 实现；不能只新增远端实现而忘记本地模式的行为边界。
+- AppEnvironment 的 RepositoryBundle / makeBundle / apply 是组合根；新 Repository 必须在 cloud/local 两种模式中有明确实现或明确的 pending error 行为。
+- RootView 当前 Tab 为 Today、Trips、Customers、Action Center、Settings；尚无 Market workspace 根入口。
+- 新功能必须复用现有 DesignSystem。若 H1 本地模式尚不支持 Market Workspace，必须明确显示不可用/需联网，不能静默调用云端或伪造本地成功。
+
+### 9.5 测试与验证边界
+
+- 已读取 `services/api/tests/test_trip_outcome.py`，确认集成验收采用 TestClient + 真实组织身份头 + org_session，测试中覆盖跨租户 404。
+- 已读取 Makefile，项目门禁包含 `make test`、`make typecheck`、`make lint`、`make check`、`make contract-check`、`make e2e`、`make ios-build`、`make ios-test` 和 `make ci`。
+- 本次 GitHub 文件审查没有在仓库工作区运行上述命令，也没有连接部署数据库；不能声称测试通过或 alembic current 已确认。
+
+### 9.6 H1.1 实施依赖顺序
+
+1. 先冻结 MarketWorkspace / ContextSnapshot / ResearchQuestion 的 schema、状态机、版本和唯一约束。
+2. 新模型文件加入 models 注册入口。
+3. 编写从 `0031_visa_catalog_overrides` 向前的显式 Alembic migration，创建组织级表并立即启用 RLS。
+4. 实现 Service / UseCase / Router，Router 仅做 HTTP 语义与权限门禁。
+5. 注册 Market router，导出 OpenAPI，执行 contract-check。
+6. 补真实 PostgreSQL 集成测试、RLS 隔离、幂等及状态迁移测试。
+7. 补 Swift models、Endpoints、Repository、AppEnvironment 组合根和 UI。
+8. 执行项目门禁并将未执行项明确列出。
+
+**补充结论：**H1.0 的源码审查范围已覆盖后端核心模型、迁移 helper、API 权限与路由装配、Worker 双重注册、iOS Repository 组合根和导航接线。仍未完成的是本地/部署数据库状态检查以及实际测试运行；这些是工程验证项，不应以 GitHub 文件读取代替。
