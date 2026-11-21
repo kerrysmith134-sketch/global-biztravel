@@ -4,6 +4,8 @@ import SwiftUI
 final class MapWorkspaceViewModel: ObservableObject {
     @Published private(set) var trips: [Trip] = []
     @Published private(set) var plan: PlanVersionDetail?
+    @Published private(set) var visits: [TripVisit] = []
+    @Published private(set) var customers: [Customer] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingPlan = false
     @Published var errorMessage: String?
@@ -32,6 +34,9 @@ final class MapWorkspaceViewModel: ObservableObject {
                 selectedTripID = trips.first(where: { $0.status?.uppercased() == "ACTIVE" })?.id
                     ?? trips.first?.id
             }
+            if let selectedTripID {
+                await loadMissionContext(tripId: selectedTripID)
+            }
             await loadSelectedPlan()
         } catch {
             errorMessage = environment.errorMessage(error)
@@ -42,12 +47,37 @@ final class MapWorkspaceViewModel: ObservableObject {
         guard id != selectedTripID else { return }
         errorMessage = nil
         selectedTripID = id
-        Task { await loadSelectedPlan() }
+        visits = []
+        customers = []
+        Task {
+            await loadMissionContext(tripId: id)
+            guard selectedTripID == id else { return }
+            await loadSelectedPlan()
+        }
+    }
+
+    /// Load visit and customer context independently from the plan payload.
+    /// The map remains usable if CRM enrichment is unavailable; missing customer metadata is omitted.
+    private func loadMissionContext(tripId: String) async {
+        async let visitResult = try? await environment.visitRepository.listVisits(tripId: tripId)
+        async let customerResult = try? await environment.customerRepository.listCustomers(
+            query: nil,
+            page: PageRequest(limit: 200)
+        )
+        let loadedVisits = await visitResult ?? []
+        let loadedCustomers = await customerResult?.items ?? []
+
+        guard selectedTripID == tripId else { return }
+        visits = loadedVisits
+        let referencedCustomerIDs = Set(loadedVisits.compactMap(\.customerId))
+        customers = loadedCustomers.filter { referencedCustomerIDs.contains($0.id) }
     }
 
     private func loadSelectedPlan() async {
         guard let trip = selectedTrip else {
             plan = nil
+            visits = []
+            customers = []
             return
         }
         isLoadingPlan = true
@@ -157,7 +187,13 @@ struct MapWorkspaceView: View {
                 .padding(.horizontal, 2)
 
                 if let plan = viewModel.plan {
-                    PlanMapView(plan: plan, origin: trip.originPlace, title: "地图")
+                    PlanMapView(
+                        plan: plan,
+                        origin: trip.originPlace,
+                        title: "地图",
+                        visits: viewModel.visits,
+                        customers: viewModel.customers
+                    )
                         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card))
                         .overlay(
                             RoundedRectangle(cornerRadius: DS.Radius.card)
