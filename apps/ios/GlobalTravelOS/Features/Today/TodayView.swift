@@ -738,88 +738,89 @@ private struct SuggestionCard: View {
     let dismiss: () async -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                Image(systemName: suggestion.resolvedSeverity.tintGlyph)
-                    .foregroundStyle(tint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(suggestion.title)
-                        .font(.headline)
-                    Text("\(suggestion.typeLabel) · \(statusLabel)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(suggestion.confidenceLabel)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-
-            if let rationale = suggestion.rationale, !rationale.isEmpty {
-                Text(rationale)
-                    .font(.subheadline)
-            }
-
-            if !suggestion.evidenceList.isEmpty {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("证据")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    ForEach(suggestion.evidenceList) { evidence in
-                        Text("• " + evidence.displayText)
+        DSCard {
+            VStack(alignment: .leading, spacing: DS.Spacing.md) {
+                HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                    Image(systemName: suggestion.resolvedSeverity.tintGlyph)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 34, height: 34)
+                        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(suggestion.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("\(suggestion.typeLabel) · \(suggestion.statusLabel)")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                    Spacer(minLength: 2)
+                    DSBadge(text: suggestion.resolvedSeverity.label, color: tint)
+                }
+
+                if let rationale = suggestion.rationale, !rationale.isEmpty {
+                    Text(rationale)
+                        .font(.footnote)
+                        .foregroundStyle(DS.ColorToken.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if !suggestion.evidenceList.isEmpty {
+                    VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                        Text("依据与来源")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        ForEach(suggestion.evidenceList) { evidence in
+                            DSEvidenceTag(title: evidence.displayText)
+                        }
                     }
                 }
-            }
 
-            if let action = suggestion.proposedAction {
-                Label(action.actionSummary, systemImage: "wand.and.stars")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                if let action = suggestion.proposedAction {
+                    Label(action.actionSummary, systemImage: "wand.and.stars")
+                        .font(.caption)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-            if suggestion.isActionable {
-                HStack(spacing: 10) {
-                    Button {
-                        Task { await approve() }
-                    } label: {
-                        Label("批准并准备", systemImage: "checkmark.circle.fill")
+                HStack(alignment: .center, spacing: DS.Spacing.md) {
+                    Text(suggestion.confidenceLabel)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                    Spacer()
+                    if suggestion.isActionable {
+                        Button {
+                            Task { await approve() }
+                        } label: {
+                            Label("批准并准备", systemImage: "checkmark.circle.fill")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
+                        .tint(DS.ColorToken.brand)
+                        .disabled(isBusy)
+
+                        Button(role: .destructive) {
+                            Task { await dismiss() }
+                        } label: {
+                            Label("忽略", systemImage: "xmark")
+                        }
+                        .font(.caption.weight(.medium))
+                        .buttonStyle(.bordered)
+                        .disabled(isBusy)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isBusy)
-
-                    Button(role: .destructive) {
-                        Task { await dismiss() }
-                    } label: {
-                        Label("驳回", systemImage: "hand.raised")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isBusy)
                 }
             }
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .contain)
     }
 
     private var tint: Color {
         switch suggestion.resolvedSeverity {
-        case .high: return .orange
-        case .medium: return .blue
-        case .low: return .secondary
-        case .unknown: return .gray
-        }
-    }
-
-    private var statusLabel: String {
-        switch (suggestion.status ?? "").uppercased() {
-        case "PENDING": return "待处理"
-        case "APPROVED": return "已批准"
-        case "EXECUTED": return "已执行"
-        case "DISMISSED": return "已驳回"
-        case "EXPIRED": return "已过期"
-        default: return suggestion.status ?? "未知"
+        case .high: return DS.ColorToken.warning
+        case .medium: return DS.ColorToken.info
+        case .low: return DS.ColorToken.textSecondary
+        case .unknown: return DS.ColorToken.textSecondary
         }
     }
 }
