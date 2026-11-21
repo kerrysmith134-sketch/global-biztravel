@@ -3,6 +3,34 @@ import XCTest
 
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
+    func testTripPlaceDecodesNumericAndStringGeocodeConfidence() throws {
+        let numericJSON = """
+        {
+          "id": "place-numeric",
+          "name": "Berlin HQ",
+          "country_code": "DE",
+          "latitude": 52.52,
+          "longitude": 13.405,
+          "geocode_status": "RESOLVED",
+          "geocode_source": "client",
+          "geocode_confidence": 0.98
+        }
+        """
+        let numeric = try DateCoding.decode(Place.self, fromJSON: numericJSON)
+        XCTAssertEqual(numeric.geocodeConfidence, Decimal(string: "0.98"))
+        XCTAssertEqual(numeric.geocodeSource, "client")
+
+        let stringJSON = """
+        {
+          "id": "place-string",
+          "name": "Amsterdam Office",
+          "geocode_confidence": "0.82"
+        }
+        """
+        let string = try DateCoding.decode(Place.self, fromJSON: stringJSON)
+        XCTAssertEqual(string.geocodeConfidence, Decimal(string: "0.82"))
+    }
+
     func testCustomerPlaceDecodesAddressAndGeocodeProvenance() throws {
         let json = """
         {
