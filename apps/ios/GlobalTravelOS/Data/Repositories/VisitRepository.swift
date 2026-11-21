@@ -51,6 +51,7 @@ final class RemoteVisitRepository: VisitRepository {
             "priority": request.priority,
             "movement_mode": request.movementMode,
         ]
+        if let customerId = request.customerId { body["customer_id"] = customerId }
         if let value = request.businessValue { body["business_value"] = value }
         return try await client.send(
             try Endpoints.createVisit(tripId: tripId, body: body), as: TripVisit.self
