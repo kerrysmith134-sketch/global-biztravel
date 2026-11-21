@@ -14961,7 +14961,8 @@
           "tier",
           "status"
         ],
-        "title": "CustomerMapCustomerRead"
+        "title": "CustomerMapCustomerRead",
+        "description": "地图最小客户投影：不返回联系人等与地图无关的个人信息。"
       },
       "CustomerMapPlaceRead": {
         "properties": {
