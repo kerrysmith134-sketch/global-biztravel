@@ -18,9 +18,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from travel_planner import SolverFailed, plan_trip
 
@@ -305,7 +307,7 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
             "plan_id": str(workflow.id),
             "query_count": len(queries),
             "query_sha256": [
-                __import__("hashlib").sha256(item.encode("utf-8")).hexdigest()
+                sha256(item.encode("utf-8")).hexdigest()
                 for item in queries
             ],
             "provider": provider.name,
