@@ -287,7 +287,7 @@ class _ArticleParser(HTMLParser):
         if (
             tag in _SKIP_TAGS
             or values.get("aria-hidden", "").lower() == "true"
-            or values.get("hidden") != ""
+            or "hidden" in values
             or role in {"navigation", "complementary"}
             or _NOISE_CLASS.search(class_id)
         ):
