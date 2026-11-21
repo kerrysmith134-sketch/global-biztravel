@@ -221,12 +221,16 @@ TravelerProfile 只表达旅客偏好与旅行背景，不承载企业业务画�
 - status：DRAFT / NEEDS_REVIEW / ACCEPTED / REJECTED / CONFLICTED / SUPERSEDED
 - generated_by_run_id（nullable）
 - supersedes_id（nullable）
+- insufficient_evidence_reason（nullable；无 Evidence 时必须提供明确缺口说明）
+- reviewed_by_user_id / reviewed_at / review_note（审核记录）
 
 约束：
 - 每条 Insight 必须能关联一条或多条支持/反驳/上下文 Evidence，或明确 INSUFFICIENT_EVIDENCE。
 - CONFLICTED 不得被 UI 显示成确定事实。
 - 新版本不能删除旧版本。
 - ACCEPTED 表示用户接受为当前工作判断，不代表客观真理。
+- AI 输出默认 NEEDS_REVIEW；只有存在至少一条 SUPPORTS 且不存在未解决 CONTRADICTS 时，用户才可采纳。
+- 无 Evidence 的判断只能显式标记证据不足，不能被采纳；同一 insight_key 同一 Workspace 最多一个 ACCEPTED 版本。
 
 ### 3.8 MarketOpportunity
 
@@ -292,6 +296,7 @@ DISCOVERED → RESEARCHING → EVIDENCE_READY → QUALIFICATION_PENDING
 - canonical_ref 保存真实来源地址；
 - content_hash 保存内容 SHA-256；
 - ref 使用稳定版本引用（例如 market-source:v1:<sha256>），不再直接用 canonical URL 作为版本 ref；
+- URL 只做保守规范化：限定 HTTP(S)、统一主机大小写/IDNA 与默认端口、去 fragment；不擅自删除 query 参数或改写路径语义；
 - 相同 canonical_ref + content_hash 在同一 Workspace 下幂等；
 - 同一 canonical_ref 的内容变化产生新 content_hash 和新 Evidence 行；
 - 不同来源不得因内容恰好相同而丢失来源差异；版本 identity 至少包含 canonical source identity 与 content hash；
