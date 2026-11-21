@@ -173,6 +173,10 @@ def test_user_selected_source_is_extracted_as_new_unverified_evidence(
         "app.workers.tasks.get_research_page_provider",
         lambda: provider,
     )
+    monkeypatch.setattr(
+        "app.services.market_source_extraction_service.get_research_page_provider",
+        lambda: provider,
+    )
     try:
         workspace_id = create_workspace(client)
         workspace_ids.append(workspace_id)
@@ -255,9 +259,14 @@ def test_user_selected_source_is_extracted_as_new_unverified_evidence(
 
 
 def test_non_search_evidence_cannot_be_submitted_for_extraction(
-    client: TestClient,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workspace_ids: list[str] = []
+    fake_provider = FakePageProvider(page_fixture())
+    monkeypatch.setattr(
+        "app.services.market_source_extraction_service.get_research_page_provider",
+        lambda: fake_provider,
+    )
     try:
         workspace_id = create_workspace(client)
         workspace_ids.append(workspace_id)
