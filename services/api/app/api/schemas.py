@@ -137,6 +137,54 @@ class CustomerRead(ORMModel):
     updated_at: datetime
 
 
+class CustomerMapCustomerRead(BaseModel):
+    """地图最小客户投影：不返回联系人等与地图无关的个人信息。"""
+
+    id: UUID
+    name: str
+    tier: Tier
+    country_code: str | None = None
+    industry: str | None = None
+    status: CustomerStatus
+
+
+class CustomerMapPlaceRead(BaseModel):
+    id: UUID
+    label: str | None = None
+    is_primary: bool = False
+    name: str
+    address_line: str | None = None
+    city: str | None = None
+    region: str | None = None
+    country_code: str | None = None
+    timezone: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    geocode_status: GeocodeStatus
+    geocode_source: str | None = None
+    geocode_confidence: Decimal | None = None
+
+
+class CustomerMapLocationRead(BaseModel):
+    customer: CustomerMapCustomerRead
+    place: CustomerMapPlaceRead
+
+
+class CustomerMapSummaryRead(BaseModel):
+    customers_with_locations: int = 0
+    customers_without_locations: int = 0
+    locations_total: int = 0
+    locations_mapped: int = 0
+    locations_missing_coordinates: int = 0
+    countries: dict[str, int] = Field(default_factory=dict)
+
+
+class CustomerMapLocationsRead(BaseModel):
+    items: list[CustomerMapLocationRead]
+    summary: CustomerMapSummaryRead
+    next_cursor: str | None = None
+
+
 # ------------------------------------------------------------------- trips
 class TripCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)

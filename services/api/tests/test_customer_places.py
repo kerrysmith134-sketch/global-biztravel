@@ -161,3 +161,76 @@ def test_customer_places_are_tenant_scoped(client: TestClient) -> None:
             )
             session.execute(delete(Customer).where(Customer.id == UUID(customer_id)))
             session.execute(delete(Place).where(Place.id == UUID(place_id)))
+
+
+
+def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestClient) -> None:
+    customer_a = client.post(
+        "/v1/customers",
+        headers=headers(),
+        json={"name": f"Map A·{uuid.uuid4().hex[:8]}", "tier": "A", "country_code": "DE"},
+    )
+    customer_b = client.post(
+        "/v1/customers",
+        headers=headers(),
+        json={"name": f"Map B·{uuid.uuid4().hex[:8]}", "tier": "C", "country_code": "NL"},
+    )
+    assert customer_a.status_code == 201, customer_a.text
+    assert customer_b.status_code == 201, customer_b.text
+    customer_a_id = customer_a.json()["id"]
+    customer_b_id = customer_b.json()["id"]
+
+    resolved_place = make_place(client, city="Berlin", name=f"Map HQ·{uuid.uuid4().hex[:8]}")
+    missing_place_response = client.post(
+        "/v1/places",
+        headers=headers(),
+        json={"name": f"Map Factory·{uuid.uuid4().hex[:8]}", "city": "Rotterdam", "country_code": "NL"},
+    )
+    assert missing_place_response.status_code == 201, missing_place_response.text
+    missing_place = missing_place_response.json()["id"]
+
+    try:
+        for customer_id, place_id, label, primary in (
+            (customer_a_id, resolved_place, "HQ", True),
+            (customer_a_id, missing_place, "Factory", False),
+            (customer_b_id, resolved_place, "Partner office", True),
+        ):
+            response = client.post(
+                f"/v1/customers/{customer_id}/places",
+                headers=headers(),
+                json={"place_id": place_id, "label": label, "is_primary": primary},
+            )
+            assert response.status_code == 201, response.text
+
+        result = client.get("/v1/customers/map-locations?limit=200", headers=headers())
+        assert result.status_code == 200, result.text
+        body = result.json()
+        assert len(body["items"]) == 3
+        assert body["summary"]["locations_total"] == 3
+        assert body["summary"]["locations_mapped"] == 2
+        assert body["summary"]["locations_missing_coordinates"] == 1
+        assert body["summary"]["customers_with_locations"] == 2
+
+        filtered = client.get(
+            "/v1/customers/map-locations?tier=A&country_code=DE&geocode_status=RESOLVED",
+            headers=headers(),
+        )
+        assert filtered.status_code == 200, filtered.text
+        assert len(filtered.json()["items"]) == 1
+        assert filtered.json()["items"][0]["customer"]["id"] == customer_a_id
+
+        # The aggregate is organization-scoped; another tenant sees neither customer nor place data.
+        hidden = client.get(
+            "/v1/customers/map-locations",
+            headers=headers(USER_B, ORG_B),
+        )
+        assert hidden.status_code == 200, hidden.text
+        assert hidden.json()["items"] == []
+        assert hidden.json()["summary"]["locations_total"] == 0
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(CustomerPlace).where(CustomerPlace.customer_id.in_([UUID(customer_a_id), UUID(customer_b_id)]))
+            )
+            session.execute(delete(Customer).where(Customer.id.in_([UUID(customer_a_id), UUID(customer_b_id)])))
+            session.execute(delete(Place).where(Place.id.in_([UUID(resolved_place), UUID(missing_place)])))

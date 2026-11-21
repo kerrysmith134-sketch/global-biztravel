@@ -31,7 +31,7 @@ from app.api.schemas import (
     CustomerRead,
     Page,
 )
-from app.services import customer_service, place_service
+from app.services import customer_map_service, customer_service, place_service
 
 router = APIRouter(tags=["customers"])
 
@@ -86,6 +86,70 @@ def create_customer(
     )
     body = CustomerRead.model_validate(customer)
     return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
+
+
+@router.get(
+    "/customers/map-locations",
+    response_model=CustomerMapLocationsRead,
+    summary="组织级客户地图位置（单次聚合查询）",
+)
+def list_customer_map_locations(
+    context: ContextDep,
+    session: SessionDep,
+    query: str | None = Query(default=None, max_length=200),
+    tier: str | None = Query(default=None, pattern="^(A|B|C|a|b|c)$"),
+    country_code: str | None = Query(default=None, min_length=2, max_length=2),
+    geocode_status: str | None = Query(default=None, pattern="^(MISSING|RESOLVED|FAILED|missing|resolved|failed)$"),
+    limit: int | None = Query(default=None, ge=1),
+    cursor: str | None = Query(default=None),
+):
+    require_role(context, ROLE_VIEWER)
+    page_size = clamp_limit(limit)
+    offset = decode_cursor(cursor)
+    result = customer_map_service.list_customer_map_locations(
+        session,
+        context.organization_id,
+        query=query,
+        tier=tier,
+        country_code=country_code,
+        geocode_status=geocode_status,
+        limit=page_size,
+        offset=offset,
+    )
+    items = [
+        CustomerMapLocationRead(
+            customer=CustomerMapCustomerRead(
+                id=customer.id,
+                name=customer.name,
+                tier=customer.tier,
+                country_code=customer.country_code,
+                industry=customer.industry,
+                status=customer.status,
+            ),
+            place=CustomerMapPlaceRead(
+                id=place.id,
+                label=link.label,
+                is_primary=link.is_primary,
+                name=place.name,
+                address_line=place.address_line,
+                city=place.city,
+                region=place.region,
+                country_code=place.country_code,
+                timezone=place.timezone,
+                lat=place.lat,
+                lon=place.lon,
+                geocode_status=place.geocode_status,
+                geocode_source=place.geocode_source,
+                geocode_confidence=place.geocode_confidence,
+            ),
+        )
+        for customer, link, place in result["rows"]
+    ]
+    return CustomerMapLocationsRead(
+        items=items,
+        summary=CustomerMapSummaryRead(**result["summary"]),
+        next_cursor=page_cursor(items, offset, page_size),
+    )
 
 
 @router.get("/customers/{customer_id}", response_model=CustomerRead, summary="客户详情")
