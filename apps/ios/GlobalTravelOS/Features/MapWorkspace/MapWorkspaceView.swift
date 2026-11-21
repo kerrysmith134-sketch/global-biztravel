@@ -103,7 +103,37 @@ final class MapWorkspaceViewModel: ObservableObject {
                     reason: "地图工作区取消拜访并重新优化路线"
                 )
             )
-            planChangeMessage = "变更已受理 · \(accepted.status) · 优化任务 \(accepted.optimizationJobId.prefix(8))"
+            planChangeMessage = "变更已受理 · 正在排队求解 · 任务 \(accepted.optimizationJobId.prefix(8))"
+
+            // Follow the same server-owned job lifecycle as the Generate Plan flow.
+            // The old active plan stays visible until a new server version is returned.
+            for attempt in 0..<30 {
+                let job = try await environment.planRepository.job(id: accepted.optimizationJobId)
+                if job.resolvedStatus.isTerminal {
+                    guard job.resolvedStatus.isSuccess else {
+                        let detail = job.displayError.map { "：\($0)" } ?? ""
+                        planChangeMessage = "计划优化\(job.statusLabel)\(detail)"
+                        return
+                    }
+                    guard let newPlanId = job.producedPlanVersionId else {
+                        planChangeMessage = "优化任务已完成，但服务端没有返回计划版本编号。请打开行程详情核查。"
+                        return
+                    }
+                    let newPlan = try await environment.planRepository.planDetail(
+                        tripId: trip.id,
+                        planId: newPlanId
+                    )
+                    plan = newPlan
+                    planChangeMessage = "新计划 \(newPlan.versionLabel) 已生成草稿。旧激活计划仍保留，请检查新方案后再激活。"
+                    return
+                }
+
+                planChangeMessage = "变更已受理 · \(job.statusLabel) · 尝试 \(job.attempts ?? 0) 次"
+                if attempt < 29 {
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+            }
+            planChangeMessage = "优化仍在后台运行 · 任务 \(accepted.optimizationJobId.prefix(8))。当前计划未被客户端修改，请稍后刷新查看新版本。"
         } catch {
             errorMessage = environment.errorMessage(error)
         }
