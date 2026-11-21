@@ -2,7 +2,13 @@
 SHELL := $(if $(wildcard /bin/zsh),/bin/zsh,/bin/bash)
 # 绝对路径：migrate/revision/worker 需要在子目录里执行，相对路径会失效。
 # 必须加引号：工作目录含空格（".../Coding Work/..."），不加会被 shell 拆成两段。
-PY := "$(CURDIR)/.venv/bin/python"
+# Prefer the project virtualenv locally; CI may install into its active Python.
+VENV_PY := $(CURDIR)/.venv/bin/python
+ifeq ($(wildcard $(VENV_PY)),)
+PY := python
+else
+PY := "$(VENV_PY)"
+endif
 PIP := $(PY) -m pip
 COMPOSE := docker compose -f infra/docker/docker-compose.yml
 # OrbStack 的 docker CLI 不在默认 PATH 中
