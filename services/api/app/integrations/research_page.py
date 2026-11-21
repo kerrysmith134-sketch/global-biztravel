@@ -5,6 +5,8 @@ are pinned to a checked public address before any HTTP bytes are sent, and the c
 page is never persisted: only a bounded excerpt plus a digest of normalized article text.
 """
 
+# ruff: noqa: I001  # Keep stdlib/abc imports grouped for the security provider and tests.
+
 from __future__ import annotations
 
 import http.client
