@@ -163,11 +163,14 @@ def test_auto_scope_does_not_mistake_user_material_for_internal_records(client: 
 def test_research_execution_uses_reviewed_queries_and_persists_unverified_sources(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    executed_queries: list[str] = []
+
     class FakeProvider:
         name = "test-search"
         configured = True
 
         def search(self, query: str, *, language: str | None = None):
+            executed_queries.append(query)
             return [
                 ResearchSearchResult(
                     url="https://source.example.test/company",
@@ -199,9 +202,11 @@ def test_research_execution_uses_reviewed_queries_and_persists_unverified_source
     plan_id = created.json()["id"]
 
     execution_key = str(uuid.uuid4())
+    confirmed_queries = ["reviewed query one", "reviewed query two"]
     accepted = client.post(
         f"/v1/research/plans/{plan_id}:execute",
         headers=headers(key=execution_key),
+        json={"search_queries": confirmed_queries},
     )
     assert accepted.status_code == 202, accepted.text
     accepted_body = accepted.json()
@@ -211,6 +216,7 @@ def test_research_execution_uses_reviewed_queries_and_persists_unverified_source
     replay = client.post(
         f"/v1/research/plans/{plan_id}:execute",
         headers=headers(key=execution_key),
+        json={"search_queries": confirmed_queries},
     )
     # A different key is a second idempotent request, but the in-flight dedupe key reuses
     # the same job instead of creating a second search task.
@@ -221,6 +227,7 @@ def test_research_execution_uses_reviewed_queries_and_persists_unverified_source
     assert queued.status_code == 200
     assert queued.json()["retrieval_status"] == "QUEUED"
     assert queued.json()["job_id"] == job_id
+    assert queued.json()["reviewed_search_queries"] == confirmed_queries
 
     with org_session(UUID(ORG_A)) as session:
         job = session.get(BackgroundJob, UUID(job_id))
@@ -231,6 +238,7 @@ def test_research_execution_uses_reviewed_queries_and_persists_unverified_source
         job_service.complete(session, job.id, result=result)
         assert result["retrieval_status"] == "COMPLETED"
         assert result["results_count"] == 1
+        assert executed_queries == confirmed_queries
         evidence = session.scalars(
             select(Evidence).where(
                 Evidence.organization_id == UUID(ORG_A),
@@ -248,6 +256,7 @@ def test_research_execution_uses_reviewed_queries_and_persists_unverified_source
     assert completed.status_code == 200
     assert completed.json()["retrieval_status"] == "COMPLETED"
     assert completed.json()["results_count"] == 1
+    assert completed.json()["reviewed_search_queries"] == confirmed_queries
     assert any(item["kind"] == "WEB_SEARCH_RESULT" for item in completed.json()["evidence"])
 
     with org_session(UUID(ORG_A)) as session:
@@ -281,12 +290,38 @@ def test_research_execution_fails_closed_when_provider_is_not_configured(
     denied = client.post(
         f"/v1/research/plans/{plan_id}:execute",
         headers=headers(),
+        json={"search_queries": ["one reviewed query"]},
     )
     assert denied.status_code == 503, denied.text
     detail = client.get(f"/v1/research/plans/{plan_id}", headers=headers())
     assert detail.status_code == 200
     assert detail.json()["retrieval_status"] == "NOT_STARTED"
     assert detail.json()["job_id"] is None
+    with org_session(UUID(ORG_A)) as session:
+        session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
+        session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(plan_id)))
+        session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == UUID(plan_id)))
+
+
+def test_research_execute_rejects_empty_reviewed_queries(client: TestClient) -> None:
+    created = client.post(
+        "/v1/research/plans",
+        headers=headers(),
+        json={
+            "request": "Research the public background of Example Holdings",
+            "source_scope": "EXTERNAL_ONLY",
+        },
+    )
+    assert created.status_code == 201, created.text
+    plan_id = created.json()["id"]
+    invalid = client.post(
+        f"/v1/research/plans/{plan_id}:execute",
+        headers=headers(),
+        json={"search_queries": [" ", ""]},
+    )
+    assert invalid.status_code == 422, invalid.text
+    detail = client.get(f"/v1/research/plans/{plan_id}", headers=headers())
+    assert detail.json()["retrieval_status"] == "NOT_STARTED"
     with org_session(UUID(ORG_A)) as session:
         session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
         session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(plan_id)))
