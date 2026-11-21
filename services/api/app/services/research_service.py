@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, ServiceUnavailable, Unprocessable
+from app.config import get_settings
 from app.api.schemas import (
     ResearchEvidenceRead,
     ResearchPlanCreate,
@@ -485,7 +486,8 @@ def enqueue_research_execution(
             "本次研究计划未要求外部资料，无需启动外部检索。",
             code="RESEARCH_EXTERNAL_NOT_REQUIRED",
         )
-    queries = _string_list(reviewed_search_queries, limit=MAX_QUERIES)
+    query_limit = max(1, min(get_settings().research_search_max_queries, MAX_QUERIES))
+    queries = _string_list(reviewed_search_queries, limit=query_limit)
     if not queries:
         raise Unprocessable(
             "请至少保留一条有效查询后再启动研究。",
@@ -493,7 +495,7 @@ def enqueue_research_execution(
         )
     if len(queries) != len(reviewed_search_queries):
         raise Unprocessable(
-            "搜索查询数量超过上限或包含无效条目，请检查后重试。",
+            f"有效搜索查询最多 {query_limit} 条；请删除空项或重复项后重试。",
             code="RESEARCH_QUERIES_INVALID",
         )
     provider = get_research_search_provider()
