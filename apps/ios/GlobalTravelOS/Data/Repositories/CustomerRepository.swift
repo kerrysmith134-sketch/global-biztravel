@@ -75,19 +75,126 @@ final class LocalCustomerRepository: CustomerRepository {
         return try DateCoding.decoder().decode(Customer.self, from: payload)
     }
 
-    /// Local SQLite has no customer_places relation. Report this capability gap explicitly.
     func customerPlaces(customerId: String) async throws -> [CustomerPlace] {
-        _ = customerId
-        throw LocalStorePendingError(method: "customerPlaces")
+        let payloads = try database.loadPayloads(
+            table: "customer_places",
+            where: "customer_id = ?",
+            bindings: [customerId],
+            order: "is_primary DESC, place_id"
+        )
+        let decoder = DateCoding.decoder()
+        let links = try payloads.map { try decoder.decode(LocalCustomerPlaceLink.self, from: $0) }
+        return try links.map { link in
+            let place = try localPlace(id: link.placeId)
+            return customerPlace(from: link, place: place)
+        }
     }
 
     func linkCustomerPlace(
         customerId: String,
         request: CustomerPlaceLinkRequest
     ) async throws -> CustomerPlace {
-        _ = customerId
-        _ = request
-        throw LocalStorePendingError(method: "linkCustomerPlace")
+        // Verify both records locally; never create a dangling customer-place link.
+        _ = try customer(id: customerId)
+        let place = try localPlace(id: request.placeId)
+        let normalizedLabel = request.label?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = normalizedLabel?.isEmpty == false ? normalizedLabel : nil
+        let link = LocalCustomerPlaceLink(
+            customerId: customerId,
+            placeId: request.placeId,
+            label: label,
+            isPrimary: request.isPrimary
+        )
+        let linkID = Self.customerPlaceLinkID(customerId: customerId, placeId: request.placeId)
+
+        try database.transaction {
+            if request.isPrimary {
+                let existingPayloads = try database.loadPayloads(
+                    table: "customer_places",
+                    where: "customer_id = ? AND is_primary = 1",
+                    bindings: [customerId]
+                )
+                let decoder = DateCoding.decoder()
+                for payload in existingPayloads {
+                    let existing = try decoder.decode(LocalCustomerPlaceLink.self, from: payload)
+                    guard existing.placeId != request.placeId else { continue }
+                    let demoted = LocalCustomerPlaceLink(
+                        customerId: existing.customerId,
+                        placeId: existing.placeId,
+                        label: existing.label,
+                        isPrimary: false
+                    )
+                    try database.upsert(
+                        table: "customer_places",
+                        id: Self.customerPlaceLinkID(
+                            customerId: demoted.customerId,
+                            placeId: demoted.placeId
+                        ),
+                        columns: [
+                            "customer_id": demoted.customerId,
+                            "place_id": demoted.placeId,
+                            "label": demoted.label,
+                            "is_primary": 0,
+                        ],
+                        payload: try DateCoding.encode(demoted)
+                    )
+                }
+            }
+            try database.upsert(
+                table: "customer_places",
+                id: linkID,
+                columns: [
+                    "customer_id": customerId,
+                    "place_id": request.placeId,
+                    "label": label,
+                    "is_primary": request.isPrimary ? 1 : 0,
+                ],
+                payload: try DateCoding.encode(link)
+            )
+        }
+        return customerPlace(from: link, place: place)
+    }
+
+    private func localPlace(id: String) throws -> Place {
+        let payloads = try database.loadPayloads(
+            table: "places",
+            where: "id = ?",
+            bindings: [id]
+        )
+        guard let payload = payloads.first else {
+            throw APIError.serverError(
+                code: "NOT_FOUND",
+                message: "地点不存在",
+                traceId: nil,
+                details: ["place_id": id]
+            )
+        }
+        return try DateCoding.decoder().decode(Place.self, from: payload)
+    }
+
+    private func customerPlace(
+        from link: LocalCustomerPlaceLink,
+        place: Place
+    ) -> CustomerPlace {
+        let hasCoordinates = place.latitude.map { (-90.0...90.0).contains($0) } == true
+            && place.longitude.map { (-180.0...180.0).contains($0) } == true
+        return CustomerPlace(
+            placeId: link.placeId,
+            label: link.label,
+            isPrimary: link.isPrimary,
+            name: place.name,
+            addressLine: place.address,
+            city: place.city,
+            countryCode: place.countryCode,
+            lat: place.latitude,
+            lon: place.longitude,
+            geocodeStatus: hasCoordinates ? "RESOLVED" : "MISSING"
+        )
+    }
+
+    private static func customerPlaceLinkID(customerId: String, placeId: String) -> String {
+        "\(customerId)::\(placeId)"
     }
 
     func createCustomer(_ request: CustomerCreateRequest) async throws -> Customer {
