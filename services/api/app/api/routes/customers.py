@@ -26,6 +26,11 @@ from app.api.pagination import clamp_limit, decode_cursor
 from app.api.pagination import next_cursor as page_cursor
 from app.api.schemas import (
     CustomerCreate,
+    CustomerMapCustomerRead,
+    CustomerMapLocationsRead,
+    CustomerMapLocationRead,
+    CustomerMapPlaceRead,
+    CustomerMapSummaryRead,
     CustomerPlaceCreate,
     CustomerPlaceRead,
     CustomerRead,
