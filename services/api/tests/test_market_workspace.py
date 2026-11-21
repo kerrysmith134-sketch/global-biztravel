@@ -482,7 +482,7 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
             f"/v1/market/workspaces/{workspace_id}/entities", headers=headers()
         )
         assert listed.status_code == 200, listed.text
-        assert len(listed.json()) == 2
+        assert len(listed.json()["items"]) == 2
 
         # Candidate discovery never creates or mutates a Customer record.
         with org_session(UUID(ORG_A)) as session:
