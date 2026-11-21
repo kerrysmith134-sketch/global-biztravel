@@ -13,7 +13,9 @@ from app.models.market import (
     MarketContextSnapshot,
     MarketResearchQuestion,
     MarketWorkspace,
+    MarketWorkspaceWorkflow,
 )
+from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
 
@@ -266,6 +268,103 @@ def test_market_workspace_is_tenant_isolated(client: TestClient) -> None:
                 )
             ) == 0
     finally:
+        if workspace_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(MarketWorkspace).where(MarketWorkspace.id == UUID(workspace_id))
+                )
+
+
+
+def test_workspace_contains_existing_research_plan_workflows(client: TestClient) -> None:
+    workspace_id: str | None = None
+    workflow_id: str | None = None
+    try:
+        workspace = create_workspace(client, f"长期市场研究·{uuid.uuid4().hex[:8]}")
+        workspace_id = workspace["id"]
+
+        # A standalone, user-intent-driven research plan may be attached to a workspace.
+        # EXTERNAL_ONLY must still avoid reading selected Trip/Customer data.
+        plan_response = client.post(
+            "/v1/research/plans",
+            headers=headers(),
+            json={
+                "request": "Research publicly available market entry requirements for a user-selected target market",
+                "source_scope": "EXTERNAL_ONLY",
+                "trip_id": "55555555-5555-5555-5555-555555555555",
+                "customer_id": "66666666-6666-6666-6666-666666666666",
+                "workspace_id": workspace_id,
+            },
+        )
+        assert plan_response.status_code == 201, plan_response.text
+        plan = plan_response.json()
+        workflow_id = plan["id"]
+        assert plan["workspace_id"] == workspace_id
+        assert plan["trip_id"] is None
+        assert plan["customer_id"] is None
+        assert plan["retrieval_status"] == "NOT_STARTED"
+
+        # The workspace lists existing ResearchPlan workflows rather than creating
+        # a second research-plan table or another worker subsystem.
+        listed = client.get(
+            f"/v1/market/workspaces/{workspace_id}/research-plans",
+            headers=headers(),
+        )
+        assert listed.status_code == 200, listed.text
+        assert [item["id"] for item in listed.json()] == [workflow_id]
+        assert listed.json()[0]["workspace_id"] == workspace_id
+
+        with org_session(UUID(ORG_A)) as session:
+            link = session.scalars(
+                select(MarketWorkspaceWorkflow).where(
+                    MarketWorkspaceWorkflow.organization_id == UUID(ORG_A),
+                    MarketWorkspaceWorkflow.workspace_id == UUID(workspace_id),
+                    MarketWorkspaceWorkflow.workflow_id == UUID(workflow_id),
+                )
+            ).one_or_none()
+            assert link is not None
+            workflow = session.scalars(
+                select(WorkflowInstance).where(
+                    WorkflowInstance.organization_id == UUID(ORG_A),
+                    WorkflowInstance.id == UUID(workflow_id),
+                    WorkflowInstance.workflow_type == "research_plan",
+                )
+            ).one_or_none()
+            assert workflow is not None
+            assert workflow.payload["workspace_id"] == workspace_id
+            events = session.scalars(
+                select(MarketActivityEvent).where(
+                    MarketActivityEvent.organization_id == UUID(ORG_A),
+                    MarketActivityEvent.workspace_id == UUID(workspace_id),
+                    MarketActivityEvent.event_type == "RESEARCH_PLAN_LINKED",
+                )
+            ).all()
+            assert len(events) == 1
+
+        # Both the API and the underlying RLS policy hide the association from another tenant.
+        hidden = client.get(
+            f"/v1/market/workspaces/{workspace_id}/research-plans",
+            headers=headers(USER_B, ORG_B),
+        )
+        assert hidden.status_code == 404
+        with org_session(UUID(ORG_B)) as session:
+            assert session.scalar(
+                select(func.count()).select_from(MarketWorkspaceWorkflow).where(
+                    MarketWorkspaceWorkflow.workspace_id == UUID(workspace_id)
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count()).select_from(WorkflowInstance).where(
+                    WorkflowInstance.id == UUID(workflow_id)
+                )
+            ) == 0
+
+    finally:
+        if workflow_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(delete(Evidence).where(Evidence.subject_id == UUID(workflow_id)))
+                session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(workflow_id)))
+                session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == UUID(workflow_id)))
         if workspace_id is not None:
             with org_session(UUID(ORG_A)) as session:
                 session.execute(
