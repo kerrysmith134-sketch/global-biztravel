@@ -6,6 +6,13 @@ struct MissionHomeHeader: View {
     let offlineSummary: String
     let isLocalMode: Bool
 
+    private var statusTint: Color {
+        if isLocalMode { return DS.ColorToken.info }
+        return offlineSummary == "数据来自服务端"
+            ? DS.ColorToken.success
+            : DS.ColorToken.warning
+    }
+
     private var todayLabel: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
@@ -41,7 +48,7 @@ struct MissionHomeHeader: View {
                 Label(isLocalMode ? "本地模式" : offlineSummary,
                       systemImage: isLocalMode ? "internaldrive" : (offlineSummary == "数据来自服务端" ? "checkmark.icloud" : "wifi.slash"))
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(isLocalMode ? DS.ColorToken.info : (offlineSummary == "数据来自服务端" ? DS.ColorToken.success : DS.ColorToken.warning))
+                    .foregroundStyle(statusTint)
                     .lineLimit(1)
             }
         }
