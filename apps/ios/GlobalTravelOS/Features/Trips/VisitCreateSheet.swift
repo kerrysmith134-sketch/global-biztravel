@@ -1,11 +1,5 @@
 import SwiftUI
 
-private extension String {
-    var nonEmpty: String? {
-        isEmpty ? nil : self
-    }
-}
-
 /// 新增拜访：明确关联 CRM 客户和客户真实地址，不把客户总部自动当成拜访地点。
 struct VisitCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -241,8 +235,9 @@ struct VisitCreateSheet: View {
 
             if addsNewPlaceToCustomer,
                !environment.isLocalMode,
-               let customerID = selectedCustomerID.nonEmpty,
+               !selectedCustomerID.isEmpty,
                selectedCustomerPlaceID.isEmpty {
+                let customerID = selectedCustomerID
                 guard let createdPlaceID = createdVisit.placeId else {
                     didCreateVisit = true
                     await onCreated()
@@ -261,7 +256,7 @@ struct VisitCreateSheet: View {
                 } catch {
                     didCreateVisit = true
                     await onCreated()
-                    errorMessage = "拜访已创建，但新地点加入客户地址簿失败：\\(environment.errorMessage(error))。请稍后在客户档案补关联，勿重复保存。"
+                    errorMessage = "拜访已创建，但新地点加入客户地址簿失败：\(environment.errorMessage(error))。请稍后在客户档案补关联，勿重复保存。"
                     return
                 }
             }
