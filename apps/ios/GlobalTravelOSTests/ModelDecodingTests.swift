@@ -731,15 +731,33 @@ final class ModelDecodingTests: XCTestCase {
             "degraded": false,
             "error": null
           },
-          "evidence": [{
-            "id": "33333333-3333-3333-3333-333333333333",
-            "kind": "USER_REQUEST",
-            "ref": "request:sha256:abc",
-            "source": "user_input",
-            "payload": {"character_count": 9},
-            "retrieved_at": "2026-11-21T09:00:00+00:00",
-            "created_at": "2026-11-21T09:00:00+00:00"
-          }],
+          "evidence": [
+            {
+              "id": "33333333-3333-3333-3333-333333333333",
+              "kind": "USER_REQUEST",
+              "ref": "request:sha256:abc",
+              "source": "user_input",
+              "payload": {"character_count": 9},
+              "retrieved_at": "2026-11-21T09:00:00+00:00",
+              "created_at": "2026-11-21T09:00:00+00:00"
+            },
+            {
+              "id": "44444444-4444-4444-4444-444444444444",
+              "kind": "WEB_SEARCH_RESULT",
+              "ref": "https://example.com/company",
+              "source": "searxng",
+              "payload": {
+                "url": "https://example.com/company",
+                "title": "Example company profile",
+                "snippet": "A company profile search snippet.",
+                "engine": "general",
+                "published_at": "2026-11-20",
+                "evidence_state": "UNVERIFIED_SEARCH_RESULT"
+              },
+              "retrieved_at": "2026-11-21T09:05:00+00:00",
+              "created_at": "2026-11-21T09:05:00+00:00"
+            }
+          ],
           "created_at": "2026-11-21T09:00:00+00:00"
         }
         """
@@ -752,6 +770,15 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(plan.plan.searchQueries.first, "ACME GmbH company background")
         XCTAssertEqual(plan.planner.model, "test-model")
         XCTAssertEqual(plan.evidence.first?.kind, "USER_REQUEST")
+        let searchEvidence = try XCTUnwrap(
+            plan.evidence.first { $0.kind == "WEB_SEARCH_RESULT" }
+        )
+        XCTAssertEqual(searchEvidence.title, "Example company profile")
+        XCTAssertEqual(searchEvidence.snippet, "A company profile search snippet.")
+        XCTAssertEqual(searchEvidence.source, "searxng")
+        XCTAssertEqual(searchEvidence.engine, "general")
+        XCTAssertTrue(searchEvidence.isUnverifiedSearchResult)
+        XCTAssertEqual(searchEvidence.sourceURL?.absoluteString, "https://example.com/company")
         XCTAssertEqual(plan.retrievalStatus, "NOT_STARTED")
         XCTAssertEqual(plan.retrievalStatusLabel, "尚未采集外部证据")
     }
