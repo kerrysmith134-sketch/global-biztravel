@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// Global Travel OS visual language.
-/// Keep semantic colour, spacing, typography, shape and icon decisions here.
+// Global Travel OS visual language.
+// Keep semantic colour, spacing, typography, shape and icon decisions here.
 // DS is the established project abbreviation for the Design System namespace.
 // swiftlint:disable:next type_name
 enum DS {
