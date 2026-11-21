@@ -491,6 +491,21 @@ struct GlobalCustomerMapLocation: Decodable, Equatable, Identifiable {
     var id: String { "\(customer.id)::\(place.id)" }
 }
 
+struct GlobalCustomerCountryCoverage: Decodable, Equatable, Identifiable {
+    var countryCode: String
+    var customersTotal: Int
+    var tierACustomers: Int
+    var tierBCustomers: Int
+    var tierCCustomers: Int
+    var activeCustomers: Int
+    var prospectCustomers: Int
+    var inactiveCustomers: Int
+    var locationsTotal: Int
+    var locationsMapped: Int
+
+    var id: String { countryCode }
+}
+
 struct GlobalCustomerMapSummary: Decodable, Equatable {
     var customersWithLocations: Int
     var customersWithoutLocations: Int
@@ -498,10 +513,48 @@ struct GlobalCustomerMapSummary: Decodable, Equatable {
     var locationsMapped: Int
     var locationsMissingCoordinates: Int
     var countries: [String: Int]
+    var countryStats: [GlobalCustomerCountryCoverage]
+
+    private enum CodingKeys: String, CodingKey {
+        case customersWithLocations, customersWithoutLocations, locationsTotal
+        case locationsMapped, locationsMissingCoordinates, countries, countryStats
+    }
+
+    init(
+        customersWithLocations: Int,
+        customersWithoutLocations: Int,
+        locationsTotal: Int,
+        locationsMapped: Int,
+        locationsMissingCoordinates: Int,
+        countries: [String: Int],
+        countryStats: [GlobalCustomerCountryCoverage] = []
+    ) {
+        self.customersWithLocations = customersWithLocations
+        self.customersWithoutLocations = customersWithoutLocations
+        self.locationsTotal = locationsTotal
+        self.locationsMapped = locationsMapped
+        self.locationsMissingCoordinates = locationsMissingCoordinates
+        self.countries = countries
+        self.countryStats = countryStats
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        customersWithLocations = try values.decodeIfPresent(Int.self, forKey: .customersWithLocations) ?? 0
+        customersWithoutLocations = try values.decodeIfPresent(Int.self, forKey: .customersWithoutLocations) ?? 0
+        locationsTotal = try values.decodeIfPresent(Int.self, forKey: .locationsTotal) ?? 0
+        locationsMapped = try values.decodeIfPresent(Int.self, forKey: .locationsMapped) ?? 0
+        locationsMissingCoordinates = try values.decodeIfPresent(Int.self, forKey: .locationsMissingCoordinates) ?? 0
+        countries = try values.decodeIfPresent([String: Int].self, forKey: .countries) ?? [:]
+        countryStats = try values.decodeIfPresent(
+            [GlobalCustomerCountryCoverage].self,
+            forKey: .countryStats
+        ) ?? []
+    }
 
     static let empty = GlobalCustomerMapSummary(
         customersWithLocations: 0, customersWithoutLocations: 0, locationsTotal: 0,
-        locationsMapped: 0, locationsMissingCoordinates: 0, countries: [:]
+        locationsMapped: 0, locationsMissingCoordinates: 0, countries: [:], countryStats: []
     )
 }
 
