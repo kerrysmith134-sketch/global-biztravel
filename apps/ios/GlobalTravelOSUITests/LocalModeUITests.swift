@@ -59,15 +59,16 @@ final class LocalModeUITests: XCTestCase {
             "首屏未显示本地模式标识"
         )
 
-        // 差旅驾驶舱（审计 5.1）：英雄卡倒计时 + 今日分区 + 待处理风险。
+        // Mission 首页：主任务、关键指标、今日安排与 AI 决策队列。
         XCTAssertTrue(
             app.buttons.matching(
                 NSPredicate(format: "label CONTAINS '出发' OR label CONTAINS '第 '")
             ).firstMatch.waitForExistence(timeout: 15),
             "驾驶舱缺少倒计时/进度"
         )
-        XCTAssertTrue(app.staticTexts["今日拜访"].waitForExistence(timeout: 10), "驾驶舱缺少今日分区")
-        XCTAssertTrue(app.staticTexts["AI 洞察与待决策"].waitForExistence(timeout: 10), "驾驶舱缺少待处理分区")
+        XCTAssertTrue(app.staticTexts["今日安排"].waitForExistence(timeout: 10), "Mission 首页缺少日程区")
+        XCTAssertTrue(app.staticTexts["拜访时间轴"].waitForExistence(timeout: 10), "Mission 首页缺少拜访时间轴")
+        XCTAssertTrue(app.staticTexts["AI 洞察与待决策"].waitForExistence(timeout: 10), "Mission 首页缺少待决策区")
         XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS '签证' OR label CONTAINS '计划'")
