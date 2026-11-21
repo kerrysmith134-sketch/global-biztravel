@@ -228,7 +228,7 @@ struct ResearchWorkspaceView: View {
                     .font(.body)
                     .accessibilityIdentifier("research-context-input")
             }
-            Text("文本会发送给当前配置的模型用于本次规划；服务器保存内容摘要与字符数，不把全文复制到通用运行日志。当前版本尚未接入文件上传。")
+            Text("内部上下文仅包含本次明确选定的 Trip/Customer 摘要和你粘贴的文本，不会自动扫描组织的全部 CRM 或文件库。文本会发送给当前模型用于本次规划；服务端只保存其哈希与字符数，不复制全文到通用 Agent 日志。当前版本尚未接入文件上传。")
                 .font(.caption2)
                 .foregroundStyle(DS.ColorToken.textSecondary)
         }
