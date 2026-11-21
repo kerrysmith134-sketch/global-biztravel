@@ -134,6 +134,27 @@ def test_opportunity_evidence_assessment_qualification_and_outcome(client: TestC
         assert created.json()["status"] == "DISCOVERED"
         assert created.json()["assessment_version"] == 0
 
+        candidate = client.post(
+            f"/v1/market/workspaces/{workspace_id}/entities",
+            headers=headers(),
+            json={
+                "entity_kind": "organization",
+                "display_name": "Example Buyer Cooperative",
+                "country_code": "KE",
+                "canonical_domain": "buyer.example",
+                "discovery_reason": "Named in the procurement source.",
+            },
+        )
+        assert candidate.status_code == 201, candidate.text
+        entity_id = candidate.json()["entity"]["id"]
+        entity_link = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/entities",
+            headers=headers(),
+            json={"entity_ids": [entity_id], "relationship_note": "Primary buyer organization."},
+        )
+        assert entity_link.status_code == 201, entity_link.text
+        assert entity_link.json()[0]["id"] == entity_id
+
         linked = client.post(
             f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/evidence",
             headers=headers(),
@@ -252,6 +273,7 @@ def test_opportunity_evidence_assessment_qualification_and_outcome(client: TestC
         assert len(detail.json()["assessments"]) == 2
         assert [item["version"] for item in detail.json()["assessments"]] == [1, 2]
         assert len(detail.json()["evidence"]) == 1
+        assert [item["id"] for item in detail.json()["entities"]] == [entity_id]
 
         with org_session(UUID(ORG_A)) as session:
             stored = session.get(MarketOpportunity, UUID(opportunity_id))
