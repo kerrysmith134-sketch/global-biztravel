@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     SmallInteger,
     Text,
+    text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -78,7 +79,7 @@ class MarketContextSnapshot(Base):
             "organization_id",
             "workspace_id",
             unique=True,
-            postgresql_where=(mapped_column(Boolean).expression if False else None),
+            postgresql_where=text("is_current"),
         ),
     )
 
