@@ -381,40 +381,47 @@ struct TodayView: View {
                 }
             }
 
-            if let next = cockpit.nextStop {
-                DSSectionHeader(title: "下一站", subtitle: cockpit.nextDayLabel ?? "下一项待执行拜访")
-                DSCard {
-                    HStack(alignment: .top, spacing: DS.Spacing.md) {
-                        Image(systemName: "arrow.turn.down.right")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(DS.ColorToken.brand)
-                            .frame(width: 38, height: 38)
-                            .background(DS.ColorToken.brandSubtle, in: RoundedRectangle(cornerRadius: 12))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(next.displayName)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(DS.ColorToken.textPrimary)
-                            if let city = next.city, !city.isEmpty {
-                                Text(city)
-                                    .font(.caption)
-                                    .foregroundStyle(DS.ColorToken.textSecondary)
-                            }
-                            if let arrive = next.arrive {
-                                Text("预计到达 \(CockpitFormat.time(arrive, timeZone: cockpit.timeZone))")
-                                    .font(.caption)
-                                    .foregroundStyle(DS.ColorToken.textSecondary)
-                            }
-                            if let leaveBy = cockpit.leaveBy {
-                                Text(
-                                    "建议 \(CockpitFormat.time(leaveBy, timeZone: cockpit.timeZone)) 出发 · "
-                                        + "路程 \(CockpitFormat.duration(next.travelMinutes ?? 0))"
-                                )
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(DS.ColorToken.brand)
-                            }
+            if cockpit.nextStop != nil {
+                nextStopSection(cockpit)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func nextStopSection(_ cockpit: TravelCockpit) -> some View {
+        if let next = cockpit.nextStop {
+            DSSectionHeader(title: "下一站", subtitle: cockpit.nextDayLabel ?? "下一项待执行拜访")
+            DSCard {
+                HStack(alignment: .top, spacing: DS.Spacing.md) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DS.ColorToken.brand)
+                        .frame(width: 38, height: 38)
+                        .background(DS.ColorToken.brandSubtle, in: RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(next.displayName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textPrimary)
+                        if let city = next.city, !city.isEmpty {
+                            Text(city)
+                                .font(.caption)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
                         }
-                        Spacer(minLength: 0)
+                        if let arrive = next.arrive {
+                            Text("预计到达 \(CockpitFormat.time(arrive, timeZone: cockpit.timeZone))")
+                                .font(.caption)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                        }
+                        if let leaveBy = cockpit.leaveBy {
+                            Text(
+                                "建议 \(CockpitFormat.time(leaveBy, timeZone: cockpit.timeZone)) 出发 · "
+                                    + "路程 \(CockpitFormat.duration(next.travelMinutes ?? 0))"
+                            )
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(DS.ColorToken.brand)
+                        }
                     }
+                    Spacer(minLength: 0)
                 }
             }
         }
