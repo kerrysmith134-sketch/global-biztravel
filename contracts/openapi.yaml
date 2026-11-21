@@ -3783,6 +3783,270 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/evidence:
+    post:
+      tags:
+      - market intelligence
+      summary: 保存工作空间来源证据的内容版本
+      operationId: create_market_evidence_v1_market_workspaces__workspace_id__evidence_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketEvidenceCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketEvidenceRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - market intelligence
+      summary: 工作空间来源证据列表
+      operationId: list_market_evidence_v1_market_workspaces__workspace_id__evidence_get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_MarketEvidenceRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/insights:
+    post:
+      tags:
+      - market intelligence
+      summary: 创建带证据链的市场判断草稿
+      operationId: create_market_insight_v1_market_workspaces__workspace_id__insights_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketInsightCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketInsightRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - market intelligence
+      summary: 工作空间市场判断列表
+      operationId: list_market_insights_v1_market_workspaces__workspace_id__insights_get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_MarketInsightRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/insights/{insight_id}:accept:
+    post:
+      tags:
+      - market intelligence
+      summary: 人工采纳市场判断
+      operationId: accept_market_insight_v1_market_workspaces__workspace_id__insights__insight_id__accept_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: insight_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Insight Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketInsightReview'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketInsightRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/insights/{insight_id}:reject:
+    post:
+      tags:
+      - market intelligence
+      summary: 人工驳回市场判断
+      operationId: reject_market_insight_v1_market_workspaces__workspace_id__insights__insight_id__reject_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: insight_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Insight Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketInsightReview'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketInsightRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/market/workspaces/{workspace_id}/research-plans:
     get:
       tags:
@@ -7432,6 +7696,391 @@ components:
       - created_at
       - updated_at
       title: MarketEntityRead
+    MarketEvidenceCreate:
+      properties:
+        canonical_ref:
+          type: string
+          maxLength: 2000
+          minLength: 8
+          title: Canonical Ref
+        content:
+          type: string
+          maxLength: 250000
+          minLength: 1
+          title: Content
+        kind:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Kind
+          default: WEB_SOURCE
+        source:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Source
+        published_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Published At
+        observation:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Observation
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+      type: object
+      required:
+      - canonical_ref
+      - content
+      title: MarketEvidenceCreate
+    MarketEvidenceRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        subject_type:
+          type: string
+          title: Subject Type
+        subject_id:
+          type: string
+          format: uuid
+          title: Subject Id
+        kind:
+          type: string
+          title: Kind
+        ref:
+          type: string
+          title: Ref
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        retrieved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Retrieved At
+        published_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Published At
+        canonical_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Canonical Ref
+        content_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content Hash
+        observation:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Observation
+        verification_status:
+          anyOf:
+          - type: string
+            enum:
+            - UNVERIFIED
+            - PARTIALLY_VERIFIED
+            - VERIFIED
+            - DISPUTED
+            - REJECTED
+          - type: 'null'
+          title: Verification Status
+        quality:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Quality
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - subject_type
+      - subject_id
+      - kind
+      - ref
+      - source
+      - payload
+      - retrieved_at
+      - published_at
+      - canonical_ref
+      - content_hash
+      - observation
+      - verification_status
+      - quality
+      - created_at
+      title: MarketEvidenceRead
+    MarketInsightCreate:
+      properties:
+        insight_key:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Insight Key
+        insight_type:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Insight Type
+        statement:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Statement
+        assumptions:
+          items: {}
+          type: array
+          title: Assumptions
+        unknowns:
+          items: {}
+          type: array
+          title: Unknowns
+        implications:
+          items: {}
+          type: array
+          title: Implications
+        confidence_level:
+          type: string
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - INSUFFICIENT
+          title: Confidence Level
+          default: INSUFFICIENT
+        generated_by_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Generated By Run Id
+        evidence:
+          items:
+            $ref: '#/components/schemas/MarketInsightEvidenceInput'
+          type: array
+          maxItems: 100
+          title: Evidence
+        insufficient_evidence_reason:
+          anyOf:
+          - type: string
+            maxLength: 3000
+          - type: 'null'
+          title: Insufficient Evidence Reason
+      type: object
+      required:
+      - insight_key
+      - insight_type
+      - statement
+      title: MarketInsightCreate
+    MarketInsightEvidenceInput:
+      properties:
+        evidence_id:
+          type: string
+          format: uuid
+          title: Evidence Id
+        relation_type:
+          type: string
+          enum:
+          - SUPPORTS
+          - CONTRADICTS
+          - CONTEXT
+          title: Relation Type
+        rationale:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Rationale
+      type: object
+      required:
+      - evidence_id
+      - relation_type
+      title: MarketInsightEvidenceInput
+    MarketInsightEvidenceRead:
+      properties:
+        relation_type:
+          type: string
+          enum:
+          - SUPPORTS
+          - CONTRADICTS
+          - CONTEXT
+          title: Relation Type
+        rationale:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rationale
+        evidence:
+          $ref: '#/components/schemas/MarketEvidenceRead'
+      type: object
+      required:
+      - relation_type
+      - rationale
+      - evidence
+      title: MarketInsightEvidenceRead
+    MarketInsightRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        workspace_id:
+          type: string
+          format: uuid
+          title: Workspace Id
+        version:
+          type: integer
+          title: Version
+        insight_key:
+          type: string
+          title: Insight Key
+        insight_type:
+          type: string
+          title: Insight Type
+        statement:
+          type: string
+          title: Statement
+        assumptions:
+          items: {}
+          type: array
+          title: Assumptions
+        unknowns:
+          items: {}
+          type: array
+          title: Unknowns
+        implications:
+          items: {}
+          type: array
+          title: Implications
+        confidence_level:
+          type: string
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - INSUFFICIENT
+          title: Confidence Level
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - NEEDS_REVIEW
+          - ACCEPTED
+          - REJECTED
+          - CONFLICTED
+          - SUPERSEDED
+          title: Status
+        generated_by_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Generated By Run Id
+        supersedes_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supersedes Id
+        insufficient_evidence_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Insufficient Evidence Reason
+        created_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Created By User Id
+        reviewed_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Reviewed By User Id
+        reviewed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reviewed At
+        review_note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Review Note
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        evidence:
+          items:
+            $ref: '#/components/schemas/MarketInsightEvidenceRead'
+          type: array
+          title: Evidence
+      type: object
+      required:
+      - id
+      - workspace_id
+      - version
+      - insight_key
+      - insight_type
+      - statement
+      - assumptions
+      - unknowns
+      - implications
+      - confidence_level
+      - status
+      - generated_by_run_id
+      - supersedes_id
+      - insufficient_evidence_reason
+      - created_by_user_id
+      - reviewed_by_user_id
+      - reviewed_at
+      - review_note
+      - created_at
+      - updated_at
+      title: MarketInsightRead
+    MarketInsightReview:
+      properties:
+        review_note:
+          anyOf:
+          - type: string
+            maxLength: 3000
+          - type: 'null'
+          title: Review Note
+      type: object
+      title: MarketInsightReview
     MarketResearchQuestionCreate:
       properties:
         question:
@@ -8307,6 +8956,38 @@ components:
       required:
       - items
       title: Page[CustomerRead]
+    Page_MarketEvidenceRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/MarketEvidenceRead'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      title: Page[MarketEvidenceRead]
+    Page_MarketInsightRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/MarketInsightRead'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      title: Page[MarketInsightRead]
     Page_MarketResearchQuestionRead_:
       properties:
         items:

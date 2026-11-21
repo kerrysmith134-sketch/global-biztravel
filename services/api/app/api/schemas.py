@@ -2014,6 +2014,112 @@ class MarketEntityCustomerLinkCreate(BaseModel):
     matching_basis: dict[str, Any] = Field(default_factory=dict)
 
 
+MarketInsightStatus = Literal["DRAFT", "NEEDS_REVIEW", "ACCEPTED", "REJECTED", "CONFLICTED", "SUPERSEDED"]
+MarketInsightConfidence = Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
+MarketEvidenceVerification = Literal["UNVERIFIED", "PARTIALLY_VERIFIED", "VERIFIED", "DISPUTED", "REJECTED"]
+MarketEvidenceRelation = Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"]
+
+
+class MarketEvidenceCreate(BaseModel):
+    canonical_ref: str = Field(min_length=8, max_length=2000)
+    content: str = Field(min_length=1, max_length=250000)
+    kind: str = Field(default="WEB_SOURCE", min_length=1, max_length=80)
+    source: str | None = Field(default=None, max_length=300)
+    published_at: datetime | None = None
+    observation: str | None = Field(default=None, max_length=10000)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _non_blank_source_content(self) -> MarketEvidenceCreate:
+        if not self.content.strip():
+            raise ValueError("Evidence 原文内容不能为空")
+        if not self.kind.strip():
+            raise ValueError("Evidence kind 不能为空")
+        return self
+
+
+class MarketEvidenceRead(ORMModel):
+    id: UUID
+    subject_type: str
+    subject_id: UUID
+    kind: str
+    ref: str
+    source: str | None
+    payload: dict[str, Any]
+    retrieved_at: datetime | None
+    published_at: datetime | None
+    canonical_ref: str | None
+    content_hash: str | None
+    observation: str | None
+    verification_status: MarketEvidenceVerification | None
+    quality: dict[str, Any] | None
+    created_at: datetime
+
+
+class MarketInsightEvidenceInput(BaseModel):
+    evidence_id: UUID
+    relation_type: MarketEvidenceRelation
+    rationale: str | None = Field(default=None, max_length=2000)
+
+
+class MarketInsightCreate(BaseModel):
+    insight_key: str = Field(min_length=1, max_length=160)
+    insight_type: str = Field(min_length=1, max_length=100)
+    statement: str = Field(min_length=1, max_length=10000)
+    assumptions: list[Any] = Field(default_factory=list)
+    unknowns: list[Any] = Field(default_factory=list)
+    implications: list[Any] = Field(default_factory=list)
+    confidence_level: MarketInsightConfidence = "INSUFFICIENT"
+    generated_by_run_id: UUID | None = None
+    evidence: list[MarketInsightEvidenceInput] = Field(default_factory=list, max_length=100)
+    insufficient_evidence_reason: str | None = Field(default=None, max_length=3000)
+
+    @model_validator(mode="after")
+    def _evidence_or_gap_reason(self) -> MarketInsightCreate:
+        if not self.evidence and not (self.insufficient_evidence_reason or "").strip():
+            raise ValueError("Insight 必须关联证据，或明确说明证据不足")
+        evidence_ids = [item.evidence_id for item in self.evidence]
+        if len(evidence_ids) != len(set(evidence_ids)):
+            raise ValueError("同一 Insight 不得重复关联相同 Evidence")
+        if not self.insight_key.strip() or not self.insight_type.strip() or not self.statement.strip():
+            raise ValueError("Insight key、类型和判断内容不能为空")
+        return self
+
+
+class MarketInsightEvidenceRead(BaseModel):
+    relation_type: MarketEvidenceRelation
+    rationale: str | None
+    evidence: MarketEvidenceRead
+
+
+class MarketInsightRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    version: int
+    insight_key: str
+    insight_type: str
+    statement: str
+    assumptions: list[Any]
+    unknowns: list[Any]
+    implications: list[Any]
+    confidence_level: MarketInsightConfidence
+    status: MarketInsightStatus
+    generated_by_run_id: UUID | None
+    supersedes_id: UUID | None
+    insufficient_evidence_reason: str | None
+    created_by_user_id: UUID | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
+    review_note: str | None
+    created_at: datetime
+    updated_at: datetime
+    evidence: list[MarketInsightEvidenceRead] = Field(default_factory=list)
+
+
+class MarketInsightReview(BaseModel):
+    review_note: str | None = Field(default=None, max_length=3000)
+
+
 class MarketEntityCustomerLinkRead(ORMModel):
     id: UUID
     entity_id: UUID

@@ -25,6 +25,11 @@ from app.api.schemas import (
     MarketContextRead,
     MarketEntityCustomerLinkCreate,
     MarketEntityCustomerLinkRead,
+    MarketEvidenceCreate,
+    MarketEvidenceRead,
+    MarketInsightCreate,
+    MarketInsightRead,
+    MarketInsightReview,
     MarketResearchQuestionCreate,
     MarketResearchQuestionRead,
     MarketWorkspaceCreate,
@@ -34,7 +39,12 @@ from app.api.schemas import (
     Page,
     ResearchPlanRead,
 )
-from app.services import market_entity_service, market_workspace_service, research_service
+from app.services import (
+    market_entity_service,
+    market_insight_service,
+    market_workspace_service,
+    research_service,
+)
 
 router = APIRouter(tags=["market intelligence"])
 
@@ -411,6 +421,221 @@ def confirm_customer_link(
     return guard.finish(
         status_code=status.HTTP_200_OK,
         body=MarketEntityCustomerLinkRead.model_validate(link),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/evidence",
+    response_model=MarketEvidenceRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="保存工作空间来源证据的内容版本",
+)
+def create_market_evidence(
+    workspace_id: UUID,
+    payload: MarketEvidenceCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"POST /v1/market/workspaces/{workspace_id}/evidence"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_insight_service.record_market_evidence(
+        session,
+        context.organization_id,
+        workspace_id,
+        canonical_ref=payload.canonical_ref,
+        content=payload.content,
+        kind=payload.kind,
+        source=payload.source,
+        published_at=payload.published_at,
+        observation=payload.observation,
+        verification_status="UNVERIFIED",
+        quality=None,
+        payload=payload.payload,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketEvidenceRead.model_validate(row),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/evidence",
+    response_model=Page[MarketEvidenceRead],
+    summary="工作空间来源证据列表",
+)
+def list_market_evidence(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    limit: int | None = Query(default=None, ge=1),
+    cursor: str | None = Query(default=None),
+):
+    require_role(context, ROLE_VIEWER)
+    page_size = clamp_limit(limit)
+    offset = decode_cursor(cursor)
+    rows = market_insight_service.list_workspace_evidence(
+        session, context.organization_id, workspace_id, limit=page_size, offset=offset
+    )
+    return Page[MarketEvidenceRead](
+        items=[MarketEvidenceRead.model_validate(row) for row in rows],
+        next_cursor=page_cursor(rows, offset, page_size),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/insights",
+    response_model=MarketInsightRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建带证据链的市场判断草稿",
+)
+def create_market_insight(
+    workspace_id: UUID,
+    payload: MarketInsightCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"POST /v1/market/workspaces/{workspace_id}/insights"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_insight_service.create_insight(
+        session,
+        context.organization_id,
+        workspace_id,
+        insight_key=payload.insight_key,
+        insight_type=payload.insight_type,
+        statement=payload.statement,
+        assumptions=payload.assumptions,
+        unknowns=payload.unknowns,
+        implications=payload.implications,
+        confidence_level=payload.confidence_level,
+        generated_by_run_id=payload.generated_by_run_id,
+        evidence=[item.model_dump() for item in payload.evidence],
+        insufficient_evidence_reason=payload.insufficient_evidence_reason,
+        created_by_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketInsightRead.model_validate(row),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/insights",
+    response_model=Page[MarketInsightRead],
+    summary="工作空间市场判断列表",
+)
+def list_market_insights(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    limit: int | None = Query(default=None, ge=1),
+    cursor: str | None = Query(default=None),
+):
+    require_role(context, ROLE_VIEWER)
+    page_size = clamp_limit(limit)
+    offset = decode_cursor(cursor)
+    rows = market_insight_service.list_insights(
+        session, context.organization_id, workspace_id, limit=page_size, offset=offset
+    )
+    return Page[MarketInsightRead](
+        items=[MarketInsightRead.model_validate(row) for row in rows],
+        next_cursor=page_cursor(rows, offset, page_size),
+    )
+
+
+def _review_market_insight(
+    decision: str,
+    workspace_id: UUID,
+    insight_id: UUID,
+    payload: MarketInsightReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    action = "accept" if decision == "ACCEPTED" else "reject"
+    endpoint = f"POST /v1/market/workspaces/{workspace_id}/insights/{insight_id}:{action}"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "insight_id": str(insight_id),
+            "review_note": payload.review_note,
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_insight_service.review_insight(
+        session,
+        context.organization_id,
+        workspace_id,
+        insight_id,
+        decision=decision,
+        actor_user_id=context.user_id,
+        review_note=payload.review_note,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketInsightRead.model_validate(row),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/insights/{insight_id}:accept",
+    response_model=MarketInsightRead,
+    summary="人工采纳市场判断",
+)
+def accept_market_insight(
+    workspace_id: UUID,
+    insight_id: UUID,
+    payload: MarketInsightReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    return _review_market_insight(
+        "ACCEPTED", workspace_id, insight_id, payload, context, session, idempotency_key
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/insights/{insight_id}:reject",
+    response_model=MarketInsightRead,
+    summary="人工驳回市场判断",
+)
+def reject_market_insight(
+    workspace_id: UUID,
+    insight_id: UUID,
+    payload: MarketInsightReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    return _review_market_insight(
+        "REJECTED", workspace_id, insight_id, payload, context, session, idempotency_key
     )
 
 

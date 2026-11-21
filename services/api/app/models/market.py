@@ -36,6 +36,9 @@ MARKET_CONTEXT_EXTRACTION_STATUSES = ("NOT_STARTED", "PENDING", "COMPLETED", "FA
 MARKET_QUESTION_SOURCES = ("USER", "AGENT")
 MARKET_QUESTION_STATUSES = ("OPEN", "IN_PROGRESS", "ANSWERED", "BLOCKED", "CANCELLED")
 MARKET_ACTIVITY_ACTORS = ("USER", "SYSTEM")
+MARKET_INSIGHT_STATUSES = ("DRAFT", "NEEDS_REVIEW", "ACCEPTED", "REJECTED", "CONFLICTED", "SUPERSEDED")
+MARKET_INSIGHT_CONFIDENCE_LEVELS = ("HIGH", "MEDIUM", "LOW", "INSUFFICIENT")
+MARKET_EVIDENCE_RELATIONS = ("SUPPORTS", "CONTRADICTS", "CONTEXT")
 
 
 class MarketWorkspace(Base):
@@ -501,16 +504,150 @@ class MarketActivityEvent(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class MarketInsight(Base):
+    """Immutable, versioned market judgment; only its review state may transition."""
+
+    __tablename__ = "market_insights"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            ondelete="CASCADE",
+            name="fk_market_insight_workspace_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "generated_by_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_insight_agent_run_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "supersedes_id"],
+            ["market_insights.organization_id", "market_insights.workspace_id", "market_insights.id"],
+            ondelete="NO ACTION",
+            name="fk_market_insight_supersedes_same_workspace",
+        ),
+        UniqueConstraint("organization_id", "id", name="uq_market_insights_org_id"),
+        UniqueConstraint("organization_id", "workspace_id", "id", name="uq_market_insights_org_workspace_id"),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "insight_key", "version",
+            name="uq_market_insights_workspace_key_version",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(
+            "status IN ('DRAFT','NEEDS_REVIEW','ACCEPTED','REJECTED','CONFLICTED','SUPERSEDED')",
+            name="status_allowed",
+        ),
+        CheckConstraint(
+            "confidence_level IN ('HIGH','MEDIUM','LOW','INSUFFICIENT')",
+            name="confidence_allowed",
+        ),
+        CheckConstraint("length(btrim(statement)) > 0", name="statement_not_blank"),
+        CheckConstraint(
+            "status <> 'ACCEPTED' OR (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL)",
+            name="accepted_has_reviewer",
+        ),
+        CheckConstraint("supersedes_id IS NULL OR supersedes_id <> id", name="supersedes_not_self"),
+        Index("ix_market_insights_org_workspace_created", "organization_id", "workspace_id", "created_at"),
+        Index("ix_market_insights_org_workspace_key", "organization_id", "workspace_id", "insight_key", "version"),
+        Index(
+            "uq_market_insights_one_accepted_per_key",
+            "organization_id", "workspace_id", "insight_key",
+            unique=True,
+            postgresql_where=text("status = 'ACCEPTED'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    insight_key: Mapped[str] = mapped_column(Text, nullable=False)
+    insight_type: Mapped[str] = mapped_column(Text, nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    assumptions: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    unknowns: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    implications: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    confidence_level: Mapped[str] = mapped_column(Text, nullable=False, server_default="INSUFFICIENT")
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="NEEDS_REVIEW")
+    generated_by_run_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    insufficient_evidence_reason: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class MarketInsightEvidence(Base):
+    """Explicit support / contradiction / context relation for one Insight."""
+
+    __tablename__ = "market_insight_evidence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "insight_id"],
+            ["market_insights.organization_id", "market_insights.id"],
+            ondelete="CASCADE",
+            name="fk_market_insight_evidence_insight_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "evidence_id"],
+            ["evidence.organization_id", "evidence.id"],
+            ondelete="RESTRICT",
+            name="fk_market_insight_evidence_evidence_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "insight_id", "evidence_id", "relation_type",
+            name="uq_market_insight_evidence_relation",
+        ),
+        CheckConstraint(
+            "relation_type IN ('SUPPORTS','CONTRADICTS','CONTEXT')",
+            name="relation_type_allowed",
+        ),
+        Index("ix_market_insight_evidence_org_insight", "organization_id", "insight_id"),
+        Index("ix_market_insight_evidence_org_evidence", "organization_id", "evidence_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    insight_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    evidence_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    relation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
 __all__ = [
     "MARKET_ACTIVITY_ACTORS",
     "MARKET_CONTEXT_EXTRACTION_STATUSES",
     "MARKET_QUESTION_SOURCES",
     "MARKET_QUESTION_STATUSES",
     "MARKET_WORKSPACE_STATUSES",
+    "MARKET_INSIGHT_STATUSES",
+    "MARKET_INSIGHT_CONFIDENCE_LEVELS",
+    "MARKET_EVIDENCE_RELATIONS",
     "MarketActivityEvent",
     "MarketEntity",
     "MarketEntityAlias",
     "MarketEntityCustomerLink",
+    "MarketInsight",
+    "MarketInsightEvidence",
     "MarketContextSnapshot",
     "MarketQuestionDependency",
     "MarketResearchQuestion",
