@@ -9006,6 +9006,379 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "启动答案版本的原子主张核验 Agent",
+        "operationId": "enqueue_market_claim_verification_v1_market_workspaces__workspace_id__answers__answer_id__verify_claims_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "answer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Answer Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketClaimVerificationAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/claim-verification-runs/{verification_run_id}": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取主张核验运行结果及原子主张",
+        "operationId": "get_market_claim_verification_run_v1_market_workspaces__workspace_id__claim_verification_runs__verification_run_id__get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "verification_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Verification Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketClaimVerificationRunRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/claims": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取 Workspace 的原子研究主张",
+        "operationId": "list_market_claims_v1_market_workspaces__workspace_id__claims_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "answer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "title": "Answer Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "title": "Limit",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "title": "Cursor"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_MarketClaimRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/claims/{claim_id}:accept": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "人工采纳一条原子研究主张",
+        "operationId": "accept_market_claim_v1_market_workspaces__workspace_id__claims__claim_id__accept_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "claim_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Claim Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketClaimReview"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketClaimRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/claims/{claim_id}:reject": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "人工驳回一条原子研究主张",
+        "operationId": "reject_market_claim_v1_market_workspaces__workspace_id__claims__claim_id__reject_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "claim_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Claim Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketClaimReview"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketClaimRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -21772,6 +22145,635 @@
           "updated_at"
         ],
         "title": "MarketSourceExtractionRead"
+      },
+      "MarketClaimEvidenceSourceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Source"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canonical_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Canonical Ref"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verification_status": {
+            "type": "string",
+            "title": "Verification Status"
+          },
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Content Hash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Observation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "source",
+          "canonical_ref",
+          "verification_status",
+          "content_hash",
+          "observation",
+          "created_at"
+        ],
+        "title": "MarketClaimEvidenceSourceRead"
+      },
+      "MarketClaimEvidenceRead": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Id"
+          },
+          "relation_type": {
+            "type": "string",
+            "enum": [
+              "SUPPORTS",
+              "CONTRADICTS",
+              "CONTEXT"
+            ],
+            "title": "Relation Type"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Rationale"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_host": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Source Host"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content_hash_snapshot": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Content Hash Snapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verification_status_snapshot": {
+            "type": "string",
+            "title": "Verification Status Snapshot"
+          },
+          "origin_assessment": {
+            "type": "string",
+            "enum": [
+              "SINGLE_SOURCE",
+              "SAME_HOST",
+              "DUPLICATE_CONTENT",
+              "DISTINCT_HOST_UNCONFIRMED"
+            ],
+            "title": "Origin Assessment"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/MarketClaimEvidenceSourceRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "relation_type",
+          "rationale",
+          "source_host",
+          "content_hash_snapshot",
+          "verification_status_snapshot",
+          "origin_assessment",
+          "evidence"
+        ],
+        "title": "MarketClaimEvidenceRead"
+      },
+      "MarketClaimRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "answer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Answer Id"
+          },
+          "verification_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Verification Run Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "claim_key": {
+            "type": "string",
+            "title": "Claim Key"
+          },
+          "statement": {
+            "type": "string",
+            "title": "Statement"
+          },
+          "claim_type": {
+            "type": "string",
+            "enum": [
+              "FACT",
+              "ESTIMATE",
+              "OPINION",
+              "FORECAST",
+              "INFERENCE"
+            ],
+            "title": "Claim Type"
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": true,
+            "title": "Scope"
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Reasoning"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verification_verdict": {
+            "type": "string",
+            "enum": [
+              "PROVISIONAL_SUPPORT",
+              "POTENTIAL_CONTRADICTION",
+              "CONFLICTED",
+              "INSUFFICIENT"
+            ],
+            "title": "Verification Verdict"
+          },
+          "confidence_level": {
+            "type": "string",
+            "enum": [
+              "MEDIUM",
+              "LOW",
+              "INSUFFICIENT"
+            ],
+            "title": "Confidence Level"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEEDS_REVIEW",
+              "CONFLICTED",
+              "INSUFFICIENT",
+              "ACCEPTED",
+              "REJECTED",
+              "SUPERSEDED"
+            ],
+            "title": "Status"
+          },
+          "supporting_evidence_count": {
+            "type": "integer",
+            "title": "Supporting Evidence Count"
+          },
+          "contradicting_evidence_count": {
+            "type": "integer",
+            "title": "Contradicting Evidence Count"
+          },
+          "verified_support_count": {
+            "type": "integer",
+            "title": "Verified Support Count"
+          },
+          "verified_contradiction_count": {
+            "type": "integer",
+            "title": "Verified Contradiction Count"
+          },
+          "distinct_host_count": {
+            "type": "integer",
+            "title": "Distinct Host Count"
+          },
+          "confirmed_independent_source_count": {
+            "type": "integer",
+            "title": "Confirmed Independent Source Count"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "title": "Limitation Item"
+            },
+            "title": "Limitations"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Supersedes Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewed_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Reviewed By User Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "title": "Reviewed At"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Review Note"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketClaimEvidenceRead"
+            },
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "answer_id",
+          "verification_run_id",
+          "version",
+          "claim_key",
+          "statement",
+          "claim_type",
+          "scope",
+          "reasoning",
+          "verification_verdict",
+          "confidence_level",
+          "status",
+          "supporting_evidence_count",
+          "contradicting_evidence_count",
+          "verified_support_count",
+          "verified_contradiction_count",
+          "distinct_host_count",
+          "confirmed_independent_source_count",
+          "limitations",
+          "supersedes_id",
+          "reviewed_by_user_id",
+          "reviewed_at",
+          "review_note",
+          "created_at"
+        ],
+        "title": "MarketClaimRead"
+      },
+      "MarketClaimVerificationAccepted": {
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Job Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workflow Id"
+          },
+          "verification_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Verification Run Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "COMPLETED"
+            ],
+            "title": "Status"
+          },
+          "evidence_count": {
+            "type": "integer",
+            "title": "Evidence Count"
+          },
+          "reused": {
+            "type": "boolean",
+            "title": "Reused"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "workflow_id",
+          "verification_run_id",
+          "status",
+          "evidence_count",
+          "reused"
+        ],
+        "title": "MarketClaimVerificationAccepted"
+      },
+      "MarketClaimVerificationRunRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "answer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Answer Id"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workflow Id"
+          },
+          "agent_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Agent Run Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Job Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Job Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Status"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "input_digest": {
+            "type": "string",
+            "title": "Input Digest"
+          },
+          "claim_count": {
+            "type": "integer",
+            "title": "Claim Count"
+          },
+          "degraded": {
+            "type": "boolean",
+            "title": "Degraded"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "title": "Limitation Item"
+            },
+            "title": "Limitations"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Failure Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "title": "Started At"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "title": "Completed At"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketClaimRead"
+            },
+            "title": "Claims"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "answer_id",
+          "workflow_id",
+          "agent_run_id",
+          "job_id",
+          "job_status",
+          "status",
+          "prompt_version",
+          "input_digest",
+          "claim_count",
+          "degraded",
+          "limitations",
+          "failure_reason",
+          "started_at",
+          "completed_at",
+          "created_at"
+        ],
+        "title": "MarketClaimVerificationRunRead"
+      },
+      "MarketClaimReview": {
+        "properties": {
+          "review_note": {
+            "type": "string",
+            "title": "Review Note",
+            "minLength": 1,
+            "maxLength": 3000
+          }
+        },
+        "type": "object",
+        "required": [
+          "review_note"
+        ],
+        "title": "MarketClaimReview",
+        "additionalProperties": false
+      },
+      "Page_MarketClaimRead_": {
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketClaimRead"
+            },
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Next Cursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page_MarketClaimRead_"
       }
     }
   }
