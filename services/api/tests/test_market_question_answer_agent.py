@@ -9,14 +9,13 @@ import pytest
 from app.db import org_session
 from app.llm.contracts import LLMResponse
 from app.main import app
-from app.models.identity import Organization
 from app.models.market import MarketWorkspace
 from app.models.reliability import BackgroundJob
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service
 from app.workers.tasks import handle_market_question_answer_draft
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
