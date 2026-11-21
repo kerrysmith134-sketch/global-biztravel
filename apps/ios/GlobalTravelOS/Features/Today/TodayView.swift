@@ -493,80 +493,6 @@ struct TodayView: View {
 
 }
 
-/// 驾驶舱英雄卡：当前/下一行程、位置、倒计时与今日概览。
-private struct CockpitHeroCard: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    let cockpit: TravelCockpit
-    let trip: Trip
-
-    var body: some View {
-        NavigationLink {
-            TripDetailView(tripId: trip.id, environment: environment)
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label(labelText, systemImage: labelGlyph)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(labelColor)
-                    Spacer()
-                    if let countdown = cockpit.countdownText {
-                        Text(countdown)
-                            .font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(labelColor)
-                    }
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                Text(trip.name)
-                    .font(.headline)
-                if let location = cockpit.locationText {
-                    Text(location)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                HStack(spacing: 12) {
-                    Text(trip.windowLabel)
-                    if !cockpit.todayStops.isEmpty {
-                        Text("·")
-                        Text("今天 \(cockpit.todayStops.count) 站")
-                    }
-                    if let next = cockpit.nextStop, let arrive = next.arrive {
-                        Text("·")
-                        Text("下一站 \(CockpitFormat.time(arrive, timeZone: cockpit.timeZone))")
-                    }
-                }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: DS.Radius.card))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var labelText: String {
-        if cockpit.planActive { return "进行中" }
-        if let countdown = cockpit.countdownText, countdown.hasPrefix("第 ") { return "行程进行中" }
-        return "即将出发"
-    }
-
-    private var labelGlyph: String {
-        cockpit.planActive ? "airplane.departure" : "calendar.badge.clock"
-    }
-
-    private var labelColor: Color {
-        if cockpit.planActive { return .green }
-        if let countdown = cockpit.countdownText,
-           let days = Int(countdown.dropFirst(2).prefix(while: { $0.isNumber })), days <= 2 {
-            return .orange
-        }
-        return .secondary
-    }
-}
-
-/// 今日时间轴的一站：时刻、名称、城市与路程。
 private struct CockpitStopRow: View {
     let stop: PlanStop
     let timeZone: TimeZone?
@@ -612,54 +538,6 @@ private struct CockpitStopRow: View {
     }
 }
 
-/// 下一站 + 建议离场时刻（到达 − 路程）。
-private struct CockpitNextStopCard: View {
-    let stop: PlanStop
-    let dayLabel: String?
-    let leaveBy: Date?
-    let timeZone: TimeZone?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "arrow.turn.down.right")
-                .font(.caption)
-                .foregroundStyle(DS.ColorToken.brand)
-                .padding(.top, 3)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                if let leaveBy {
-                    Text("建议 \(CockpitFormat.time(leaveBy, timeZone: timeZone)) 出发 · 路程 \(CockpitFormat.duration(stop.travelMinutes ?? 0))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let window = stop.timeWindow?.displayText {
-                    Text("时间窗 \(window)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-        }
-        .padding(12)
-        .background(
-            DS.ColorToken.brand.opacity(0.08),
-            in: RoundedRectangle(cornerRadius: DS.Radius.card)
-        )
-        .accessibilityElement(children: .combine)
-    }
-
-    private var title: String {
-        var parts: [String] = ["下一站"]
-        if let dayLabel { parts.append(dayLabel) }
-        if let arrive = stop.arrive {
-            parts.append(CockpitFormat.time(arrive, timeZone: timeZone))
-        }
-        parts.append(stop.displayName)
-        return parts.joined(separator: " · ")
-    }
-}
-
-/// 风险/待办行：严重度徽标 + 标题 + 依据，点进行程处理。
 private struct CockpitRiskRow: View {
     @EnvironmentObject private var environment: AppEnvironment
     let risk: TravelCockpit.Risk
