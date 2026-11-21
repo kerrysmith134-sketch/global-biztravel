@@ -523,6 +523,60 @@ def review_claim(
     return _serialize_claims(session, organization_id, [row])[0]
 
 
+def mark_job_failed(
+    session: Session,
+    organization_id: UUID | str,
+    job_id: UUID,
+    *,
+    error: str,
+) -> None:
+    """Persist a terminal extraction/verification failure after the shared retry policy."""
+    workflow = session.scalars(
+        select(WorkflowInstance)
+        .where(
+            WorkflowInstance.organization_id == organization_id,
+            WorkflowInstance.workflow_type == WORKFLOW_TYPE,
+            WorkflowInstance.job_id == job_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if workflow is None:
+        return
+    payload = {
+        **(workflow.payload or {}),
+        "verification_status": "FAILED",
+        "failure_reason": error[:2000],
+        "failed_at": datetime.now(UTC).isoformat(),
+    }
+    workflow.payload = payload
+    workflow.status = "FAILED"
+    verification_run = session.scalars(
+        select(MarketClaimVerificationRun)
+        .where(
+            MarketClaimVerificationRun.organization_id == organization_id,
+            MarketClaimVerificationRun.workspace_id == UUID(str(payload["workspace_id"])),
+            MarketClaimVerificationRun.workflow_id == workflow.id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if verification_run is not None:
+        verification_run.status = "FAILED"
+        verification_run.failure_reason = error[:2000]
+        verification_run.completed_at = datetime.now(UTC)
+    session.add(
+        MarketActivityEvent(
+            organization_id=organization_id,
+            workspace_id=UUID(str(payload["workspace_id"])),
+            actor_type="SYSTEM",
+            aggregate_type="market_claim_verification",
+            aggregate_id=verification_run.id if verification_run is not None else workflow.id,
+            event_type="MARKET_CLAIM_VERIFICATION_FAILED",
+            payload={"job_id": str(job_id), "failure_reason": error[:1000]},
+        )
+    )
+    session.flush()
+
+
 __all__ = [
     "WORKFLOW_TYPE",
     "MAX_EVIDENCE_PER_VERIFICATION",
@@ -530,4 +584,5 @@ __all__ = [
     "get_verification_run",
     "list_claims",
     "review_claim",
+    "mark_job_failed",
 ]
