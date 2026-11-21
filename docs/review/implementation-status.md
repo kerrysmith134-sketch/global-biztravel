@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0035`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0036`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -101,6 +101,7 @@
                            0033_market_entities
                            0034_market_insights_evidence_versions
                            0035_market_opportunities
+                           0036_market_research_plan_evidence
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -314,3 +315,21 @@
 新增 API 包括机会列表/创建/详情、证据关联、候选实体关联、评估、状态迁移、人工资格确认、结果记录，以及 Workspace Trip 列表/关联/解除。
 
 H1.4 当前代码 head 已通过 Backend 严格门禁：Ruff、MyPy、OpenAPI、文档、0035 PostgreSQL migration、Alembic drift 和全量 Backend pytest（416 passed / 1 skipped）。SwiftLint 与 Xcode Build 也已通过；iOS Unit Tests 正在对最新清理提交重新执行。PR #5 保持 Draft，尚未合并或部署。原生 iOS Opportunity UI 尚未实现。
+
+
+## 12. 市场情报引擎 H1.5 — Research Worker 版本化证据闭环
+
+新增迁移 `0036_market_research_plan_evidence.py`（revision `0036_market_plan_ev`，父 revision `0035_market_opps`），不新增 Evidence 主表、不新增搜索 Provider 或 Worker。
+
+| 能力 | 实现 | 约束 |
+|---|---|---|
+| Worker 版本化落证据 | Workspace 关联的 ResearchPlan Worker 将搜索标题/摘要写入既有 Evidence，并调用既有来源规范化与 SHA-256 版本键 | source + content 变化产生新 Evidence；同源同内容复用已有 Evidence |
+| ResearchPlan 来源归属 | MarketResearchPlanEvidence 关联 Workspace、ResearchPlan Workflow、Evidence、采集 AgentRun、搜索查询与 query SHA-256 | 复合外键跨租户保护；ResearchPlan 必须已关联当前 Workspace |
+| 多查询归因 | 同一结果被多条已审阅 query 命中时，一条 Evidence 可以关联多个 query | 唯一键使相同 query 关联幂等 |
+| ResearchPlan 详情 | 详情接口合并传统 ResearchPlan subject Evidence 与 Workspace 版本化 Evidence | 旧独立 ResearchPlan 保留原兼容读取路径 |
+| 未核验边界 | SearXNG 搜索结果固定写为 UNVERIFIED，保留 snippet、发布日期原值、Provider、Engine、query 与 AgentRun | 不把搜索摘要伪装为全文或已核验事实 |
+| 活动审计 | 新 Evidence 版本记录 MARKET_EVIDENCE_RECORDED；每个新 Plan/query 关联记录 MARKET_RESEARCH_EVIDENCE_LINKED | 同内容重放不重复创建 Evidence 事件或关系事件 |
+
+新增集成验收覆盖：相同 Workspace、相同 URL、相同内容跨 ResearchPlan 只形成一条 Evidence；查询归属分别保存；同 URL 内容变化追加新版本；ResearchPlan 详情和 Workspace Evidence 列表均可读取；未核验状态不被抬高。
+
+该切片仍不负责自动抓取全文、事实核验、LLM 综合结论或自动采纳 Insight；这些需要后续 Research Agent/Verification Agent 阶段。
