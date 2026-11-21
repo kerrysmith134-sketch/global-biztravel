@@ -75,6 +75,7 @@ def record_market_evidence(
     verification_status: str,
     quality: dict[str, Any] | None,
     payload: dict[str, Any],
+    actor_user_id: UUID,
 ) -> Evidence:
     _workspace(session, organization_id, workspace_id)
     canonical = canonicalize_source_ref(canonical_ref)
@@ -121,6 +122,23 @@ def record_market_evidence(
     row = session.get(Evidence, evidence_id)
     if row is None:
         raise Conflict("来源证据写入后不可见")
+    session.add(
+        MarketActivityEvent(
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+            actor_type="USER",
+            actor_user_id=actor_user_id,
+            aggregate_type="market_evidence",
+            aggregate_id=row.id,
+            event_type="MARKET_EVIDENCE_RECORDED",
+            payload={
+                "kind": kind.strip().upper(),
+                "canonical_ref": canonical,
+                "content_hash": digest,
+            },
+        )
+    )
+    session.flush()
     return row
 
 
