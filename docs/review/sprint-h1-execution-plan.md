@@ -449,3 +449,20 @@ MarketInsight 采用 `workspace_id + insight_key + version` 建立版本链；�
 本切片提供答案版本创建/查询、采纳、驳回 API；它为未来 Research Answer Agent 提供持久化边界，但当前并未声称 LLM 自动综合、全文抓取或事实核验 Agent 已经完成。
 
 验证：最新 CI 对该分支完整树运行后，方可确认 0037 迁移、Alembic drift、Backend 集成测试及 iOS 回归全部通过。
+
+
+## 15. H1.7 Research Answer Agent — asynchronous draft loop
+
+H1.7 把 H1.6 的版本化问题答案变成真正的 Agent 执行链：
+1. 用户在 Workspace 对一个问题显式启动答案草拟；
+2. API 读取问题与当前可用 Evidence，形成最多 24 条的固定快照；用户可传入 evidence_ids 限定来源；
+3. 使用 Workspace 锁、证据快照哈希和现有 BackgroundJob dedupe，避免同一问题/同一证据快照重复排队；
+4. 通过现有 WorkflowInstance + MarketWorkspaceWorkflow 表达任务归属；不创建新的 Workflow 主表、Worker 服务或队列；
+5. 现有 TASK_HANDLERS Worker 创建 AgentRun，通过唯一 LLMGateway 读取通用研究问题 Prompt，模型只能基于输入 Evidence ID 形成 SUPPORTS / CONTRADICTS / CONTEXT 判断；
+6. 服务端丢弃模型虚构的 Evidence ID；未 VERIFIED 来源不允许 HIGH confidence；无 SUPPORTS 映射时强制 INSUFFICIENT；
+7. 将答案追加为 MarketResearchQuestionAnswer 版本，保留 assumptions、unknowns、confidence、evidence_gap、Evidence 关系、AgentRun 和 LLMInvocation；
+8. Workflow COMPLETED 仅表示草稿完成。答案仍待审核，Question 维持原状态；Admin 才能通过 H1.6 审核接口采纳。
+
+无 Evidence 或 Gateway 降级时生成明确的 INSUFFICIENT 草稿，而不是用模板伪装成功结论。外部资料的全文抓取和 Verification Agent 不在此切片内。
+
+**验证纪律：** PR #7 的 H1.6 修复断言已提交；PR #6 已严格 CI 全绿。H1.7 需独立通过 Ruff、MyPy、OpenAPI/docs、PostgreSQL migration/Alembic drift（虽无新迁移仍执行完整检查）、全量 Backend pytest、iOS SwiftLint/Build/Unit Tests 后再标记完成。
