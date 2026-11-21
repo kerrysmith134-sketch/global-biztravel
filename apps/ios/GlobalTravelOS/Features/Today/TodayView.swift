@@ -405,7 +405,10 @@ struct TodayView: View {
                                     .foregroundStyle(DS.ColorToken.textSecondary)
                             }
                             if let leaveBy = cockpit.leaveBy {
-                                Text("建议 \(CockpitFormat.time(leaveBy, timeZone: cockpit.timeZone)) 出发 · 路程 \(CockpitFormat.duration(next.travelMinutes ?? 0))")
+                                Text(
+                                    "建议 \(CockpitFormat.time(leaveBy, timeZone: cockpit.timeZone)) 出发 · "
+                                        + "路程 \(CockpitFormat.duration(next.travelMinutes ?? 0))"
+                                )
                                     .font(.caption.weight(.medium))
                                     .foregroundStyle(DS.ColorToken.brand)
                             }
@@ -489,7 +492,6 @@ struct TodayView: View {
             .background(.background, in: RoundedRectangle(cornerRadius: DS.Radius.card))
         }
     }
-
 
 }
 
