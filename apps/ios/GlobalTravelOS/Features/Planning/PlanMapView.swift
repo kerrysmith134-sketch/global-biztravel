@@ -254,7 +254,7 @@ struct PlanMapView: View {
                     } label: {
                         Label(
                             isSubmittingChange ? "正在提交变更…" : "取消此拜访并重新优化路线",
-                            systemImage: "arrow.trianglehead.2.clockwise"
+                            systemImage: "arrow.clockwise"
                         )
                         .font(.caption.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 42)
@@ -263,6 +263,11 @@ struct PlanMapView: View {
                     .accessibilityHint("提交前会要求再次确认，服务端将生成新的计划版本")
                 }
             }
+        }
+        .padding(.horizontal, DS.Spacing.sm)
+        .padding(.vertical, DS.Spacing.xs)
+        .accessibilityElement(children: .contain)
+    }
 
     private var routeLegend: some View {
         ScrollView(.horizontal, showsIndicators: false) {
