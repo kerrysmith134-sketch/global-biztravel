@@ -11,10 +11,10 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
-    Boolean,
     CHAR,
-    DateTime,
+    Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
