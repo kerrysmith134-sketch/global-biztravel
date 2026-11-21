@@ -642,4 +642,93 @@ final class ModelDecodingTests: XCTestCase {
         let decoded = try DateCoding.decode(Trip.self, from: data)
         XCTAssertEqual(decoded.countries, ["DE", "NL"])
     }
+
+    func testResearchPlanRequestEncodesScopeAndLinkedContext() throws {
+        let request = try Endpoints.createResearchPlan(
+            ResearchPlanCreateRequest(
+                request: "研究目标企业背景",
+                sourceScope: .internalAndExternal,
+                tripId: "trip-1",
+                customerId: "customer-1",
+                contextText: "用户提供的补充材料",
+                locale: "zh-CN"
+            )
+        )
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/v1/research/plans")
+        XCTAssertNotNil(request.idempotencyKey)
+
+        let data = try XCTUnwrap(request.body)
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertEqual(payload["request"] as? String, "研究目标企业背景")
+        XCTAssertEqual(payload["source_scope"] as? String, "INTERNAL_AND_EXTERNAL")
+        XCTAssertEqual(payload["trip_id"] as? String, "trip-1")
+        XCTAssertEqual(payload["customer_id"] as? String, "customer-1")
+        XCTAssertEqual(payload["context_text"] as? String, "用户提供的补充材料")
+        XCTAssertEqual(payload["locale"] as? String, "zh-CN")
+
+        let detail = Endpoints.researchPlan(id: "plan-1")
+        XCTAssertEqual(detail.method, .get)
+        XCTAssertEqual(detail.path, "/v1/research/plans/plan-1")
+    }
+
+    func testResearchPlanDecodesIntentAuditAndEvidenceWithoutClaimingRetrieval() throws {
+        let json = """
+        {
+          "id": "plan-1",
+          "trip_id": "trip-1",
+          "customer_id": "customer-1",
+          "request": "研究目标企业背景",
+          "requested_scope": "INTERNAL_AND_EXTERNAL",
+          "recommended_scope": "INTERNAL_AND_EXTERNAL",
+          "status": "PLANNED",
+          "retrieval_status": "NOT_STARTED",
+          "plan": {
+            "intent_summary": "研究目标企业并准备拜访",
+            "objective": "为下周拜访准备事实与问题",
+            "subject": "ACME GmbH",
+            "domain": null,
+            "geographies": ["Germany"],
+            "entities": ["ACME GmbH"],
+            "time_scope": "最新公开信息",
+            "research_questions": ["公司业务与组织背景是什么？"],
+            "search_queries": ["ACME GmbH company background"],
+            "source_types": ["公司官网", "官方登记资料"],
+            "deliverables": ["拜访前研究简报"],
+            "missing_information": ["尚未提供客户联系人"],
+            "external_research_needed": true
+          },
+          "planner": {
+            "agent_run_id": "11111111-1111-1111-1111-111111111111",
+            "llm_invocation_id": "22222222-2222-2222-2222-222222222222",
+            "model": "test-model",
+            "degraded": false,
+            "error": null
+          },
+          "evidence": [{
+            "id": "33333333-3333-3333-3333-333333333333",
+            "kind": "USER_REQUEST",
+            "ref": "request:sha256:abc",
+            "source": "user_input",
+            "payload": {"character_count": 9},
+            "retrieved_at": "2026-11-21T09:00:00+00:00",
+            "created_at": "2026-11-21T09:00:00+00:00"
+          }],
+          "created_at": "2026-11-21T09:00:00+00:00"
+        }
+        """
+        let plan = try DateCoding.decode(ResearchPlan.self, fromJSON: json)
+        XCTAssertEqual(plan.id, "plan-1")
+        XCTAssertEqual(plan.customerId, "customer-1")
+        XCTAssertEqual(plan.plan.domain, nil)
+        XCTAssertEqual(plan.plan.geographies, ["Germany"])
+        XCTAssertEqual(plan.plan.researchQuestions.count, 1)
+        XCTAssertEqual(plan.plan.searchQueries.first, "ACME GmbH company background")
+        XCTAssertEqual(plan.planner.model, "test-model")
+        XCTAssertEqual(plan.evidence.first?.kind, "USER_REQUEST")
+        XCTAssertEqual(plan.retrievalStatus, "NOT_STARTED")
+        XCTAssertEqual(plan.retrievalStatusLabel, "尚未采集外部证据")
+    }
 }
