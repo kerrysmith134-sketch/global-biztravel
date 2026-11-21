@@ -366,7 +366,11 @@ def create_research_plan(
         "recommended_scope": recommended_scope,
         "locale": payload.locale,
         "retrieval_status": "NOT_STARTED",
-        "customer_id": None if payload.customer_id is None else str(payload.customer_id),
+        "customer_id": (
+            str(payload.customer_id)
+            if include_internal and payload.customer_id is not None
+            else None
+        ),
         "context_refs": list(selected_context.keys()),
         "plan": plan,
         "planner": audit,
