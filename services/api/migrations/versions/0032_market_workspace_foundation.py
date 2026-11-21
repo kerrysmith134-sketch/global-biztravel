@@ -197,9 +197,11 @@ def upgrade() -> None:
     for table in TABLES:
         helpers.enable_org_rls(table, force=True)
 
-    # Activity events are append-only for the application role. A privileged maintenance
-    # session may still clean up test data or perform an audited repair.
+    # Context snapshots are immutable except for the current-version marker used by adoption.
+    # Activity events are append-only. A privileged maintenance session can still repair data.
     if helpers.role_exists("gbt_app"):
+        op.execute("REVOKE UPDATE, DELETE, TRUNCATE ON market_context_snapshots FROM gbt_app")
+        op.execute("GRANT UPDATE (is_current) ON market_context_snapshots TO gbt_app")
         op.execute("REVOKE UPDATE, DELETE, TRUNCATE ON market_activity_events FROM gbt_app")
 
 
