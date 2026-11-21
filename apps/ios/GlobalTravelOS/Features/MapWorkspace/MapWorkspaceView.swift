@@ -29,6 +29,7 @@ final class MapWorkspaceViewModel: ObservableObject {
     @Published var selectedTripID: String?
 
     private let environment: AppEnvironment
+    private var customerPlacesLoadToken: UUID?
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -74,6 +75,8 @@ final class MapWorkspaceViewModel: ObservableObject {
         customers = []
         customerLocations = []
         customerPlacesMessage = nil
+        customerPlacesLoadToken = nil
+        isLoadingCustomerPlaces = false
         Task {
             async let contextLoad = loadMissionContext(tripId: id)
             await loadSelectedPlan()
@@ -84,8 +87,11 @@ final class MapWorkspaceViewModel: ObservableObject {
     /// Load visit and customer context independently from the plan payload.
     /// The map remains usable if CRM enrichment is unavailable; missing customer metadata is omitted.
     private func loadMissionContext(tripId: String) async {
+        let loadToken = UUID()
+        customerPlacesLoadToken = loadToken
+        isLoadingCustomerPlaces = false
         let loadedVisits = try? await environment.visitRepository.listVisits(tripId: tripId)
-        guard selectedTripID == tripId else { return }
+        guard selectedTripID == tripId, customerPlacesLoadToken == loadToken else { return }
         guard let loadedVisits else {
             visits = []
             customers = []
@@ -107,14 +113,19 @@ final class MapWorkspaceViewModel: ObservableObject {
         }
 
         isLoadingCustomerPlaces = true
-        defer { isLoadingCustomerPlaces = false }
+        defer {
+            if customerPlacesLoadToken == loadToken {
+                isLoadingCustomerPlaces = false
+            }
+        }
         let batch = await fetchMissionCustomers(ids: customerIDs)
-        guard selectedTripID == tripId else { return }
+        guard selectedTripID == tripId, customerPlacesLoadToken == loadToken else { return }
         customers = batch.customers.sorted { $0.name < $1.name }
         await loadCustomerPlaces(
             for: customers,
             tripId: tripId,
-            missingCustomerCount: batch.failures
+            missingCustomerCount: batch.failures,
+            loadToken: loadToken
         )
     }
 
@@ -152,7 +163,8 @@ final class MapWorkspaceViewModel: ObservableObject {
     private func loadCustomerPlaces(
         for missionCustomers: [Customer],
         tripId: String,
-        missingCustomerCount: Int
+        missingCustomerCount: Int,
+        loadToken: UUID
     ) async {
         customerLocations = []
         customerPlacesMessage = nil
@@ -161,7 +173,7 @@ final class MapWorkspaceViewModel: ObservableObject {
             return
         }
         let batch = await fetchPlaces(for: missionCustomers)
-        guard selectedTripID == tripId else { return }
+        guard selectedTripID == tripId, customerPlacesLoadToken == loadToken else { return }
         customerLocations = batch.locations.sorted {
             if $0.customer.name != $1.customer.name { return $0.customer.name < $1.customer.name }
             if $0.place.isPrimary != $1.place.isPrimary { return $0.place.isPrimary }
