@@ -143,7 +143,7 @@ struct VisitCreateSheet: View {
                 query: nil,
                 page: PageRequest(limit: 200)
             )
-            customers = page.items.filter(\.isActive)
+            customers = page.items.filter(\.canScheduleVisit)
         } catch {
             errorMessage = environment.errorMessage(error)
         }
