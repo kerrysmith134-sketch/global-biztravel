@@ -37,6 +37,7 @@ def record_many(
                 parsed_at = datetime.fromisoformat(retrieved_at)
             except ValueError:
                 parsed_at = None
+        item_source = item.get("source") or source
         statement = (
             pg_insert(Evidence.__table__)
             .values(
@@ -45,7 +46,7 @@ def record_many(
                 subject_id=str(subject_id),
                 kind=kind,
                 ref=ref,
-                source=source,
+                source=str(item_source) if item_source is not None else None,
                 payload=item,
                 retrieved_at=parsed_at,
             )
