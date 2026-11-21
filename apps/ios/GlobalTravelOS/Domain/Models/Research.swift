@@ -114,6 +114,9 @@ struct ResearchPlan: Decodable, Equatable, Identifiable {
     var id: String
     var tripId: String?
     var customerId: String?
+    var jobId: String?
+    var retrievalError: String?
+    var resultsCount: Int
     var request: String
     var requestedScope: String
     var recommendedScope: String
@@ -128,8 +131,10 @@ struct ResearchPlan: Decodable, Equatable, Identifiable {
         switch retrievalStatus.uppercased() {
         case "NOT_STARTED":
             return plan.externalResearchNeeded ? "尚未采集外部证据" : "本次不需要外部检索"
+        case "QUEUED": return "检索任务排队中"
         case "RUNNING": return "正在采集证据"
-        case "COMPLETED": return "证据采集已完成"
+        case "COMPLETED":
+            return resultsCount > 0 ? "已采集 \(resultsCount) 条来源（尚未核验）" : "检索完成，未找到来源"
         case "FAILED": return "证据采集失败"
         default: return retrievalStatus
         }
@@ -143,4 +148,11 @@ struct ResearchPlan: Decodable, Equatable, Identifiable {
         default: return recommendedScope
         }
     }
+}
+
+struct ResearchExecutionAccepted: Decodable, Equatable {
+    var planId: String
+    var jobId: String
+    var status: String
+    var reused: Bool
 }
