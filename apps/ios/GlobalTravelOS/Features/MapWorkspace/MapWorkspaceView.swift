@@ -160,11 +160,6 @@ final class MapWorkspaceViewModel: ObservableObject {
             customerPlacesMessage = "\(missingCustomerCount) 个 CRM 客户档案读取失败，客户地址状态未知。"
             return
         }
-        guard !environment.isLocalMode else {
-            customerPlacesMessage = "本地模式尚未建立客户—地址关联表；当前仅显示行程拜访点。"
-            return
-        }
-
         let batch = await fetchPlaces(for: missionCustomers)
         guard selectedTripID == tripId else { return }
         customerLocations = batch.locations.sorted {
