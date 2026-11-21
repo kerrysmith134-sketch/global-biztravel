@@ -400,3 +400,45 @@ Evidence 的原始 payload 必须保留，版本化不能覆盖历史来源内�
 8. 执行项目门禁并将未执行项明确列出。
 
 **补充结论：**H1.0 的源码审查范围已覆盖后端核心模型、迁移 helper、API 权限与路由装配、Worker 双重注册、iOS Repository 组合根和导航接线。仍未完成的是本地/部署数据库状态检查以及实际测试运行；这些是工程验证项，不应以 GitHub 文件读取代替。
+
+
+---
+
+## 10. 与现有用户意图 ResearchPlan 的整合审查
+
+在审计后进一步检查尚未合并的 ui-foundation-2026-11 分支与 Draft PR #1。该分支已实现通用 ResearchPlan：
+- 用户自然语言请求驱动研究计划生成；
+- 内部/外部资料范围明确选择；
+- 规划与外部检索分离；
+- 搜索查询由用户审阅并确认后才执行；
+- SearXNG Provider 默认不可用，未配置时明确 503；
+- Worker 只执行确认过的查询，并把搜索结果以未核验状态写入现有 Evidence；
+- 复用 WorkflowInstance / AgentRun / BackgroundJob / Evidence，不另造研究执行表。
+
+关联决策见该分支 ADR-0035（研究由用户意图驱动）与 ADR-0037（只执行用户确认查询）。
+
+**整合结论：**ResearchPlan 与 MarketWorkspace 是不同层次，不是重复产品：
+- ResearchPlan = 一次研究意图、查询审阅与检索执行的 workflow；
+- MarketWorkspace = 持续的市场探索空间，保存上下文版本、研究问题和未来的市场实体/洞察/商机；
+- 一个 Workspace 可以包含多个 ResearchPlan Workflow；
+- ResearchPlan 允许不关联 Workspace，保留单次研究入口；
+- Workspace 不得创建第二套检索 Job、搜索 Provider 或 ResearchPlan 主表。
+
+为此 H1.2 采用 MarketWorkspaceWorkflow 作为显式关联表。它与现有 WorkflowInstance 建立 (organization_id, id) 复合唯一键及复合外键，数据库层保证跨租户关联不成立。Research API 增加可选 workspace_id，并在关联 Workspace 的事务中记录 RESEARCH_PLAN_LINKED 活动事件。新增 Workspace API 可读取其关联的 ResearchPlan 列表。
+
+iOS ResearchPlan 请求 DTO 与 ResearchWorkspaceView 增加可选 workspaceId，默认 nil，以维持原有调用兼容。完整 Workspace 原生列表/详情/Context Review UI 仍属于 H1.3，不能把当前单次 ResearchWorkspaceView 描述成已完成的长期工作空间 UI。
+
+### 10.1 本轮整合的代码文件
+
+- services/api/app/models/workflow.py：增加 (organization_id, id) 复合唯一约束，与迁移保持一致。
+- services/api/app/models/market.py：增加 MarketWorkspaceWorkflow。
+- services/api/migrations/versions/0032_market_workspace_foundation.py：增加 tenant-safe workflow link 表与约束。
+- services/api/app/services/research_service.py：校验 workspace 所属组织、关联 ResearchPlan Workflow、写活动事件、按 Workspace 列出研究计划。
+- services/api/app/api/schemas.py / services/api/app/api/routes/market.py：ResearchPlan Create/Read 支持 workspace_id；增加 Workspace ResearchPlan 列表 API。
+- apps/ios/GlobalTravelOS/Domain/Models/Research.swift：请求与响应增加可选 workspaceId。
+- apps/ios/GlobalTravelOS/Features/Assistant/ResearchWorkspaceView.swift：支持可选传入 workspaceId。
+- services/api/tests/test_market_workspace.py：覆盖 Workspace 包含既有 ResearchPlan、external-only 边界、活动事件与直接 RLS 隔离。
+
+### 10.2 仍未验证
+
+本轮仍未在本地 checkout、真实 PostgreSQL 或 Xcode 环境执行命令。未运行迁移、pytest、MyPy、Ruff、OpenAPI contract-check、E2E 或 iOS build/test。文件审查不能替代运行时验证。Draft PR 需以仓库 CI 与真实 PostgreSQL 门禁为准。
