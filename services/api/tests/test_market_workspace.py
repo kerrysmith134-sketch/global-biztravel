@@ -8,11 +8,16 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.geo import Customer
 from app.models.market import (
     MarketActivityEvent,
     MarketContextSnapshot,
+    MarketEntity,
+    MarketEntityAlias,
+    MarketEntityCustomerLink,
     MarketResearchQuestion,
     MarketWorkspace,
+    MarketWorkspaceEntity,
     MarketWorkspaceWorkflow,
 )
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
@@ -370,3 +375,222 @@ def test_workspace_contains_existing_research_plan_workflows(client: TestClient)
                 session.execute(
                     delete(MarketWorkspace).where(MarketWorkspace.id == UUID(workspace_id))
                 )
+
+
+
+def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirmation(
+    client: TestClient,
+) -> None:
+    workspace_id: str | None = None
+    other_workspace_id: str | None = None
+    entity_id: str | None = None
+    customer_a_id = uuid.uuid4()
+    customer_b_id = uuid.uuid4()
+    try:
+        workspace = create_workspace(client, f"Entity discovery·{uuid.uuid4().hex[:8]}")
+        workspace_id = workspace["id"]
+        other_workspace = create_workspace(client, f"Entity reuse·{uuid.uuid4().hex[:8]}")
+        other_workspace_id = other_workspace["id"]
+
+        with org_session(UUID(ORG_A)) as session:
+            session.add(
+                Customer(
+                    id=customer_a_id,
+                    organization_id=UUID(ORG_A),
+                    name="Existing CRM Customer",
+                    tier="B",
+                    country_code="KE",
+                    industry="Existing industry",
+                    status="ACTIVE",
+                    notes="Keep this manually maintained customer record unchanged.",
+                )
+            )
+        with org_session(UUID(ORG_B)) as session:
+            session.add(
+                Customer(
+                    id=customer_b_id,
+                    organization_id=UUID(ORG_B),
+                    name="Tenant B Customer",
+                    tier="C",
+                    country_code="KE",
+                    status="PROSPECT",
+                )
+            )
+
+        before_count = None
+        with org_session(UUID(ORG_A)) as session:
+            before_count = session.scalar(
+                select(func.count()).select_from(Customer).where(
+                    Customer.organization_id == UUID(ORG_A)
+                )
+            )
+
+        created = client.post(
+            f"/v1/market/workspaces/{workspace_id}/entities",
+            headers=headers(),
+            json={
+                "entity_kind": "Distributor / Channel Partner",
+                "display_name": "Example East Africa Group",
+                "description": "Candidate found during a user-directed market exploration.",
+                "canonical_domain": "https://www.example.test/company/",
+                "country_code": "ke",
+                "attributes": {"employee_band": "UNKNOWN", "custom_taxonomy": "channel"},
+                "discovery_reason": "Mentioned in the user's market brief.",
+                "relevance_note": "Potential partner; demand is not yet verified.",
+            },
+        )
+        assert created.status_code == 201, created.text
+        entity_body = created.json()["entity"]
+        entity_id = entity_body["id"]
+        assert entity_body["status"] == "CANDIDATE"
+        assert entity_body["entity_kind"] == "Distributor / Channel Partner"
+        assert entity_body["canonical_domain"] == "example.test"
+        assert {item["alias_type"] for item in entity_body["aliases"]} == {"NAME", "DOMAIN"}
+        assert created.json()["possible_duplicate_entity_ids"] == []
+
+        # The same canonical domain represents the same candidate entity across Workspaces.
+        reused = client.post(
+            f"/v1/market/workspaces/{other_workspace_id}/entities",
+            headers=headers(),
+            json={
+                "entity_kind": "Organization",
+                "display_name": "Example East Africa Group - alternate label",
+                "canonical_domain": "example.test",
+                "country_code": "KE",
+            },
+        )
+        assert reused.status_code == 201, reused.text
+        assert reused.json()["entity"]["id"] == entity_id
+        assert reused.json()["reused_by_domain"] is True
+
+        # Same normalized name without a verified canonical domain is a possible duplicate,
+        # not an automatic merge.
+        duplicate = client.post(
+            f"/v1/market/workspaces/{workspace_id}/entities",
+            headers=headers(),
+            json={
+                "entity_kind": "Organization",
+                "display_name": "  EXAMPLE East Africa Group ",
+                "country_code": "KE",
+            },
+        )
+        assert duplicate.status_code == 201, duplicate.text
+        assert duplicate.json()["entity"]["id"] != entity_id
+        assert entity_id in duplicate.json()["possible_duplicate_entity_ids"]
+
+        listed = client.get(
+            f"/v1/market/workspaces/{workspace_id}/entities", headers=headers()
+        )
+        assert listed.status_code == 200, listed.text
+        assert len(listed.json()) == 2
+
+        # Candidate discovery never creates or mutates a Customer record.
+        with org_session(UUID(ORG_A)) as session:
+            assert session.scalar(
+                select(func.count()).select_from(Customer).where(
+                    Customer.organization_id == UUID(ORG_A)
+                )
+            ) == before_count
+            original_customer = session.get(Customer, customer_a_id)
+            assert original_customer is not None
+            assert original_customer.name == "Existing CRM Customer"
+            assert original_customer.tier == "B"
+            assert original_customer.industry == "Existing industry"
+
+        candidate_link = client.post(
+            f"/v1/market/entities/{entity_id}/customer-links",
+            headers=headers(),
+            json={
+                "customer_id": str(customer_a_id),
+                "matching_basis": {
+                    "signals": ["canonical_domain", "country_code"],
+                    "confidence": "MEDIUM",
+                    "review_required": True,
+                },
+            },
+        )
+        assert candidate_link.status_code == 201, candidate_link.text
+        link_id = candidate_link.json()["id"]
+        assert candidate_link.json()["link_status"] == "MATCH_CANDIDATE"
+        assert candidate_link.json()["confirmed_by_user_id"] is None
+        assert candidate_link.json()["confirmed_at"] is None
+
+        cross_tenant_customer = client.post(
+            f"/v1/market/entities/{entity_id}/customer-links",
+            headers=headers(),
+            json={"customer_id": str(customer_b_id), "matching_basis": {"signal": "name"}},
+        )
+        assert cross_tenant_customer.status_code == 404, cross_tenant_customer.text
+
+        confirmed = client.post(
+            f"/v1/market/entities/{entity_id}/customer-links/{link_id}:confirm",
+            headers=headers(),
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json()["link_status"] == "USER_CONFIRMED"
+        assert confirmed.json()["confirmed_by_user_id"] == ADMIN_A
+        assert confirmed.json()["confirmed_at"] is not None
+
+        with org_session(UUID(ORG_A)) as session:
+            link = session.get(MarketEntityCustomerLink, UUID(link_id))
+            assert link is not None
+            assert link.link_status == "USER_CONFIRMED"
+            assert link.confirmed_by_user_id == UUID(ADMIN_A)
+            entity = session.get(MarketEntity, UUID(entity_id))
+            assert entity is not None
+            assert entity.status == "CANDIDATE"
+            aliases = session.scalars(
+                select(MarketEntityAlias).where(
+                    MarketEntityAlias.organization_id == UUID(ORG_A),
+                    MarketEntityAlias.entity_id == UUID(entity_id),
+                )
+            ).all()
+            assert len(aliases) == 3
+            assert session.scalar(
+                select(func.count()).select_from(MarketActivityEvent).where(
+                    MarketActivityEvent.organization_id == UUID(ORG_A),
+                    MarketActivityEvent.workspace_id == UUID(workspace_id),
+                    MarketActivityEvent.event_type == "CUSTOMER_MATCH_USER_CONFIRMED",
+                )
+            ) == 1
+
+        # The Workspace entity and its candidate aliases are invisible under another tenant's GUC.
+        with org_session(UUID(ORG_B)) as session:
+            assert session.scalar(
+                select(func.count()).select_from(MarketEntity).where(
+                    MarketEntity.id == UUID(entity_id)
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count()).select_from(MarketEntityAlias).where(
+                    MarketEntityAlias.entity_id == UUID(entity_id)
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count()).select_from(MarketWorkspaceEntity).where(
+                    MarketWorkspaceEntity.entity_id == UUID(entity_id)
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count()).select_from(MarketEntityCustomerLink).where(
+                    MarketEntityCustomerLink.entity_id == UUID(entity_id)
+                )
+            ) == 0
+
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            if workspace_id is not None:
+                session.execute(
+                    delete(MarketWorkspace).where(MarketWorkspace.id == UUID(workspace_id))
+                )
+            if other_workspace_id is not None:
+                session.execute(
+                    delete(MarketWorkspace).where(MarketWorkspace.id == UUID(other_workspace_id))
+                )
+            if entity_id is not None:
+                session.execute(
+                    delete(MarketEntity).where(MarketEntity.id == UUID(entity_id))
+                )
+            session.execute(delete(Customer).where(Customer.id == customer_a_id))
+        with org_session(UUID(ORG_B)) as session:
+            session.execute(delete(Customer).where(Customer.id == customer_b_id))
