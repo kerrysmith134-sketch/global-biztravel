@@ -905,6 +905,21 @@ def handle_market_claim_verification(
     ]
     if len(content_evidence) != len(ordered_evidence):
         raise TaskFailed("主张核验输入中有 Evidence 缺少正文或摘要", retryable=False)
+    actual_digest = market_claim_verification_service.compute_input_digest(
+        answer, content_evidence
+    )
+    if actual_digest != verification_run.input_digest:
+        verification_run.status = "FAILED"
+        verification_run.failure_reason = "入队后的答案或 Evidence 内容/状态发生变化，输入快照校验失败"
+        verification_run.completed_at = datetime.now(UTC)
+        workflow.status = "FAILED"
+        workflow.payload = {
+            **(workflow.payload or {}),
+            "verification_status": "FAILED",
+            "failure_reason": verification_run.failure_reason,
+        }
+        session.flush()
+        raise TaskFailed(verification_run.failure_reason, retryable=False)
 
     now = datetime.now(UTC)
     verification_run.status = "RUNNING"
@@ -1076,6 +1091,10 @@ def handle_market_claim_verification(
                     evidence_row is None
                     or evidence_id in seen_evidence_ids
                     or relation not in {"SUPPORTS", "CONTRADICTS", "CONTEXT"}
+                    or (
+                        evidence_row.verification_status == "REJECTED"
+                        and relation != "CONTEXT"
+                    )
                 ):
                     excluded_assessment_count += 1
                     continue
