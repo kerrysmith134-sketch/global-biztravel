@@ -2027,8 +2027,6 @@ class MarketEvidenceCreate(BaseModel):
     source: str | None = Field(default=None, max_length=300)
     published_at: datetime | None = None
     observation: str | None = Field(default=None, max_length=10000)
-    verification_status: MarketEvidenceVerification = "UNVERIFIED"
-    quality: dict[str, Any] | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
