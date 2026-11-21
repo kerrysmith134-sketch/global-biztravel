@@ -1510,6 +1510,7 @@ class ResearchEvidenceRead(ORMModel):
 class ResearchPlanRead(BaseModel):
     id: UUID
     trip_id: UUID | None = None
+    customer_id: UUID | None = None
     request: str
     requested_scope: ResearchSourceScope
     recommended_scope: Literal[
