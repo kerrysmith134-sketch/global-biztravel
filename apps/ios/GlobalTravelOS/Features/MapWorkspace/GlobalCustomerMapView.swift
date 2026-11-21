@@ -226,7 +226,7 @@ struct GlobalCustomerMapView: View {
                     }
                     Text("客户覆盖不代表该国市场规模或市场份额；坐标比例仅衡量地点数据完整度。")
                         .font(.caption2)
-                        .foregroundStyle(DS.ColorToken.textTertiary)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
                 }
                 .padding(.horizontal, DS.Spacing.lg)
                 .padding(.vertical, DS.Spacing.xs)
