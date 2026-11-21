@@ -1,6 +1,6 @@
 # Sprint H1 — Domain Foundation & Evidence Data Architecture
 
-> 状态：H1.0 源码审计已完成；H1.1 领域契约已提交；H1.2 后端基础实施待开始  
+> 状态：H1.0 源码审计已完成；H1.1 领域契约已提交；H1.2 首批后端纵向切片已实现，Draft PR #2 待 CI 验证  
 > 关联设计：`docs/design/market-intelligence-engine-v1.0.md`  
 > 仓库基线：`main`，核对到的最新提交 `c5e98e2b567f54705a8569d0ef7ced138d7f88b2`  
 > 计划日期：2026-11-21
@@ -346,3 +346,17 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 本次提交不包含数据库迁移、API、SwiftUI 页面或 Agent 代码；因此本次不声称任何新增功能已运行，也不声称新增代码测试已通过。
 
 下一次工程提交必须从 H1.0 代码与 schema 审计开始，给出实际文件路径、字段级复用判断和可复现测试结果后，再实施 H1.1–H1.5。
+
+
+---
+
+## 10. H1.2 首批实现记录（Draft PR #2）
+
+- PR：https://github.com/kerrysmith134-sketch/global-biztravel/pull/2
+- 分支：feat/sprint-h1.2-market-workspace-foundation
+- 当前实现：MarketWorkspace、MarketContextSnapshot、MarketResearchQuestion、MarketQuestionDependency、MarketActivityEvent。
+- 数据库：新增 migration 0032_market_workspace_foundation；所有新组织级表启用 ENABLE + FORCE RLS；跨 Workspace 父问题引用由复合外键阻止。
+- API：新增 /v1/market/workspaces、contexts、questions、activity；写操作采用现有 IdempotentWrite。
+- 测试：新增 test_market_workspace.py，覆盖幂等回放、上下文版本采纳、父问题边界、活动事件和跨租户访问。
+- 尚未完成：MarketEntity、Evidence 版本化、MarketInsight、MarketOpportunity、iOS 工作区 UI，属于后续 H1.2/H1.3 切片。
+- 验证状态：GitHub connector 尚未返回该 PR head 的 workflow runs/status checks；当前没有本地 checkout、数据库迁移执行或测试运行记录。不得将其标记为通过。
