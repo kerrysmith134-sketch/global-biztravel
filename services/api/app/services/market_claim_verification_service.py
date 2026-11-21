@@ -1,0 +1,533 @@
+"""Claim-level verification use cases for one explicitly selected answer version."""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from hashlib import sha256
+from urllib.parse import urlsplit
+from uuid import UUID
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.api.errors import Conflict, NotFound, Unprocessable
+from app.llm.prompts import MARKET_CLAIM_VERIFY_PROMPT_VERSION
+from app.models.market import (
+    MarketActivityEvent,
+    MarketClaim,
+    MarketClaimEvidence,
+    MarketClaimVerificationRun,
+    MarketResearchQuestionAnswer,
+    MarketResearchQuestionAnswerEvidence,
+    MarketWorkspace,
+    MarketWorkspaceWorkflow,
+)
+from app.models.reliability import BackgroundJob
+from app.models.workflow import Evidence, WorkflowInstance
+from app.services import job_service
+
+WORKFLOW_TYPE = "market_claim_verification"
+MAX_EVIDENCE_PER_VERIFICATION = 24
+
+
+def _workspace(
+    session: Session, organization_id: UUID | str, workspace_id: UUID
+) -> MarketWorkspace:
+    row = session.scalars(
+        select(MarketWorkspace).where(
+            MarketWorkspace.organization_id == organization_id,
+            MarketWorkspace.id == workspace_id,
+        )
+    ).one_or_none()
+    if row is None:
+        raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
+    return row
+
+
+def enqueue_claim_verification(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    answer_id: UUID,
+    *,
+    created_by_user_id: UUID,
+) -> dict[str, Any]:
+    """Queue a claim analysis over an answer's already-linked Evidence snapshot."""
+    workspace = session.scalars(
+        select(MarketWorkspace)
+        .where(
+            MarketWorkspace.organization_id == organization_id,
+            MarketWorkspace.id == workspace_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if workspace is None:
+        raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
+
+    answer = session.scalars(
+        select(MarketResearchQuestionAnswer).where(
+            MarketResearchQuestionAnswer.organization_id == organization_id,
+            MarketResearchQuestionAnswer.workspace_id == workspace_id,
+            MarketResearchQuestionAnswer.id == answer_id,
+        )
+    ).one_or_none()
+    if answer is None:
+        raise NotFound("研究答案版本不存在或不属于当前 Workspace")
+    if answer.status in {"REJECTED", "SUPERSEDED"}:
+        raise Conflict("已驳回或已被替代的答案版本不能启动主张核验")
+
+    answer_links = session.scalars(
+        select(MarketResearchQuestionAnswerEvidence)
+        .where(
+            MarketResearchQuestionAnswerEvidence.organization_id == organization_id,
+            MarketResearchQuestionAnswerEvidence.workspace_id == workspace_id,
+            MarketResearchQuestionAnswerEvidence.answer_id == answer_id,
+        )
+        .order_by(
+            MarketResearchQuestionAnswerEvidence.created_at,
+            MarketResearchQuestionAnswerEvidence.id,
+        )
+    ).all()
+    if not answer_links:
+        raise Conflict("该答案没有关联 Evidence，不能启动主张级核验")
+    evidence_ids = [link.evidence_id for link in answer_links]
+    if len(evidence_ids) > MAX_EVIDENCE_PER_VERIFICATION:
+        raise Unprocessable(
+            f"一次主张核验最多使用 {MAX_EVIDENCE_PER_VERIFICATION} 条 Evidence"
+        )
+
+    evidence_rows = list(
+        session.scalars(
+            select(Evidence).where(
+                Evidence.organization_id == organization_id,
+                Evidence.id.in_(evidence_ids),
+            )
+        ).all()
+    )
+    by_id = {row.id: row for row in evidence_rows}
+    if len(by_id) != len(evidence_ids):
+        raise Conflict("答案关联的部分 Evidence 已删除或不再可用")
+    ordered_rows = [by_id[item] for item in evidence_ids]
+    content_rows = [
+        row for row in ordered_rows
+        if isinstance((row.payload or {}).get("content"), str)
+        and (row.payload or {}).get("content", "").strip()
+    ]
+    if not content_rows:
+        raise Conflict("答案关联的 Evidence 均没有可分析的正文或摘要")
+
+    digest_material = {
+        "answer_id": str(answer.id),
+        "answer_version": answer.version,
+        "answer_summary": answer.answer_summary,
+        "prompt_version": MARKET_CLAIM_VERIFY_PROMPT_VERSION,
+        "evidence": [
+            {
+                "id": str(row.id),
+                "content_hash": row.content_hash,
+                "verification_status": row.verification_status or "UNVERIFIED",
+                "content_sha256": sha256(
+                    str((row.payload or {}).get("content", "")).encode("utf-8")
+                ).hexdigest(),
+            }
+            for row in content_rows
+        ],
+    }
+    input_digest = sha256(
+        json.dumps(
+            digest_material,
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    dedupe_key = (
+        f"market_claim_verify:{answer_id}:"
+        f"{MARKET_CLAIM_VERIFY_PROMPT_VERSION}:{input_digest}"
+    )
+
+    existing_job = job_service.find_inflight(session, organization_id, dedupe_key)
+    if existing_job is not None:
+        payload = existing_job.payload or {}
+        return {
+            "job_id": existing_job.id,
+            "workflow_id": payload.get("workflow_id"),
+            "verification_run_id": payload.get("verification_run_id"),
+            "status": existing_job.status,
+            "evidence_count": len(content_rows),
+            "reused": True,
+        }
+
+    completed = session.scalars(
+        select(MarketClaimVerificationRun)
+        .where(
+            MarketClaimVerificationRun.organization_id == organization_id,
+            MarketClaimVerificationRun.workspace_id == workspace_id,
+            MarketClaimVerificationRun.answer_id == answer_id,
+            MarketClaimVerificationRun.input_digest == input_digest,
+            MarketClaimVerificationRun.status == "COMPLETED",
+        )
+        .order_by(MarketClaimVerificationRun.created_at.desc())
+        .limit(1)
+    ).one_or_none()
+    if completed is not None:
+        return {
+            "job_id": None,
+            "workflow_id": completed.workflow_id,
+            "verification_run_id": completed.id,
+            "status": "COMPLETED",
+            "evidence_count": len(content_rows),
+            "reused": True,
+        }
+
+    workflow = WorkflowInstance(
+        organization_id=organization_id,
+        workflow_type=WORKFLOW_TYPE,
+        status="ACCEPTED",
+        payload={
+            "workspace_id": str(workspace_id),
+            "answer_id": str(answer_id),
+            "answer_version": answer.version,
+            "input_digest": input_digest,
+            "prompt_version": MARKET_CLAIM_VERIFY_PROMPT_VERSION,
+            "evidence_ids": [str(row.id) for row in content_rows],
+            "evidence_count": len(content_rows),
+            "verification_status": "QUEUED",
+            "requested_by_user_id": str(created_by_user_id),
+            "requested_at": datetime.now(UTC).isoformat(),
+        },
+        created_by_user_id=created_by_user_id,
+    )
+    session.add(workflow)
+    session.flush()
+    session.add(
+        MarketWorkspaceWorkflow(
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+            workflow_id=workflow.id,
+            linked_by_user_id=created_by_user_id,
+        )
+    )
+
+    verification_run = MarketClaimVerificationRun(
+        organization_id=organization_id,
+        workspace_id=workspace_id,
+        answer_id=answer_id,
+        workflow_id=workflow.id,
+        status="QUEUED",
+        prompt_version=MARKET_CLAIM_VERIFY_PROMPT_VERSION,
+        input_digest=input_digest,
+        claim_count=0,
+        limitations=[],
+    )
+    session.add(verification_run)
+    session.flush()
+
+    job: BackgroundJob = job_service.enqueue(
+        session,
+        organization_id,
+        job_type=job_service.JOB_TYPE_MARKET_CLAIM_VERIFY,
+        payload={
+            "workspace_id": str(workspace_id),
+            "answer_id": str(answer_id),
+            "workflow_id": str(workflow.id),
+            "verification_run_id": str(verification_run.id),
+            "evidence_ids": [str(row.id) for row in content_rows],
+        },
+        dedupe_key=dedupe_key,
+        created_by_user_id=created_by_user_id,
+    )
+    workflow.job_id = job.id
+    session.add(
+        MarketActivityEvent(
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+            actor_type="USER",
+            actor_user_id=created_by_user_id,
+            aggregate_type="market_claim_verification",
+            aggregate_id=verification_run.id,
+            event_type="MARKET_CLAIM_VERIFICATION_QUEUED",
+            payload={
+                "answer_id": str(answer_id),
+                "workflow_id": str(workflow.id),
+                "job_id": str(job.id),
+                "evidence_count": len(content_rows),
+                "prompt_version": MARKET_CLAIM_VERIFY_PROMPT_VERSION,
+            },
+        )
+    )
+    session.flush()
+    return {
+        "job_id": job.id,
+        "workflow_id": workflow.id,
+        "verification_run_id": verification_run.id,
+        "status": job.status,
+        "evidence_count": len(content_rows),
+        "reused": False,
+    }
+
+
+def _serialize_claims(
+    session: Session,
+    organization_id: UUID | str,
+    claims: list[MarketClaim],
+) -> list[dict[str, Any]]:
+    if not claims:
+        return []
+    claim_ids = [row.id for row in claims]
+    links = session.scalars(
+        select(MarketClaimEvidence)
+        .where(
+            MarketClaimEvidence.organization_id == organization_id,
+            MarketClaimEvidence.claim_id.in_(claim_ids),
+        )
+        .order_by(MarketClaimEvidence.created_at, MarketClaimEvidence.id)
+    ).all()
+    evidence_ids = list({link.evidence_id for link in links})
+    evidence_rows = (
+        session.scalars(
+            select(Evidence).where(
+                Evidence.organization_id == organization_id,
+                Evidence.id.in_(evidence_ids),
+            )
+        ).all()
+        if evidence_ids
+        else []
+    )
+    evidence_by_id = {row.id: row for row in evidence_rows}
+    links_by_claim: dict[UUID, list[dict[str, Any]]] = {}
+    for link in links:
+        evidence = evidence_by_id.get(link.evidence_id)
+        if evidence is not None:
+            links_by_claim.setdefault(link.claim_id, []).append(
+                {
+                    "evidence_id": evidence.id,
+                    "relation_type": link.relation_type,
+                    "rationale": link.rationale,
+                    "source_host": link.source_host,
+                    "content_hash_snapshot": link.content_hash_snapshot,
+                    "verification_status_snapshot": link.verification_status_snapshot,
+                    "origin_assessment": link.origin_assessment,
+                    "evidence": {
+                        "id": evidence.id,
+                        "kind": evidence.kind,
+                        "source": evidence.source,
+                        "canonical_ref": evidence.canonical_ref,
+                        "verification_status": evidence.verification_status or "UNVERIFIED",
+                        "content_hash": evidence.content_hash,
+                        "observation": evidence.observation,
+                        "created_at": evidence.created_at,
+                    },
+                }
+            )
+    return [
+        {
+            "id": row.id,
+            "workspace_id": row.workspace_id,
+            "answer_id": row.answer_id,
+            "verification_run_id": row.verification_run_id,
+            "version": row.version,
+            "claim_key": row.claim_key,
+            "statement": row.statement,
+            "claim_type": row.claim_type,
+            "scope": row.scope,
+            "reasoning": row.reasoning,
+            "verification_verdict": row.verification_verdict,
+            "confidence_level": row.confidence_level,
+            "status": row.status,
+            "supporting_evidence_count": row.supporting_evidence_count,
+            "contradicting_evidence_count": row.contradicting_evidence_count,
+            "verified_support_count": row.verified_support_count,
+            "verified_contradiction_count": row.verified_contradiction_count,
+            "distinct_host_count": row.distinct_host_count,
+            "confirmed_independent_source_count": row.confirmed_independent_source_count,
+            "limitations": row.limitations,
+            "supersedes_id": row.supersedes_id,
+            "reviewed_by_user_id": row.reviewed_by_user_id,
+            "reviewed_at": row.reviewed_at,
+            "review_note": row.review_note,
+            "created_at": row.created_at,
+            "evidence": links_by_claim.get(row.id, []),
+        }
+        for row in claims
+    ]
+
+
+def list_claims(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    *,
+    answer_id: UUID | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    _workspace(session, organization_id, workspace_id)
+    query = select(MarketClaim).where(
+        MarketClaim.organization_id == organization_id,
+        MarketClaim.workspace_id == workspace_id,
+    )
+    if answer_id is not None:
+        query = query.where(MarketClaim.answer_id == answer_id)
+    rows = list(
+        session.scalars(
+            query.order_by(MarketClaim.created_at.desc(), MarketClaim.id)
+            .offset(offset)
+            .limit(limit)
+        )
+    )
+    return _serialize_claims(session, organization_id, rows)
+
+
+def get_verification_run(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    verification_run_id: UUID,
+) -> dict[str, Any]:
+    row = session.scalars(
+        select(MarketClaimVerificationRun).where(
+            MarketClaimVerificationRun.organization_id == organization_id,
+            MarketClaimVerificationRun.workspace_id == workspace_id,
+            MarketClaimVerificationRun.id == verification_run_id,
+        )
+    ).one_or_none()
+    if row is None:
+        raise NotFound("主张核验任务不存在或不属于当前 Workspace")
+    workflow = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == organization_id,
+            WorkflowInstance.id == row.workflow_id,
+        )
+    ).one_or_none()
+    job = (
+        job_service.get_job(session, organization_id, workflow.job_id)
+        if workflow is not None and workflow.job_id is not None
+        else None
+    )
+    claims = list(
+        session.scalars(
+            select(MarketClaim)
+            .where(
+                MarketClaim.organization_id == organization_id,
+                MarketClaim.workspace_id == workspace_id,
+                MarketClaim.verification_run_id == verification_run_id,
+            )
+            .order_by(MarketClaim.created_at, MarketClaim.id)
+        )
+    )
+    status_value = row.status
+    failure_reason = row.failure_reason
+    if job is not None and job.status == "DEAD" and status_value not in {"COMPLETED", "FAILED"}:
+        status_value = "FAILED"
+        failure_reason = job.last_error or failure_reason
+    return {
+        "id": row.id,
+        "workspace_id": row.workspace_id,
+        "answer_id": row.answer_id,
+        "workflow_id": row.workflow_id,
+        "agent_run_id": row.agent_run_id,
+        "job_id": job.id if job is not None else None,
+        "job_status": job.status if job is not None else None,
+        "status": status_value,
+        "prompt_version": row.prompt_version,
+        "input_digest": row.input_digest,
+        "claim_count": row.claim_count,
+        "degraded": row.degraded,
+        "limitations": row.limitations,
+        "failure_reason": failure_reason,
+        "started_at": row.started_at,
+        "completed_at": row.completed_at,
+        "created_at": row.created_at,
+        "claims": _serialize_claims(session, organization_id, claims),
+    }
+
+
+def review_claim(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    claim_id: UUID,
+    *,
+    decision: str,
+    actor_user_id: UUID,
+    review_note: str | None,
+) -> dict[str, Any]:
+    _workspace(session, organization_id, workspace_id)
+    row = session.scalars(
+        select(MarketClaim)
+        .where(
+            MarketClaim.organization_id == organization_id,
+            MarketClaim.workspace_id == workspace_id,
+            MarketClaim.id == claim_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if row is None:
+        raise NotFound("研究主张不存在或不属于当前 Workspace")
+    if row.status in {"ACCEPTED", "REJECTED", "SUPERSEDED"}:
+        raise Conflict("该主张版本已完成审核；如需重新核验，请启动新的核验运行")
+    note = review_note.strip() if review_note and review_note.strip() else None
+    if not note:
+        raise Unprocessable("人工审核主张必须填写审核说明")
+    if decision == "ACCEPTED":
+        if row.verification_verdict != "PROVISIONAL_SUPPORT":
+            raise Conflict(
+                "只有存在支持证据且没有检测到反驳证据的主张才能进入人工采纳",
+                details={"verification_verdict": row.verification_verdict},
+            )
+        if row.supporting_evidence_count < 1 or row.contradicting_evidence_count > 0:
+            raise Conflict("主张的证据关系尚不满足人工采纳条件")
+    elif decision != "REJECTED":
+        raise Unprocessable("不支持的主张审核动作")
+
+    if decision == "ACCEPTED":
+        previous = session.scalars(
+            select(MarketClaim).where(
+                MarketClaim.organization_id == organization_id,
+                MarketClaim.workspace_id == workspace_id,
+                MarketClaim.answer_id == row.answer_id,
+                MarketClaim.claim_key == row.claim_key,
+                MarketClaim.status == "ACCEPTED",
+                MarketClaim.id != row.id,
+            )
+        ).all()
+        for item in previous:
+            item.status = "SUPERSEDED"
+        session.flush()
+
+    row.status = decision
+    row.reviewed_by_user_id = actor_user_id
+    row.reviewed_at = datetime.now(UTC)
+    row.review_note = note
+    session.add(
+        MarketActivityEvent(
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+            actor_type="USER",
+            actor_user_id=actor_user_id,
+            aggregate_type="market_claim",
+            aggregate_id=row.id,
+            event_type=f"MARKET_CLAIM_{decision}",
+            payload={
+                "answer_id": str(row.answer_id),
+                "claim_key": row.claim_key,
+                "version": row.version,
+                "verification_verdict": row.verification_verdict,
+            },
+        )
+    )
+    session.flush()
+    return _serialize_claims(session, organization_id, [row])[0]
+
+
+__all__ = [
+    "WORKFLOW_TYPE",
+    "MAX_EVIDENCE_PER_VERIFICATION",
+    "enqueue_claim_verification",
+    "get_verification_run",
+    "list_claims",
+    "review_claim",
+]
