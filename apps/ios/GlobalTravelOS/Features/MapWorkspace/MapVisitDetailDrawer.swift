@@ -10,6 +10,7 @@ struct MapVisitDetailDrawer: View {
     let isPlanActive: Bool
     let isSubmittingChange: Bool
     let onCancelVisit: ((PlanStop) -> Void)?
+    let onClose: () -> Void
 
     var body: some View {
         DSCard(padding: DS.Spacing.md) {
@@ -45,7 +46,7 @@ struct MapVisitDetailDrawer: View {
             }
             Spacer(minLength: 2)
             Button {
-                onClose?()
+                onClose()
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.semibold))
@@ -166,8 +167,6 @@ struct MapVisitDetailDrawer: View {
             .accessibilityHint("提交前会要求再次确认，服务端将生成新的计划版本")
         }
     }
-
-    private var onClose: (() -> Void)? { nil }
 
     private func time(_ date: Date) -> String {
         ISO8601.timeDisplay(from: date, timeZone: timeZone)
