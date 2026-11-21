@@ -37,7 +37,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            app.navigationBars["今日"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
         // 触发一次中断监视器（若系统弹窗出现会在这里被关闭）。
@@ -96,7 +96,7 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.navigationBars["行动中心"].waitForExistence(timeout: 15),
             "行动中心未加载"
         )
-        // 行动中心是标签页（不是弹层），返回方式切回今日标签。
+        // 行动中心是从 Mission 打开的全屏工作区，关闭后回到任务页。
         app.buttons["关闭"].tap()
 
         let tripsTab = app.buttons["出行"]
@@ -140,7 +140,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            app.navigationBars["今日"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
         XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10), "阶段失守：按钮 出行 未出现")
@@ -240,7 +240,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
         app.launch()
         XCTAssertTrue(
-            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            app.navigationBars["今日"].waitForExistence(timeout: 15),
             "阶段失守：启动（Today 页未出现）"
         )
 
@@ -767,7 +767,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         try seedImportFixture()
         app.launch()
         XCTAssertTrue(
-            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            app.navigationBars["今日"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
 
@@ -940,8 +940,7 @@ extension GlobalTravelOSUITests {
                 app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
                     .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
             default:
-                // Tab 回根再进入。用 tabBars 限定：直接 app.buttons["出行"] 在详情页
-                // 会匹配到多个元素（Tab + 页内文本），XCUITest 因此拒绝点击。
+                // 出行工作区现在从 Mission 打开；在其详情页通过「出行」导航入口回到工作区列表。
                 let travelTab = app.tabBars.buttons["出行"].firstMatch
                 if travelTab.exists {
                     travelTab.tap()
