@@ -280,6 +280,7 @@ final class LocalVisitRepository: VisitRepository {
             id: UUID().uuidString,
             tripId: tripId,
             placeId: placeId,
+            customerId: request.customerId,
             title: request.title,
             objective: nil,
             serviceMinutes: request.serviceMinutes,
