@@ -76,7 +76,7 @@ struct VisitCreateSheet: View {
                                 .foregroundStyle(DS.ColorToken.textSecondary)
                         }
 
-                        if selectedCustomerPlaceID.isEmpty && !environment.isLocalMode {
+                        if selectedCustomerPlaceID.isEmpty {
                             Toggle("将新地点加入客户地址簿", isOn: $addsNewPlaceToCustomer)
                             Text("仅关联为普通地址，不会自动设为客户主地址。")
                                 .font(.caption2)
@@ -166,10 +166,7 @@ struct VisitCreateSheet: View {
             }
         } catch {
             guard selectedCustomerID == customerId else { return }
-            // Local mode has no customer_places relation yet; retain the create-new-place path.
-            customerPlacesMessage = environment.isLocalMode
-                ? "本地模式尚未支持客户地址关联；仍可关联客户并填写新地点。"
-                : "读取客户地址失败：\(environment.errorMessage(error))。仍可填写新地点。"
+            customerPlacesMessage = "读取客户地址失败：\(environment.errorMessage(error))。仍可填写新地点。"
         }
     }
 
@@ -239,7 +236,6 @@ struct VisitCreateSheet: View {
             )
 
             if addsNewPlaceToCustomer,
-               !environment.isLocalMode,
                !selectedCustomerID.isEmpty,
                selectedCustomerPlaceID.isEmpty {
                 let customerID = selectedCustomerID
