@@ -346,7 +346,7 @@ ResearchQuestion 负责表达待回答的问题；答案不直接覆写在问题
 - reviewed_by_user_id / reviewed_at / review_note；
 - supersedes_id（前一答案版本，可空）。
 
-答案依据通过 `MarketResearchQuestionAnswerEvidence` 显式连接，relation_type 为 SUPPORTS / CONTRADICTS / CONTEXT。Evidence 必须属于当前 Workspace 或其关联 ResearchPlan，且同组织；Evidence 删除受 RESTRICT 保护。
+答案依据通过 `MarketResearchQuestionAnswerEvidence` 显式连接，relation_type 为 SUPPORTS / CONTRADICTS / CONTEXT。Service 必须校验 Evidence 属于当前 Workspace 或其关联 ResearchPlan；数据库复合外键确保 Answer 与 Question 同组织/同 Workspace，并确保 Evidence 同组织；Evidence 删除受 RESTRICT 保护。
 
 审核规则：
 - AI/用户创建答案均默认待审核，不直接把问题标记为 ANSWERED；
