@@ -187,6 +187,11 @@ struct LocalDatabase {
         CREATE INDEX IF NOT EXISTS ix_customer_places_customer
             ON customer_places (customer_id, is_primary DESC, place_id);
         """),
+        ("0006_customer_single_primary", """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_customer_places_one_primary
+            ON customer_places (customer_id)
+            WHERE is_primary = 1;
+        """),
     ]
 
     func migrate() throws {
