@@ -101,13 +101,63 @@ struct ResearchPlannerAudit: Decodable, Equatable {
     var error: String?
 }
 
+private struct ResearchEvidencePayload: Decodable {
+    var title: String?
+    var url: String?
+    var snippet: String?
+    var engine: String?
+    var publishedAt: String?
+    var evidenceState: String?
+}
+
 struct ResearchEvidence: Decodable, Equatable, Identifiable {
     var id: String
     var kind: String
     var ref: String
     var source: String?
+    var title: String?
+    var snippet: String?
+    var engine: String?
+    var publishedAt: String?
+    var evidenceState: String?
     var retrievedAt: Date?
     var createdAt: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, ref, source, payload, retrievedAt, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        kind = try values.decode(String.self, forKey: .kind)
+        ref = try values.decode(String.self, forKey: .ref)
+        source = try values.decodeIfPresent(String.self, forKey: .source)
+        retrievedAt = try values.decodeIfPresent(Date.self, forKey: .retrievedAt)
+        createdAt = try values.decodeIfPresent(Date.self, forKey: .createdAt)
+        let payload = try values.decodeIfPresent(
+            ResearchEvidencePayload.self,
+            forKey: .payload
+        )
+        title = payload?.title
+        snippet = payload?.snippet
+        engine = payload?.engine
+        publishedAt = payload?.publishedAt
+        evidenceState = payload?.evidenceState
+    }
+
+    var sourceURL: URL? {
+        guard let rawURL = ref as String?,
+              let url = URL(string: rawURL),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+            return nil
+        }
+        return url
+    }
+
+    var isUnverifiedSearchResult: Bool {
+        kind == "WEB_SEARCH_RESULT" && evidenceState == "UNVERIFIED_SEARCH_RESULT"
+    }
 }
 
 struct ResearchPlan: Decodable, Equatable, Identifiable {
