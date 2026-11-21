@@ -56,7 +56,7 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE INDEX ix_market_workspaces_org_status_updated "
-        "ON market_workspaces (organization_id, status, updated_at DESC)"
+        "ON market_workspaces (organization_id, status, updated_at)"
     )
 
     op.execute(
@@ -99,7 +99,7 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE INDEX ix_market_context_org_workspace_created "
-        "ON market_context_snapshots (organization_id, workspace_id, created_at DESC)"
+        "ON market_context_snapshots (organization_id, workspace_id, created_at)"
     )
     op.execute(
         "CREATE UNIQUE INDEX uq_market_context_current "
