@@ -682,17 +682,18 @@ class MarketOpportunity(Base):
         CheckConstraint(
             "status NOT IN ('QUALIFIED','ACTION_PLANNED','WON','LOST') OR "
             "(qualified_by_user_id IS NOT NULL AND qualified_at IS NOT NULL "
-            "AND length(btrim(qualification_reason)) > 0)",
+            "AND qualification_reason IS NOT NULL AND length(btrim(qualification_reason)) > 0)",
             name="qualified_has_human_approval",
         ),
         CheckConstraint(
             "status NOT IN ('WON','LOST') OR "
             "(outcome_recorded_by_user_id IS NOT NULL AND outcome_recorded_at IS NOT NULL "
-            "AND length(btrim(outcome_note)) > 0)",
+            "AND outcome_note IS NOT NULL AND length(btrim(outcome_note)) > 0)",
             name="terminal_outcome_has_actor_and_note",
         ),
         CheckConstraint(
-            "status <> 'DISQUALIFIED' OR length(btrim(disqualification_reason)) > 0",
+            "status <> 'DISQUALIFIED' OR (disqualification_reason IS NOT NULL "
+            "AND length(btrim(disqualification_reason)) > 0)",
             name="disqualified_has_reason",
         ),
         Index("ix_market_opportunities_org_workspace_status", "organization_id", "workspace_id", "status"),
@@ -867,7 +868,7 @@ class MarketOpportunityEntity(Base):
                 "market_workspace_entities.workspace_id",
                 "market_workspace_entities.entity_id",
             ],
-            ondelete="RESTRICT",
+            ondelete="CASCADE",
             name="fk_market_opp_entity_workspace_entity",
         ),
         UniqueConstraint(
