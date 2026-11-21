@@ -191,6 +191,11 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/customers/\(id)")
     }
 
+    /// All explicitly linked addresses for a customer.
+    static func customerPlaces(customerId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/customers/\\(customerId)/places")
+    }
+
     // MARK: - Assistant
 
     static func createAssistantConversation(body: [String: String]) throws -> APIRequest {
