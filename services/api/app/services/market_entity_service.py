@@ -9,7 +9,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.api.errors import BadRequest, Conflict, NotFound
 from app.models.geo import Customer
@@ -32,8 +32,12 @@ def normalize_domain(value: str | None) -> str | None:
     if value is None or not value.strip():
         return None
     raw = value.strip()
-    parsed = urlsplit(raw if "://" in raw else f"//{raw}")
-    if parsed.username or parsed.password or parsed.port:
+    try:
+        parsed = urlsplit(raw if "://" in raw else f"//{raw}")
+        port = parsed.port
+    except ValueError as exc:
+        raise BadRequest("主域名格式无效") from exc
+    if parsed.username or parsed.password or port:
         raise BadRequest("主域名不能包含用户名、密码或端口")
     host = parsed.hostname
     if not host:
@@ -365,6 +369,7 @@ def list_workspace_entities(
 
     entity_ids = [entity.id for _, entity in rows]
     alias_map: dict[UUID, list[dict]] = {entity_id: [] for entity_id in entity_ids}
+    duplicate_map: dict[UUID, list[UUID]] = {entity_id: [] for entity_id in entity_ids}
     if entity_ids:
         aliases = session.scalars(
             select(MarketEntityAlias)
@@ -390,6 +395,27 @@ def list_workspace_entities(
                 }
             )
 
+        duplicate_entity = aliased(MarketEntity)
+        duplicate_rows = session.execute(
+            select(MarketEntity.id, duplicate_entity.id)
+            .join(
+                duplicate_entity,
+                (duplicate_entity.organization_id == MarketEntity.organization_id)
+                & (duplicate_entity.normalized_name == MarketEntity.normalized_name)
+                & (
+                    func.coalesce(duplicate_entity.country_code, "")
+                    == func.coalesce(MarketEntity.country_code, "")
+                )
+                & (duplicate_entity.id != MarketEntity.id),
+            )
+            .where(
+                MarketEntity.organization_id == str(organization_id),
+                MarketEntity.id.in_(entity_ids),
+            )
+        ).all()
+        for entity_row_id, duplicate_id in duplicate_rows:
+            duplicate_map[entity_row_id].append(duplicate_id)
+
     result: list[dict] = []
     for link, entity in rows:
         entity_payload = {
@@ -414,7 +440,7 @@ def list_workspace_entities(
                 "status": link.status,
                 "first_seen_at": link.first_seen_at,
                 "last_seen_at": link.last_seen_at,
-                "possible_duplicate_entity_ids": [],
+                "possible_duplicate_entity_ids": duplicate_map[entity.id],
                 "reused_by_domain": False,
             }
         )
