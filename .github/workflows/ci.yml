@@ -12,14 +12,9 @@ on:
 
 jobs:
   backend:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -27,20 +22,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-      - name: Generate and sync contracts (temporary bootstrap)
-        if: github.event_name == 'pull_request'
-        env:
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          make openapi
-          make ios-contract-samples
-          if ! git diff --quiet -- contracts/openapi.json contracts/openapi.yaml apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add contracts/openapi.json contracts/openapi.yaml apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift
-            git commit -m "chore(api): sync generated OpenAPI and iOS contract samples"
-            git push origin "HEAD:refs/heads/${PR_HEAD_REF}"
-          fi
       - name: Static + contract + docs
         run: |
           make lint
