@@ -21,6 +21,7 @@ from app.api.deps import (
 from app.api.idempotent import IdempotentWrite
 from app.api.schemas import (
     ResearchExecuteAccepted,
+    ResearchExecuteCreate,
     ResearchPlanCreate,
     ResearchPlanRead,
 )
@@ -69,6 +70,7 @@ def create_plan(
 )
 def execute_plan(
     plan_id: UUID,
+    payload: ResearchExecuteCreate,
     context: ContextDep,
     session: SessionDep,
     idempotency_key: IdempotencyKeyDep,
@@ -79,7 +81,10 @@ def execute_plan(
         context.organization_id,
         endpoint=f"POST /v1/research/plans/{plan_id}:execute",
         key=idempotency_key,
-        payload={"plan_id": str(plan_id)},
+        payload={
+            "plan_id": str(plan_id),
+            "search_queries": payload.search_queries,
+        },
     )
     if (replay := guard.begin()) is not None:
         return replay
@@ -87,6 +92,7 @@ def execute_plan(
         session,
         context.organization_id,
         plan_id,
+        reviewed_search_queries=payload.search_queries,
         user_id=context.user_id,
     )
     return guard.finish(status_code=status.HTTP_202_ACCEPTED, body=body)
