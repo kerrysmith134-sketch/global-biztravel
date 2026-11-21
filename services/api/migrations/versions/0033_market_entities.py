@@ -59,9 +59,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_market_entities_organization_id ON market_entities (organization_id)"
     )
     op.execute(
-        "CREATE UNIQUE INDEX uq_market_entities_org_domain "
-        "ON market_entities (organization_id, canonical_domain) "
-        "WHERE canonical_domain IS NOT NULL"
+        "CREATE INDEX ix_market_entities_org_domain "
+        "ON market_entities (organization_id, canonical_domain)"
     )
     op.execute(
         "CREATE INDEX ix_market_entities_org_kind_name "
