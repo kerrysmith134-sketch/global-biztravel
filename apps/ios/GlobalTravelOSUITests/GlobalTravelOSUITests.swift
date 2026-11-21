@@ -37,7 +37,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.navigationBars["今日"].waitForExistence(timeout: 15),
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
         // 触发一次中断监视器（若系统弹窗出现会在这里被关闭）。
@@ -140,7 +140,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.navigationBars["今日"].waitForExistence(timeout: 15),
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
         XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10), "阶段失守：按钮 出行 未出现")
@@ -240,7 +240,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
         app.launch()
         XCTAssertTrue(
-            app.navigationBars["今日"].waitForExistence(timeout: 15),
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
             "阶段失守：启动（Today 页未出现）"
         )
 
@@ -767,7 +767,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         try seedImportFixture()
         app.launch()
         XCTAssertTrue(
-            app.navigationBars["今日"].waitForExistence(timeout: 15),
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
 
