@@ -340,6 +340,8 @@ def _running_job(session: Session, job_id: UUID | str) -> BackgroundJob:
 
 __all__ = [
     "JOB_TYPE_FX_SYNC",
+    "JOB_TYPE_MARKET_PAGE_EXTRACT",
+    "JOB_TYPE_MARKET_QUESTION_ANSWER",
     "JOB_TYPE_PLAN_TRIP",
     "JOB_TYPE_RESEARCH_EXECUTE",
     "KNOWN_JOB_TYPES",
