@@ -1456,6 +1456,7 @@ class ResearchPlanCreate(BaseModel):
     source_scope: ResearchSourceScope = "AUTO"
     trip_id: UUID | None = None
     customer_id: UUID | None = None
+    workspace_id: UUID | None = None
     context_text: str | None = Field(default=None, max_length=16000)
     locale: str | None = Field(default=None, max_length=35)
 
@@ -1545,6 +1546,7 @@ class ResearchPlanRead(BaseModel):
     id: UUID
     trip_id: UUID | None = None
     customer_id: UUID | None = None
+    workspace_id: UUID | None = None
     job_id: UUID | None = None
     retrieval_error: str | None = None
     results_count: int = 0
