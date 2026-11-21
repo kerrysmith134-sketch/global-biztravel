@@ -88,6 +88,7 @@ final class AssistantViewModel: ObservableObject {
 struct AssistantView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: AssistantViewModel
+    @State private var showsResearchWorkspace = false
     @Environment(\.dismiss) private var dismiss
 
     init(environment: AppEnvironment, tripId: String? = nil) {
@@ -111,6 +112,14 @@ struct AssistantView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showsResearchWorkspace = true
+                    } label: {
+                        Image(systemName: "doc.text.magnifyingglass")
+                    }
+                    .accessibilityLabel("新建研究")
                 }
                 if viewModel.detail != nil {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -146,6 +155,12 @@ struct AssistantView: View {
                 }
             }
             .task { await viewModel.loadList() }
+            .sheet(isPresented: $showsResearchWorkspace) {
+                ResearchWorkspaceView(
+                    environment: environment,
+                    tripId: viewModel.tripId ?? viewModel.detail?.conversation.tripId
+                )
+            }
         }
     }
 
