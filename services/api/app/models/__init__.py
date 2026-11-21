@@ -28,13 +28,13 @@ from app.models.market import (
     MarketInsightEvidence,
     MarketOpportunity,
     MarketOpportunityAssessment,
-    MarketOpportunityEvidence,
     MarketOpportunityEntity,
-    MarketWorkspaceTripLink,
+    MarketOpportunityEvidence,
     MarketQuestionDependency,
     MarketResearchQuestion,
     MarketWorkspace,
     MarketWorkspaceEntity,
+    MarketWorkspaceTripLink,
     MarketWorkspaceWorkflow,
 )
 from app.models.memory import PlanAttemptLog, TravelerProfile, TripMemorySummary
