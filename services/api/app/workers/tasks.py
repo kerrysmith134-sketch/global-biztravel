@@ -23,6 +23,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from travel_planner import SolverFailed, plan_trip
 
@@ -959,21 +960,7 @@ def handle_market_source_page_extraction(
         actor_user_id=None,
     )
 
-    derivation = MarketEvidenceDerivation(
-        organization_id=job.organization_id,
-        workspace_id=workspace_id,
-        source_evidence_id=source.id,
-        derived_evidence_id=extracted.id,
-        workflow_id=workflow.id,
-        agent_run_id=run.id,
-        derivation_type="WEB_PAGE_TEXT_EXTRACTION",
-        extractor_version=page.extractor_version,
-        source_url=page.final_url,
-        content_hash=page.content_hash,
-    )
     # If a task is replayed after a worker-side retry, the lineage edge remains unique.
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-
     session.execute(
         pg_insert(MarketEvidenceDerivation.__table__)
         .values(
