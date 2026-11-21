@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
-from app.models.market import MarketInsight, MarketInsightEvidence, MarketWorkspace
+from app.models.market import MarketActivityEvent, MarketInsight, MarketInsightEvidence, MarketWorkspace
 from app.models.workflow import Evidence
 from app.services import evidence_service
 from fastapi.testclient import TestClient
@@ -139,6 +139,14 @@ def test_market_evidence_content_versioning_is_idempotent(client: TestClient) ->
             ).all()
             assert len(versions) == 3
             assert {str(row.id) for row in versions} == evidence_ids
+            activity_count = session.scalar(
+                select(func.count()).select_from(MarketActivityEvent).where(
+                    MarketActivityEvent.organization_id == UUID(ORG_A),
+                    MarketActivityEvent.workspace_id == UUID(workspace_id),
+                    MarketActivityEvent.event_type == "MARKET_EVIDENCE_RECORDED",
+                )
+            )
+            assert activity_count == 3  # The same source/body replay adds no duplicate event.
 
         with org_session(UUID(ORG_B)) as session:
             assert session.scalar(
