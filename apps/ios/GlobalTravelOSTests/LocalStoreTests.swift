@@ -30,7 +30,7 @@ final class LocalStoreTests: XCTestCase {
             path: temporaryDirectory.appendingPathComponent("test.sqlite3")
         )
         let count = try reopened.count(table: "schema_migrations")
-        XCTAssertGreaterThanOrEqual(count, 5)
+        XCTAssertGreaterThanOrEqual(count, 6)
         let again = try reopened.count(table: "schema_migrations")
         XCTAssertEqual(again, count)
     }
