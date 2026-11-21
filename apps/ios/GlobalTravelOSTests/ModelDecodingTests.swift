@@ -51,7 +51,13 @@ final class ModelDecodingTests: XCTestCase {
           "summary": {
             "customers_with_locations": 1, "customers_without_locations": 2,
             "locations_total": 3, "locations_mapped": 2,
-            "locations_missing_coordinates": 1, "countries": {"DE": 2, "NL": 1}
+            "locations_missing_coordinates": 1, "countries": {"DE": 2, "NL": 1},
+            "country_stats": [{
+              "country_code": "DE", "customers_total": 2,
+              "tier_a_customers": 1, "tier_b_customers": 0, "tier_c_customers": 1,
+              "active_customers": 2, "prospect_customers": 0, "inactive_customers": 0,
+              "locations_total": 2, "locations_mapped": 2
+            }]
           },
           "next_cursor": "200"
         }
@@ -64,6 +70,9 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(value.items[0].place.geocodeConfidence, Decimal(string: "0.98"))
         XCTAssertEqual(value.summary.locationsMissingCoordinates, 1)
         XCTAssertEqual(value.summary.countries["DE"], 2)
+        XCTAssertEqual(value.summary.countryStats.first?.customersTotal, 2)
+        XCTAssertEqual(value.summary.countryStats.first?.tierACustomers, 1)
+        XCTAssertEqual(value.summary.countryStats.first?.locationsTotal, 2)
         XCTAssertEqual(value.nextCursor, "200")
     }
 
