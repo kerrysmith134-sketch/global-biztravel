@@ -164,7 +164,7 @@ def upgrade() -> None:
             created_at timestamptz NOT NULL DEFAULT now(),
             CONSTRAINT uq_market_question_dependency
                 UNIQUE (organization_id, question_id, depends_on_question_id),
-            CONSTRAINT ck_market_question_dependencies_not_self
+            CONSTRAINT ck_market_question_dependencies_not_self_dependency
                 CHECK (question_id <> depends_on_question_id),
             CONSTRAINT fk_market_question_dependency_question
                 FOREIGN KEY (organization_id, workspace_id, question_id)
