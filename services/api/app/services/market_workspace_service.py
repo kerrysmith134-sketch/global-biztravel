@@ -105,32 +105,32 @@ def create_workspace(
     )
 
     if initial_context is not None and initial_context.strip():
-            snapshot = MarketContextSnapshot(
-                organization_id=organization_id,
-                workspace_id=workspace.id,
-                version=1,
-                raw_input=initial_context,
-                extracted_context={},
-                user_overrides={},
-                unknowns=[],
-                provenance={"raw_input": {"source": "USER"}},
-                extraction_status="NOT_STARTED",
-                is_current=True,
-                created_by_user_id=created_by_user_id,
-            )
-            session.add(snapshot)
-            workspace.current_context_version = 1
-            session.flush()
-            _record_activity(
-                session,
-                organization_id,
-                workspace.id,
-                actor_user_id=created_by_user_id,
-                aggregate_type="market_context_snapshot",
-                aggregate_id=snapshot.id,
-                event_type="CONTEXT_SNAPSHOT_CREATED_AND_ADOPTED",
-                payload={"version": 1},
-            )
+        snapshot = MarketContextSnapshot(
+            organization_id=organization_id,
+            workspace_id=workspace.id,
+            version=1,
+            raw_input=initial_context,
+            extracted_context={},
+            user_overrides={},
+            unknowns=[],
+            provenance={"raw_input": {"source": "USER"}},
+            extraction_status="NOT_STARTED",
+            is_current=True,
+            created_by_user_id=created_by_user_id,
+        )
+        session.add(snapshot)
+        workspace.current_context_version = 1
+        session.flush()
+        _record_activity(
+            session,
+            organization_id,
+            workspace.id,
+            actor_user_id=created_by_user_id,
+            aggregate_type="market_context_snapshot",
+            aggregate_id=snapshot.id,
+            event_type="CONTEXT_SNAPSHOT_CREATED_AND_ADOPTED",
+            payload={"version": 1},
+        )
 
     session.flush()
     return workspace
