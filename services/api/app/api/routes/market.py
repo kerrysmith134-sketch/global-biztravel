@@ -43,14 +43,14 @@ from app.api.schemas import (
     MarketOpportunityRead,
     MarketOpportunityStatus,
     MarketOpportunityTransition,
-    MarketWorkspaceTripLinkCreate,
-    MarketWorkspaceTripLinkRead,
     MarketResearchQuestionCreate,
     MarketResearchQuestionRead,
     MarketWorkspaceCreate,
     MarketWorkspaceEntityCreate,
     MarketWorkspaceEntityRead,
     MarketWorkspaceRead,
+    MarketWorkspaceTripLinkCreate,
+    MarketWorkspaceTripLinkRead,
     Page,
     ResearchPlanRead,
 )
@@ -65,6 +65,7 @@ from app.services import (
 router = APIRouter(tags=["market intelligence"])
 
 WORKSPACES_ENDPOINT = "POST /v1/market/workspaces"
+OPPORTUNITY_STATUS_QUERY = Query(default=None, alias="status")
 
 
 @router.get(
@@ -707,7 +708,7 @@ def list_market_opportunities(
     session: SessionDep,
     limit: int | None = Query(default=None, ge=1),
     cursor: str | None = Query(default=None),
-    status_filter: MarketOpportunityStatus | None = Query(default=None, alias="status"),
+    status_filter: MarketOpportunityStatus | None = OPPORTUNITY_STATUS_QUERY,
 ):
     require_role(context, ROLE_VIEWER)
     page_size = clamp_limit(limit)
