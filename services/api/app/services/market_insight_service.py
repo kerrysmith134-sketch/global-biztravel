@@ -399,6 +399,16 @@ def review_insight(
     actor_user_id: UUID,
     review_note: str | None,
 ) -> dict[str, Any]:
+    workspace = session.scalars(
+        select(MarketWorkspace)
+        .where(
+            MarketWorkspace.organization_id == organization_id,
+            MarketWorkspace.id == workspace_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if workspace is None:
+        raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
     row = session.scalars(
         select(MarketInsight)
         .where(
