@@ -48,7 +48,7 @@ H1 不实现完整外部研究抓取、行业策略生成或自主商务外联�
 
 源码审计已确认 `0031_visa_catalog_overrides.py` 存在，revision 为 `0031_visa_catalog_overrides`，其父 revision 为 `0030_traveler_nationality`；模型注册入口也已导入 `VisaCatalogOverride`。README 的迁移目录说明曾停留在 0030，属于 README 落后，而不是迁移文件缺失。H1.0 审计报告：`docs/review/sprint-h1-code-audit.md`。
 
-- README 已更新为源码最新 revision 0031。
+- 审计当时 README 已更新到 revision 0031；当前源码迁移清单已推进至 0034_market_insights_evidence_versions。
 - H1.1 仍须在实际数据库环境执行 `alembic heads` 和 `alembic current`；源码 revision 图不能证明部署数据库已升级。
 - 新迁移必须从 0031_visa_catalog_overrides 后向前新增，不得改写历史迁移。
 - 若实际数据库发现多个 head 或版本落后，先按项目既有流程解决，不得绕过迁移治理。
@@ -352,11 +352,11 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 - OpenAPI 与 Swift 契约样本由项目生成器同步。
 
 **当前尚未完成：**
-- MarketInsight、MarketOpportunity、Evidence 内容版本化及显式证据关系；
+- MarketOpportunity、OpportunityEvidence、Workspace ↔ Trip 关联；
 - 原生 iOS Workspace 列表/详情/Context Review；
 - 真实数据库迁移与完整门禁最终验证。
 
-**验证纪律：** 当前已有 CI #196 的 Ruff、MyPy 和 OpenAPI contract-check 通过记录；docs-check 当时因 0032/0033 未登记失败，迁移文档现已修正。CI #206 正在对更新后的分支执行严格检查；在 CI 最终完成前，不宣称 PostgreSQL migration、Alembic check、全量测试、E2E 或 iOS 全套验证通过。
+**验证纪律：** H1.2 / PR #3 的严格 CI #210 已验证 Backend 与 iOS 全部通过（含 PostgreSQL 迁移、Alembic drift、全量 Backend pytest、SwiftLint、Xcode Build 与 iOS Unit Tests）。H1.3 / PR #4 已新增 Evidence 与 Insight 切片；其当前严格 CI 仍在执行，只有最新 PR #4 运行全部通过后，才能将 0034 迁移、Alembic drift、全量测试和 iOS 验证标记为通过。
 
 ## 10. H1.2 纵向切片（叠加现有用户驱动 ResearchPlan）
 
