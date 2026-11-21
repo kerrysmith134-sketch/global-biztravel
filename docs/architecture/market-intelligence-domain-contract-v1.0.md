@@ -174,7 +174,7 @@ TravelerProfile 只表达旅客偏好与旅行背景，不承载企业业务画�
 | display_name | text | 当前显示名称 |
 | normalized_name | text | 用于匹配的标准化文本 |
 | description | text nullable | 研究摘要 |
-| canonical_domain | text nullable | 已验证时记录主域名 |
+| canonical_domain | text nullable | 来源中观察到的主域名；同域名不等于同一法律/商业主体 |
 | country_code | char(2) nullable | 可为空；不得猜测 |
 | attributes | JSONB | 有 schema version 的扩展属性 |
 | status | text | CANDIDATE / REVIEWED / VERIFIED / REJECTED / MERGED |
@@ -183,8 +183,9 @@ TravelerProfile 只表达旅客偏好与旅行背景，不承载企业业务画�
 
 约束：
 - 原始名称和别名不得因规范化而丢失。
-- 不以名称相似度单独自动合并。
-- MERGED 必须指向同组织、非自身的目标实体；原实体仍可审计。
+- 不以名称相似度、国家或域名单独自动合并；域名相同（如母子公司、品牌站、区域站）只产生 possible-duplicate 提示。
+- 跨 Workspace 复用一个 MarketEntity 必须由用户显式选择已有 entity_id；不能通过 canonical_domain 隐式复用。
+- MERGED 必须指向同组织、非自身的目标实体，并由用户/授权业务规则显式确认；原实体仍可审计。
 - VERIFIED 需要证据或用户确认，不由模型自评触发。
 
 ### 3.5 MarketEntityAlias
@@ -193,7 +194,7 @@ TravelerProfile 只表达旅客偏好与旅行背景，不承载企业业务画�
 
 字段：entity_id、alias_type（动态文本）、raw_value、normalized_value、source_evidence_id（nullable）、created_at。
 
-同一个 alias 可以对应多个候选实体，因此不应简单设置 organization + alias_type + normalized_value 全局唯一；应建立检索索引并返回歧义候选。
+同一个 alias（包括 canonical domain）可以对应多个候选实体，因此只在同一实体内约束重复 alias；不得设置 organization + alias_type + normalized_value 全局唯一。应建立检索索引并返回歧义候选。
 
 ### 3.6 MarketWorkspaceEntity
 
