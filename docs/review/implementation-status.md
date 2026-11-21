@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0036`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0037`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -102,6 +102,7 @@
                            0034_market_insights_evidence_versions
                            0035_market_opportunities
                            0036_market_research_plan_evidence
+                           0037_market_question_answers
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -333,3 +334,22 @@ H1.4 当前代码 head 已通过 Backend 严格门禁：Ruff、MyPy、OpenAPI、
 新增集成验收覆盖：相同 Workspace、相同 URL、相同内容跨 ResearchPlan 只形成一条 Evidence；查询归属分别保存；同 URL 内容变化追加新版本；ResearchPlan 详情和 Workspace Evidence 列表均可读取；未核验状态不被抬高。
 
 该切片仍不负责自动抓取全文、事实核验、LLM 综合结论或自动采纳 Insight；这些需要后续 Research Agent/Verification Agent 阶段。
+
+
+## 13. 市场情报引擎 H1.6 — ResearchQuestion 答案版本与证据审阅
+
+新增迁移 `0037_market_question_answers.py`（revision `0037_market_q_answers`，父 revision `0036_market_plan_ev`），增加：
+- MarketResearchQuestionAnswer：每个问题的不可变答案版本、假设、未知项、置信度、证据缺口、来源 AgentRun 与审核记录；
+- MarketResearchQuestionAnswerEvidence：明确 SUPPORTS / CONTRADICTS / CONTEXT 关系，引用同组织 Evidence；
+- 人工审核接口：答案默认 NEEDS_REVIEW；支持、反驳并存标记 CONFLICTED；只有人工 Admin 接受后，ResearchQuestion 才变为 ANSWERED；
+- 版本修订追加写入；新版本被采纳时旧 ACCEPTED 版本转 SUPERSEDED，同一问题至多一个 ACCEPTED；
+- acceptance_criteria 中的 independent_sources 在采纳前由后端检查独立来源 host 数量；其它未实现自动判定的标准要求审核说明，不伪装成机器验证；
+- 答案 Evidence 只允许来自当前 Workspace 或其关联 ResearchPlan；跨 Workspace 引用在 Service 层拒绝，数据库复合外键约束组织和 Workspace 边界；
+- 创建、采纳、驳回事件进入 MarketActivityEvent。
+
+新增 API：
+- POST/GET /v1/market/workspaces/{workspace_id}/questions/{question_id}/answers
+- POST .../answers/{answer_id}:accept
+- POST .../answers/{answer_id}:reject
+
+该切片只建立证据驱动、可审核的答案工作流；尚未实现 LLM 自动回答/事实核验 Agent，也不自动将 ResearchPlan 产出的摘要采纳为答案。需要最新 CI 的 PostgreSQL 迁移、Alembic drift、全量 Backend pytest 和 iOS 门禁通过后才能验收。
