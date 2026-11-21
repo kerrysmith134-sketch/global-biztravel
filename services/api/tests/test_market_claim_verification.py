@@ -352,7 +352,7 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
             headers=headers(),
         )
         assert answers.status_code == 200, answers.text
-        assert answers.json()[0]["status"] == "NEEDS_REVIEW"
+        assert answers.json()[0]["status"] == "CONFLICTED"
 
         assert len(gateway.requests) == 1
         request = gateway.requests[0]["request"]
