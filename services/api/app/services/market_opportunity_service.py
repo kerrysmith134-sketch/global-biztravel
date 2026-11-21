@@ -22,6 +22,7 @@ from app.models.market import (
     MarketWorkspaceTripLink,
     MarketWorkspaceWorkflow,
 )
+from app.models.identity import Membership
 from app.models.trip import Trip
 from app.models.workflow import AgentRun, Evidence
 
@@ -171,6 +172,15 @@ def create_opportunity(
     _validate_run_for_workspace(
         session, organization_id, workspace_id, created_by_run_id, field="创建来源 AgentRun"
     )
+    if owner_user_id is not None:
+        member = session.scalars(
+            select(Membership).where(
+                Membership.organization_id == organization_id,
+                Membership.user_id == owner_user_id,
+            )
+        ).one_or_none()
+        if member is None:
+            raise NotFound("指定负责人不是当前组织成员")
     row = MarketOpportunity(
         organization_id=organization_id,
         workspace_id=workspace_id,
@@ -256,7 +266,7 @@ def add_opportunity_evidence(
     rationale: str | None,
     actor_user_id: UUID,
 ) -> dict[str, Any]:
-    opportunity = _opportunity(session, organization_id, workspace_id, opportunity_id)
+    opportunity = _opportunity(session, organization_id, workspace_id, opportunity_id, lock=True)
     allowed_evidence, _ = _evidence_scope(session, organization_id, workspace_id)
     if evidence_id not in allowed_evidence:
         raise NotFound(
@@ -328,7 +338,7 @@ def attach_opportunity_entities(
     relationship_note: str | None,
     actor_user_id: UUID,
 ) -> list[MarketEntity]:
-    _opportunity(session, organization_id, workspace_id, opportunity_id)
+    _opportunity(session, organization_id, workspace_id, opportunity_id, lock=True)
     if len(entity_ids) != len(set(entity_ids)):
         raise Unprocessable("MarketEntity ID 不得重复")
     if not entity_ids:
@@ -680,7 +690,7 @@ def link_trip_to_workspace(
     link_note: str | None,
     actor_user_id: UUID,
 ) -> dict[str, Any]:
-    _workspace(session, organization_id, workspace_id)
+    _workspace(session, organization_id, workspace_id, lock=True)
     trip = session.scalars(
         select(Trip).where(
             Trip.organization_id == organization_id,
