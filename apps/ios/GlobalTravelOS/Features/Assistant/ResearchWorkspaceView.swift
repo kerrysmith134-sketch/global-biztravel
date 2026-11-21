@@ -284,9 +284,13 @@ struct ResearchWorkspaceView: View {
                     Spacer()
                     DSDataQualityTag(kind: .stale, text: plan.retrievalStatusLabel)
                 }
-                Text("计划已生成，外部证据尚未采集。")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(DS.ColorToken.textPrimary)
+                Text(
+                    plan.plan.externalResearchNeeded
+                        ? "计划已生成，外部证据尚未采集。"
+                        : "计划已生成，本次请求无需外部检索。"
+                )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ColorToken.textPrimary)
                 Text("规划器：\(plan.planner.model)\(plan.planner.degraded ? " · 已降级" : "")")
                     .font(.caption2)
                     .foregroundStyle(DS.ColorToken.textSecondary)
@@ -337,6 +341,11 @@ struct ResearchWorkspaceView: View {
                             Text(item.kind.replacingOccurrences(of: "_", with: " "))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(DS.ColorToken.textPrimary)
+                            if let source = item.source {
+                                Text("来源：\\(source)")
+                                    .font(.caption2)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                            }
                             Text(item.ref)
                                 .font(.caption2.monospaced())
                                 .foregroundStyle(DS.ColorToken.textSecondary)
