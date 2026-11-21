@@ -153,6 +153,11 @@ struct VisitCreateSheet: View {
         customerPlaces = []
         selectedCustomerPlaceID = ""
         customerPlacesMessage = nil
+        customerName = ""
+        city = ""
+        countryCode = ""
+        latitude = ""
+        longitude = ""
         guard !customerId.isEmpty else { return }
 
         isLoadingCustomerPlaces = true
@@ -171,11 +176,18 @@ struct VisitCreateSheet: View {
     }
 
     private func applyCustomerPlace(_ placeID: String) {
-        guard !placeID.isEmpty,
-              let place = customerPlaces.first(where: { $0.placeId == placeID }) else { return }
+        guard !placeID.isEmpty else {
+            customerName = ""
+            city = ""
+            countryCode = ""
+            latitude = ""
+            longitude = ""
+            return
+        }
+        guard let place = customerPlaces.first(where: { $0.placeId == placeID }) else { return }
         customerName = place.name
         city = place.city ?? ""
-        countryCode = place.countryCode ?? countryCode
+        countryCode = place.countryCode ?? ""
         if place.hasValidCoordinates, let lat = place.lat, let lon = place.lon {
             latitude = String(lat)
             longitude = String(lon)
