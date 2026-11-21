@@ -301,37 +301,39 @@ struct PlanMapView: View {
     private var dayFilter: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: DS.Spacing.xs) {
-                filterChip(title: "全部日期", selected: selectedDayIndex == nil) {
-                    selectedDayIndex = nil
-                    selectedStopID = nil
-                    selectedCustomerPlaceID = nil
-                    position = .automatic
-                }
-                filterChip(title: "全部拜访", selected: !showsOpenVisitsOnly) {
-                    showsOpenVisitsOnly = false
-                    selectedStopID = nil
-                    selectedCustomerPlaceID = nil
-                }
-                filterChip(title: "待执行", selected: showsOpenVisitsOnly) {
-                    showsOpenVisitsOnly = true
-                    selectedStopID = nil
-                    selectedCustomerPlaceID = nil
+                if !dayRoutes.isEmpty {
+                    filterChip(title: "全部日期", selected: selectedDayIndex == nil) {
+                        selectedDayIndex = nil
+                        selectedStopID = nil
+                        selectedCustomerPlaceID = nil
+                        position = .automatic
+                    }
+                    filterChip(title: "全部拜访", selected: !showsOpenVisitsOnly) {
+                        showsOpenVisitsOnly = false
+                        selectedStopID = nil
+                        selectedCustomerPlaceID = nil
+                    }
+                    filterChip(title: "待执行", selected: showsOpenVisitsOnly) {
+                        showsOpenVisitsOnly = true
+                        selectedStopID = nil
+                        selectedCustomerPlaceID = nil
+                    }
+                    ForEach(dayRoutes, id: \.dayIndex) { route in
+                        filterChip(
+                            title: "第 \(route.dayIndex) 天",
+                            selected: selectedDayIndex == route.dayIndex
+                        ) {
+                            selectedDayIndex = route.dayIndex
+                            selectedStopID = nil
+                            selectedCustomerPlaceID = nil
+                            position = .automatic
+                        }
+                    }
                 }
                 if !customerLocations.isEmpty {
                     filterChip(title: "客户地址 · \(mappedCustomerLocations.count)", selected: showsCustomerLayer) {
                         showsCustomerLayer.toggle()
                         selectedCustomerPlaceID = nil
-                    }
-                }
-                ForEach(dayRoutes, id: \.dayIndex) { route in
-                    filterChip(
-                        title: "第 \(route.dayIndex) 天",
-                        selected: selectedDayIndex == route.dayIndex
-                    ) {
-                        selectedDayIndex = route.dayIndex
-                        selectedStopID = nil
-                        selectedCustomerPlaceID = nil
-                        position = .automatic
                     }
                 }
             }
