@@ -6232,13 +6232,13 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "title": "Idempotency-Key"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],
