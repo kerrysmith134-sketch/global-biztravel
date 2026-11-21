@@ -393,6 +393,19 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.navigationBars["行程地图"].waitForExistence(timeout: 15),
             "AT-006：地图视图未打开"
         )
+        let firstDayRoute = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS '第 1 天' AND label CONTAINS '选择首个拜访点'")
+        ).firstMatch
+        XCTAssertTrue(
+            firstDayRoute.waitForExistence(timeout: 10),
+            "AT-006：地图缺少可选择的每日路线卡"
+        )
+        firstDayRoute.tap()
+        XCTAssertTrue(
+            app.buttons["关闭拜访详情"].waitForExistence(timeout: 10),
+            "AT-006：点击地图路线后没有打开拜访详情抽屉"
+        )
+        app.buttons["关闭拜访详情"].tap()
         app.navigationBars["行程地图"].buttons.firstMatch.tap()
         XCTAssertTrue(
             app.navigationBars["计划详情"].waitForExistence(timeout: 10),
