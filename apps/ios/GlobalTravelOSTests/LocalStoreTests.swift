@@ -251,7 +251,12 @@ final class LocalStoreTests: XCTestCase {
             id: "map-rotterdam-factory", name: "Rotterdam Factory",
             countryCode: "NL", city: "Rotterdam", geocodeStatus: "MISSING"
         )
-        for place in [berlin, rotterdam] {
+        let hamburg = Place(
+            id: "map-hamburg-office", name: "Hamburg Office", countryCode: "DE",
+            latitude: 53.5511, longitude: 9.9937, city: "Hamburg",
+            geocodeStatus: "RESOLVED", geocodeSource: "client"
+        )
+        for place in [berlin, rotterdam, hamburg] {
             try database.upsert(
                 table: "places", id: place.id ?? "",
                 columns: ["name": place.name, "city": place.city],
@@ -267,6 +272,10 @@ final class LocalStoreTests: XCTestCase {
             request: CustomerPlaceLinkRequest(placeId: rotterdam.id ?? "", label: "工厂", isPrimary: false)
         )
         _ = try await repository.linkCustomerPlace(
+            customerId: customerA.id,
+            request: CustomerPlaceLinkRequest(placeId: hamburg.id ?? "", label: "区域办公室", isPrimary: false)
+        )
+        _ = try await repository.linkCustomerPlace(
             customerId: customerB.id,
             request: CustomerPlaceLinkRequest(placeId: berlin.id ?? "", label: "合作办公室", isPrimary: true)
         )
@@ -274,16 +283,22 @@ final class LocalStoreTests: XCTestCase {
         let all = try await repository.listGlobalCustomerMapLocations(
             filters: .all, page: PageRequest(limit: 50)
         )
-        XCTAssertEqual(all.items.count, 3)
+        XCTAssertEqual(all.items.count, 4)
         XCTAssertEqual(all.summary.customersWithLocations, 2)
         XCTAssertEqual(all.summary.customersWithoutLocations, 0)
-        XCTAssertEqual(all.summary.locationsMapped, 2)
+        XCTAssertEqual(all.summary.locationsMapped, 3)
         XCTAssertEqual(all.summary.locationsMissingCoordinates, 1)
+        let germany = try XCTUnwrap(all.summary.countryStats.first { $0.countryCode == "DE" })
+        XCTAssertEqual(germany.customersTotal, 2)
+        XCTAssertEqual(germany.locationsTotal, 3)
+        XCTAssertEqual(germany.locationsMapped, 3)
+        XCTAssertEqual(germany.tierACustomers, 1)
+        XCTAssertEqual(germany.tierCCustomers, 1)
 
         let aTier = try await repository.listGlobalCustomerMapLocations(
             filters: GlobalCustomerMapFilters(tier: "A"), page: PageRequest(limit: 50)
         )
-        XCTAssertEqual(aTier.items.count, 2)
+        XCTAssertEqual(aTier.items.count, 3)
         XCTAssertTrue(aTier.items.allSatisfy { $0.customer.tier == "A" })
 
         let missing = try await repository.listGlobalCustomerMapLocations(
