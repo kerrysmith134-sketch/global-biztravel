@@ -6104,6 +6104,107 @@
           }
         }
       }
+    },
+    "/v1/research/plans": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "根据用户意图生成研究计划（不执行检索）",
+        "operationId": "create_plan_v1_research_plans_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchPlanCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchPlanRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research/plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "读取研究计划、运行审计与证据来源",
+        "operationId": "get_plan_v1_research_plans__plan_id__get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchPlanRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -15258,6 +15359,370 @@
         ],
         "title": "CustomerMapCountryCoverageRead",
         "description": "按实际关联地点归集的国家客户覆盖；客户按国家去重，不表示外部市场规模。"
+      },
+      "ResearchPlanCreate": {
+        "properties": {
+          "request": {
+            "type": "string",
+            "maxLength": 6000,
+            "minLength": 3,
+            "title": "Request"
+          },
+          "source_scope": {
+            "type": "string",
+            "enum": [
+              "AUTO",
+              "INTERNAL_ONLY",
+              "EXTERNAL_ONLY",
+              "INTERNAL_AND_EXTERNAL"
+            ],
+            "title": "Source Scope",
+            "default": "AUTO"
+          },
+          "trip_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 35
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "title": "ResearchPlanCreate"
+      },
+      "ResearchPlanIntentRead": {
+        "properties": {
+          "intent_summary": {
+            "type": "string",
+            "title": "Intent Summary"
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "geographies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Geographies"
+          },
+          "entities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Entities"
+          },
+          "time_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "research_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Research Questions"
+          },
+          "search_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Search Queries"
+          },
+          "source_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Types"
+          },
+          "deliverables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Deliverables"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "external_research_needed": {
+            "type": "boolean",
+            "title": "External Research Needed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "intent_summary",
+          "objective",
+          "subject"
+        ],
+        "title": "ResearchPlanIntentRead",
+        "description": "模型从本次用户输入中提取的任务范围，不内置任何行业。"
+      },
+      "ResearchPlannerAuditRead": {
+        "properties": {
+          "agent_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Agent Run Id"
+          },
+          "llm_invocation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "degraded": {
+            "type": "boolean",
+            "title": "Degraded",
+            "default": false
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_run_id",
+          "model"
+        ],
+        "title": "ResearchPlannerAuditRead"
+      },
+      "ResearchEvidenceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "retrieved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "ref",
+          "created_at"
+        ],
+        "title": "ResearchEvidenceRead"
+      },
+      "ResearchPlanRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "trip_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "type": "string",
+            "title": "Request"
+          },
+          "requested_scope": {
+            "type": "string",
+            "enum": [
+              "AUTO",
+              "INTERNAL_ONLY",
+              "EXTERNAL_ONLY",
+              "INTERNAL_AND_EXTERNAL"
+            ],
+            "title": "Requested Scope"
+          },
+          "recommended_scope": {
+            "type": "string",
+            "enum": [
+              "INTERNAL_ONLY",
+              "EXTERNAL_ONLY",
+              "INTERNAL_AND_EXTERNAL"
+            ],
+            "title": "Recommended Scope"
+          },
+          "status": {
+            "type": "string",
+            "const": "PLANNED",
+            "title": "Status",
+            "default": "PLANNED"
+          },
+          "retrieval_status": {
+            "type": "string",
+            "const": "NOT_STARTED",
+            "title": "Retrieval Status",
+            "default": "NOT_STARTED"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ResearchPlanIntentRead"
+          },
+          "planner": {
+            "$ref": "#/components/schemas/ResearchPlannerAuditRead"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchEvidenceRead"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "request",
+          "requested_scope",
+          "recommended_scope",
+          "plan",
+          "planner",
+          "created_at"
+        ],
+        "title": "ResearchPlanRead"
       }
     }
   }
