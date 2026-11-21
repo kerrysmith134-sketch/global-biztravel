@@ -464,9 +464,10 @@ def enqueue_research_execution(
     organization_id: UUID | str,
     plan_id: UUID | str,
     *,
+    reviewed_search_queries: list[str],
     user_id: UUID | str,
 ) -> dict[str, Any]:
-    """Enqueue external retrieval only after the user explicitly starts the reviewed plan."""
+    """Enqueue only the exact search queries explicitly confirmed by the user."""
     workflow = session.scalars(
         select(WorkflowInstance).where(
             WorkflowInstance.organization_id == str(organization_id),
@@ -484,11 +485,16 @@ def enqueue_research_execution(
             "本次研究计划未要求外部资料，无需启动外部检索。",
             code="RESEARCH_EXTERNAL_NOT_REQUIRED",
         )
-    queries = _string_list(plan.get("search_queries"), limit=MAX_QUERIES)
+    queries = _string_list(reviewed_search_queries, limit=MAX_QUERIES)
     if not queries:
         raise Unprocessable(
-            "研究计划没有可执行的搜索查询，请先补充研究问题或重新生成计划。",
+            "请至少保留一条有效查询后再启动研究。",
             code="RESEARCH_QUERIES_MISSING",
+        )
+    if len(queries) != len(reviewed_search_queries):
+        raise Unprocessable(
+            "搜索查询数量超过上限或包含无效条目，请检查后重试。",
+            code="RESEARCH_QUERIES_INVALID",
         )
     provider = get_research_search_provider()
     if not provider.configured:
@@ -507,7 +513,10 @@ def enqueue_research_execution(
         session,
         organization_id,
         job_type=job_service.JOB_TYPE_RESEARCH_EXECUTE,
-        payload={"plan_id": str(workflow.id)},
+        payload={
+            "plan_id": str(workflow.id),
+            "query_digest": query_digest,
+        },
         dedupe_key=dedupe_key,
         created_by_user_id=user_id,
     )
@@ -516,6 +525,8 @@ def enqueue_research_execution(
     payload["retrieval_status"] = "QUEUED"
     payload["retrieval_error"] = None
     payload["retrieval_started_at"] = datetime.now(UTC).isoformat()
+    payload["reviewed_search_queries"] = queries
+    payload["reviewed_search_queries_sha256"] = query_digest
     payload["results_count"] = int(payload.get("results_count") or 0)
     workflow.payload = payload
     session.flush()
