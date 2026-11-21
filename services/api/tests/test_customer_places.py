@@ -196,11 +196,13 @@ def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestC
     )
     assert missing_place_response.status_code == 201, missing_place_response.text
     missing_place = missing_place_response.json()["id"]
+    second_resolved_place = make_place(client, city="Hamburg", name=f"{marker} Hamburg Office")
 
     try:
         for customer_id, place_id, label, primary in (
             (customer_a_id, resolved_place, "HQ", True),
             (customer_a_id, missing_place, "Factory", False),
+            (customer_a_id, second_resolved_place, "Regional office", False),
             (customer_b_id, resolved_place, "Partner office", True),
         ):
             response = client.post(
@@ -218,14 +220,23 @@ def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestC
         )
         assert result.status_code == 200, result.text
         body = result.json()
-        assert len(body["items"]) == 3
-        assert body["summary"]["locations_total"] == 3
-        assert body["summary"]["locations_mapped"] == 2
+        assert len(body["items"]) == 4
+        assert body["summary"]["locations_total"] == 4
+        assert body["summary"]["locations_mapped"] == 3
         assert body["summary"]["locations_missing_coordinates"] == 1
         assert body["summary"]["customers_with_locations"] == 2
         # This quality counter deliberately remains organization-wide, outside the search filter.
         assert body["summary"]["customers_without_locations"] >= 1
-        assert body["summary"]["countries"] == {"DE": 2, "NL": 1}
+        assert body["summary"]["countries"] == {"DE": 3, "NL": 1}
+        country_stats = {row["country_code"]: row for row in body["summary"]["country_stats"]}
+        # Customer A has two German locations but remains one German customer.
+        assert country_stats["DE"]["customers_total"] == 2
+        assert country_stats["DE"]["locations_total"] == 3
+        assert country_stats["DE"]["locations_mapped"] == 3
+        assert country_stats["DE"]["tier_a_customers"] == 1
+        assert country_stats["DE"]["tier_c_customers"] == 1
+        assert country_stats["NL"]["customers_total"] == 1
+        assert country_stats["NL"]["locations_mapped"] == 0
 
         filtered = client.get(
             "/v1/customers/map-locations",
@@ -238,8 +249,8 @@ def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestC
             headers=headers(),
         )
         assert filtered.status_code == 200, filtered.text
-        assert len(filtered.json()["items"]) == 1
-        assert filtered.json()["items"][0]["customer"]["id"] == customer_a_id
+        assert len(filtered.json()["items"]) == 2
+        assert all(item["customer"]["id"] == customer_a_id for item in filtered.json()["items"])
 
         missing_only = client.get(
             "/v1/customers/map-locations",
@@ -268,4 +279,8 @@ def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestC
             ]
             session.execute(delete(CustomerPlace).where(CustomerPlace.customer_id.in_(customer_ids)))
             session.execute(delete(Customer).where(Customer.id.in_(customer_ids)))
-            session.execute(delete(Place).where(Place.id.in_([UUID(resolved_place), UUID(missing_place)])))
+            session.execute(
+                delete(Place).where(
+                    Place.id.in_([UUID(resolved_place), UUID(missing_place), UUID(second_resolved_place)])
+                )
+            )
