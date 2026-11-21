@@ -1,8 +1,8 @@
 # Bash is available on both macOS developer machines and Linux CI runners.
 SHELL := /bin/bash
-# 绝对路径：migrate/revision/worker 需要在子目录里执行，相对路径会失效。
-# 必须加引号：工作目录含空格（".../Coding Work/..."），不加会被 shell 拆成两段。
-PY := "$(CURDIR)/.venv/bin/python"
+# Prefer the project venv for local development; fall back to setup-python's interpreter in CI.
+# Resolve to an absolute path so targets that cd into subdirectories keep using the same Python.
+PY := "$(if $(wildcard $(CURDIR)/.venv/bin/python),$(CURDIR)/.venv/bin/python,$(shell command -v python3))"
 PIP := $(PY) -m pip
 COMPOSE := docker compose -f infra/docker/docker-compose.yml
 # OrbStack 的 docker CLI 不在默认 PATH 中
