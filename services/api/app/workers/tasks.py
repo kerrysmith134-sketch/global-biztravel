@@ -293,7 +293,7 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
     if not queries:
         raise TaskFailed("没有可执行的用户确认查询", retryable=False)
 
-    reviewed_digest = sha256("\\n".join(queries).encode("utf-8")).hexdigest()
+    reviewed_digest = sha256("\n".join(queries).encode("utf-8")).hexdigest()
     expected_workflow_digest = payload.get("reviewed_search_queries_sha256")
     expected_job_digest = (job.payload or {}).get("query_digest")
     if (
