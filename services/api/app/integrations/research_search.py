@@ -8,7 +8,6 @@ Search snippets are stored as unverified search evidence, not as verified facts.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 from urllib.parse import urlparse
 
 import httpx
