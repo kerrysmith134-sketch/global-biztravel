@@ -32,7 +32,7 @@ from app.llm.prompts import (
     RESEARCH_PLAN_SYSTEM,
     RESEARCH_PLAN_TEMPLATE_ID,
 )
-from app.models.market import MarketWorkspace, MarketWorkspaceWorkflow
+from app.models.market import MarketActivityEvent, MarketWorkspace, MarketWorkspaceWorkflow
 from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import customer_service, evidence_service, job_service, trip_service
 
@@ -330,6 +330,18 @@ def create_research_plan(
                 linked_by_user_id=str(user_id),
             )
         )
+        session.add(
+            MarketActivityEvent(
+                organization_id=str(organization_id),
+                workspace_id=payload.workspace_id,
+                actor_type="USER",
+                actor_user_id=str(user_id),
+                aggregate_type="workflow_instance",
+                aggregate_id=workflow.id,
+                event_type="RESEARCH_PLAN_LINKED",
+                payload={"workflow_type": WORKFLOW_TYPE},
+            )
+        )
         session.flush()
 
     # Keep potentially sensitive pasted material out of generic JSONB run logs.
@@ -502,6 +514,38 @@ def get_research_plan(
     )
 
 
+def list_research_plans_for_workspace(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID | str,
+) -> list[ResearchPlanRead]:
+    """List the existing ResearchPlan workflows attached to a Market Workspace."""
+    workspace = session.scalars(
+        select(MarketWorkspace).where(
+            MarketWorkspace.organization_id == str(organization_id),
+            MarketWorkspace.id == str(workspace_id),
+        )
+    ).one_or_none()
+    if workspace is None:
+        raise NotFound(
+            "市场工作空间不存在",
+            details={"workspace_id": str(workspace_id)},
+        )
+
+    workflow_ids = session.scalars(
+        select(MarketWorkspaceWorkflow.workflow_id)
+        .where(
+            MarketWorkspaceWorkflow.organization_id == str(organization_id),
+            MarketWorkspaceWorkflow.workspace_id == str(workspace_id),
+        )
+        .order_by(MarketWorkspaceWorkflow.created_at.desc())
+    ).all()
+    return [
+        get_research_plan(session, organization_id, workflow_id)
+        for workflow_id in workflow_ids
+    ]
+
+
 def enqueue_research_execution(
     session: Session,
     organization_id: UUID | str,
@@ -586,4 +630,5 @@ __all__ = [
     "create_research_plan",
     "enqueue_research_execution",
     "get_research_plan",
+    "list_research_plans_for_workspace",
 ]
