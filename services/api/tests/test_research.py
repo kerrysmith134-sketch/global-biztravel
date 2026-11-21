@@ -471,7 +471,10 @@ def test_workspace_research_worker_uses_shared_versioned_evidence_and_plan_query
             assert len({row.content_hash for row in source_rows}) == 2
             assert all(row.verification_status == "UNVERIFIED" for row in source_rows)
             assert all(row.quality is None for row in source_rows)
-            assert all(row.canonical_ref == "https://source.example.test/market-report" for row in source_rows)
+            assert all(
+                row.canonical_ref == "https://source.example.test/market-report"
+                for row in source_rows
+            )
 
             links = session.scalars(
                 select(MarketResearchPlanEvidence).where(
@@ -483,7 +486,9 @@ def test_workspace_research_worker_uses_shared_versioned_evidence_and_plan_query
                 )
             ).all()
             assert len(links) == 3
-            evidence_by_plan = {str(link.research_plan_id): str(link.evidence_id) for link in links}
+            evidence_by_plan = {
+                str(link.research_plan_id): str(link.evidence_id) for link in links
+            }
             assert evidence_by_plan[first_plan_id] == evidence_by_plan[second_plan_id]
             assert evidence_by_plan[third_plan_id] != evidence_by_plan[first_plan_id]
             assert all(len(link.query_sha256) == 64 for link in links)
