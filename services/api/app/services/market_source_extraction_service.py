@@ -72,7 +72,7 @@ def enqueue_page_extraction(
             "source_evidence_id": source.id,
             "workflow_id": payload.get("workflow_id"),
             "job_id": existing.id,
-            "status": "QUEUED" if existing.status == "PENDING" else "RUNNING",
+            "status": existing.status,
             "reused": True,
         }
 
@@ -206,6 +206,8 @@ def get_page_extraction(
         else None
     )
     extraction_status = str(payload.get("extraction_status") or "QUEUED")
+    if job is not None and job.status == "RUNNING" and extraction_status == "QUEUED":
+        extraction_status = "RUNNING"
     failure_reason = payload.get("failure_reason")
     if job is not None and job.status == "DEAD":
         extraction_status = "FAILED"
