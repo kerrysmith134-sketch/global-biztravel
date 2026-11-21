@@ -32,7 +32,14 @@ JOB_TYPE_PLAN_TRIP = "plan_trip"
 JOB_TYPE_DRAFT_MINUTES = "draft_minutes"
 JOB_TYPE_CRM_SYNC = "crm_sync"
 JOB_TYPE_FX_SYNC = "fx_rate_sync"
-KNOWN_JOB_TYPES = (JOB_TYPE_PLAN_TRIP, JOB_TYPE_DRAFT_MINUTES, JOB_TYPE_CRM_SYNC, JOB_TYPE_FX_SYNC)
+JOB_TYPE_RESEARCH_EXECUTE = "research_execute"
+KNOWN_JOB_TYPES = (
+    JOB_TYPE_PLAN_TRIP,
+    JOB_TYPE_DRAFT_MINUTES,
+    JOB_TYPE_CRM_SYNC,
+    JOB_TYPE_FX_SYNC,
+    JOB_TYPE_RESEARCH_EXECUTE,
+)
 
 
 def enqueue(
@@ -330,6 +337,7 @@ def _running_job(session: Session, job_id: UUID | str) -> BackgroundJob:
 __all__ = [
     "JOB_TYPE_FX_SYNC",
     "JOB_TYPE_PLAN_TRIP",
+    "JOB_TYPE_RESEARCH_EXECUTE",
     "KNOWN_JOB_TYPES",
     "claim_next",
     "complete",
