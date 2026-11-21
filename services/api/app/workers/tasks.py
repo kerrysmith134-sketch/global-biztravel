@@ -367,7 +367,6 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
         ).all()
     )
     evidence_items = []
-    versioned_evidence_ids: set[UUID] = set()
     if workspace_ids:
         # A Workspace owns the deduplicated source/content version. The link table
         # separately retains which ResearchPlan and reviewed query discovered it.
@@ -406,7 +405,6 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
                     },
                     actor_user_id=None,
                 )
-                versioned_evidence_ids.add(evidence.id)
                 for query in matched_queries:
                     market_insight_service.link_research_plan_evidence(
                         session,
