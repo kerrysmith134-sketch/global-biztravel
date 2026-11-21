@@ -47,7 +47,11 @@ def record_many(
                 kind=kind,
                 ref=ref,
                 source=str(item_source) if item_source is not None else None,
-                payload=item,
+                payload=(
+                    item.get("payload")
+                    if isinstance(item.get("payload"), dict)
+                    else item
+                ),
                 retrieved_at=parsed_at,
             )
             .on_conflict_do_nothing(constraint="uq_evidence_org_subject_kind_ref")
