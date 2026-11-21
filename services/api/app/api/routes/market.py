@@ -272,17 +272,29 @@ def create_question(
 
 @router.get(
     "/market/workspaces/{workspace_id}/entities",
-    response_model=list[MarketWorkspaceEntityRead],
+    response_model=Page[MarketWorkspaceEntityRead],
     summary="工作空间候选实体列表",
 )
 def list_workspace_entities(
     workspace_id: UUID,
     context: ContextDep,
     session: SessionDep,
+    limit: int | None = Query(default=None, ge=1),
+    cursor: str | None = Query(default=None),
 ):
     require_role(context, ROLE_VIEWER)
-    return market_entity_service.list_workspace_entities(
-        session, context.organization_id, workspace_id
+    page_size = clamp_limit(limit)
+    offset = decode_cursor(cursor)
+    rows = market_entity_service.list_workspace_entities(
+        session,
+        context.organization_id,
+        workspace_id,
+        limit=page_size,
+        offset=offset,
+    )
+    return Page[MarketWorkspaceEntityRead](
+        items=[MarketWorkspaceEntityRead.model_validate(row) for row in rows],
+        next_cursor=page_cursor(rows, offset, page_size),
     )
 
 
