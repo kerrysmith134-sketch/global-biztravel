@@ -3,6 +3,65 @@ import XCTest
 
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
+    func testCustomerPlaceDecodesAddressAndGeocodeProvenance() throws {
+        let json = """
+        {
+          "place_id": "place-1",
+          "label": "工厂",
+          "is_primary": true,
+          "name": "ACME Berlin Factory",
+          "address_line": "Industriestrasse 12",
+          "city": "Berlin",
+          "region": "Berlin",
+          "country_code": "DE",
+          "lat": 52.5200,
+          "lon": 13.4050,
+          "geocode_status": "RESOLVED",
+          "geocode_source": "google-maps",
+          "geocode_confidence": "0.82"
+        }
+        """
+        let place = try DateCoding.decode(CustomerPlace.self, fromJSON: json)
+
+        XCTAssertEqual(place.placeId, "place-1")
+        XCTAssertEqual(place.label, "工厂")
+        XCTAssertTrue(place.isPrimary)
+        XCTAssertEqual(place.displayAddress, "Industriestrasse 12 · Berlin · Berlin · DE")
+        XCTAssertTrue(place.hasValidCoordinates)
+        XCTAssertEqual(place.geocodeStatus, "RESOLVED")
+        XCTAssertEqual(place.geocodeSource, "google-maps")
+        XCTAssertEqual(place.geocodeConfidence, Decimal(string: "0.82"))
+        XCTAssertEqual(place.confidenceLabel, "82%")
+    }
+
+    func testCustomerPlaceRejectsOutOfRangeCoordinatesForMap() throws {
+        let json = """
+        {
+          "place_id": "place-2",
+          "name": "Invalid location",
+          "geocode_status": "FAILED",
+          "lat": 95.0,
+          "lon": 200.0
+        }
+        """
+        let place = try DateCoding.decode(CustomerPlace.self, fromJSON: json)
+        XCTAssertFalse(place.hasValidCoordinates)
+        XCTAssertNil(place.displayAddress.isEmpty ? nil : place.displayAddress)
+    }
+
+    func testVisitCreateRequestEncodesCRMCustomerId() throws {
+        let request = VisitCreateRequest(
+            customerId: "customer-1",
+            placeName: "ACME Berlin Factory",
+            title: "年度复审"
+        )
+        let data = try DateCoding.encode(request)
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertEqual(payload["customer_id"] as? String, "customer-1")
+    }
+
     func testTripDecodesBackendFlatShape() throws {
         let json = """
         {
