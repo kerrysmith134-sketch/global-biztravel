@@ -18,6 +18,7 @@ TABLES = (
     "market_research_questions",
     "market_question_dependencies",
     "market_activity_events",
+    "market_workspace_workflows",
 )
 
 
@@ -188,6 +189,48 @@ def upgrade() -> None:
         "ON market_question_dependencies (organization_id, workspace_id)"
     )
 
+    # Required so the workspace link can enforce same-organization ownership
+    # with a composite foreign key into the existing WorkflowInstance table.
+    op.execute(
+        """
+        ALTER TABLE workflow_instances
+        ADD CONSTRAINT uq_workflow_instances_org_id UNIQUE (organization_id, id)
+        """
+    )
+
+    op.execute(
+        """
+        CREATE TABLE market_workspace_workflows (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            organization_id uuid NOT NULL,
+            workspace_id uuid NOT NULL,
+            workflow_id uuid NOT NULL,
+            linked_by_user_id uuid,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT uq_market_workspace_workflow
+                UNIQUE (organization_id, workspace_id, workflow_id),
+            CONSTRAINT fk_market_workspace_workflow_workspace_same_org
+                FOREIGN KEY (organization_id, workspace_id)
+                REFERENCES market_workspaces (organization_id, id) ON DELETE CASCADE,
+            CONSTRAINT fk_market_workspace_workflow_instance_same_org
+                FOREIGN KEY (organization_id, workflow_id)
+                REFERENCES workflow_instances (organization_id, id) ON DELETE CASCADE,
+            CONSTRAINT fk_market_workspace_workflows_organization_id_organizations
+                FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE,
+            CONSTRAINT fk_market_workspace_workflows_linked_by_user_id_users
+                FOREIGN KEY (linked_by_user_id) REFERENCES users (id) ON DELETE SET NULL
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX ix_market_workspace_workflows_organization_id "
+        "ON market_workspace_workflows (organization_id)"
+    )
+    op.execute(
+        "CREATE INDEX ix_market_workspace_workflows_org_workspace "
+        "ON market_workspace_workflows (organization_id, workspace_id)"
+    )
+
     op.execute(
         """
         CREATE TABLE market_activity_events (
@@ -232,6 +275,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS market_workspace_workflows")
+    op.execute("ALTER TABLE workflow_instances DROP CONSTRAINT IF EXISTS uq_workflow_instances_org_id")
     op.execute("DROP TABLE IF EXISTS market_activity_events")
     op.execute("DROP TABLE IF EXISTS market_question_dependencies")
     op.execute("DROP TABLE IF EXISTS market_research_questions")
