@@ -6263,6 +6263,16 @@
               }
             }
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchExecuteCreate"
+              }
+            }
+          }
         }
       }
     }
@@ -15818,6 +15828,13 @@
             "type": "integer",
             "title": "Results Count",
             "default": 0
+          },
+          "reviewed_search_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reviewed Search Queries"
           }
         },
         "type": "object",
@@ -15869,6 +15886,25 @@
           "status"
         ],
         "title": "ResearchExecuteAccepted"
+      },
+      "ResearchExecuteCreate": {
+        "properties": {
+          "search_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Search Queries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "search_queries"
+        ],
+        "title": "ResearchExecuteCreate",
+        "description": "用户审阅后确认的查询。执行器只允许使用此列表。"
       }
     }
   }
