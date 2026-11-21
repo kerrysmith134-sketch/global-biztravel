@@ -137,7 +137,10 @@ struct PlanMapView: View {
                             .padding(.horizontal, DS.Spacing.lg)
                     }
                     if !customerLocations.isEmpty {
-                        Text("已读取客户地址 \(customerLocations.count) 个，其中 \(customerLocations.filter { !$0.place.hasValidCoordinates }.count) 个缺少有效坐标。")
+                        let invalidCount = customerLocations.filter {
+                            !$0.place.hasValidCoordinates
+                        }.count
+                        Text("已读取客户地址 \(customerLocations.count) 个；其中 \(invalidCount) 个缺少有效坐标。")
                             .font(.caption2)
                             .foregroundStyle(DS.ColorToken.warning)
                     }
