@@ -29,6 +29,7 @@ from app.models.reliability import BackgroundJob
 from app.services import (
     job_service,
     market_source_extraction_service,
+    market_claim_verification_service,
     memory_service,
     metrics_service,
     notification_service,
@@ -147,11 +148,19 @@ def execute_one(
                     market_source_extraction_service.mark_retry_exhausted(
                         session, org_id, failed_job.id, error=exc.message
                     )
+                if job_type == job_service.JOB_TYPE_MARKET_CLAIM_VERIFY and failed_job.status == "DEAD":
+                    market_claim_verification_service.mark_job_failed(
+                        session, org_id, failed_job.id, error=exc.message
+                    )
                 logger.warning("任务 %s 失败（可重试）：%s", job_id, exc.message)
             else:
                 # 不可重试：保留处理器已经写入的副作用再结算。计划不可行时必须把
                 # plan.not_feasible 事件留下，否则出行会永远停在 PLANNING。
                 job_service.fail(session, job_id, error=exc.message, retryable=False)
+                if job_type == job_service.JOB_TYPE_MARKET_CLAIM_VERIFY:
+                    market_claim_verification_service.mark_job_failed(
+                        session, org_id, job_id, error=exc.message
+                    )
                 logger.warning("任务 %s 失败（终态）：%s", job_id, exc.message)
             return False
         except Exception as exc:  # noqa: BLE001 —— 未预期异常按可重试处理，绝不能炸掉整个循环
@@ -160,6 +169,10 @@ def execute_one(
             failed_job = job_service.fail(session, job_id, error=error_message, retryable=True)
             if job_type == job_service.JOB_TYPE_MARKET_PAGE_EXTRACT and failed_job.status == "DEAD":
                 market_source_extraction_service.mark_retry_exhausted(
+                    session, org_id, failed_job.id, error=error_message
+                )
+            if job_type == job_service.JOB_TYPE_MARKET_CLAIM_VERIFY and failed_job.status == "DEAD":
+                market_claim_verification_service.mark_job_failed(
                     session, org_id, failed_job.id, error=error_message
                 )
             logger.exception("任务 %s 未预期异常，已回滚并排入重试", job_id)
