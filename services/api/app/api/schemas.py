@@ -439,7 +439,7 @@ class ImportConfirmRead(BaseModel):
 PlanVersionStatus = Literal["DRAFT", "ACTIVE", "SUPERSEDED"]
 PlanSolutionStatus = Literal["OPTIMAL", "FEASIBLE", "PARTIAL", "INFEASIBLE", "UNKNOWN", "ERROR"]
 PlanSolver = Literal["ortools", "heuristic"]
-JobType = Literal["plan_trip", "draft_minutes", "crm_sync", "fx_rate_sync"]
+JobType = Literal["plan_trip", "draft_minutes", "crm_sync", "fx_rate_sync", "research_execute"]
 JobStatus = Literal["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "DEAD", "CANCELLED"]
 
 
@@ -1507,17 +1507,29 @@ class ResearchEvidenceRead(ORMModel):
     created_at: datetime
 
 
+class ResearchExecuteAccepted(BaseModel):
+    plan_id: UUID
+    job_id: UUID
+    status: JobStatus
+    reused: bool = False
+
+
 class ResearchPlanRead(BaseModel):
     id: UUID
     trip_id: UUID | None = None
     customer_id: UUID | None = None
+    job_id: UUID | None = None
+    retrieval_error: str | None = None
+    results_count: int = 0
     request: str
     requested_scope: ResearchSourceScope
     recommended_scope: Literal[
         "INTERNAL_ONLY", "EXTERNAL_ONLY", "INTERNAL_AND_EXTERNAL"
     ]
     status: Literal["PLANNED"] = "PLANNED"
-    retrieval_status: Literal["NOT_STARTED"] = "NOT_STARTED"
+    retrieval_status: Literal[
+        "NOT_STARTED", "QUEUED", "RUNNING", "COMPLETED", "FAILED"
+    ] = "NOT_STARTED"
     plan: ResearchPlanIntentRead
     planner: ResearchPlannerAuditRead
     evidence: list[ResearchEvidenceRead] = Field(default_factory=list)
