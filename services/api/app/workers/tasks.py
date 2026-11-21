@@ -559,12 +559,15 @@ def handle_market_question_answer_draft(
                 workflow_id,
             )
         )
-    except Exception as exc:
-        from app.api.errors import ApiError
-
-        if isinstance(exc, ApiError):
-            raise TaskFailed(exc.message, retryable=False) from exc
-        raise
+    except ApiError as exc:
+        workflow.status = "FAILED"
+        workflow.payload = {
+            **(workflow.payload or {}),
+            "generation_status": "FAILED",
+            "generation_error": exc.message[:2000],
+        }
+        session.flush()
+        raise TaskFailed(exc.message, retryable=False) from exc
 
     evidence_context: list[dict[str, Any]] = []
     evidence_by_id: dict[str, Any] = {}
