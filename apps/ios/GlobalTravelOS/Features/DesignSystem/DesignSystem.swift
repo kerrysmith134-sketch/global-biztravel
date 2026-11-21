@@ -13,6 +13,7 @@ enum DS {
         static let border = adaptive(light: 0xDCE4E0, dark: 0x304046)
         static let brand = adaptive(light: 0x126B65, dark: 0x63C2B5)
         static let brandPressed = adaptive(light: 0x0E514D, dark: 0x7ED2C7)
+        static let heroSurface = adaptive(light: 0x0E514D, dark: 0x0B3936)
         static let brandSubtle = adaptive(light: 0xE3F1EE, dark: 0x1E3B38)
         static let success = adaptive(light: 0x24765D, dark: 0x78C8A3)
         static let warning = adaptive(light: 0x99601A, dark: 0xE8B66C)
