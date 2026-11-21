@@ -82,7 +82,6 @@ struct TripVisit: Codable, Equatable, Identifiable {
     }
 }
 
-
 /// 新增拜访请求（客户端本地组装；服务端契约 POST /trips/{id}/visits 的字段子集）。
 struct VisitCreateRequest: Codable, Equatable {
     var placeId: String?
