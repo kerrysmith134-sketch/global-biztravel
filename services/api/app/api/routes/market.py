@@ -16,7 +16,8 @@ from app.api.deps import (
 )
 from app.api.errors import NotFound
 from app.api.idempotent import IdempotentWrite
-from app.api.pagination import clamp_limit, decode_cursor, next_cursor as page_cursor
+from app.api.pagination import clamp_limit, decode_cursor
+from app.api.pagination import next_cursor as page_cursor
 from app.api.schemas import (
     MarketActivityEventRead,
     MarketContextCreate,
@@ -25,8 +26,8 @@ from app.api.schemas import (
     MarketResearchQuestionRead,
     MarketWorkspaceCreate,
     MarketWorkspaceRead,
-    ResearchPlanRead,
     Page,
+    ResearchPlanRead,
 )
 from app.services import market_workspace_service, research_service
 
