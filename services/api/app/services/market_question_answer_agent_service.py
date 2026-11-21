@@ -30,19 +30,20 @@ def _evidence_scope(
     workspace_id: UUID,
     workflow_ids: list[UUID],
 ):
+    workspace_scope = and_(
+        Evidence.subject_type == "market_workspace",
+        Evidence.subject_id == workspace_id,
+    )
+    if not workflow_ids:
+        return and_(Evidence.organization_id == organization_id, workspace_scope)
     return and_(
         Evidence.organization_id == organization_id,
         or_(
-            and_(
-                Evidence.subject_type == "market_workspace",
-                Evidence.subject_id == workspace_id,
-            ),
+            workspace_scope,
             and_(
                 Evidence.subject_type == "RESEARCH_PLAN",
                 Evidence.subject_id.in_(workflow_ids),
-            )
-            if workflow_ids
-            else False,
+            ),
         ),
     )
 
