@@ -355,6 +355,7 @@ def create_research_plan(
         "request": payload.request,
         "requested_scope": requested_scope,
         "recommended_scope": recommended_scope,
+        "locale": payload.locale,
         "retrieval_status": "NOT_STARTED",
         "customer_id": None if payload.customer_id is None else str(payload.customer_id),
         "context_refs": list(selected_context.keys()),
