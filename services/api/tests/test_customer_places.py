@@ -165,26 +165,34 @@ def test_customer_places_are_tenant_scoped(client: TestClient) -> None:
 
 
 def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestClient) -> None:
+    marker = f"mapgeo-{uuid.uuid4().hex[:10]}"
     customer_a = client.post(
         "/v1/customers",
         headers=headers(),
-        json={"name": f"Map A·{uuid.uuid4().hex[:8]}", "tier": "A", "country_code": "DE"},
+        json={"name": f"{marker} Customer A", "tier": "A", "country_code": "DE"},
     )
     customer_b = client.post(
         "/v1/customers",
         headers=headers(),
-        json={"name": f"Map B·{uuid.uuid4().hex[:8]}", "tier": "C", "country_code": "NL"},
+        json={"name": f"{marker} Customer B", "tier": "C", "country_code": "NL"},
+    )
+    customer_without_location = client.post(
+        "/v1/customers",
+        headers=headers(),
+        json={"name": f"{marker} Customer Without Address", "tier": "B"},
     )
     assert customer_a.status_code == 201, customer_a.text
     assert customer_b.status_code == 201, customer_b.text
+    assert customer_without_location.status_code == 201, customer_without_location.text
     customer_a_id = customer_a.json()["id"]
     customer_b_id = customer_b.json()["id"]
+    customer_without_location_id = customer_without_location.json()["id"]
 
-    resolved_place = make_place(client, city="Berlin", name=f"Map HQ·{uuid.uuid4().hex[:8]}")
+    resolved_place = make_place(client, city="Berlin", name=f"{marker} Berlin HQ")
     missing_place_response = client.post(
         "/v1/places",
         headers=headers(),
-        json={"name": f"Map Factory·{uuid.uuid4().hex[:8]}", "city": "Rotterdam", "country_code": "NL"},
+        json={"name": f"{marker} Rotterdam Factory", "city": "Rotterdam", "country_code": "NL"},
     )
     assert missing_place_response.status_code == 201, missing_place_response.text
     missing_place = missing_place_response.json()["id"]
@@ -202,7 +210,12 @@ def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestC
             )
             assert response.status_code == 201, response.text
 
-        result = client.get("/v1/customers/map-locations?limit=200", headers=headers())
+        # Isolate test-owned customers from demo data already present in the shared CI tenant.
+        result = client.get(
+            "/v1/customers/map-locations",
+            params={"limit": 200, "query": marker},
+            headers=headers(),
+        )
         assert result.status_code == 200, result.text
         body = result.json()
         assert len(body["items"]) == 3
@@ -210,18 +223,37 @@ def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestC
         assert body["summary"]["locations_mapped"] == 2
         assert body["summary"]["locations_missing_coordinates"] == 1
         assert body["summary"]["customers_with_locations"] == 2
+        # This quality counter deliberately remains organization-wide, outside the search filter.
+        assert body["summary"]["customers_without_locations"] >= 1
+        assert body["summary"]["countries"] == {"DE": 2, "NL": 1}
 
         filtered = client.get(
-            "/v1/customers/map-locations?tier=A&country_code=DE&geocode_status=RESOLVED",
+            "/v1/customers/map-locations",
+            params={
+                "query": marker,
+                "tier": "A",
+                "country_code": "DE",
+                "geocode_status": "RESOLVED",
+            },
             headers=headers(),
         )
         assert filtered.status_code == 200, filtered.text
         assert len(filtered.json()["items"]) == 1
         assert filtered.json()["items"][0]["customer"]["id"] == customer_a_id
 
+        missing_only = client.get(
+            "/v1/customers/map-locations",
+            params={"query": marker, "geocode_status": "MISSING"},
+            headers=headers(),
+        )
+        assert missing_only.status_code == 200, missing_only.text
+        assert len(missing_only.json()["items"]) == 1
+        assert missing_only.json()["items"][0]["place"]["id"] == missing_place
+
         # The aggregate is organization-scoped; another tenant sees neither customer nor place data.
         hidden = client.get(
             "/v1/customers/map-locations",
+            params={"query": marker},
             headers=headers(USER_B, ORG_B),
         )
         assert hidden.status_code == 200, hidden.text
@@ -229,8 +261,11 @@ def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestC
         assert hidden.json()["summary"]["locations_total"] == 0
     finally:
         with org_session(UUID(ORG_A)) as session:
-            session.execute(
-                delete(CustomerPlace).where(CustomerPlace.customer_id.in_([UUID(customer_a_id), UUID(customer_b_id)]))
-            )
-            session.execute(delete(Customer).where(Customer.id.in_([UUID(customer_a_id), UUID(customer_b_id)])))
+            customer_ids = [
+                UUID(customer_a_id),
+                UUID(customer_b_id),
+                UUID(customer_without_location_id),
+            ]
+            session.execute(delete(CustomerPlace).where(CustomerPlace.customer_id.in_(customer_ids)))
+            session.execute(delete(Customer).where(Customer.id.in_(customer_ids)))
             session.execute(delete(Place).where(Place.id.in_([UUID(resolved_place), UUID(missing_place)])))
