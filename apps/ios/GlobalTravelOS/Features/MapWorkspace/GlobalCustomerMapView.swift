@@ -24,7 +24,8 @@ final class GlobalCustomerMapViewModel: ObservableObject {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         return locations.filter { item in
             if tier != "ALL", item.customer.tier.uppercased() != tier { return false }
-            if country != "ALL", item.place.countryCode?.uppercased() != country { return false }
+            let locationCountry = (item.place.countryCode ?? item.customer.countryCode)?.uppercased()
+            if country != "ALL", locationCountry != country { return false }
             switch quality {
             case "MAPPED": if !item.place.hasValidCoordinates { return false }
             case "MISSING": if item.place.hasValidCoordinates { return false }
@@ -41,7 +42,13 @@ final class GlobalCustomerMapViewModel: ObservableObject {
     }
 
     var countries: [String] {
-        Set(locations.compactMap { $0.place.countryCode?.uppercased() }).sorted()
+        let aggregated = summary.countryStats
+            .map { $0.countryCode }
+            .filter { $0 != "UNKNOWN" }
+        if !aggregated.isEmpty { return aggregated.sorted() }
+        return Set(locations.compactMap {
+            ($0.place.countryCode ?? $0.customer.countryCode)?.uppercased()
+        }).sorted()
     }
 
     var selected: GlobalCustomerMapLocation? {
@@ -108,6 +115,7 @@ struct GlobalCustomerMapView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 metrics
+                marketCoverage
                 filters
                 modeSelector
                 if model.mode == "map" { mapPanel } else { listPanel }
@@ -145,6 +153,84 @@ struct GlobalCustomerMapView: View {
             }
             .padding(.horizontal, DS.Spacing.lg)
             .padding(.vertical, DS.Spacing.sm)
+        }
+    }
+
+    private var marketCoverage: some View {
+        let leadingCountries = Array(
+            model.summary.countryStats
+                .filter { $0.countryCode != "UNKNOWN" }
+                .sorted {
+                    if $0.customersTotal != $1.customersTotal {
+                        return $0.customersTotal > $1.customersTotal
+                    }
+                    return $0.countryCode < $1.countryCode
+                }
+                .prefix(8)
+        )
+        return Group {
+            if !leadingCountries.isEmpty {
+                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                    HStack {
+                        Text("国家客户覆盖")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textPrimary)
+                        Spacer()
+                        Text("按关联地点归集")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: DS.Spacing.sm) {
+                            ForEach(leadingCountries) { country in
+                                Button {
+                                    model.country = model.country == country.countryCode
+                                        ? "ALL" : country.countryCode
+                                } label: {
+                                    DSCard(padding: DS.Spacing.sm) {
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            HStack {
+                                                Text(country.countryCode)
+                                                    .font(.headline.weight(.bold))
+                                                Spacer()
+                                                if model.country == country.countryCode {
+                                                    Image(systemName: "checkmark.circle.fill")
+                                                        .foregroundStyle(DS.ColorToken.brand)
+                                                }
+                                            }
+                                            Text("\(country.customersTotal.formatted()) 家客户")
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(DS.ColorToken.textPrimary)
+                                            HStack(spacing: 8) {
+                                                Text("A 级 \(country.tierACustomers)")
+                                                Text("\(country.locationsMapped)/\(country.locationsTotal) 已定位")
+                                            }
+                                            .font(.caption2)
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                        }
+                                        .frame(width: 158, alignment: .leading)
+                                    }
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: DS.Radius.card)
+                                            .stroke(
+                                                model.country == country.countryCode
+                                                    ? DS.ColorToken.brand : DS.ColorToken.border,
+                                                lineWidth: model.country == country.countryCode ? 1.5 : 0.8
+                                            )
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("global-map-country-\(country.countryCode)")
+                            }
+                        }
+                    }
+                    Text("客户覆盖不代表该国市场规模或市场份额；坐标比例仅衡量地点数据完整度。")
+                        .font(.caption2)
+                        .foregroundStyle(DS.ColorToken.textTertiary)
+                }
+                .padding(.horizontal, DS.Spacing.lg)
+                .padding(.vertical, DS.Spacing.xs)
+            }
         }
     }
 
@@ -278,7 +364,9 @@ struct GlobalCustomerMapView: View {
     }
 
     private var countryGroups: [(key: String, value: [GlobalCustomerMapLocation])] {
-        let groups = Dictionary(grouping: model.filtered) { $0.place.countryCode ?? "国家未知" }
+        let groups = Dictionary(grouping: model.filtered) {
+            $0.place.countryCode ?? $0.customer.countryCode ?? "国家未知"
+        }
         return groups.keys.sorted().map { ($0, groups[$0] ?? []) }
     }
 
