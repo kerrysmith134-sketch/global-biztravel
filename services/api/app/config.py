@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     research_search_provider: str = "unavailable"  # unavailable | searxng
     research_search_base_url: str | None = None
     research_search_timeout_seconds: float = 12.0
-    research_search_max_queries: int = 8
+    research_search_max_queries: int = 12
     research_search_max_results: int = 8
 
     # LLM 网关（第 7 章）
