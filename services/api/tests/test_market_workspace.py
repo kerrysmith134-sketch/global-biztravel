@@ -449,8 +449,8 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
         assert {item["alias_type"] for item in entity_body["aliases"]} == {"NAME", "DOMAIN"}
         assert created.json()["possible_duplicate_entity_ids"] == []
 
-        # The same canonical domain represents the same candidate entity across Workspaces.
-        reused = client.post(
+        # A shared canonical domain is only a duplicate signal, never an automatic merge.
+        same_domain = client.post(
             f"/v1/market/workspaces/{other_workspace_id}/entities",
             headers=headers(),
             json={
@@ -460,9 +460,21 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
                 "country_code": "KE",
             },
         )
-        assert reused.status_code == 201, reused.text
-        assert reused.json()["entity"]["id"] == entity_id
-        assert reused.json()["reused_by_domain"] is True
+        assert same_domain.status_code == 201, same_domain.text
+        assert same_domain.json()["entity"]["id"] != entity_id
+        assert entity_id in same_domain.json()["possible_duplicate_entity_ids"]
+
+        # Reuse across Workspaces is an explicit action by exact entity ID.
+        attached = client.post(
+            f"/v1/market/workspaces/{other_workspace_id}/entities",
+            headers=headers(),
+            json={
+                "existing_entity_id": entity_id,
+                "discovery_reason": "The user explicitly selected the existing candidate.",
+            },
+        )
+        assert attached.status_code == 201, attached.text
+        assert attached.json()["entity"]["id"] == entity_id
 
         # Same normalized name without a verified canonical domain is a possible duplicate,
         # not an automatic merge.
@@ -563,7 +575,7 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
                     MarketEntityAlias.entity_id == UUID(entity_id),
                 )
             ).all()
-            assert len(aliases) == 3
+            assert len(aliases) == 2
             assert session.scalar(
                 select(func.count()).select_from(MarketActivityEvent).where(
                     MarketActivityEvent.organization_id == UUID(ORG_A),
