@@ -130,6 +130,12 @@ class Settings(BaseSettings):
     research_search_max_queries: int = 12
     research_search_max_results: int = 8
 
+    # 公网研究来源正文提取（仅用户明确选中来源后执行；默认关闭）
+    research_page_provider: str = "unavailable"  # unavailable | safe_http
+    research_page_timeout_seconds: float = 10.0
+    research_page_max_body_bytes: int = 2 * 1024 * 1024
+    research_page_max_excerpt_chars: int = 12000
+
     # LLM 网关（第 7 章）
     llm_provider: str = "stub"                # stub | openai_compatible
     llm_temperature: float = 0.0
