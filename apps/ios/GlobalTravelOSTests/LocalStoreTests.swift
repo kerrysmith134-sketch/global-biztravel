@@ -244,7 +244,7 @@ final class LocalStoreTests: XCTestCase {
         let berlin = Place(
             id: "map-berlin-hq", name: "Berlin HQ", countryCode: "DE",
             latitude: 52.52, longitude: 13.405, city: "Berlin",
-            region: "Berlin", address: "Industriestrasse 12",
+            address: "Industriestrasse 12", region: "Berlin",
             geocodeStatus: "RESOLVED", geocodeSource: "client"
         )
         let rotterdam = Place(
