@@ -7,12 +7,12 @@ page is never persisted: only a bounded excerpt plus a digest of normalized arti
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 import http.client
 import ipaddress
 import re
 import socket
 import ssl
-from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.message import Message
