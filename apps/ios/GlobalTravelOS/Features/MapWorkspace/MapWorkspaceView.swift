@@ -1,5 +1,11 @@
 import SwiftUI
 
+private struct CustomerFetchResult {
+    var customerId: String
+    var customer: Customer?
+    var errorMessage: String?
+}
+
 private struct CustomerPlacesFetchResult {
     var customerId: String
     var places: [CustomerPlace]
@@ -79,35 +85,98 @@ final class MapWorkspaceViewModel: ObservableObject {
     /// The map remains usable if CRM enrichment is unavailable; missing customer metadata is omitted.
     private func loadMissionContext(tripId: String) async {
         async let visitResult = try? await environment.visitRepository.listVisits(tripId: tripId)
-        async let customerResult = try? await environment.customerRepository.listCustomers(
-            query: nil,
-            page: PageRequest(limit: 200)
-        )
         let visitResponse = await visitResult
-        let customerResponse = await customerResult
-        let loadedVisits = visitResponse ?? []
-        let loadedCustomers = customerResponse?.items ?? []
 
         guard selectedTripID == tripId else { return }
-        visits = loadedVisits
-        let referencedCustomerIDs = Set(loadedVisits.compactMap(\.customerId))
-        customers = loadedCustomers.filter { referencedCustomerIDs.contains($0.id) }
-        await loadCustomerPlaces(for: customers, tripId: tripId)
-    }
+        guard let loadedVisits = visitResponse else {
+            visits = []
+            customers = []
+            customerLocations = []
+            customerPlacesMessage = "读取当前 Mission 的拜访列表失败，客户地址状态未知。"
+            return
+        }
 
-    /// Fetch linked addresses only for customers referenced by this Mission.
-    /// Four concurrent requests cap API pressure without serialising every customer lookup.
-    private func loadCustomerPlaces(for missionCustomers: [Customer], tripId: String) async {
+        visits = loadedVisits
         customerLocations = []
         customerPlacesMessage = nil
-        guard !missionCustomers.isEmpty else { return }
-        guard !environment.isLocalMode else {
-            customerPlacesMessage = "本地模式尚未建立客户—地址关联表；当前仅显示行程拜访点。"
+        let referencedCustomerIDs = Array(Set(loadedVisits.compactMap(\\.customerId))).sorted()
+        guard !referencedCustomerIDs.isEmpty else {
+            customers = []
+            customerPlacesMessage = loadedVisits.isEmpty
+                ? "当前 Mission 尚无拜访；新增拜访并关联 CRM 客户后，客户地址会出现在地图上。"
+                : "当前 Mission 的拜访尚未关联 CRM 客户；可在新增拜访时选择客户。"
             return
         }
 
         isLoadingCustomerPlaces = true
         defer { isLoadingCustomerPlaces = false }
+        let customerRepository = environment.customerRepository
+        var customerIterator = referencedCustomerIDs.makeIterator()
+        var loadedCustomers: [Customer] = []
+        var customerFailures = 0
+
+        await withTaskGroup(of: CustomerFetchResult.self) { group in
+            for _ in 0..<min(4, referencedCustomerIDs.count) {
+                guard let customerID = customerIterator.next() else { break }
+                group.addTask {
+                    do {
+                        return CustomerFetchResult(
+                            customerId: customerID,
+                            customer: try await customerRepository.customer(id: customerID),
+                            errorMessage: nil
+                        )
+                    } catch {
+                        return CustomerFetchResult(customerId: customerID, customer: nil, errorMessage: error.localizedDescription)
+                    }
+                }
+            }
+
+            while let result = await group.next() {
+                if let customer = result.customer { loadedCustomers.append(customer) }
+                if result.errorMessage != nil { customerFailures += 1 }
+                if let nextID = customerIterator.next() {
+                    group.addTask {
+                        do {
+                            return CustomerFetchResult(
+                                customerId: nextID,
+                                customer: try await customerRepository.customer(id: nextID),
+                                errorMessage: nil
+                            )
+                        } catch {
+                            return CustomerFetchResult(customerId: nextID, customer: nil, errorMessage: error.localizedDescription)
+                        }
+                    }
+                }
+            }
+        }
+
+        guard selectedTripID == tripId else { return }
+        customers = loadedCustomers.sorted { $0.name < $1.name }
+        await loadCustomerPlaces(
+            for: customers,
+            tripId: tripId,
+            missingCustomerCount: customerFailures
+        )
+    }
+
+    /// Fetch linked addresses only for customers referenced by this Mission.
+    /// Four concurrent requests cap API pressure without serialising every customer lookup.
+    private func loadCustomerPlaces(
+        for missionCustomers: [Customer],
+        tripId: String,
+        missingCustomerCount: Int
+    ) async {
+        customerLocations = []
+        customerPlacesMessage = nil
+        guard !missionCustomers.isEmpty else {
+            customerPlacesMessage = "\(missingCustomerCount) 个 CRM 客户档案读取失败，客户地址状态未知。"
+            return
+        }
+        guard !environment.isLocalMode else {
+            customerPlacesMessage = "本地模式尚未建立客户—地址关联表；当前仅显示行程拜访点。"
+            return
+        }
+
         let repository = environment.customerRepository
         var iterator = missionCustomers.makeIterator()
         var locations: [CustomerMapLocation] = []
@@ -166,11 +235,16 @@ final class MapWorkspaceViewModel: ObservableObject {
             if $0.place.isPrimary != $1.place.isPrimary { return $0.place.isPrimary }
             return $0.place.name < $1.place.name
         }
+        var warnings: [String] = []
         if failures > 0 {
-            customerPlacesMessage = "\(failures) 个客户的地址读取失败；已显示成功读取的地址，其他地址状态未知。"
+            warnings.append("\(failures) 个客户的地址读取失败，相关地址状态未知")
         } else if locations.isEmpty {
-            customerPlacesMessage = "当前 Mission 的客户没有返回已关联地址；请在客户档案中维护总部、工厂或拜访地址。"
+            warnings.append("当前 Mission 的客户没有返回已关联地址；请在客户档案中维护总部、工厂或拜访地址")
         }
+        if missingCustomerCount > 0 {
+            warnings.append("\(missingCustomerCount) 个被拜访客户档案读取失败")
+        }
+        customerPlacesMessage = warnings.isEmpty ? nil : warnings.joined(separator: "；")
     }
 
     /// The server is the only authority that mutates visit inputs and produces a new plan version.
