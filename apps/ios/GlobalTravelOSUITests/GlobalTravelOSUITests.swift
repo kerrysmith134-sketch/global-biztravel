@@ -224,53 +224,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         }
         XCTAssertTrue(activated.exists, "计划未激活")
 
-        // Map closed loop: inspect a visit, explicitly cancel it, and wait for the server to
-        // produce a new draft plan version. The active plan is never edited optimistically.
-        app.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(
-            app.navigationBars[setup.tripName].waitForExistence(timeout: 15),
-            "计划详情未能返回行程详情"
-        )
-        app.navigationBars[setup.tripName].buttons.firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["出行"].waitForExistence(timeout: 15), "未能返回行程列表")
-        XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout: 10), "出行工作区缺少关闭入口")
-        app.buttons["关闭"].tap()
-
-        let mapTab = app.buttons["地图"]
-        XCTAssertTrue(mapTab.waitForExistence(timeout: 10), "未找到地图 Tab")
-        mapTab.tap()
-        XCTAssertTrue(app.navigationBars["地图"].waitForExistence(timeout: 10), "地图工作区未打开")
-
-        let missionPicker = app.buttons["选择地图对应的商务行程"]
-        XCTAssertTrue(missionPicker.waitForExistence(timeout: 10), "地图没有 Mission 选择器")
-        missionPicker.tap()
-        let missionOption = app.buttons[setup.tripName].firstMatch
-        XCTAssertTrue(missionOption.waitForExistence(timeout: 10), "地图列表中没有当前测试 Mission")
-        missionOption.tap()
-
-        let dayFilter = app.buttons["第 1 天"]
-        XCTAssertTrue(dayFilter.waitForExistence(timeout: 20), "地图没有第 1 天筛选")
-        dayFilter.tap()
-        let firstDayRoute = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS '第 1 天' AND label CONTAINS '选择首个拜访点'")
-        ).firstMatch
-        XCTAssertTrue(firstDayRoute.waitForExistence(timeout: 10), "地图没有首日路线卡")
-        firstDayRoute.tap()
-
-        let cancelVisit = app.buttons["取消此拜访并重新优化路线"]
-        XCTAssertTrue(cancelVisit.waitForExistence(timeout: 10), "激活计划的拜访详情没有取消入口")
-        cancelVisit.tap()
-        let confirmCancel = app.buttons["取消拜访并重新求解"]
-        XCTAssertTrue(confirmCancel.waitForExistence(timeout: 10), "地图取消操作没有二次确认")
-        confirmCancel.tap()
-
-        let draftProduced = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS '新计划' AND label CONTAINS '已生成草稿'")
-        ).firstMatch
-        XCTAssertTrue(
-            draftProduced.waitForExistence(timeout: 70),
-            "服务端没有在预期时间内生成新的计划草稿版本"
-        )
+        try performMapVisitCancellationFlow(app, tripName: setup.tripName)
     }
 
     // 单条链式验收（AT 主干）：新建 → Excel 导入 → 规划 → 激活 → 费用 → 现场记录 → 纪要。
@@ -966,6 +920,52 @@ extension GlobalTravelOSUITests {
         }
         XCTFail(
             "budget-missing: bars=\(titles) texts=\(texts)"
+        )
+    }
+
+    /// Verifies that a map-originated visit cancellation creates a server-owned draft version.
+    func performMapVisitCancellationFlow(_ app: XCUIApplication, tripName: String) throws {
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars[tripName].waitForExistence(timeout: 15), "计划详情未能返回行程详情")
+        app.navigationBars[tripName].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["出行"].waitForExistence(timeout: 15), "未能返回行程列表")
+        XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout: 10), "出行工作区缺少关闭入口")
+        app.buttons["关闭"].tap()
+
+        let mapTab = app.buttons["地图"]
+        XCTAssertTrue(mapTab.waitForExistence(timeout: 10), "未找到地图 Tab")
+        mapTab.tap()
+        XCTAssertTrue(app.navigationBars["地图"].waitForExistence(timeout: 10), "地图工作区未打开")
+
+        let missionPicker = app.buttons["选择地图对应的商务行程"]
+        XCTAssertTrue(missionPicker.waitForExistence(timeout: 10), "地图没有 Mission 选择器")
+        missionPicker.tap()
+        let missionOption = app.buttons[tripName].firstMatch
+        XCTAssertTrue(missionOption.waitForExistence(timeout: 10), "地图列表中没有当前测试 Mission")
+        missionOption.tap()
+
+        let dayFilter = app.buttons["第 1 天"]
+        XCTAssertTrue(dayFilter.waitForExistence(timeout: 20), "地图没有第 1 天筛选")
+        dayFilter.tap()
+        let firstDayRoute = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS '第 1 天' AND label CONTAINS '选择首个拜访点'")
+        ).firstMatch
+        XCTAssertTrue(firstDayRoute.waitForExistence(timeout: 10), "地图没有首日路线卡")
+        firstDayRoute.tap()
+
+        let cancelVisit = app.buttons["取消此拜访并重新优化路线"]
+        XCTAssertTrue(cancelVisit.waitForExistence(timeout: 10), "激活计划的拜访详情没有取消入口")
+        cancelVisit.tap()
+        let confirmCancel = app.buttons["取消拜访并重新求解"]
+        XCTAssertTrue(confirmCancel.waitForExistence(timeout: 10), "地图取消操作没有二次确认")
+        confirmCancel.tap()
+
+        let draftProduced = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '新计划' AND label CONTAINS '已生成草稿'")
+        ).firstMatch
+        XCTAssertTrue(
+            draftProduced.waitForExistence(timeout: 70),
+            "服务端没有在预期时间内生成新的计划草稿版本"
         )
     }
 
