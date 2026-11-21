@@ -199,7 +199,8 @@ def upgrade() -> None:
 
     # Activity events are append-only for the application role. A privileged maintenance
     # session may still clean up test data or perform an audited repair.
-    op.execute("REVOKE UPDATE, DELETE, TRUNCATE ON market_activity_events FROM gbt_app")
+    if helpers.role_exists("gbt_app"):
+        op.execute("REVOKE UPDATE, DELETE, TRUNCATE ON market_activity_events FROM gbt_app")
 
 
 def downgrade() -> None:
