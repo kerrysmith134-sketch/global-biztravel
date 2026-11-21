@@ -1930,3 +1930,84 @@ class MarketActivityEventRead(ORMModel):
     event_type: str
     payload: dict[str, Any]
     created_at: datetime
+
+
+# ----------------------------------------------------------- market entities
+MarketEntityStatus = Literal["CANDIDATE", "REVIEWED", "VERIFIED", "REJECTED", "MERGED"]
+MarketWorkspaceEntityStatus = Literal["DISCOVERED", "RESEARCHING", "INCLUDED", "EXCLUDED"]
+MarketEntityCustomerLinkStatus = Literal[
+    "MATCH_CANDIDATE", "USER_CONFIRMED", "REJECTED", "CONFLICTED"
+]
+
+
+class MarketWorkspaceEntityCreate(BaseModel):
+    entity_kind: str = Field(min_length=1, max_length=80)
+    display_name: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=5000)
+    canonical_domain: str | None = Field(default=None, max_length=500)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    discovery_reason: str | None = Field(default=None, max_length=2000)
+    relevance_note: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _entity_values_not_blank(self) -> MarketWorkspaceEntityCreate:
+        if not self.entity_kind.strip():
+            raise ValueError("实体类型不能为空")
+        if not self.display_name.strip():
+            raise ValueError("实体名称不能为空")
+        if self.country_code is not None:
+            self.country_code = self.country_code.strip().upper()
+        return self
+
+
+class MarketEntityAliasRead(ORMModel):
+    id: UUID
+    alias_type: str
+    raw_value: str
+    normalized_value: str
+    source_evidence_id: UUID | None
+    created_at: datetime
+
+
+class MarketEntityRead(ORMModel):
+    id: UUID
+    entity_kind: str
+    display_name: str
+    normalized_name: str
+    description: str | None
+    canonical_domain: str | None
+    country_code: str | None
+    attributes: dict[str, Any]
+    status: MarketEntityStatus
+    created_at: datetime
+    updated_at: datetime
+    aliases: list[MarketEntityAliasRead] = Field(default_factory=list)
+
+
+class MarketWorkspaceEntityRead(BaseModel):
+    entity: MarketEntityRead
+    discovery_reason: str | None
+    relevance_note: str | None
+    status: MarketWorkspaceEntityStatus
+    first_seen_at: datetime
+    last_seen_at: datetime
+    possible_duplicate_entity_ids: list[UUID] = Field(default_factory=list)
+    reused_by_domain: bool = False
+
+
+class MarketEntityCustomerLinkCreate(BaseModel):
+    customer_id: UUID
+    matching_basis: dict[str, Any] = Field(default_factory=dict)
+
+
+class MarketEntityCustomerLinkRead(ORMModel):
+    id: UUID
+    entity_id: UUID
+    customer_id: UUID
+    link_status: MarketEntityCustomerLinkStatus
+    matching_basis: dict[str, Any]
+    confirmed_by_user_id: UUID | None
+    confirmed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
