@@ -64,6 +64,20 @@ ssh vps "docker exec -i zhi-tu-pg psql -U postgres -d gbt_os < /tmp/gbt_os.sql"
   `0.0.0.0:8080`（脚本里显式开关，默认开公网 + token）。
 - 升级强安全（https 域名、真认证、速率限制）在生产化阶段处理。
 
+## 通用研究搜索（可选）
+
+研究搜索默认关闭。若要启用 iOS Research Workspace 的外部检索，请先部署受控的 SearXNG 实例，再在仓库根目录的 `.env`（不要提交到 Git）中设置：
+
+```dotenv
+GBT_RESEARCH_SEARCH_PROVIDER=searxng
+GBT_RESEARCH_SEARCH_BASE_URL=http://<SearXNG 内网地址>:8080
+GBT_RESEARCH_SEARCH_TIMEOUT_SECONDS=12
+GBT_RESEARCH_SEARCH_MAX_QUERIES=12
+GBT_RESEARCH_SEARCH_MAX_RESULTS=8
+```
+
+两套 Compose 文件都会把上述配置同时传给 API 和 Worker。未设置时默认 `unavailable`，执行 API 返回 503 且不会创建后台任务。即便已经部署搜索服务，也只有用户在 iOS 研究工作区审阅并确认查询后才会发起搜索。
+
 ## 常用运维
 
 ```bash
