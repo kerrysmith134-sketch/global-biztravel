@@ -1,6 +1,6 @@
 # Sprint H1 — Domain Foundation & Evidence Data Architecture
 
-> 状态：H1.0 源码审计已完成；H1.1 领域契约冻结待实施  
+> 状态：H1.0 源码审计已完成；H1.1 领域契约已提交；H1.2 后端基础实施待开始  
 > 关联设计：`docs/design/market-intelligence-engine-v1.0.md`  
 > 仓库基线：`main`，核对到的最新提交 `c5e98e2b567f54705a8569d0ef7ced138d7f88b2`  
 > 计划日期：2026-11-21
@@ -70,6 +70,10 @@ H1 不实现完整外部研究抓取、行业策略生成或自主商务外联�
 ---
 
 ## 3. H1 逻辑数据模型
+
+H1.1 领域契约已形成独立文件：`docs/architecture/market-intelligence-domain-contract-v1.0.md`。本执行计划中的对象清单为实施视图；字段、状态机、Evidence 版本语义、跨租户复合关系和 API 语义以该契约为准。若实现中发现与真实 ORM / PostgreSQL 约束不兼容，必须先记录 ADR 和兼容方案，不得静默偏离。
+
+
 
 下面是首选逻辑拆分，不是未经审计即可执行的 DDL。实际实施必须优先检查现有表是否已能承载其中部分职责。
 
