@@ -550,6 +550,12 @@ class MarketInsight(Base):
         CheckConstraint("supersedes_id IS NULL OR supersedes_id <> id", name="supersedes_not_self"),
         Index("ix_market_insights_org_workspace_created", "organization_id", "workspace_id", "created_at"),
         Index("ix_market_insights_org_workspace_key", "organization_id", "workspace_id", "insight_key", "version"),
+        Index(
+            "uq_market_insights_one_accepted_per_key",
+            "organization_id", "workspace_id", "insight_key",
+            unique=True,
+            postgresql_where=text("status = 'ACCEPTED'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
