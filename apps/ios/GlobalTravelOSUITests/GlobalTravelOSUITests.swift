@@ -3,7 +3,7 @@ import XCTest
 
 // swiftlint:disable file_length
 
-// 真实后端 UI 冒烟：启动客户端 → Today 页加载 → 出行列表 → 打开种子出行 → 同步页。
+// 真实后端 UI 冒烟：启动客户端 → Mission → 全局行动中心/出行工作区 → 设置与同步页。
 //
 // 前置：`make api` 正在运行，且 `scripts/seed_dev.py` 已执行（种子出行存在）。
 // 身份通过启动环境覆盖，不读取/不修改本机设置。
@@ -97,7 +97,7 @@ final class GlobalTravelOSUITests: XCTestCase {
             "行动中心未加载"
         )
         // 行动中心是标签页（不是弹层），返回方式切回今日标签。
-        app.buttons["今日"].tap()
+        app.buttons["关闭"].tap()
 
         let tripsTab = app.buttons["出行"]
         XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")
@@ -113,6 +113,10 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15),
             "出行详情未加载"
         )
+        // 出行现在是 Mission 下的全屏工作区；返回列表后关闭工作区，再进入「我的」。
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout: 10), "出行工作区缺少关闭入口")
+        app.buttons["关闭"].tap()
 
         // 同步中心已从独立标签收进「我的 → 同步中心」（审计 5.4 信息架构调整）。
         let settingsTab = app.buttons["我的"]
