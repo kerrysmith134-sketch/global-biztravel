@@ -14,8 +14,8 @@ from sqlalchemy import (
     Integer,
     SmallInteger,
     Text,
-    text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
