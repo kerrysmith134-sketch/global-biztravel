@@ -281,17 +281,26 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
     plan = payload.get("plan") or {}
     if not bool(plan.get("external_research_needed")):
         raise TaskFailed("研究计划没有外部检索意图", retryable=False)
-    queries = plan.get("search_queries")
+    queries = payload.get("reviewed_search_queries")
     if not isinstance(queries, list):
-        raise TaskFailed("研究计划的 search_queries 格式无效", retryable=False)
+        raise TaskFailed("研究计划缺少用户确认的搜索查询", retryable=False)
     settings = get_settings()
     queries = [
         item.strip()[:500]
-        for item in queries[: max(1, settings.research_search_max_queries)]
+        for item in queries[: max(1, min(settings.research_search_max_queries, 12))]
         if isinstance(item, str) and item.strip()
     ]
     if not queries:
-        raise TaskFailed("研究计划没有可执行的搜索查询", retryable=False)
+        raise TaskFailed("没有可执行的用户确认查询", retryable=False)
+
+    reviewed_digest = sha256("\\n".join(queries).encode("utf-8")).hexdigest()
+    expected_workflow_digest = payload.get("reviewed_search_queries_sha256")
+    expected_job_digest = (job.payload or {}).get("query_digest")
+    if (
+        reviewed_digest != expected_workflow_digest
+        or reviewed_digest != expected_job_digest
+    ):
+        raise TaskFailed("用户确认的搜索查询哈希校验失败", retryable=False)
 
     provider = get_research_search_provider()
     if not provider.configured:
