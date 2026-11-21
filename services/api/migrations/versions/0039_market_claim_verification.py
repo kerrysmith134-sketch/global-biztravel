@@ -143,6 +143,8 @@ def upgrade() -> None:
                 CHECK (confidence_level IN ('MEDIUM','LOW','INSUFFICIENT')),
             CONSTRAINT ck_market_claims_support_count_nonnegative CHECK (supporting_evidence_count >= 0),
             CONSTRAINT ck_market_claims_contradict_count_nonnegative CHECK (contradicting_evidence_count >= 0),
+            CONSTRAINT ck_market_claims_verified_support_count_nonnegative CHECK (verified_support_count >= 0),
+            CONSTRAINT ck_market_claims_verified_contradiction_count_nonnegative CHECK (verified_contradiction_count >= 0),
             CONSTRAINT ck_market_claims_distinct_host_count_nonnegative CHECK (distinct_host_count >= 0),
             CONSTRAINT ck_market_claims_no_automated_independence_confirmation
                 CHECK (confirmed_independent_source_count = 0),
@@ -163,6 +165,11 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX ix_market_claims_org_verification_run "
         "ON market_claims (organization_id, verification_run_id)"
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX uq_market_claims_one_accepted_per_key "
+        "ON market_claims (organization_id, workspace_id, answer_id, claim_key) "
+        "WHERE status = 'ACCEPTED'"
     )
 
     op.execute(
