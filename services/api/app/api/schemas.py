@@ -1920,69 +1920,6 @@ class MarketResearchQuestionRead(ORMModel):
     updated_at: datetime
 
 
-MarketQuestionAnswerStatus = Literal[
-    "DRAFT", "NEEDS_REVIEW", "CONFLICTED", "ACCEPTED", "REJECTED", "SUPERSEDED"
-]
-
-
-class MarketQuestionAnswerEvidenceInput(BaseModel):
-    evidence_id: UUID
-    relation_type: MarketEvidenceRelation
-    rationale: str | None = Field(default=None, max_length=2000)
-
-
-class MarketQuestionAnswerCreate(BaseModel):
-    answer_summary: str = Field(min_length=1, max_length=12000)
-    assumptions: list[Any] = Field(default_factory=list)
-    unknowns: list[Any] = Field(default_factory=list)
-    confidence_level: MarketInsightConfidence = "INSUFFICIENT"
-    generated_by_run_id: UUID | None = None
-    evidence: list[MarketQuestionAnswerEvidenceInput] = Field(default_factory=list, max_length=100)
-    evidence_gap: str | None = Field(default=None, max_length=3000)
-
-    @model_validator(mode="after")
-    def _answer_has_evidence_or_gap(self) -> MarketQuestionAnswerCreate:
-        if not self.answer_summary.strip():
-            raise ValueError("答案内容不能为空白")
-        if not self.evidence and not (self.evidence_gap or "").strip():
-            raise ValueError("答案必须关联证据，或明确说明证据缺口")
-        relations = [(item.evidence_id, item.relation_type) for item in self.evidence]
-        if len(relations) != len(set(relations)):
-            raise ValueError("答案中不得重复添加相同的 Evidence 关系")
-        return self
-
-
-class MarketQuestionAnswerEvidenceRead(BaseModel):
-    relation_type: MarketEvidenceRelation
-    rationale: str | None
-    evidence: MarketEvidenceRead
-
-
-class MarketQuestionAnswerRead(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    question_id: UUID
-    version: int
-    answer_summary: str
-    assumptions: list[Any]
-    unknowns: list[Any]
-    confidence_level: MarketInsightConfidence
-    status: MarketQuestionAnswerStatus
-    evidence_gap: str | None
-    generated_by_run_id: UUID | None
-    supersedes_id: UUID | None
-    created_by_user_id: UUID | None
-    reviewed_by_user_id: UUID | None
-    reviewed_at: datetime | None
-    review_note: str | None
-    created_at: datetime
-    evidence: list[MarketQuestionAnswerEvidenceRead] = Field(default_factory=list)
-
-
-class MarketQuestionAnswerReview(BaseModel):
-    review_note: str | None = Field(default=None, max_length=3000)
-
-
 class MarketActivityEventRead(ORMModel):
     id: UUID
     workspace_id: UUID
@@ -2181,6 +2118,69 @@ class MarketInsightRead(BaseModel):
 
 class MarketInsightReview(BaseModel):
     review_note: str | None = Field(default=None, max_length=3000)
+
+MarketQuestionAnswerStatus = Literal[
+    "DRAFT", "NEEDS_REVIEW", "CONFLICTED", "ACCEPTED", "REJECTED", "SUPERSEDED"
+]
+
+
+class MarketQuestionAnswerEvidenceInput(BaseModel):
+    evidence_id: UUID
+    relation_type: MarketEvidenceRelation
+    rationale: str | None = Field(default=None, max_length=2000)
+
+
+class MarketQuestionAnswerCreate(BaseModel):
+    answer_summary: str = Field(min_length=1, max_length=12000)
+    assumptions: list[Any] = Field(default_factory=list)
+    unknowns: list[Any] = Field(default_factory=list)
+    confidence_level: MarketInsightConfidence = "INSUFFICIENT"
+    generated_by_run_id: UUID | None = None
+    evidence: list[MarketQuestionAnswerEvidenceInput] = Field(default_factory=list, max_length=100)
+    evidence_gap: str | None = Field(default=None, max_length=3000)
+
+    @model_validator(mode="after")
+    def _answer_has_evidence_or_gap(self) -> MarketQuestionAnswerCreate:
+        if not self.answer_summary.strip():
+            raise ValueError("答案内容不能为空白")
+        if not self.evidence and not (self.evidence_gap or "").strip():
+            raise ValueError("答案必须关联证据，或明确说明证据缺口")
+        relations = [(item.evidence_id, item.relation_type) for item in self.evidence]
+        if len(relations) != len(set(relations)):
+            raise ValueError("答案中不得重复添加相同的 Evidence 关系")
+        return self
+
+
+class MarketQuestionAnswerEvidenceRead(BaseModel):
+    relation_type: MarketEvidenceRelation
+    rationale: str | None
+    evidence: MarketEvidenceRead
+
+
+class MarketQuestionAnswerRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    question_id: UUID
+    version: int
+    answer_summary: str
+    assumptions: list[Any]
+    unknowns: list[Any]
+    confidence_level: MarketInsightConfidence
+    status: MarketQuestionAnswerStatus
+    evidence_gap: str | None
+    generated_by_run_id: UUID | None
+    supersedes_id: UUID | None
+    created_by_user_id: UUID | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
+    review_note: str | None
+    created_at: datetime
+    evidence: list[MarketQuestionAnswerEvidenceRead] = Field(default_factory=list)
+
+
+class MarketQuestionAnswerReview(BaseModel):
+    review_note: str | None = Field(default=None, max_length=3000)
+
 
 
 MarketOpportunityStatus = Literal[
