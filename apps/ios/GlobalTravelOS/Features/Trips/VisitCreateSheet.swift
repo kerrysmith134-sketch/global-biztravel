@@ -188,11 +188,12 @@ struct VisitCreateSheet: View {
             errorMessage = "新建地点必须填写真实经纬度；也可选择客户已经登记的地址。"
             return
         }
-        if let latitudeValue, let longitudeValue,
-           !(-90.0...90.0).contains(latitudeValue) ||
-            !(-180.0...180.0).contains(longitudeValue) {
-            errorMessage = "经纬度超出有效范围。"
-            return
+        if let latitudeValue, let longitudeValue {
+            guard (-90.0...90.0).contains(latitudeValue),
+                  (-180.0...180.0).contains(longitudeValue) else {
+                errorMessage = "经纬度超出有效范围。"
+                return
+            }
         }
 
         let serviceValue = Int(serviceMinutes) ?? 60
