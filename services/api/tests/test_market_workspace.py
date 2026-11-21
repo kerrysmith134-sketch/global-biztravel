@@ -242,6 +242,29 @@ def test_market_workspace_is_tenant_isolated(client: TestClient) -> None:
             headers=headers(USER_B, ORG_B),
         )
         assert stolen_questions.status_code == 404
+
+        # 直接使用受 RLS 约束的 gbt_app 会话读取：即使绕过 API 显式过滤也不可见。
+        with org_session(UUID(ORG_B)) as session:
+            assert session.scalar(
+                select(func.count()).select_from(MarketWorkspace).where(
+                    MarketWorkspace.id == UUID(workspace_id)
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count()).select_from(MarketContextSnapshot).where(
+                    MarketContextSnapshot.workspace_id == UUID(workspace_id)
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count()).select_from(MarketResearchQuestion).where(
+                    MarketResearchQuestion.workspace_id == UUID(workspace_id)
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count()).select_from(MarketActivityEvent).where(
+                    MarketActivityEvent.workspace_id == UUID(workspace_id)
+                )
+            ) == 0
     finally:
         if workspace_id is not None:
             with org_session(UUID(ORG_A)) as session:
