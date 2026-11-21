@@ -297,7 +297,6 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
     if not provider.configured:
         raise TaskFailed("研究搜索 Provider 已取消配置", retryable=False)
 
-    now = datetime.now(UTC)
     run = AgentRun(
         organization_id=str(job.organization_id),
         workflow_id=workflow.id,
