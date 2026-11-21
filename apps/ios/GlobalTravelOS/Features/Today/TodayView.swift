@@ -163,21 +163,20 @@ struct TodayView: View {
                     .accessibilityLabel("通知")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            showsTrips = true
-                        } label: {
-                            Label("行程管理", systemImage: DSIconCatalog.trip)
-                        }
-                        Button {
-                            showsActionCenter = true
-                        } label: {
-                            Label("行动中心", systemImage: DSIconCatalog.actions)
-                        }
+                    Button {
+                        showsTrips = true
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: DSIconCatalog.trip)
                     }
-                    .accessibilityLabel("更多操作")
+                    .accessibilityLabel("出行")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showsActionCenter = true
+                    } label: {
+                        Image(systemName: DSIconCatalog.actions)
+                    }
+                    .accessibilityLabel("行动中心")
                 }
             }
             .refreshable { await viewModel.load() }
