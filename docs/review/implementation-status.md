@@ -1,6 +1,6 @@
 # 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
-- 核对时间：2026-10-28
+- 核对时间：2026-11-21（市场情报 H1.3 增量更新）
 - 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
   规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
   后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
@@ -269,3 +269,26 @@
 - **ResearchPlan 整合**：复用现有 ResearchPlan Workflow / AgentRun / BackgroundJob / Evidence，Workspace 可关联多个单次研究；不重复建设检索 Worker 和研究计划主表。
 - **API 契约**：已由仓库生成器导出 OpenAPI（107 paths / 182 schemas）并生成 28 份 iOS 契约样本；CI #196 的 Ruff、MyPy、contract-check 已通过。
 - **尚未通过的门禁**：CI #196 在 docs-check 阶段发现 0032/0033 未登记，本次已补齐本迁移清单；PostgreSQL migration、全量 pytest、Alembic drift check、E2E 与当前分支 iOS 完整验证仍以最新严格 CI 为准。不得将未执行项宣称为通过。
+
+
+## 10. 市场情报引擎 H1.3 — Evidence 版本化与 MarketInsight
+
+> 本节记录 `feat/sprint-h1.3-evidence-insights` 叠加分支中的工程实现；不覆盖上文原有 Trip MVP 验收记录。
+
+| 能力 | 实现 | 约束 |
+|---|---|---|
+| Evidence 兼容扩展 | 迁移 0034 为现有 evidence 增加 published_at、canonical_ref、content_hash、observation、verification_status、quality | 新字段允许 NULL；旧 record_many() 与原唯一约束保持不变 |
+| 来源内容版本化 | 新市场来源按规范化来源标识 + 原文 SHA-256 生成 version ref | 同来源同内容幂等；同来源内容改变生成新行；不同来源不会因内容相同被合并 |
+| MarketInsight | 组织级、Workspace 级版本化判断记录 | insight_key + version 唯一；生成来源 AgentRun 必须同组织；修订追加新版本 |
+| InsightEvidence | 显式 SUPPORTS / CONTRADICTS / CONTEXT 关联 | 同组织复合外键；Evidence 删除受保护；不使用多态 target_id |
+| 人工审核 | ACCEPTED / REJECTED 必须由用户动作记录 reviewer 和时间 | 采纳必须至少有一条支持证据，且不能有未解决反驳；同一 insight_key 同时只允许一个 ACCEPTED 版本 |
+| 证据不足 | 可通过 insufficient_evidence_reason 明确记录信息缺口 | 不允许将无证据判断采纳为已确认事实 |
+| 活动时间线 | Insight 创建/采纳/驳回追加 MarketActivityEvent | 不提供普通修改/删除事件的 API |
+
+新增 API：
+- POST/GET /v1/market/workspaces/{workspace_id}/evidence
+- POST/GET /v1/market/workspaces/{workspace_id}/insights
+- POST .../insights/{insight_id}:accept
+- POST .../insights/{insight_id}:reject
+
+本节代码仍需在 PR #4 分支通过完整 CI 与 PostgreSQL 集成测试后，才能标记为验证完成。当前未声称 E2E、iOS UI 或生产数据库迁移已完成。MarketOpportunity、Trip 关联、iOS Workspace 原生 UI 与 Agent 自动化仍在后续切片。
