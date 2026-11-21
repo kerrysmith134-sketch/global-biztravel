@@ -22,6 +22,7 @@ from app.api.schemas import (
     ResearchPlannerAuditRead,
     ResearchPlanRead,
 )
+from app.integrations.research_search import get_research_search_provider
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
 from app.llm.prompts import (
@@ -30,7 +31,6 @@ from app.llm.prompts import (
     RESEARCH_PLAN_SYSTEM,
     RESEARCH_PLAN_TEMPLATE_ID,
 )
-from app.integrations.research_search import get_research_search_provider
 from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import customer_service, evidence_service, job_service, trip_service
 
