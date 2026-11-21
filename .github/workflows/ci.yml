@@ -42,7 +42,7 @@ jobs:
         run: brew install swiftlint && make lint-ios
       # Temporary migration step: capture current repository-wide findings as a reviewed baseline.
       - name: Generate SwiftLint baseline artifact
-        run: swiftlint --lenient --write-baseline .swiftlint-baseline.json
+        run: swiftlint --lenient
       - uses: actions/upload-artifact@v4
         with:
           name: swiftlint-baseline
