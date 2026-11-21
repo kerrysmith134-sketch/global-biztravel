@@ -74,7 +74,8 @@ class SearXNGResearchSearchProvider(ResearchSearchProvider):
             return []
         params: dict[str, str] = {"q": cleaned, "format": "json"}
         if language and len(language) <= 35:
-            params["language"] = language
+            language_code = language.replace("_", "-").split("-", maxsplit=1)[0].lower()
+            params["language"] = language_code
         try:
             with httpx.Client(
                 timeout=self.timeout_seconds,
