@@ -122,7 +122,7 @@ struct PlanMapView: View {
 
     var body: some View {
         Group {
-            if dayRoutes.isEmpty && mappedCustomerLocations.isEmpty {
+            if dayRoutes.isEmpty && mappedCustomerLocations.isEmpty && !isLoadingCustomerPlaces {
                 VStack(spacing: DS.Spacing.sm) {
                     ContentUnavailableView(
                         "没有可展示的地图坐标",
@@ -226,6 +226,9 @@ struct PlanMapView: View {
         }
         .navigationTitle(title)
         .onAppear { position = .automatic }
+        .onChange(of: customerLocations.map(\.id)) { oldIDs, newIDs in
+            if oldIDs.isEmpty && !newIDs.isEmpty { position = .automatic }
+        }
         .onChange(of: plan.id) { _, _ in
             selectedStopID = nil
             selectedCustomerPlaceID = nil
@@ -326,6 +329,7 @@ struct PlanMapView: View {
                     ) {
                         selectedDayIndex = route.dayIndex
                         selectedStopID = nil
+                        selectedCustomerPlaceID = nil
                         position = .automatic
                     }
                 }
