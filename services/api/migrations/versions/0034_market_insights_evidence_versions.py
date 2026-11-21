@@ -105,6 +105,11 @@ def upgrade() -> None:
         "ON market_insights (organization_id, workspace_id, insight_key, version)"
     )
     op.execute(
+        "CREATE UNIQUE INDEX uq_market_insights_one_accepted_per_key "
+        "ON market_insights (organization_id, workspace_id, insight_key) "
+        "WHERE status = 'ACCEPTED'"
+    )
+    op.execute(
         """
         CREATE TABLE market_insight_evidence (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
