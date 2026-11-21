@@ -140,7 +140,7 @@ final class TodayViewModel: ObservableObject {
 struct TodayView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: TodayViewModel
-        @State private var showsActionCenter = false
+    @State private var showsActionCenter = false
     @State private var showsNotifications = false
     @State private var showsAssistant = false
     @State private var showsTrips = false
@@ -165,8 +165,29 @@ struct TodayView: View {
 
                     if let cockpit = viewModel.cockpit, let trip = cockpit.trip {
                         MissionHeroCard(cockpit: cockpit, trip: trip, plan: viewModel.activePlan)
+
                         MissionMetricStrip(trip: trip, plan: viewModel.activePlan)
-                        missionOperationsSection(cockpit)
+
+                        MissionPulseStrip(
+                            riskCount: cockpit.risks.count,
+                            decisionCount: pendingSuggestions.count,
+                            upcomingCount: cockpit.upcoming.count
+                        )
+
+                        if cockpit.nextStop != nil, let plan = viewModel.activePlan {
+                            MissionNextStopCard(cockpit: cockpit, trip: trip, plan: plan)
+                        }
+
+                        MissionTodayAgendaCard(
+                            cockpit: cockpit,
+                            emptyText: emptyTodayText(cockpit)
+                        )
+
+                        if !cockpit.risks.isEmpty {
+                            MissionRiskSummaryCard(cockpit: cockpit)
+                        }
+
+                        decisionSection
 
                         if let budget = viewModel.budgetSummary {
                             NavigationLink {
@@ -186,10 +207,6 @@ struct TodayView: View {
                             }
                         }
 
-                        if !cockpit.risks.isEmpty {
-                            cockpitRiskSection(cockpit)
-                        }
-                        decisionSection
                         if !cockpit.upcoming.isEmpty {
                             upcomingSection(cockpit)
                         }
@@ -219,28 +236,26 @@ struct TodayView: View {
                     .accessibilityLabel("AI 助手")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showsNotifications = true
+                    Menu {
+                        Button {
+                            showsNotifications = true
+                        } label: {
+                            Label("通知中心", systemImage: DSIconCatalog.notifications)
+                        }
+                        Button {
+                            showsTrips = true
+                        } label: {
+                            Label("行程管理", systemImage: DSIconCatalog.trip)
+                        }
+                        Button {
+                            showsActionCenter = true
+                        } label: {
+                            Label("行动中心", systemImage: DSIconCatalog.actions)
+                        }
                     } label: {
-                        Image(systemName: DSIconCatalog.notifications)
+                        Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("通知")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showsTrips = true
-                    } label: {
-                        Image(systemName: DSIconCatalog.trip)
-                    }
-                    .accessibilityLabel("出行")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showsActionCenter = true
-                    } label: {
-                        Image(systemName: DSIconCatalog.actions)
-                    }
-                    .accessibilityLabel("行动中心")
+                    .accessibilityLabel("更多操作")
                 }
             }
             .refreshable { await viewModel.load() }
@@ -271,7 +286,7 @@ struct TodayView: View {
     }
 
     private var decisionSection: some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.md) {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             DSSectionHeader(
                 title: "AI 洞察与待决策",
                 subtitle: "\(pendingSuggestions.count) 项待你确认",
@@ -281,37 +296,45 @@ struct TodayView: View {
             }
 
             if pendingSuggestions.isEmpty && !viewModel.isLoading {
-                DSCard {
+                DSCard(padding: DS.Spacing.md) {
                     HStack(spacing: DS.Spacing.md) {
                         Image(systemName: "checkmark.seal")
-                            .font(.title2)
+                            .font(.title3)
                             .foregroundStyle(DS.ColorToken.success)
+                            .frame(width: 36, height: 36)
+                            .background(DS.ColorToken.success.opacity(0.10), in: Circle())
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("暂时没有待决策事项")
+                            Text("当前没有待你确认的建议")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(DS.ColorToken.textPrimary)
-                            Text("系统会继续监控计划风险和待处理建议。")
+                            Text("系统会继续监控行程准备度与执行风险。")
                                 .font(.caption)
                                 .foregroundStyle(DS.ColorToken.textSecondary)
                         }
                     }
                 }
             } else {
-                ForEach(Array(pendingSuggestions.prefix(3))) { suggestion in
-                    SuggestionCard(
+                ForEach(Array(pendingSuggestions.prefix(2))) { suggestion in
+                    MissionDecisionCard(
                         suggestion: suggestion,
                         isBusy: viewModel.busyIds.contains(suggestion.id),
                         approve: { await viewModel.approve(suggestion) },
                         dismiss: { await viewModel.dismiss(suggestion) }
                     )
                 }
-                if pendingSuggestions.count > 3 {
-                    Button("查看其余 \(pendingSuggestions.count - 3) 项建议") {
+                if pendingSuggestions.count > 2 {
+                    Button {
                         showsActionCenter = true
+                    } label: {
+                        HStack {
+                            Text("查看其余 \(pendingSuggestions.count - 2) 项")
+                            Spacer()
+                            Image(systemName: "arrow.right")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ColorToken.brand)
+                        .frame(minHeight: 44)
                     }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(DS.ColorToken.brand)
-                    .frame(maxWidth: .infinity, minHeight: 44)
                 }
             }
 
@@ -334,170 +357,59 @@ struct TodayView: View {
             }
     }
 
-    @ViewBuilder
-    private func missionOperationsSection(_ cockpit: TravelCockpit) -> some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.md) {
+    private func upcomingSection(_ cockpit: TravelCockpit) -> some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             DSSectionHeader(
-                title: "今日执行",
-                subtitle: cockpit.timeZone.map { "计划基准时区 · " + zoneName($0) } ?? "计划时区未配置"
+                title: "接下来的 Mission",
+                subtitle: "未来 7 天内的出行安排"
             )
-            DSCard {
-                VStack(alignment: .leading, spacing: DS.Spacing.sm) {
-                    HStack {
-                        Label("今日拜访", systemImage: "calendar.day.timeline.left")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(DS.ColorToken.textPrimary)
-                        Spacer()
-                        Text("\(cockpit.todayStops.count) 站")
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(DS.ColorToken.brand)
-                    }
-                    if cockpit.todayStops.isEmpty {
-                        Text(emptyTodayText(cockpit))
-                            .font(.footnote)
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(Array(cockpit.todayStops.enumerated()), id: \.element.id) { index, stop in
-                                CockpitStopRow(stop: stop, timeZone: cockpit.timeZone)
-                                if index < cockpit.todayStops.count - 1 {
-                                    Divider().padding(.leading, 58)
+            DSCard(padding: DS.Spacing.md) {
+                VStack(spacing: 0) {
+                    ForEach(Array(cockpit.upcoming.enumerated()), id: \.element.id) { index, trip in
+                        NavigationLink {
+                            TripDetailView(tripId: trip.id, environment: environment)
+                        } label: {
+                            HStack(alignment: .center, spacing: DS.Spacing.md) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(trip.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(DS.ColorToken.textPrimary)
+                                        .lineLimit(2)
+                                    HStack(spacing: 6) {
+                                        Text(trip.countries?.joined(separator: " · ") ?? "目的地待补充")
+                                        if let start = trip.window?.start {
+                                            Text("·")
+                                            Text(CockpitFormat.day(start, timeZone: cockpit.timeZone))
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
                                 }
+                                Spacer(minLength: 4)
+                                DSBadge(text: trip.statusLabel, color: DS.ColorToken.status(trip.status ?? ""))
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
                             }
+                            .padding(.vertical, DS.Spacing.md)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if index < cockpit.upcoming.count - 1 {
+                            Divider()
                         }
                     }
-                    if !cockpit.todayStops.isEmpty {
-                        HStack {
-                            Text("客户服务时长")
-                                .font(.caption)
-                                .foregroundStyle(DS.ColorToken.textSecondary)
-                            Spacer()
-                            Text(CockpitFormat.duration(cockpit.todayServiceMinutes))
-                                .font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(DS.ColorToken.textPrimary)
-                        }
-                        .padding(.top, DS.Spacing.xs)
-                    }
-                }
-            }
-
-            if cockpit.nextStop != nil {
-                nextStopSection(cockpit)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func nextStopSection(_ cockpit: TravelCockpit) -> some View {
-        if let next = cockpit.nextStop {
-            DSSectionHeader(title: "下一站", subtitle: cockpit.nextDayLabel ?? "下一项待执行拜访")
-            DSCard {
-                HStack(alignment: .top, spacing: DS.Spacing.md) {
-                    Image(systemName: "arrow.turn.down.right")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(DS.ColorToken.brand)
-                        .frame(width: 38, height: 38)
-                        .background(DS.ColorToken.brandSubtle, in: RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(next.displayName)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(DS.ColorToken.textPrimary)
-                        if let city = next.city, !city.isEmpty {
-                            Text(city)
-                                .font(.caption)
-                                .foregroundStyle(DS.ColorToken.textSecondary)
-                        }
-                        if let arrive = next.arrive {
-                            Text("预计到达 \(CockpitFormat.time(arrive, timeZone: cockpit.timeZone))")
-                                .font(.caption)
-                                .foregroundStyle(DS.ColorToken.textSecondary)
-                        }
-                        if let leaveBy = cockpit.leaveBy {
-                            Text(
-                                "建议 \(CockpitFormat.time(leaveBy, timeZone: cockpit.timeZone)) 出发 · "
-                                    + "路程 \(CockpitFormat.duration(next.travelMinutes ?? 0))"
-                            )
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(DS.ColorToken.brand)
-                        }
-                    }
-                    Spacer(minLength: 0)
                 }
             }
         }
     }
 
     private func emptyTodayText(_ cockpit: TravelCockpit) -> String {
-        if let countdown = cockpit.countdownText, countdown.hasPrefix("D-"),
-           let start = cockpit.trip?.window?.start {
-            return "今天没有排期；\(CockpitFormat.day(start, timeZone: cockpit.timeZone)) 出发。"
+        if let start = cockpit.trip?.window?.start,
+           let countdown = cockpit.countdownText,
+           countdown.hasPrefix("D-") || countdown == "明天出发" {
+            return "今天没有排定拜访；\(CockpitFormat.day(start, timeZone: cockpit.timeZone)) 出发。"
         }
-        return "今天没有排定拜访。"
+        return "今天没有排定拜访。下一站和后续计划会在这里显示。"
     }
-
-    private func zoneName(_ timeZone: TimeZone) -> String {
-        if timeZone.identifier == TimeZone.current.identifier { return "本地时区" }
-        return timeZone.localizedName(for: .generic, locale: Locale(identifier: "zh_CN"))
-            ?? timeZone.identifier
-    }
-
-    @ViewBuilder
-    private func cockpitRiskSection(_ cockpit: TravelCockpit) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("待处理").font(.headline)
-                Spacer()
-                Text("\(cockpit.risks.count) 项")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            VStack(spacing: 0) {
-                ForEach(Array(cockpit.risks.enumerated()), id: \.element.id) { index, risk in
-                    CockpitRiskRow(risk: risk, trip: cockpit.trip)
-                    if index < cockpit.risks.count - 1 {
-                        Divider().padding(.leading, 26)
-                    }
-                }
-            }
-            .background(DS.ColorToken.surface, in: RoundedRectangle(cornerRadius: DS.Radius.card))
-        }
-    }
-
-    @ViewBuilder
-    private func upcomingSection(_ cockpit: TravelCockpit) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("未来 7 天").font(.headline)
-            VStack(spacing: 0) {
-                ForEach(Array(cockpit.upcoming.enumerated()), id: \.element.id) { index, trip in
-                    NavigationLink {
-                        TripDetailView(tripId: trip.id, environment: environment)
-                    } label: {
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(trip.name).font(.subheadline)
-                                if let start = trip.window?.start {
-                                    Text(CockpitFormat.day(start, timeZone: cockpit.timeZone))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.vertical, 8)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if index < cockpit.upcoming.count - 1 {
-                        Divider().padding(.leading, 2)
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .background(.background, in: RoundedRectangle(cornerRadius: DS.Radius.card))
-        }
-    }
-
 }
