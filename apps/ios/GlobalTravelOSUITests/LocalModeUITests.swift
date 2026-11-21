@@ -61,7 +61,7 @@ final class LocalModeUITests: XCTestCase {
 
         // 差旅驾驶舱（审计 5.1）：英雄卡倒计时 + 今日分区 + 待处理风险。
         XCTAssertTrue(
-            app.staticTexts.matching(
+            app.buttons.matching(
                 NSPredicate(format: "label CONTAINS '出发' OR label CONTAINS '第 '")
             ).firstMatch.waitForExistence(timeout: 15),
             "驾驶舱缺少倒计时/进度"
