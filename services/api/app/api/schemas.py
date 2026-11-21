@@ -1548,6 +1548,7 @@ class ResearchPlanRead(BaseModel):
     job_id: UUID | None = None
     retrieval_error: str | None = None
     results_count: int = 0
+    reviewed_search_queries: list[str] = Field(default_factory=list)
     request: str
     requested_scope: ResearchSourceScope
     recommended_scope: Literal[
