@@ -266,7 +266,7 @@ def add_opportunity_evidence(
     rationale: str | None,
     actor_user_id: UUID,
 ) -> dict[str, Any]:
-    opportunity = _opportunity(session, organization_id, workspace_id, opportunity_id, lock=True)
+    _opportunity(session, organization_id, workspace_id, opportunity_id, lock=True)
     allowed_evidence, _ = _evidence_scope(session, organization_id, workspace_id)
     if evidence_id not in allowed_evidence:
         raise NotFound(
