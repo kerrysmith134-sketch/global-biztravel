@@ -47,6 +47,74 @@ def _evidence_scope(
     )
 
 
+def load_answer_draft_inputs(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    question_id: UUID,
+    evidence_ids: list[UUID],
+    workflow_id: UUID,
+) -> tuple[MarketResearchQuestion, list[Evidence]]:
+    """Revalidate tenant, Workspace, workflow, question and immutable Evidence at execution time."""
+    workflow = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == organization_id,
+            WorkflowInstance.id == workflow_id,
+            WorkflowInstance.workflow_type == WORKFLOW_TYPE,
+        ).with_for_update()
+    ).one_or_none()
+    if workflow is None:
+        raise NotFound("答案草拟 Workflow 不存在")
+    link = session.scalars(
+        select(MarketWorkspaceWorkflow).where(
+            MarketWorkspaceWorkflow.organization_id == organization_id,
+            MarketWorkspaceWorkflow.workspace_id == workspace_id,
+            MarketWorkspaceWorkflow.workflow_id == workflow_id,
+        )
+    ).one_or_none()
+    if link is None:
+        raise Conflict("答案草拟 Workflow 不属于当前 Workspace")
+    question = session.scalars(
+        select(MarketResearchQuestion).where(
+            MarketResearchQuestion.organization_id == organization_id,
+            MarketResearchQuestion.workspace_id == workspace_id,
+            MarketResearchQuestion.id == question_id,
+        ).with_for_update()
+    ).one_or_none()
+    if question is None:
+        raise NotFound("研究问题不存在")
+    if question.status in {"BLOCKED", "CANCELLED"}:
+        raise Conflict("研究问题已阻塞或取消，不能继续生成答案")
+    if not evidence_ids:
+        return question, []
+
+    linked_workflow_ids = list(
+        session.scalars(
+            select(MarketWorkspaceWorkflow.workflow_id).where(
+                MarketWorkspaceWorkflow.organization_id == organization_id,
+                MarketWorkspaceWorkflow.workspace_id == workspace_id,
+            )
+        ).all()
+    )
+    scope = _evidence_scope(organization_id, workspace_id, linked_workflow_ids)
+    rows = session.scalars(
+        select(Evidence)
+        .where(scope, Evidence.id.in_(evidence_ids))
+        .order_by(Evidence.created_at, Evidence.id)
+    ).all()
+    by_id = {row.id: row for row in rows}
+    if len(by_id) != len(set(evidence_ids)):
+        raise Conflict("答案草拟所引用的证据已删除或不再属于当前 Workspace")
+    ordered = [by_id[item] for item in evidence_ids]
+    if any(
+        not isinstance((row.payload or {}).get("content"), str)
+        or not (row.payload or {}).get("content", "").strip()
+        for row in ordered
+    ):
+        raise Conflict("答案草拟所引用的证据缺少可分析内容")
+    return question, ordered
+
+
 def enqueue_answer_draft(
     session: Session,
     organization_id: UUID | str,
