@@ -16,6 +16,7 @@ struct PlanMapView: View {
     @State private var position: MapCameraPosition = .automatic
     @State private var selectedStopID: String?
     @State private var selectedDayIndex: Int?
+    @State private var showsOpenVisitsOnly = false
 
     private struct DayRoute {
         var dayIndex: Int
@@ -68,7 +69,13 @@ struct PlanMapView: View {
     }
 
     private var allStops: [PlanStop] {
-        visibleDayRoutes.flatMap(\.stops)
+        visibleDayRoutes.flatMap(\.stops).filter(isVisibleStop)
+    }
+
+    private func isVisibleStop(_ stop: PlanStop) -> Bool {
+        guard showsOpenVisitsOnly else { return true }
+        guard let visit = visits.first(where: { $0.id == stop.visitId }) else { return true }
+        return visit.isOpen
     }
 
     private var selectedStop: PlanStop? {
@@ -112,7 +119,7 @@ struct PlanMapView: View {
                                 MapPolyline(coordinates: route.coordinates)
                                     .stroke(route.color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                             }
-                            ForEach(route.stops) { stop in
+                            ForEach(route.stops.filter(isVisibleStop)) { stop in
                                 if let lat = stop.latitude, let lon = stop.longitude {
                                     Marker(
                                         stop.displayName,
@@ -157,7 +164,15 @@ struct PlanMapView: View {
                     selectedStopID = nil
                     position = .automatic
                 }
-                ForEach(dayRoutes, id: \.dayIndex) { route in
+                filterChip(title: "全部拜访", selected: !showsOpenVisitsOnly) {
+                    showsOpenVisitsOnly = false
+                    selectedStopID = nil
+                }
+                filterChip(title: "待执行", selected: showsOpenVisitsOnly) {
+                    showsOpenVisitsOnly = true
+                    selectedStopID = nil
+                }
+                ForEach(dayRoutes, id: .dayIndex) { route in
                     filterChip(
                         title: "第 \(route.dayIndex) 天",
                         selected: selectedDayIndex == route.dayIndex
