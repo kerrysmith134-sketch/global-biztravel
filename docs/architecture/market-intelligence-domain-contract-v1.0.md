@@ -257,6 +257,12 @@ DISCOVERED → RESEARCHING → EVIDENCE_READY → QUALIFICATION_PENDING
 - assessment_dimensions JSONB
 - created_by_run_id
 - owner_user_id
+- qualified_by_user_id / qualified_at / qualification_reason（人工资格确认审计）
+- outcome_recorded_by_user_id / outcome_recorded_at / outcome_note（WON/LOST 结果审计）
+- assessment_confidence（HIGH / MEDIUM / LOW / INSUFFICIENT）
+- assessment_version（当前评估版本号）
+
+评估历史必须单独追加到 MarketOpportunityAssessment（organization_id、workspace_id、opportunity_id、version、dimensions、summary、confidence_level、assessed_by_run_id / assessed_by_user_id、created_at），不得覆盖旧版评估。
 
 推荐基础评估维度：Strategic Fit、Demand Evidence、Commercial Potential、Accessibility、Competition、Timing、Execution Cost。每个维度结构包含 value（可为 UNKNOWN）、rationale、evidence_refs、unknowns。禁止将缺失值悄悄转为 0 并参与总分。
 
@@ -333,9 +339,9 @@ MarketWorkspace 通过 MarketWorkspaceWorkflow 关联一个或多个 ResearchPla
 | 表 | 关系 |
 |---|---|
 | MarketQuestionDependency | question → depends_on_question；同 Workspace；禁止循环 |
-| MarketOpportunityEntity | Opportunity ↔ 一个或多个 MarketEntity |
+| MarketOpportunityEntity | Opportunity ↔ 当前 Workspace 已关联的一个或多个 MarketEntity |
 | MarketEntityCustomerLink | MarketEntity ↔ 现有 Customer，记录 MATCH_CANDIDATE / USER_CONFIRMED / REJECTED / CONFLICTED |
-| MarketWorkspaceTripLink | Workspace ↔ 现有 Trip，多对多 |
+| MarketWorkspaceTripLink | Workspace ↔ 现有 Trip，多对多；解除保留关联历史，不删除 Trip |
 | MarketWorkspaceWorkflow | Workspace ↔ 现有 WorkflowInstance，多对多；ResearchPlan 是其中一种 workflow_type |
 
 关联规则：
