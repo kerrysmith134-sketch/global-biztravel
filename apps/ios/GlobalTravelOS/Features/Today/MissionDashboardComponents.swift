@@ -22,7 +22,7 @@ struct MissionHomeHeader: View {
                         .tracking(1.5)
                         .foregroundStyle(DS.ColorToken.brand)
                     Text(greeting)
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .font(.largeTitle.weight(.semibold))
                         .foregroundStyle(DS.ColorToken.textPrimary)
                 }
                 Spacer()
@@ -104,7 +104,7 @@ struct MissionHeroCard: View {
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text(trip.name)
-                            .font(.system(size: 23, weight: .semibold, design: .rounded))
+                            .font(.title2.weight(.semibold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -117,7 +117,7 @@ struct MissionHeroCard: View {
                     HStack(alignment: .bottom, spacing: DS.Spacing.md) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(countdown)
-                                .font(.system(size: 21, weight: .semibold, design: .rounded).monospacedDigit())
+                                .font(.title3.weight(.semibold).monospacedDigit())
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.78)
@@ -236,7 +236,7 @@ struct MissionBudgetCard: View {
                             .font(.caption)
                             .foregroundStyle(DS.ColorToken.textSecondary)
                         Text(summary.budgetLabel)
-                            .font(.system(size: 19, weight: .semibold, design: .rounded).monospacedDigit())
+                            .font(.title3.weight(.semibold).monospacedDigit())
                             .foregroundStyle(DS.ColorToken.textPrimary)
                     }
                     Spacer(minLength: DS.Spacing.sm)
