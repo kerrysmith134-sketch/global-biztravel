@@ -212,6 +212,155 @@ class MarketResearchQuestion(Base):
     updated_at: Mapped[datetime] = updated_at()
 
 
+class MarketResearchQuestionAnswer(Base):
+    """Versioned answer draft for a Workspace research question; acceptance is human-governed."""
+
+    __tablename__ = "market_research_question_answers"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "question_id"],
+            [
+                "market_research_questions.organization_id",
+                "market_research_questions.workspace_id",
+                "market_research_questions.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_question_answer_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "generated_by_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_question_answer_run_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "supersedes_id"],
+            [
+                "market_research_question_answers.organization_id",
+                "market_research_question_answers.workspace_id",
+                "market_research_question_answers.id",
+            ],
+            ondelete="NO ACTION",
+            name="fk_market_question_answer_supersedes_same_workspace",
+        ),
+        UniqueConstraint(
+            "organization_id", "question_id", "version",
+            name="uq_market_question_answer_version",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "id",
+            name="uq_market_question_answer_org_workspace_id",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(
+            "status IN ('DRAFT','NEEDS_REVIEW','CONFLICTED','ACCEPTED','REJECTED','SUPERSEDED')",
+            name="status_allowed",
+        ),
+        CheckConstraint(
+            "confidence_level IN ('HIGH','MEDIUM','LOW','INSUFFICIENT')",
+            name="confidence_allowed",
+        ),
+        CheckConstraint("length(btrim(answer_summary)) > 0", name="answer_not_blank"),
+        CheckConstraint(
+            "status <> 'ACCEPTED' OR (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL)",
+            name="accepted_has_reviewer",
+        ),
+        CheckConstraint("supersedes_id IS NULL OR supersedes_id <> id", name="supersedes_not_self"),
+        Index(
+            "ix_market_question_answers_org_question_version",
+            "organization_id", "question_id", "version",
+        ),
+        Index(
+            "ix_market_question_answers_one_accepted",
+            "organization_id", "workspace_id", "question_id",
+            unique=True,
+            postgresql_where=text("status = 'ACCEPTED'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    question_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    answer_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    assumptions: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    unknowns: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    confidence_level: Mapped[str] = mapped_column(Text, nullable=False, server_default="INSUFFICIENT")
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="NEEDS_REVIEW")
+    evidence_gap: Mapped[str | None] = mapped_column(Text)
+    generated_by_run_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class MarketResearchQuestionAnswerEvidence(Base):
+    """Explicit evidence role attached to one immutable answer version."""
+
+    __tablename__ = "market_research_question_answer_evidence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "answer_id"],
+            [
+                "market_research_question_answers.organization_id",
+                "market_research_question_answers.workspace_id",
+                "market_research_question_answers.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_question_answer_evidence_answer_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "evidence_id"],
+            ["evidence.organization_id", "evidence.id"],
+            ondelete="RESTRICT",
+            name="fk_market_question_answer_evidence_evidence_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "answer_id", "evidence_id", "relation_type",
+            name="uq_market_question_answer_evidence_relation",
+        ),
+        CheckConstraint(
+            "relation_type IN ('SUPPORTS','CONTRADICTS','CONTEXT')",
+            name="relation_type_allowed",
+        ),
+        Index(
+            "ix_market_question_answer_evidence_org_answer",
+            "organization_id", "answer_id",
+        ),
+        Index(
+            "ix_market_question_answer_evidence_org_evidence",
+            "organization_id", "evidence_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    answer_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    evidence_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    relation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
 class MarketQuestionDependency(Base):
     __tablename__ = "market_question_dependencies"
     __table_args__ = (
@@ -1030,6 +1179,8 @@ __all__ = [
     "MarketContextSnapshot",
     "MarketQuestionDependency",
     "MarketResearchQuestion",
+    "MarketResearchQuestionAnswer",
+    "MarketResearchQuestionAnswerEvidence",
     "MarketResearchPlanEvidence",
     "MarketWorkspace",
     "MarketWorkspaceEntity",
