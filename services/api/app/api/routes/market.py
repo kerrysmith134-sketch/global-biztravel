@@ -25,6 +25,7 @@ from app.api.schemas import (
     MarketContextRead,
     MarketEntityCustomerLinkCreate,
     MarketEntityCustomerLinkRead,
+    MarketEntityRead,
     MarketEvidenceCreate,
     MarketEvidenceRead,
     MarketInsightCreate,
