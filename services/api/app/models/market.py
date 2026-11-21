@@ -663,6 +663,10 @@ class MarketOpportunity(Base):
             name="status_allowed",
         ),
         CheckConstraint("assessment_version >= 0", name="assessment_version_non_negative"),
+        CheckConstraint(
+            "assessment_confidence IN ('HIGH','MEDIUM','LOW','INSUFFICIENT')",
+            name="assessment_confidence_allowed",
+        ),
         CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
         CheckConstraint(
             "status NOT IN ('QUALIFIED','ACTION_PLANNED','WON','LOST') OR "
@@ -714,11 +718,11 @@ class MarketOpportunity(Base):
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     qualified_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
     qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     outcome_recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
     outcome_recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     outcome_note: Mapped[str | None] = mapped_column(Text)
@@ -922,7 +926,7 @@ class MarketWorkspaceTripLink(Base):
     )
     linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     unlinked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
     unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
