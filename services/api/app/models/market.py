@@ -12,6 +12,8 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CHAR,
+    DateTime,
     CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
@@ -20,6 +22,7 @@ from sqlalchemy import (
     SmallInteger,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -280,6 +283,191 @@ class MarketWorkspaceWorkflow(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+
+class MarketEntity(Base):
+    """A research candidate entity; it is not a CRM Customer record."""
+
+    __tablename__ = "market_entities"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_market_entities_org_id"),
+        CheckConstraint(
+            "status IN ('CANDIDATE','REVIEWED','VERIFIED','REJECTED','MERGED')",
+            name="status_allowed",
+        ),
+        Index(
+            "uq_market_entities_org_domain",
+            "organization_id",
+            "canonical_domain",
+            unique=True,
+            postgresql_where=text("canonical_domain IS NOT NULL"),
+        ),
+        Index("ix_market_entities_org_kind_name", "organization_id", "entity_kind", "normalized_name"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entity_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    canonical_domain: Mapped[str | None] = mapped_column(Text)
+    country_code: Mapped[str | None] = mapped_column(CHAR(2))
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="CANDIDATE")
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class MarketEntityAlias(Base):
+    """Preserves raw names, translated labels, domains and external identifiers."""
+
+    __tablename__ = "market_entity_aliases"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "entity_id"],
+            ["market_entities.organization_id", "market_entities.id"],
+            ondelete="CASCADE",
+            name="fk_market_entity_alias_entity_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "source_evidence_id"],
+            ["evidence.organization_id", "evidence.id"],
+            ondelete="RESTRICT",
+            name="fk_market_entity_alias_evidence_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "entity_id", "alias_type", "normalized_value",
+            name="uq_market_entity_alias_value",
+        ),
+        Index("ix_market_entity_aliases_org_lookup", "organization_id", "alias_type", "normalized_value"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    alias_type: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_value: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_value: Mapped[str] = mapped_column(Text, nullable=False)
+    source_evidence_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    created_at: Mapped[datetime] = created_at()
+
+
+class MarketWorkspaceEntity(Base):
+    """Associates a shared candidate entity with one Workspace's research scope."""
+
+    __tablename__ = "market_workspace_entities"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            ondelete="CASCADE",
+            name="fk_market_workspace_entity_workspace_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "entity_id"],
+            ["market_entities.organization_id", "market_entities.id"],
+            ondelete="RESTRICT",
+            name="fk_market_workspace_entity_entity_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "entity_id",
+            name="uq_market_workspace_entity",
+        ),
+        CheckConstraint(
+            "status IN ('DISCOVERED','RESEARCHING','INCLUDED','EXCLUDED')",
+            name="status_allowed",
+        ),
+        Index("ix_market_workspace_entities_org_workspace", "organization_id", "workspace_id"),
+        Index("ix_market_workspace_entities_org_entity", "organization_id", "entity_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    discovery_reason: Mapped[str | None] = mapped_column(Text)
+    relevance_note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="DISCOVERED")
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class MarketEntityCustomerLink(Base):
+    """A candidate match to a real Customer; only explicit approval confirms the link."""
+
+    __tablename__ = "market_entity_customer_links"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "entity_id"],
+            ["market_entities.organization_id", "market_entities.id"],
+            ondelete="CASCADE",
+            name="fk_market_entity_customer_link_entity_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "customer_id"],
+            ["customers.organization_id", "customers.id"],
+            ondelete="RESTRICT",
+            name="fk_market_entity_customer_link_customer_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "entity_id", "customer_id",
+            name="uq_market_entity_customer_link",
+        ),
+        CheckConstraint(
+            "link_status IN ('MATCH_CANDIDATE','USER_CONFIRMED','REJECTED','CONFLICTED')",
+            name="link_status_allowed",
+        ),
+        CheckConstraint(
+            "link_status <> 'USER_CONFIRMED' OR "
+            "(confirmed_by_user_id IS NOT NULL AND confirmed_at IS NOT NULL)",
+            name="confirmed_link_has_actor_and_time",
+        ),
+        Index("ix_market_entity_customer_links_org_customer", "organization_id", "customer_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    customer_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    link_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="MATCH_CANDIDATE")
+    matching_basis: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
 class MarketActivityEvent(Base):
     __tablename__ = "market_activity_events"
     __table_args__ = (
@@ -326,9 +514,13 @@ __all__ = [
     "MARKET_QUESTION_STATUSES",
     "MARKET_WORKSPACE_STATUSES",
     "MarketActivityEvent",
+    "MarketEntity",
+    "MarketEntityAlias",
+    "MarketEntityCustomerLink",
     "MarketContextSnapshot",
     "MarketQuestionDependency",
     "MarketResearchQuestion",
     "MarketWorkspace",
+    "MarketWorkspaceEntity",
     "MarketWorkspaceWorkflow",
 ]
