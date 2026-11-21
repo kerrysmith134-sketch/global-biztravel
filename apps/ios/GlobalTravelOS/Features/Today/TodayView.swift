@@ -115,6 +115,7 @@ struct TodayView: View {
     @State private var showsActionCenter = false
     @State private var showsNotifications = false
     @State private var showsAssistant = false
+    @State private var showsTrips = false
 
     init(environment: AppEnvironment) {
         _viewModel = StateObject(wrappedValue: TodayViewModel(environment: environment))
@@ -149,7 +150,7 @@ struct TodayView: View {
                     Button {
                         showsAssistant = true
                     } label: {
-                        Image(systemName: "bubble.left.and.text.bubble.right")
+                        Image(systemName: DSIconCatalog.assistant)
                     }
                     .accessibilityLabel("AI 助手")
                 }
@@ -157,9 +158,26 @@ struct TodayView: View {
                     Button {
                         showsNotifications = true
                     } label: {
-                        Image(systemName: "bell")
+                        Image(systemName: DSIconCatalog.notifications)
                     }
                     .accessibilityLabel("通知")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showsTrips = true
+                        } label: {
+                            Label("行程管理", systemImage: DSIconCatalog.trip)
+                        }
+                        Button {
+                            showsActionCenter = true
+                        } label: {
+                            Label("行动中心", systemImage: DSIconCatalog.actions)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("更多操作")
                 }
             }
             .refreshable { await viewModel.load() }
@@ -169,6 +187,12 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showsAssistant) {
                 AssistantView(environment: environment)
+            }
+            .sheet(isPresented: $showsActionCenter) {
+                ActionCenterView(environment: environment)
+            }
+            .sheet(isPresented: $showsTrips) {
+                TripsView(environment: environment)
             }
         }
     }
