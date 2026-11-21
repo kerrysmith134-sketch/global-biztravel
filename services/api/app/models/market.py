@@ -39,6 +39,8 @@ MARKET_ACTIVITY_ACTORS = ("USER", "SYSTEM")
 MARKET_INSIGHT_STATUSES = ("DRAFT", "NEEDS_REVIEW", "ACCEPTED", "REJECTED", "CONFLICTED", "SUPERSEDED")
 MARKET_INSIGHT_CONFIDENCE_LEVELS = ("HIGH", "MEDIUM", "LOW", "INSUFFICIENT")
 MARKET_EVIDENCE_RELATIONS = ("SUPPORTS", "CONTRADICTS", "CONTEXT")
+MARKET_OPPORTUNITY_STATUSES = ("DISCOVERED", "RESEARCHING", "EVIDENCE_READY", "QUALIFICATION_PENDING", "QUALIFIED", "ACTION_PLANNED", "WON", "LOST", "DISQUALIFIED", "ON_HOLD")
+MARKET_ASSESSMENT_CONFIDENCE = ("HIGH", "MEDIUM", "LOW", "INSUFFICIENT")
 
 
 class MarketWorkspace(Base):
@@ -633,6 +635,300 @@ class MarketInsightEvidence(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class MarketOpportunity(Base):
+    """Evidence-backed commercial opportunity; qualification and outcomes are human-governed."""
+
+    __tablename__ = "market_opportunities"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            ondelete="CASCADE",
+            name="fk_market_opportunity_workspace_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "created_by_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_opportunity_agent_run_same_org",
+        ),
+        UniqueConstraint("organization_id", "id", name="uq_market_opportunities_org_id"),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "id",
+            name="uq_market_opportunities_org_workspace_id",
+        ),
+        CheckConstraint(
+            "status IN ('DISCOVERED','RESEARCHING','EVIDENCE_READY','QUALIFICATION_PENDING',"
+            "'QUALIFIED','ACTION_PLANNED','WON','LOST','DISQUALIFIED','ON_HOLD')",
+            name="status_allowed",
+        ),
+        CheckConstraint("assessment_version >= 0", name="assessment_version_non_negative"),
+        CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
+        CheckConstraint(
+            "status NOT IN ('QUALIFIED','ACTION_PLANNED','WON','LOST') OR "
+            "(qualified_by_user_id IS NOT NULL AND qualified_at IS NOT NULL "
+            "AND length(btrim(qualification_reason)) > 0)",
+            name="qualified_has_human_approval",
+        ),
+        CheckConstraint(
+            "status NOT IN ('WON','LOST') OR "
+            "(outcome_recorded_by_user_id IS NOT NULL AND outcome_recorded_at IS NOT NULL "
+            "AND length(btrim(outcome_note)) > 0)",
+            name="terminal_outcome_has_actor_and_note",
+        ),
+        CheckConstraint(
+            "status <> 'DISQUALIFIED' OR length(btrim(disqualification_reason)) > 0",
+            name="disqualified_has_reason",
+        ),
+        Index("ix_market_opportunities_org_workspace_status", "organization_id", "workspace_id", "status"),
+        Index("ix_market_opportunities_org_workspace_updated", "organization_id", "workspace_id", "updated_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="DISCOVERED")
+    next_action: Mapped[str | None] = mapped_column(Text)
+    qualification_reason: Mapped[str | None] = mapped_column(Text)
+    disqualification_reason: Mapped[str | None] = mapped_column(Text)
+    assessment_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    assessment_dimensions: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    assessment_summary: Mapped[str | None] = mapped_column(Text)
+    assessment_confidence: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="INSUFFICIENT"
+    )
+    created_by_run_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    qualified_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    outcome_recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    outcome_recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    outcome_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
+class MarketOpportunityAssessment(Base):
+    """Append-only assessment snapshot; the Opportunity row only contains the current projection."""
+
+    __tablename__ = "market_opportunity_assessments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "opportunity_id"],
+            [
+                "market_opportunities.organization_id",
+                "market_opportunities.workspace_id",
+                "market_opportunities.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_opp_assessment_opportunity_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "assessed_by_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_opp_assessment_agent_run_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "opportunity_id", "version",
+            name="uq_market_opp_assessment_version",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(
+            "confidence_level IN ('HIGH','MEDIUM','LOW','INSUFFICIENT')",
+            name="confidence_allowed",
+        ),
+        Index(
+            "ix_market_opp_assessment_org_opp_created",
+            "organization_id", "opportunity_id", "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    dimensions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    confidence_level: Mapped[str] = mapped_column(Text, nullable=False)
+    assessed_by_run_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    assessed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at()
+
+
+class MarketOpportunityEvidence(Base):
+    """Explicit evidence role attached to one commercial opportunity."""
+
+    __tablename__ = "market_opportunity_evidence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "opportunity_id"],
+            [
+                "market_opportunities.organization_id",
+                "market_opportunities.workspace_id",
+                "market_opportunities.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_opp_evidence_opportunity_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "evidence_id"],
+            ["evidence.organization_id", "evidence.id"],
+            ondelete="RESTRICT",
+            name="fk_market_opp_evidence_evidence_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "opportunity_id", "evidence_id", "relation_type",
+            name="uq_market_opportunity_evidence_relation",
+        ),
+        CheckConstraint(
+            "relation_type IN ('SUPPORTS','CONTRADICTS','CONTEXT')",
+            name="relation_type_allowed",
+        ),
+        Index("ix_market_opp_evidence_org_opp", "organization_id", "opportunity_id"),
+        Index("ix_market_opp_evidence_org_evidence", "organization_id", "evidence_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    evidence_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    relation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class MarketOpportunityEntity(Base):
+    """Explicit relation from an Opportunity to a candidate MarketEntity in its Workspace."""
+
+    __tablename__ = "market_opportunity_entities"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "opportunity_id"],
+            [
+                "market_opportunities.organization_id",
+                "market_opportunities.workspace_id",
+                "market_opportunities.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_opp_entity_opportunity_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "entity_id"],
+            [
+                "market_workspace_entities.organization_id",
+                "market_workspace_entities.workspace_id",
+                "market_workspace_entities.entity_id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_market_opp_entity_workspace_entity",
+        ),
+        UniqueConstraint(
+            "organization_id", "opportunity_id", "entity_id",
+            name="uq_market_opportunity_entity",
+        ),
+        Index("ix_market_opp_entities_org_workspace_entity", "organization_id", "workspace_id", "entity_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    relationship_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class MarketWorkspaceTripLink(Base):
+    """Historical, reversible many-to-many association; never owns or deletes a Trip."""
+
+    __tablename__ = "market_workspace_trip_links"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            ondelete="CASCADE",
+            name="fk_market_workspace_trip_workspace_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "trip_id"],
+            ["trips.organization_id", "trips.id"],
+            ondelete="RESTRICT",
+            name="fk_market_workspace_trip_trip_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "trip_id",
+            name="uq_market_workspace_trip_link",
+        ),
+        CheckConstraint("link_status IN ('LINKED','UNLINKED')", name="link_status_allowed"),
+        CheckConstraint(
+            "link_status <> 'UNLINKED' OR (unlinked_by_user_id IS NOT NULL AND unlinked_at IS NOT NULL)",
+            name="unlinked_has_actor_and_time",
+        ),
+        Index("ix_market_workspace_trip_org_trip", "organization_id", "trip_id"),
+        Index("ix_market_workspace_trip_org_workspace_status", "organization_id", "workspace_id", "link_status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    trip_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    link_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="LINKED")
+    link_note: Mapped[str | None] = mapped_column(Text)
+    linked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    unlinked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
 __all__ = [
     "MARKET_ACTIVITY_ACTORS",
     "MARKET_CONTEXT_EXTRACTION_STATUSES",
@@ -641,6 +937,8 @@ __all__ = [
     "MARKET_WORKSPACE_STATUSES",
     "MARKET_INSIGHT_STATUSES",
     "MARKET_INSIGHT_CONFIDENCE_LEVELS",
+    "MARKET_ASSESSMENT_CONFIDENCE",
+    "MARKET_OPPORTUNITY_STATUSES",
     "MARKET_EVIDENCE_RELATIONS",
     "MarketActivityEvent",
     "MarketEntity",
@@ -648,6 +946,11 @@ __all__ = [
     "MarketEntityCustomerLink",
     "MarketInsight",
     "MarketInsightEvidence",
+    "MarketWorkspaceTripLink",
+    "MarketOpportunityEntity",
+    "MarketOpportunityEvidence",
+    "MarketOpportunityAssessment",
+    "MarketOpportunity",
     "MarketContextSnapshot",
     "MarketQuestionDependency",
     "MarketResearchQuestion",
