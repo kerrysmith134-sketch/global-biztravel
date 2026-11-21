@@ -467,6 +467,8 @@ def review_insight(
         ).all()
         for item in previous:
             item.status = "SUPERSEDED"
+        # Release the partial unique slot before marking this version ACCEPTED.
+        session.flush()
     elif decision != "REJECTED":
         raise Unprocessable("不支持的 Insight 审核动作")
     row.status = decision
