@@ -3,6 +3,8 @@ import UIKit
 
 /// Global Travel OS visual language.
 /// Keep semantic colour, spacing, typography, shape and icon decisions here.
+// DS is the established project abbreviation for the Design System namespace.
+// swiftlint:disable:next type_name
 enum DS {
     enum ColorToken {
         static let canvas = adaptive(light: 0xF4F6F4, dark: 0x10191E)
