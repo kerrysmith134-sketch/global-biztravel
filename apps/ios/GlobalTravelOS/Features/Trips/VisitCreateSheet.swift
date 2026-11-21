@@ -11,9 +11,9 @@ struct VisitCreateSheet: View {
     @State private var title = ""
     @State private var customerName = ""
     @State private var city = ""
-    @State private var countryCode = "DE"
-    @State private var latitude = "52.5200"
-    @State private var longitude = "13.4050"
+    @State private var countryCode = ""
+    @State private var latitude = ""
+    @State private var longitude = ""
     @State private var serviceMinutes = "60"
     @State private var movementMode = "AIR"
     @State private var customers: [Customer] = []
@@ -181,6 +181,11 @@ struct VisitCreateSheet: View {
         let longitudeValue = Double(longitude)
         if (latitudeValue == nil) != (longitudeValue == nil) {
             errorMessage = "纬度和经度必须同时填写，或同时留空。"
+            return
+        }
+
+        if selectedCustomerPlaceID.isEmpty && (latitudeValue == nil || longitudeValue == nil) {
+            errorMessage = "新建地点必须填写真实经纬度；也可选择客户已经登记的地址。"
             return
         }
         if let latitudeValue, let longitudeValue,
