@@ -174,6 +174,19 @@ struct LocalDatabase {
             payload TEXT NOT NULL
         );
         """),
+        ("0005_customer_places", """
+        CREATE TABLE IF NOT EXISTS customer_places (
+            id          TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL,
+            place_id    TEXT NOT NULL,
+            label       TEXT,
+            is_primary  INTEGER NOT NULL DEFAULT 0,
+            payload     TEXT NOT NULL,
+            UNIQUE (customer_id, place_id)
+        );
+        CREATE INDEX IF NOT EXISTS ix_customer_places_customer
+            ON customer_places (customer_id, is_primary DESC, place_id);
+        """),
     ]
 
     func migrate() throws {
