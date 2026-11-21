@@ -34,7 +34,13 @@ from app.llm.prompts import (
 )
 from app.models.market import MarketActivityEvent, MarketWorkspace, MarketWorkspaceWorkflow
 from app.models.workflow import AgentRun, WorkflowInstance
-from app.services import customer_service, evidence_service, job_service, trip_service
+from app.services import (
+    customer_service,
+    evidence_service,
+    job_service,
+    market_insight_service,
+    trip_service,
+)
 
 WORKFLOW_TYPE = "research_plan"
 AGENT_TYPE = "research_planner"
@@ -472,6 +478,20 @@ def get_research_plan(
         organization_id,
         subject_type="RESEARCH_PLAN",
         subject_id=workflow.id,
+    )
+    # Workspace-bound ResearchPlans reuse shared, content-versioned Workspace Evidence.
+    # The relation table preserves plan/query provenance without duplicating source content.
+    linked_evidence = market_insight_service.list_research_plan_linked_evidence(
+        session, organization_id, workflow.id
+    )
+    evidence_by_id = {row.id: row for row in [*evidence_rows, *linked_evidence]}
+    evidence_rows = sorted(
+        evidence_by_id.values(),
+        key=lambda row: (
+            row.retrieved_at is not None,
+            row.retrieved_at or row.created_at,
+        ),
+        reverse=True,
     )
     retrieval_status = str(payload.get("retrieval_status") or "NOT_STARTED")
     retrieval_error = payload.get("retrieval_error")

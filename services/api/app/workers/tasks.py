@@ -34,6 +34,7 @@ from app.integrations.research_search import (
     ResearchSearchUnavailable,
     get_research_search_provider,
 )
+from app.models.market import MarketWorkspaceWorkflow
 from app.models.reliability import BackgroundJob
 from app.models.trip import Trip
 from app.models.workflow import AgentRun, WorkflowInstance
@@ -42,6 +43,7 @@ from app.services import (
     evidence_service,
     fx_market_service,
     job_service,
+    market_insight_service,
     memory_service,
     minutes_service,
     outbox_service,
@@ -251,6 +253,20 @@ def handle_fx_sync(session: Session, job: BackgroundJob) -> dict[str, Any]:
     return {"status": "SUCCEEDED", **summary}
 
 
+
+def _parse_research_published_at(value: Any) -> datetime | None:
+    """Parse a source publication timestamp conservatively; unknown stays NULL."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, Any]:
     """Execute only the queries reviewed in the user's ResearchPlan.
 
@@ -323,13 +339,17 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
     session.add(run)
     session.flush()
 
-    unique_results: dict[str, Any] = {}
+    unique_results: dict[str, tuple[Any, list[str]]] = {}
     language = payload.get("locale")
     language = language if isinstance(language, str) and language.strip() else None
     try:
         for query in queries:
             for result in provider.search(query, language=language):
-                unique_results.setdefault(result.url, (query, result))
+                existing = unique_results.get(result.url)
+                if existing is None:
+                    unique_results[result.url] = (result, [query])
+                elif query not in existing[1]:
+                    existing[1].append(query)
     except ResearchSearchUnavailable as exc:
         run.status = "FAILED"
         run.error = str(exc)[:4000]
@@ -338,37 +358,115 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
         raise TaskFailed(str(exc), retryable=True) from exc
 
     collected_at = datetime.now(UTC)
+    workspace_ids = list(
+        session.scalars(
+            select(MarketWorkspaceWorkflow.workspace_id).where(
+                MarketWorkspaceWorkflow.organization_id == job.organization_id,
+                MarketWorkspaceWorkflow.workflow_id == workflow.id,
+            )
+        ).all()
+    )
     evidence_items = []
-    for query, result in unique_results.values():
-        evidence_items.append({
-            "kind": "WEB_SEARCH_RESULT",
-            "ref": result.url,
-            "source": result.provider,
-            "payload": {
-                "url": result.url,
-                "title": result.title,
-                "snippet": result.snippet,
-                "query": query,
-                "engine": result.engine,
-                "published_at": result.published_at,
-                "evidence_state": "UNVERIFIED_SEARCH_RESULT",
-            },
-            "retrieved_at": collected_at.isoformat(),
-        })
-    evidence_service.record_many(
-        session,
-        job.organization_id,
-        subject_type="RESEARCH_PLAN",
-        subject_id=workflow.id,
-        items=evidence_items,
-    )
-    existing_evidence = evidence_service.list_for_subject(
-        session,
-        job.organization_id,
-        subject_type="RESEARCH_PLAN",
-        subject_id=workflow.id,
-    )
-    web_evidence_count = sum(1 for item in existing_evidence if item.kind == "WEB_SEARCH_RESULT")
+    if workspace_ids:
+        # A Workspace owns the deduplicated source/content version. The link table
+        # separately retains which ResearchPlan and reviewed query discovered it.
+        for workspace_id in workspace_ids:
+            for result, matched_queries in unique_results.values():
+                title = result.title.strip()
+                snippet = result.snippet.strip()
+                content = "\n\n".join(part for part in (title, snippet) if part)
+                if not content:
+                    continue
+                evidence = market_insight_service.record_market_evidence(
+                    session,
+                    job.organization_id,
+                    workspace_id,
+                    canonical_ref=result.url,
+                    content=content,
+                    kind="WEB_SEARCH_RESULT",
+                    source=result.provider,
+                    published_at=_parse_research_published_at(result.published_at),
+                    observation=snippet or title,
+                    verification_status="UNVERIFIED",
+                    quality=None,
+                    payload={
+                        "url": result.url,
+                        "title": result.title,
+                        "snippet": result.snippet,
+                        "query": matched_queries[0],
+                        "matched_queries": matched_queries,
+                        "engine": result.engine,
+                        "published_at_raw": result.published_at,
+                        "evidence_state": "UNVERIFIED_SEARCH_RESULT",
+                        "content_kind": "search_result_snippet",
+                        "research_plan_id": str(workflow.id),
+                        "agent_run_id": str(run.id),
+                        "retrieved_at": collected_at.isoformat(),
+                    },
+                    actor_user_id=None,
+                )
+                for query in matched_queries:
+                    market_insight_service.link_research_plan_evidence(
+                        session,
+                        job.organization_id,
+                        workspace_id,
+                        workflow.id,
+                        evidence.id,
+                        search_query=query,
+                        collected_by_run_id=run.id,
+                    )
+                evidence_items.append(
+                    {
+                        "evidence_id": str(evidence.id),
+                        "workspace_id": str(workspace_id),
+                        "canonical_ref": evidence.canonical_ref,
+                        "content_hash": evidence.content_hash,
+                    }
+                )
+        linked_evidence = market_insight_service.list_research_plan_linked_evidence(
+            session, job.organization_id, workflow.id
+        )
+        web_evidence_count = sum(
+            1 for item in linked_evidence if item.kind == "WEB_SEARCH_RESULT"
+        )
+        evidence_storage_mode = "WORKSPACE_VERSIONED"
+    else:
+        # Standalone ResearchPlans retain their original subject-scoped Evidence behavior.
+        for result, matched_queries in unique_results.values():
+            evidence_items.append({
+                "kind": "WEB_SEARCH_RESULT",
+                "ref": result.url,
+                "source": result.provider,
+                "payload": {
+                    "url": result.url,
+                    "title": result.title,
+                    "snippet": result.snippet,
+                    "query": matched_queries[0],
+                    "matched_queries": matched_queries,
+                    "engine": result.engine,
+                    "published_at": result.published_at,
+                    "evidence_state": "UNVERIFIED_SEARCH_RESULT",
+                },
+                "retrieved_at": collected_at.isoformat(),
+            })
+        evidence_service.record_many(
+            session,
+            job.organization_id,
+            subject_type="RESEARCH_PLAN",
+            subject_id=workflow.id,
+            items=evidence_items,
+        )
+        existing_evidence = evidence_service.list_for_subject(
+            session,
+            job.organization_id,
+            subject_type="RESEARCH_PLAN",
+            subject_id=workflow.id,
+        )
+        web_evidence_count = sum(
+            1 for item in existing_evidence if item.kind == "WEB_SEARCH_RESULT"
+        )
+        evidence_storage_mode = "RESEARCH_PLAN_COMPAT"
+
 
     run.output = {
         "provider": provider.name,
@@ -376,6 +474,7 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
         "new_result_count": len(evidence_items),
         "total_web_evidence_count": web_evidence_count,
         "verification_status": "NOT_VERIFIED",
+        "evidence_storage_mode": evidence_storage_mode,
         "retrieved_at": collected_at.isoformat(),
     }
     run.status = "SUCCEEDED"
@@ -386,6 +485,7 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
     payload["retrieval_provider"] = provider.name
     payload["retrieved_at"] = collected_at.isoformat()
     payload["retrieval_query_count"] = len(queries)
+    payload["evidence_storage_mode"] = evidence_storage_mode
     workflow.payload = payload
     workflow.status = "COMPLETED"
     session.flush()
@@ -398,6 +498,7 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
         "new_result_count": len(evidence_items),
         "results_count": web_evidence_count,
         "verification_status": "NOT_VERIFIED",
+        "evidence_storage_mode": evidence_storage_mode,
     }
 
 

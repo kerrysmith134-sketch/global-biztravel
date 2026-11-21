@@ -17,6 +17,7 @@ from app.models.market import (
     MarketActivityEvent,
     MarketInsight,
     MarketInsightEvidence,
+    MarketResearchPlanEvidence,
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
@@ -75,7 +76,7 @@ def record_market_evidence(
     verification_status: str,
     quality: dict[str, Any] | None,
     payload: dict[str, Any],
-    actor_user_id: UUID,
+    actor_user_id: UUID | None,
 ) -> Evidence:
     _workspace(session, organization_id, workspace_id)
     canonical = canonicalize_source_ref(canonical_ref)
@@ -126,7 +127,7 @@ def record_market_evidence(
         MarketActivityEvent(
             organization_id=organization_id,
             workspace_id=workspace_id,
-            actor_type="USER",
+            actor_type="USER" if actor_user_id is not None else "SYSTEM",
             actor_user_id=actor_user_id,
             aggregate_type="market_evidence",
             aggregate_id=row.id,
@@ -140,6 +141,117 @@ def record_market_evidence(
     )
     session.flush()
     return row
+
+
+def link_research_plan_evidence(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    research_plan_id: UUID,
+    evidence_id: UUID,
+    *,
+    search_query: str,
+    collected_by_run_id: UUID,
+) -> bool:
+    """Attach shared Workspace Evidence to the ResearchPlan/query that discovered it.
+
+    Returns True only for a newly inserted relation. The Evidence row itself remains
+    immutable and deduplicated by source identity + content hash at Workspace scope.
+    """
+    query_text = search_query.strip()[:500]
+    if not query_text:
+        raise Unprocessable("ResearchPlan Evidence 关联必须有明确的搜索查询")
+
+    workflow_link = session.scalars(
+        select(MarketWorkspaceWorkflow).where(
+            MarketWorkspaceWorkflow.organization_id == organization_id,
+            MarketWorkspaceWorkflow.workspace_id == workspace_id,
+            MarketWorkspaceWorkflow.workflow_id == research_plan_id,
+        )
+    ).one_or_none()
+    if workflow_link is None:
+        raise Conflict("ResearchPlan 未关联到当前 Workspace")
+
+    run = session.scalars(
+        select(AgentRun).where(
+            AgentRun.organization_id == organization_id,
+            AgentRun.id == collected_by_run_id,
+            AgentRun.workflow_id == research_plan_id,
+        )
+    ).one_or_none()
+    if run is None:
+        raise Conflict("证据采集 AgentRun 不属于当前 ResearchPlan")
+
+    evidence = session.scalars(
+        select(Evidence).where(
+            Evidence.organization_id == organization_id,
+            Evidence.id == evidence_id,
+            Evidence.subject_type == "market_workspace",
+            Evidence.subject_id == workspace_id,
+        )
+    ).one_or_none()
+    if evidence is None:
+        raise Conflict("只能将当前 Workspace 的版本化 Evidence 关联到 ResearchPlan")
+
+    query_sha256 = sha256(query_text.encode()).hexdigest()
+    statement = (
+        pg_insert(MarketResearchPlanEvidence.__table__)
+        .values(
+            organization_id=str(organization_id),
+            workspace_id=str(workspace_id),
+            research_plan_id=str(research_plan_id),
+            evidence_id=str(evidence_id),
+            search_query=query_text,
+            query_sha256=query_sha256,
+            collected_by_run_id=str(collected_by_run_id),
+        )
+        .on_conflict_do_nothing(constraint="uq_market_research_plan_evidence_query")
+        .returning(MarketResearchPlanEvidence.__table__.c.id)
+    )
+    link_id = session.execute(statement).scalar_one_or_none()
+    if link_id is None:
+        return False
+
+    session.add(
+        MarketActivityEvent(
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+            actor_type="SYSTEM",
+            actor_user_id=None,
+            aggregate_type="research_plan",
+            aggregate_id=research_plan_id,
+            event_type="MARKET_RESEARCH_EVIDENCE_LINKED",
+            payload={
+                "evidence_id": str(evidence_id),
+                "query_sha256": query_sha256,
+                "agent_run_id": str(collected_by_run_id),
+            },
+        )
+    )
+    session.flush()
+    return True
+
+
+def list_research_plan_linked_evidence(
+    session: Session,
+    organization_id: UUID | str,
+    research_plan_id: UUID,
+) -> list[Evidence]:
+    """Return deduplicated Workspace-level Evidence attached to one ResearchPlan."""
+    evidence_ids = select(MarketResearchPlanEvidence.evidence_id).where(
+        MarketResearchPlanEvidence.organization_id == organization_id,
+        MarketResearchPlanEvidence.research_plan_id == research_plan_id,
+    )
+    return list(
+        session.scalars(
+            select(Evidence)
+            .where(
+                Evidence.organization_id == organization_id,
+                Evidence.id.in_(evidence_ids),
+            )
+            .order_by(Evidence.retrieved_at.desc().nullslast(), Evidence.created_at.desc())
+        ).all()
+    )
 
 
 def list_workspace_evidence(

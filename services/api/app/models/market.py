@@ -300,6 +300,66 @@ class MarketWorkspaceWorkflow(Base):
 
 
 
+class MarketResearchPlanEvidence(Base):
+    """Links a versioned Workspace source to every ResearchPlan/query that discovered it."""
+
+    __tablename__ = "market_research_plan_evidence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "research_plan_id"],
+            [
+                "market_workspace_workflows.organization_id",
+                "market_workspace_workflows.workspace_id",
+                "market_workspace_workflows.workflow_id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_research_plan_evidence_plan_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "evidence_id"],
+            ["evidence.organization_id", "evidence.id"],
+            ondelete="RESTRICT",
+            name="fk_market_research_plan_evidence_evidence_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "collected_by_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_research_plan_evidence_run_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "research_plan_id",
+            "evidence_id", "query_sha256",
+            name="uq_market_research_plan_evidence_query",
+        ),
+        CheckConstraint("length(btrim(search_query)) > 0", name="search_query_not_blank"),
+        CheckConstraint("length(query_sha256) = 64", name="query_sha256_length"),
+        Index(
+            "ix_market_research_plan_evidence_org_plan",
+            "organization_id", "workspace_id", "research_plan_id", "created_at",
+        ),
+        Index(
+            "ix_market_research_plan_evidence_org_evidence",
+            "organization_id", "evidence_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    research_plan_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    evidence_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    search_query: Mapped[str] = mapped_column(Text, nullable=False)
+    query_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    collected_by_run_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = created_at()
+
+
 class MarketEntity(Base):
     """A research candidate entity; it is not a CRM Customer record."""
 
@@ -970,6 +1030,7 @@ __all__ = [
     "MarketContextSnapshot",
     "MarketQuestionDependency",
     "MarketResearchQuestion",
+    "MarketResearchPlanEvidence",
     "MarketWorkspace",
     "MarketWorkspaceEntity",
     "MarketWorkspaceWorkflow",

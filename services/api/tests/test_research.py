@@ -9,6 +9,7 @@ import pytest
 from app.db import org_session
 from app.integrations.research_search import ResearchSearchResult
 from app.main import app
+from app.models.market import MarketActivityEvent, MarketResearchPlanEvidence, MarketWorkspace
 from app.models.reliability import BackgroundJob
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service
@@ -351,3 +352,225 @@ def test_research_plan_is_tenant_scoped(client: TestClient) -> None:
         session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
         session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(plan_id)))
         session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == UUID(plan_id)))
+
+
+def test_workspace_research_worker_uses_shared_versioned_evidence_and_plan_query_links(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executed_queries: list[str] = []
+
+    class FakeProvider:
+        name = "workspace-test-search"
+        configured = True
+        snippet = "First captured source version: buyer demand is increasing."
+
+        def search(self, query: str, *, language: str | None = None):
+            executed_queries.append(query)
+            return [
+                ResearchSearchResult(
+                    url="https://source.example.test/market-report#overview",
+                    title="Market report",
+                    snippet=self.snippet,
+                    provider=self.name,
+                    engine="fixture",
+                    published_at="2026-11-20",
+                )
+            ]
+
+    provider = FakeProvider()
+    monkeypatch.setattr(
+        "app.services.research_service.get_research_search_provider", lambda: provider
+    )
+    monkeypatch.setattr(
+        "app.workers.tasks.get_research_search_provider", lambda: provider
+    )
+
+    workspace_response = client.post(
+        "/v1/market/workspaces",
+        headers=headers(),
+        json={
+            "name": f"Versioned research evidence {uuid.uuid4().hex[:8]}",
+            "objective": "Verify source versioning across ResearchPlans",
+        },
+    )
+    assert workspace_response.status_code == 201, workspace_response.text
+    workspace_id = workspace_response.json()["id"]
+    plan_ids: list[str] = []
+    job_ids: list[str] = []
+
+    def execute_plan(query: str) -> tuple[str, dict]:
+        created = client.post(
+            "/v1/research/plans",
+            headers=headers(),
+            json={
+                "request": "Research public market evidence for the topic explicitly supplied by the user.",
+                "source_scope": "EXTERNAL_ONLY",
+                "workspace_id": workspace_id,
+            },
+        )
+        assert created.status_code == 201, created.text
+        plan_id = created.json()["id"]
+        plan_ids.append(plan_id)
+
+        queued = client.post(
+            f"/v1/research/plans/{plan_id}:execute",
+            headers=headers(),
+            json={"search_queries": [query]},
+        )
+        assert queued.status_code == 202, queued.text
+        job_id = queued.json()["job_id"]
+        job_ids.append(job_id)
+
+        with org_session(UUID(ORG_A)) as session:
+            job = session.get(BackgroundJob, UUID(job_id))
+            assert job is not None
+            job.status = "RUNNING"
+            job.locked_by = "workspace-research-test-worker"
+            result = handle_research_execute(session, job)
+            job_service.complete(session, job.id, result=result)
+            assert result["retrieval_status"] == "COMPLETED"
+            assert result["evidence_storage_mode"] == "WORKSPACE_VERSIONED"
+            assert result["results_count"] == 1
+
+        detail = client.get(f"/v1/research/plans/{plan_id}", headers=headers())
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["retrieval_status"] == "COMPLETED"
+        assert detail.json()["results_count"] == 1
+        research_evidence = [
+            item for item in detail.json()["evidence"] if item["kind"] == "WEB_SEARCH_RESULT"
+        ]
+        assert len(research_evidence) == 1
+        return plan_id, research_evidence[0]
+
+    try:
+        first_plan_id, first_result = execute_plan("user-reviewed demand query")
+        provider.snippet = "First captured source version: buyer demand is increasing."
+        second_plan_id, second_result = execute_plan("user-reviewed competitor query")
+
+        # Same canonical source + same content is one shared Evidence row across plans.
+        assert first_result["id"] == second_result["id"]
+        assert first_result["payload"]["content"] == (
+            "Market report\n\nFirst captured source version: buyer demand is increasing."
+        )
+
+        # Changed source content at the same URL creates a second immutable Evidence version.
+        provider.snippet = "Updated captured source version: procurement plans were paused."
+        third_plan_id, third_result = execute_plan("user-reviewed update query")
+        assert third_result["id"] != first_result["id"]
+
+        with org_session(UUID(ORG_A)) as session:
+            source_rows = session.scalars(
+                select(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "market_workspace",
+                    Evidence.subject_id == UUID(workspace_id),
+                    Evidence.kind == "WEB_SEARCH_RESULT",
+                )
+            ).all()
+            assert len(source_rows) == 2
+            assert len({row.content_hash for row in source_rows}) == 2
+            assert all(row.verification_status == "UNVERIFIED" for row in source_rows)
+            assert all(row.quality is None for row in source_rows)
+            assert all(
+                row.canonical_ref == "https://source.example.test/market-report"
+                for row in source_rows
+            )
+
+            links = session.scalars(
+                select(MarketResearchPlanEvidence).where(
+                    MarketResearchPlanEvidence.organization_id == UUID(ORG_A),
+                    MarketResearchPlanEvidence.workspace_id == UUID(workspace_id),
+                    MarketResearchPlanEvidence.research_plan_id.in_(
+                        [UUID(first_plan_id), UUID(second_plan_id), UUID(third_plan_id)]
+                    ),
+                )
+            ).all()
+            assert len(links) == 3
+            evidence_by_plan = {
+                str(link.research_plan_id): str(link.evidence_id) for link in links
+            }
+            assert evidence_by_plan[first_plan_id] == evidence_by_plan[second_plan_id]
+            assert evidence_by_plan[third_plan_id] != evidence_by_plan[first_plan_id]
+            assert all(len(link.query_sha256) == 64 for link in links)
+            assert all(link.collected_by_run_id is not None for link in links)
+
+            recorded_events = session.scalars(
+                select(MarketActivityEvent).where(
+                    MarketActivityEvent.organization_id == UUID(ORG_A),
+                    MarketActivityEvent.workspace_id == UUID(workspace_id),
+                    MarketActivityEvent.event_type == "MARKET_EVIDENCE_RECORDED",
+                )
+            ).all()
+            linked_events = session.scalars(
+                select(MarketActivityEvent).where(
+                    MarketActivityEvent.organization_id == UUID(ORG_A),
+                    MarketActivityEvent.workspace_id == UUID(workspace_id),
+                    MarketActivityEvent.event_type == "MARKET_RESEARCH_EVIDENCE_LINKED",
+                )
+            ).all()
+            # The second Plan reuses the same source body; only two source versions are captured.
+            assert len(recorded_events) == 2
+            assert len(linked_events) == 3
+
+        workspace_evidence = client.get(
+            f"/v1/market/workspaces/{workspace_id}/evidence",
+            headers=headers(),
+        )
+        assert workspace_evidence.status_code == 200, workspace_evidence.text
+        # Workspace Evidence view also includes original user-provided ResearchPlan material;
+        # assert the number of shared source/content versions separately.
+        versioned_sources = [
+            item
+            for item in workspace_evidence.json()["items"]
+            if item["subject_type"] == "market_workspace"
+            and item["kind"] == "WEB_SEARCH_RESULT"
+        ]
+        assert len(versioned_sources) == 2
+        assert executed_queries == [
+            "user-reviewed demand query",
+            "user-reviewed competitor query",
+            "user-reviewed update query",
+        ]
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            # Workspace deletion cascades the ResearchPlan/Evidence relationship rows.
+            session.execute(
+                delete(MarketWorkspace).where(
+                    MarketWorkspace.organization_id == UUID(ORG_A),
+                    MarketWorkspace.id == UUID(workspace_id),
+                )
+            )
+            session.execute(
+                delete(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "market_workspace",
+                    Evidence.subject_id == UUID(workspace_id),
+                )
+            )
+            if plan_ids:
+                session.execute(
+                    delete(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.subject_type == "RESEARCH_PLAN",
+                        Evidence.subject_id.in_([UUID(item) for item in plan_ids]),
+                    )
+                )
+                session.execute(
+                    delete(AgentRun).where(
+                        AgentRun.organization_id == UUID(ORG_A),
+                        AgentRun.workflow_id.in_([UUID(item) for item in plan_ids]),
+                    )
+                )
+                session.execute(
+                    delete(WorkflowInstance).where(
+                        WorkflowInstance.organization_id == UUID(ORG_A),
+                        WorkflowInstance.id.in_([UUID(item) for item in plan_ids]),
+                    )
+                )
+            if job_ids:
+                session.execute(
+                    delete(BackgroundJob).where(
+                        BackgroundJob.organization_id == UUID(ORG_A),
+                        BackgroundJob.id.in_([UUID(item) for item in job_ids]),
+                    )
+                )
