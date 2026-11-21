@@ -159,7 +159,7 @@ struct PlanMapView: View {
     private var dayFilter: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: DS.Spacing.xs) {
-                filterChip(title: "全部", selected: selectedDayIndex == nil) {
+                filterChip(title: "全部日期", selected: selectedDayIndex == nil) {
                     selectedDayIndex = nil
                     selectedStopID = nil
                     position = .automatic
