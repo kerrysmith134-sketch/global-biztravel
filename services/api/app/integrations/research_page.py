@@ -38,11 +38,11 @@ _SKIP_TAGS = {
 _BLOCK_TAGS = {"h1", "h2", "h3", "p", "li", "blockquote", "td", "th", "pre"}
 _VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 _NOISE_CLASS = re.compile(
-    r"(?:^|[\\s_-])(cookie|consent|advert|sidebar|navigation|navbar|menu|footer|header|"
-    r"share|social|breadcrumb|modal|popup|subscribe|related-content)(?:$|[\\s_-])",
+    r"(?:^|[\s_-])(cookie|consent|advert|sidebar|navigation|navbar|menu|footer|header|"
+    r"share|social|breadcrumb|modal|popup|subscribe|related-content)(?:$|[\s_-])",
     re.IGNORECASE,
 )
-_WHITESPACE = re.compile(r"\\s+")
+_WHITESPACE = re.compile(r"\s+")
 
 
 class ResearchPageFetchError(RuntimeError):
