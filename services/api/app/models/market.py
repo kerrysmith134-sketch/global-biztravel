@@ -294,13 +294,7 @@ class MarketEntity(Base):
             "status IN ('CANDIDATE','REVIEWED','VERIFIED','REJECTED','MERGED')",
             name="status_allowed",
         ),
-        Index(
-            "uq_market_entities_org_domain",
-            "organization_id",
-            "canonical_domain",
-            unique=True,
-            postgresql_where=text("canonical_domain IS NOT NULL"),
-        ),
+        Index("ix_market_entities_org_domain", "organization_id", "canonical_domain"),
         Index("ix_market_entities_org_kind_name", "organization_id", "entity_kind", "normalized_name"),
     )
 
