@@ -15,7 +15,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, ServiceUnavailable, Unprocessable
-from app.config import get_settings
 from app.api.schemas import (
     ResearchEvidenceRead,
     ResearchPlanCreate,
@@ -23,6 +22,7 @@ from app.api.schemas import (
     ResearchPlannerAuditRead,
     ResearchPlanRead,
 )
+from app.config import get_settings
 from app.integrations.research_search import get_research_search_provider
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
