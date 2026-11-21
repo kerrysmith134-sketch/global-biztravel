@@ -17,6 +17,7 @@ from app.models.market import (
     MarketWorkspaceTripLink,
 )
 from app.models.trip import Trip
+from app.models.workflow import Evidence
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -86,10 +87,20 @@ def create_trip(org_id: str, user_id: str, name: str) -> str:
 def cleanup(workspace_ids: list[str], trip_ids: list[str]) -> None:
     with org_session(UUID(ORG_A)) as session:
         if workspace_ids:
+            workspace_uuids = [UUID(item) for item in workspace_ids]
+            # Evidence uses a legacy polymorphic subject key, not a Workspace FK.
+            # Explicitly clean those rows so repeated test runs do not accumulate orphans.
+            session.execute(
+                delete(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "market_workspace",
+                    Evidence.subject_id.in_(workspace_uuids),
+                )
+            )
             session.execute(
                 delete(MarketWorkspace).where(
                     MarketWorkspace.organization_id == UUID(ORG_A),
-                    MarketWorkspace.id.in_([UUID(item) for item in workspace_ids]),
+                    MarketWorkspace.id.in_(workspace_uuids),
                 )
             )
         if trip_ids:
@@ -391,9 +402,22 @@ def test_workspace_trip_link_is_reversible_and_keeps_trip(client: TestClient) ->
         assert relinked.json()["id"] == linked.json()["id"]
         assert relinked.json()["link_status"] == "LINKED"
 
-        # Workspace deletion may remove only the relation; the actual Trip remains.
+        # Workspace deletion removes only the relation; it must not delete the actual Trip.
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(MarketWorkspace).where(
+                    MarketWorkspace.organization_id == UUID(ORG_A),
+                    MarketWorkspace.id == UUID(workspace_id),
+                )
+            )
         with org_session(UUID(ORG_A)) as session:
             assert session.get(Trip, UUID(trip_id)) is not None
+            assert session.scalar(
+                select(func.count()).select_from(MarketWorkspaceTripLink).where(
+                    MarketWorkspaceTripLink.organization_id == UUID(ORG_A),
+                    MarketWorkspaceTripLink.workspace_id == UUID(workspace_id),
+                )
+            ) == 0
     finally:
         cleanup([workspace_id] if workspace_id else [], [trip_id] if trip_id else [])
 
