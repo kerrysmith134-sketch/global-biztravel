@@ -9,7 +9,7 @@ struct MissionHomeHeader: View {
     private var todayLabel: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月d日 · EEEE"
+        formatter.dateFormat = "M月d日 EEEE · 本机时区"
         return formatter.string(from: Date())
     }
 
@@ -161,7 +161,7 @@ struct MissionMetricStrip: View {
     let plan: PlanVersionDetail?
 
     private var customerValue: String {
-        trip.stats?.customerCount.map(String.init) ?? "—"
+        trip.stats?.customerCount.map { String($0) } ?? "—"
     }
 
     private var plannedVisitValue: String {
@@ -251,7 +251,7 @@ struct MissionBudgetCard: View {
                     }
                 }
                 if let spendRatio {
-                    ProgressView(value: spendRatio)
+                    ProgressView(value: min(spendRatio, 1))
                         .tint(spendRatio >= 1 ? DS.ColorToken.danger : DS.ColorToken.brand)
                         .accessibilityLabel("预算使用率")
                         .accessibilityValue("\(Int(spendRatio * 100))%")
