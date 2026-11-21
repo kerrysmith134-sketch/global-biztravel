@@ -4,7 +4,7 @@ import SwiftUI
 /// Selectable, read-only map projection of a specific plan version.
 /// Selecting a pin changes the inspection drawer only; it never mutates the plan.
 struct PlanMapView: View {
-    let plan: PlanVersionDetail
+    let plan: PlanVersionDetail?
     var origin: Place?
     var title = "行程地图"
     var visits: [TripVisit] = []
@@ -44,6 +44,7 @@ struct PlanMapView: View {
                   (-90.0...90.0).contains(lat), (-180.0...180.0).contains(lon) else { return nil }
             return CLLocationCoordinate2D(latitude: lat, longitude: lon)
         }()
+        guard let plan else { return [] }
         for (dayIndex, day) in plan.dayList.enumerated() {
             var coordinates: [CLLocationCoordinate2D] = []
             // The origin is a valid first-day anchor only. Never draw a synthetic
@@ -108,7 +109,7 @@ struct PlanMapView: View {
     }
 
     private var legs: [PlanTravelLeg] {
-        plan.legs ?? []
+        plan?.legs ?? []
     }
 
     private var mappedCustomerLocations: [CustomerMapLocation] {
@@ -229,7 +230,7 @@ struct PlanMapView: View {
         .onChange(of: customerLocations.map(\.id)) { oldIDs, newIDs in
             if oldIDs.isEmpty && !newIDs.isEmpty { position = .automatic }
         }
-        .onChange(of: plan.id) { _, _ in
+        .onChange(of: plan?.id) { _, _ in
             selectedStopID = nil
             selectedCustomerPlaceID = nil
             selectedDayIndex = nil
