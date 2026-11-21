@@ -2181,6 +2181,24 @@ class MarketQuestionAnswerRead(BaseModel):
 class MarketQuestionAnswerReview(BaseModel):
     review_note: str | None = Field(default=None, max_length=3000)
 
+class MarketQuestionAnswerGenerationCreate(BaseModel):
+    evidence_ids: list[UUID] | None = Field(default=None, max_length=24)
+
+    @model_validator(mode="after")
+    def _unique_evidence_ids(self) -> MarketQuestionAnswerGenerationCreate:
+        if self.evidence_ids is not None and len(self.evidence_ids) != len(set(self.evidence_ids)):
+            raise ValueError("证据列表中存在重复 ID")
+        return self
+
+
+class MarketQuestionAnswerGenerationAccepted(BaseModel):
+    job_id: UUID
+    workflow_id: UUID
+    status: Literal["PENDING", "RUNNING"]
+    evidence_count: int
+    reused: bool
+
+
 
 
 MarketOpportunityStatus = Literal[

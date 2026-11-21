@@ -353,3 +353,23 @@ H1.4 当前代码 head 已通过 Backend 严格门禁：Ruff、MyPy、OpenAPI、
 - POST .../answers/{answer_id}:reject
 
 该切片只建立证据驱动、可审核的答案工作流；尚未实现 LLM 自动回答/事实核验 Agent，也不自动将 ResearchPlan 产出的摘要采纳为答案。需要最新 CI 的 PostgreSQL 迁移、Alembic drift、全量 Backend pytest 和 iOS 门禁通过后才能验收。
+
+
+## 14. 市场情报引擎 H1.7 — Research Answer Agent
+
+新增异步答案草拟 Agent，完整复用现有组件：
+- API：`POST /v1/market/workspaces/{workspace_id}/questions/{question_id}:draft-answer`；
+- BackgroundJob job_type：`market_question_answer_draft`，注册于现有 `KNOWN_JOB_TYPES` 与 `TASK_HANDLERS`；
+- WorkflowInstance workflow_type：`market_question_answer`，通过 MarketWorkspaceWorkflow 归属 Workspace；
+- AgentRun 记录输入证据 ID 快照、Prompt 版本和最终答案版本；
+- 唯一模型入口为既有 LLMGateway；输出有版本化 Prompt/Schema，并记录 LLMInvocation；
+- 默认最多选择 24 条当前 Workspace 或关联 ResearchPlan Evidence；支持用户显式限定 evidence_ids；
+- 模型只能引用输入证据快照中的 ID，越权/虚构引用由服务端排除；
+- 未核验来源不能输出 HIGH confidence；缺少 SUPPORTS 时置信度降为 INSUFFICIENT；
+- LLM 降级、输出不可用或无来源内容时产生明确 evidence_gap，不编造事实；
+- 生成的答案版本始终 NEEDS_REVIEW / CONFLICTED，不自动采纳，不把问题标记为 ANSWERED；
+- 相同问题、Prompt 版本、Evidence 快照的在途任务使用 dedupe key 复用。
+
+新增 PostgreSQL 集成测试覆盖任务排队与去重、LLM Gateway 输入契约、来源 ID 白名单、未核验来源置信度上限、AgentRun/LLMInvocation 追溯、问题不被自动采纳及无证据时的显式缺口。
+
+H1.7 不新增迁移和 Evidence 主表；也未实现全文网页抓取、独立来源核验 Agent、Research Plan 自动扩展或 iOS 原生 Agent 状态/审核界面。必须在本分支完整 CI 通过后才可验收。

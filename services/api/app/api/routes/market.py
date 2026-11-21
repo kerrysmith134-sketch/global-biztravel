@@ -44,6 +44,8 @@ from app.api.schemas import (
     MarketOpportunityStatus,
     MarketOpportunityTransition,
     MarketQuestionAnswerCreate,
+    MarketQuestionAnswerGenerationAccepted,
+    MarketQuestionAnswerGenerationCreate,
     MarketQuestionAnswerRead,
     MarketQuestionAnswerReview,
     MarketResearchQuestionCreate,
@@ -61,6 +63,7 @@ from app.services import (
     market_entity_service,
     market_insight_service,
     market_opportunity_service,
+    market_question_answer_agent_service,
     market_question_answer_service,
     market_workspace_service,
     research_service,
@@ -348,6 +351,51 @@ def create_market_question_answer(
     return guard.finish(
         status_code=status.HTTP_201_CREATED,
         body=MarketQuestionAnswerRead.model_validate(row),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/questions/{question_id}:draft-answer",
+    response_model=MarketQuestionAnswerGenerationAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="启动研究问题答案草拟 Agent",
+)
+def enqueue_market_question_answer_draft(
+    workspace_id: UUID,
+    question_id: UUID,
+    payload: MarketQuestionAnswerGenerationCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/questions/{question_id}:draft-answer"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "question_id": str(question_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_question_answer_agent_service.enqueue_answer_draft(
+        session,
+        context.organization_id,
+        workspace_id,
+        question_id,
+        evidence_ids=payload.evidence_ids,
+        created_by_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_202_ACCEPTED,
+        body=MarketQuestionAnswerGenerationAccepted.model_validate(result),
     )
 
 

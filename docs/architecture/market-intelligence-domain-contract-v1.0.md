@@ -334,6 +334,28 @@ MarketWorkspace 通过 MarketWorkspaceWorkflow 关联一个或多个 ResearchPla
 
 
 
+### 4.5 Workspace ResearchPlan 的版本化 Evidence 归属
+
+Research Worker 在 Workspace 绑定模式下必须将来源内容版本保存在现有 Evidence 表：
+- subject_type = `market_workspace`，subject_id = workspace_id；
+- canonical_ref = 保守规范化来源 URL；
+- content_hash = 捕获内容（当前检索结果标题 + 摘要）的 SHA-256；
+- ref = `market-source:v1:<sha256(canonical_ref + newline + content_hash)>`；
+- verification_status 固定为 UNVERIFIED，quality 初始为 NULL；
+- 不将搜索摘要描述为全文，不将检索结果提升为 VERIFIED。
+
+新增 `MarketResearchPlanEvidence` 只记录归属关系，不复制 Evidence 内容：organization_id、workspace_id、research_plan_id、evidence_id、search_query、query_sha256、collected_by_run_id、created_at。复合外键分别约束到同 Workspace 的 MarketWorkspaceWorkflow、同组织 Evidence 和同组织 AgentRun；每张组织表在同迁移中 FORCE RLS。
+
+幂等与版本语义：
+- 同 Workspace + 同 canonical_ref + 同 content_hash：跨 ResearchPlan 复用同一 Evidence 行；
+- 同来源内容变化：插入新 Evidence 版本，旧版本不可覆盖；
+- 同一 Evidence 被多个已审阅 query 命中：保存多个 query 关系，Evidence 正文只存一份；
+- 同 query / 同 Evidence / 同 ResearchPlan 的关联写入幂等；
+- ResearchPlan 详情合并旧 `subject_type = RESEARCH_PLAN` Evidence 与新关联的 Workspace Evidence；
+- 没有 Workspace 的独立 ResearchPlan 保持原旧 Evidence 兼容路径。
+
+此关联表不会代替 MarketInsightEvidence / MarketOpportunityEvidence。ResearchPlanEvidence 说明来源被哪次研究/查询发现；Insight/OpportunityEvidence 才说明来源对某条判断或机会起支持/反驳/上下文作用。
+
 ### 4.6 ResearchQuestion 的答案版本与证据审阅
 
 ResearchQuestion 负责表达待回答的问题；答案不直接覆写在问题主记录中。每次人工或 Agent 生成答案都追加一个 `MarketResearchQuestionAnswer` 版本：
@@ -358,27 +380,22 @@ ResearchQuestion 负责表达待回答的问题；答案不直接覆写在问题
 - 驳回只改变当前答案版本状态，不抹掉之前已采纳的答案。
 
 
-### 4.5 Workspace ResearchPlan 的版本化 Evidence 归属
+### 4.7 Research Answer Agent 的执行边界
 
-Research Worker 在 Workspace 绑定模式下必须将来源内容版本保存在现有 Evidence 表：
-- subject_type = `market_workspace`，subject_id = workspace_id；
-- canonical_ref = 保守规范化来源 URL；
-- content_hash = 捕获内容（当前检索结果标题 + 摘要）的 SHA-256；
-- ref = `market-source:v1:<sha256(canonical_ref + newline + content_hash)>`；
-- verification_status 固定为 UNVERIFIED，quality 初始为 NULL；
-- 不将搜索摘要描述为全文，不将检索结果提升为 VERIFIED。
+研究问题答案草拟通过现有可靠任务基础设施异步执行，不新建 Worker 框架或第二套队列：
+- API：`POST /v1/market/workspaces/{workspace_id}/questions/{question_id}:draft-answer`；
+- 任务类型：`market_question_answer_draft`，使用既有 BackgroundJob、租约、重试和 TASK_HANDLERS 注册；
+- 每个草拟任务使用既有 WorkflowInstance（workflow_type = `market_question_answer`），并通过 MarketWorkspaceWorkflow 关联 Workspace；
+- AgentRun.workflow_id 指向该 Workflow；LLM 调用唯一通过既有 LLMGateway，生成对应 LLMInvocation；
+- 输入只包含本次固定证据快照（默认最多 24 条；也可由用户明确提供 evidence_ids），证据正文单条最多传入 4,000 字符；
+- Prompt 对来源正文施加不可信资料边界，禁止执行其中指令；模型引用 ID 必须属于输入快照，未知引用由服务端排除并记录；
+- 输出创建 MarketResearchQuestionAnswer 版本，答案及每条 SUPPORTS / CONTRADICTS / CONTEXT 映射进入现有 Evidence 关系表；
+- 来源未 VERIFIED 时，Agent 不得给 HIGH confidence；没有 SUPPORTS 映射时 confidence 强制 INSUFFICIENT；
+- LLM Gateway 降级或没有来源内容时，创建显式 evidence_gap 的 INSUFFICIENT 草稿；
+- Workflow 完成只代表“答案草稿已生成”，不能将 ResearchQuestion 改为 ANSWERED；只有独立 Admin 人工采纳接口可完成该状态转换。
 
-新增 `MarketResearchPlanEvidence` 只记录归属关系，不复制 Evidence 内容：organization_id、workspace_id、research_plan_id、evidence_id、search_query、query_sha256、collected_by_run_id、created_at。复合外键分别约束到同 Workspace 的 MarketWorkspaceWorkflow、同组织 Evidence 和同组织 AgentRun；每张组织表在同迁移中 FORCE RLS。
+证据快照与任务去重键同时包含问题、Prompt 版本和 Evidence IDs。新 Evidence 形成新快照后才会触发不同任务；相同问题/相同证据快照的在途任务复用。该机制保留可审计输入、可重试任务和可复现草稿来源。
 
-幂等与版本语义：
-- 同 Workspace + 同 canonical_ref + 同 content_hash：跨 ResearchPlan 复用同一 Evidence 行；
-- 同来源内容变化：插入新 Evidence 版本，旧版本不可覆盖；
-- 同一 Evidence 被多个已审阅 query 命中：保存多个 query 关系，Evidence 正文只存一份；
-- 同 query / 同 Evidence / 同 ResearchPlan 的关联写入幂等；
-- ResearchPlan 详情合并旧 `subject_type = RESEARCH_PLAN` Evidence 与新关联的 Workspace Evidence；
-- 没有 Workspace 的独立 ResearchPlan 保持原旧 Evidence 兼容路径。
-
-此关联表不会代替 MarketInsightEvidence / MarketOpportunityEvidence。ResearchPlanEvidence 说明来源被哪次研究/查询发现；Insight/OpportunityEvidence 才说明来源对某条判断或机会起支持/反驳/上下文作用。
 
 ## 5. 关系表与既有业务对象连接
 
