@@ -224,6 +224,13 @@ def test_insight_requires_evidence_and_human_review(client: TestClient) -> None:
         assert revision.json()["version"] == 2
         assert revision.json()["supersedes_id"] == insight_id
         second_id = revision.json()["id"]
+        accepted_revision = client.post(
+            f"/v1/market/workspaces/{workspace_id}/insights/{second_id}:accept",
+            headers=headers(),
+            json={"review_note": "Second version reviewed and adopted."},
+        )
+        assert accepted_revision.status_code == 200, accepted_revision.text
+        assert accepted_revision.json()["status"] == "ACCEPTED"
 
         contradiction = client.post(
             f"/v1/market/workspaces/{workspace_id}/evidence",
