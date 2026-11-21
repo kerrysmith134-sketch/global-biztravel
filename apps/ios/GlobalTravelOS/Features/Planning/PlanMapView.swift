@@ -35,7 +35,8 @@ struct PlanMapView: View {
     private var dayRoutes: [DayRoute] {
         var routes: [DayRoute] = []
         let originCoordinate: CLLocationCoordinate2D? = {
-            guard let origin, let lat = origin.latitude, let lon = origin.longitude else { return nil }
+            guard let origin, let lat = origin.latitude, let lon = origin.longitude,
+                  (-90.0...90.0).contains(lat), (-180.0...180.0).contains(lon) else { return nil }
             return CLLocationCoordinate2D(latitude: lat, longitude: lon)
         }()
         for (dayIndex, day) in plan.dayList.enumerated() {
@@ -43,7 +44,10 @@ struct PlanMapView: View {
             // The origin is a valid first-day anchor only. Never draw a synthetic
             // overnight transfer from yesterday's final stop to today's first stop.
             if dayIndex == 0, let originCoordinate { coordinates.append(originCoordinate) }
-            let dayStops = day.stops.filter(\.hasCoordinates)
+            let dayStops = day.stops.filter { stop in
+                guard let latitude = stop.latitude, let longitude = stop.longitude else { return false }
+                return (-90.0...90.0).contains(latitude) && (-180.0...180.0).contains(longitude)
+            }
             for stop in dayStops {
                 guard let lat = stop.latitude, let lon = stop.longitude else { continue }
                 coordinates.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
@@ -113,11 +117,12 @@ struct PlanMapView: View {
             } else {
                 VStack(spacing: 0) {
                     dayFilter
+                    routeAccuracyNotice
                     Map(position: $position, selection: $selectedStopID) {
                         ForEach(visibleDayRoutes, id: \.dayIndex) { route in
                             if route.coordinates.count >= 2 {
                                 MapPolyline(coordinates: route.coordinates)
-                                    .stroke(route.color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                    .stroke(route.color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5]))
                             }
                             ForEach(route.stops.filter(isVisibleStop)) { stop in
                                 if let lat = stop.latitude, let lon = stop.longitude {
@@ -136,7 +141,7 @@ struct PlanMapView: View {
                         MapCompass()
                         MapScaleView()
                     }
-                    .accessibilityLabel("商务拜访路线地图")
+                    .accessibilityLabel("商务拜访点位顺序示意地图；虚线不代表真实道路导航路线")
                     if let selectedStop {
                         selectedStopDrawer(selectedStop)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -153,6 +158,29 @@ struct PlanMapView: View {
             selectedDayIndex = nil
             position = .automatic
         }
+    }
+
+    /// The current plan contract carries leg mode/source and stop coordinates, but no route geometry.
+    /// A dashed connector is therefore explicitly presented as an order schematic, never navigation.
+    private var routeAccuracyNotice: some View {
+        HStack(alignment: .top, spacing: DS.Spacing.sm) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(DS.ColorToken.info)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("拜访顺序示意")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.ColorToken.textPrimary)
+                Text("虚线仅连接计划点位，不代表真实道路、铁路或航班轨迹；交通方式与耗时以计划数据卡片为准。")
+                    .font(.caption2)
+                    .foregroundStyle(DS.ColorToken.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DS.Spacing.md)
+        .padding(.vertical, DS.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.ColorToken.info.opacity(0.07))
     }
 
     /// Day filtering changes only the map projection, never the underlying plan inputs.
