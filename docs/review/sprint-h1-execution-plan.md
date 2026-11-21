@@ -1,6 +1,6 @@
 # Sprint H1 — Domain Foundation & Evidence Data Architecture
 
-> 状态：H1.0 源码审计已完成；H1.1 领域契约已提交；H1.2 后端基础实施待开始  
+> 状态：H1.0 源码审计已完成；H1.1 领域契约已冻结；H1.2 Workspace 后端首批纵向切片已实现，叠加在用户驱动 ResearchPlan 基线上，待 CI / PostgreSQL 验证  
 > 关联设计：`docs/design/market-intelligence-engine-v1.0.md`  
 > 仓库基线：`main`，核对到的最新提交 `c5e98e2b567f54705a8569d0ef7ced138d7f88b2`  
 > 计划日期：2026-11-21
@@ -42,6 +42,7 @@ H1 不实现完整外部研究抓取、行业策略生成或自主商务外联�
 | 组织隔离 | RLS、非 owner 应用角色和跨租户测试已有实现记录 | 新表必须继承 |
 | 客户与出差 | Customers、Places、Trips、Visits、拜访记录、会议纪要、Trip Outcome 已存在 | 不重复建主对象 |
 | 记忆 | 三层记忆、pgvector、混合检索、复盘 Worker 已有实现记录 | 复用反馈闭环 |
+| 用户意图研究 | PR 基线已有 ResearchPlan、查询审阅、SearXNG 采集和未核验 Evidence | 作为单次 Research Workflow；由 Workspace 关联多个 Workflow，不重复建设 ResearchPlan 表/Worker |
 
 ### 2.2 迁移文档漂移（H1.0 已定位）
 
@@ -346,3 +347,39 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 本次提交不包含数据库迁移、API、SwiftUI 页面或 Agent 代码；因此本次不声称任何新增功能已运行，也不声称新增代码测试已通过。
 
 下一次工程提交必须从 H1.0 代码与 schema 审计开始，给出实际文件路径、字段级复用判断和可复现测试结果后，再实施 H1.1–H1.5。
+
+---
+
+## 10. H1.2 纵向切片（叠加现有用户驱动 ResearchPlan）
+
+### 10.1 产品边界
+
+- MarketWorkspace 是长期研究空间；可容纳多个 ResearchPlan、研究问题及后续 MarketEntity / Insight / Opportunity。
+- 现有 ResearchPlan 是一次具体研究执行计划，继续以 WorkflowInstance（workflow_type="research_plan"）为唯一运行实体。
+- 现有外部检索仍由用户确认查询后，复用既有 BackgroundJob、SearXNG Provider、AgentRun 和 Evidence 执行。
+- Workspace 与 ResearchPlan 通过 MarketWorkspaceWorkflow 关联；独立 ResearchPlan 仍可不关联 Workspace。
+- MarketWorkspace 不强迫绑定 Trip；ResearchPlan 可根据 source_scope 选择读取内部 Trip/Customer 摘要，也可完全 external-only。
+- 不新建 ResearchPlan 表，不新建第二套搜索 Worker 或外部检索适配器。
+
+### 10.2 当前分支实现
+
+- 分支：feat/sprint-h1.2-market-workspace-on-research-plan（基于 ui-foundation-2026-11）。
+- 新增 ORM：MarketWorkspace、MarketContextSnapshot、MarketResearchQuestion、MarketQuestionDependency、MarketActivityEvent、MarketWorkspaceWorkflow。
+- 新增迁移：0032_market_workspace_foundation，从 0031_visa_catalog_overrides 向前；WorkflowInstance 增加 (organization_id,id) 复合唯一约束，供 Workspace-Workflow 复合外键强制同租户关联。
+- 新增 API：Workspace、Context 快照、ResearchQuestion、活动事件，以及关联 ResearchPlan 列表。
+- Research API 增加可选 workspace_id；只有同组织 Workspace 存在时才创建关联；外部研究依旧由现有用户确认查询工作流执行。
+- iOS ResearchPlan 请求模型与 ResearchWorkspaceView 支持可选 workspaceId；默认 nil 保持旧调用兼容。
+- 集成测试新增 Workspace 生命周期、上下文版本采纳、研究问题父子关系、幂等、活动事件、Workspace ↔ ResearchPlan 关联和 API/数据库 RLS 隔离场景。
+
+### 10.3 尚未完成 / 不得宣称完成
+
+- MarketEntity、MarketInsight、MarketOpportunity 与 Evidence 版本化仍未实现。
+- H1.3 Workspace 原生列表/详情/Context Review 的完整 iOS 界面尚未实现；当前 iOS 只支持把 ResearchPlan 请求可选关联到已知 Workspace ID。
+- OpenAPI YAML/JSON 需由项目流程重新导出并执行 make contract-check。
+- 本轮没有本地 checkout、PostgreSQL 迁移执行或自动化命令结果；GitHub 工作流状态未返回，不能声称测试通过。
+
+### 10.4 合并顺序
+
+1. 先审查并验证 ui-foundation-2026-11 上已有用户驱动 ResearchPlan PR。
+2. 该基线合并后，再合并本 H1.2 叠加 PR。
+3. 若 ResearchPlan 设计发生变化，必须同步检查 MarketWorkspaceWorkflow、workspace_id API 兼容和测试。
