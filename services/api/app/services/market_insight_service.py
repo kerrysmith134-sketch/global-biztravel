@@ -320,14 +320,26 @@ def create_insight(
         raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
 
     if generated_by_run_id is not None:
+        workspace_workflow_ids = set(
+            session.scalars(
+                select(MarketWorkspaceWorkflow.workflow_id).where(
+                    MarketWorkspaceWorkflow.organization_id == organization_id,
+                    MarketWorkspaceWorkflow.workspace_id == workspace_id,
+                )
+            ).all()
+        )
         run = session.scalars(
             select(AgentRun).where(
                 AgentRun.organization_id == organization_id,
                 AgentRun.id == generated_by_run_id,
+                AgentRun.workflow_id.in_(workspace_workflow_ids),
             )
         ).one_or_none()
         if run is None:
-            raise NotFound("AgentRun 不存在", details={"run_id": str(generated_by_run_id)})
+            raise Conflict(
+                "Insight 的 AgentRun 必须属于当前 Workspace 关联的 ResearchPlan",
+                details={"run_id": str(generated_by_run_id)},
+            )
 
     evidence_ids = [item["evidence_id"] for item in evidence]
     evidence_map = _workspace_evidence_map(session, organization_id, workspace_id, evidence_ids)
