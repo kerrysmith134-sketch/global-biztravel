@@ -1398,6 +1398,8 @@ class MarketClaim(Base):
         ),
         CheckConstraint("supporting_evidence_count >= 0", name="support_count_nonnegative"),
         CheckConstraint("contradicting_evidence_count >= 0", name="contradict_count_nonnegative"),
+        CheckConstraint("verified_support_count >= 0", name="verified_support_count_nonnegative"),
+        CheckConstraint("verified_contradiction_count >= 0", name="verified_contradiction_count_nonnegative"),
         CheckConstraint("distinct_host_count >= 0", name="distinct_host_count_nonnegative"),
         CheckConstraint(
             "confirmed_independent_source_count = 0",
@@ -1415,6 +1417,12 @@ class MarketClaim(Base):
         Index(
             "ix_market_claims_org_verification_run",
             "organization_id", "verification_run_id",
+        ),
+        Index(
+            "uq_market_claims_one_accepted_per_key",
+            "organization_id", "workspace_id", "answer_id", "claim_key",
+            unique=True,
+            postgresql_where=text("status = 'ACCEPTED'"),
         ),
     )
 
