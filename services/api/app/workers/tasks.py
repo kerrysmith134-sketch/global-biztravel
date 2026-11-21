@@ -727,8 +727,12 @@ def handle_market_question_answer_draft(
     )
     if has_unverified and confidence == "HIGH":
         confidence = "MEDIUM"
-    if not answer_evidence and confidence != "INSUFFICIENT":
+    if not any(item["relation_type"] == "SUPPORTS" for item in answer_evidence):
         confidence = "INSUFFICIENT"
+        if evidence_gap is None:
+            evidence_gap = (
+                "本次答案没有建立任何 SUPPORTS 证据关系；当前材料不足以支撑直接结论。"
+            )
 
     answer = market_question_answer_service.create_answer(
         session,
