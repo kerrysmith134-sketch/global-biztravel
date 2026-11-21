@@ -1941,8 +1941,9 @@ MarketEntityCustomerLinkStatus = Literal[
 
 
 class MarketWorkspaceEntityCreate(BaseModel):
-    entity_kind: str = Field(min_length=1, max_length=80)
-    display_name: str = Field(min_length=1, max_length=300)
+    existing_entity_id: UUID | None = None
+    entity_kind: str | None = Field(default=None, min_length=1, max_length=80)
+    display_name: str | None = Field(default=None, min_length=1, max_length=300)
     description: str | None = Field(default=None, max_length=5000)
     canonical_domain: str | None = Field(default=None, max_length=500)
     country_code: str | None = Field(default=None, min_length=2, max_length=2)
@@ -1952,12 +1953,25 @@ class MarketWorkspaceEntityCreate(BaseModel):
 
     @model_validator(mode="after")
     def _entity_values_not_blank(self) -> MarketWorkspaceEntityCreate:
-        if not self.entity_kind.strip():
-            raise ValueError("实体类型不能为空")
-        if not self.display_name.strip():
-            raise ValueError("实体名称不能为空")
-        if self.country_code is not None:
-            self.country_code = self.country_code.strip().upper()
+        if self.existing_entity_id is not None:
+            if any(
+                value is not None
+                for value in (
+                    self.entity_kind,
+                    self.display_name,
+                    self.description,
+                    self.canonical_domain,
+                    self.country_code,
+                )
+            ) or self.attributes:
+                raise ValueError("关联已有实体时，不允许覆盖实体主档字段")
+        else:
+            if not self.entity_kind or not self.entity_kind.strip():
+                raise ValueError("新建实体必须提供实体类型")
+            if not self.display_name or not self.display_name.strip():
+                raise ValueError("新建实体必须提供实体名称")
+            if self.country_code is not None:
+                self.country_code = self.country_code.strip().upper()
         return self
 
 
@@ -1993,7 +2007,6 @@ class MarketWorkspaceEntityRead(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     possible_duplicate_entity_ids: list[UUID] = Field(default_factory=list)
-    reused_by_domain: bool = False
 
 
 class MarketEntityCustomerLinkCreate(BaseModel):
