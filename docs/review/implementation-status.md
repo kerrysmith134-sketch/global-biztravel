@@ -1,6 +1,6 @@
 # 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
-- 核对时间：2026-11-21（市场情报 H1.3 增量更新）
+- 核对时间：2026-11-22（市场情报 H1.8 增量更新）
 - 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
   规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
   后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0037`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0038`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -103,6 +103,7 @@
                            0035_market_opportunities
                            0036_market_research_plan_evidence
                            0037_market_question_answers
+                            0038_market_evidence_derivations
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -373,3 +374,18 @@ H1.4 当前代码 head 已通过 Backend 严格门禁：Ruff、MyPy、OpenAPI、
 新增 PostgreSQL 集成测试覆盖任务排队与去重、LLM Gateway 输入契约、来源 ID 白名单、未核验来源置信度上限、AgentRun/LLMInvocation 追溯、问题不被自动采纳及无证据时的显式缺口。
 
 H1.7 不新增迁移和 Evidence 主表；也未实现全文网页抓取、独立来源核验 Agent、Research Plan 自动扩展或 iOS 原生 Agent 状态/审核界面。必须在本分支完整 CI 通过后才可验收。
+
+
+## 15. 市场情报引擎 H1.8 — 用户选定来源的全文提取与派生证据链
+
+H1.8 在 H1.7 Research Answer Agent 的基础上补齐一段严格受控的“搜索摘要 → 原始网页提取”链路，但**不把网页抓取视为事实核验**。
+
+- **用户意图边界**：只有用户明确对 Workspace 中某条 `WEB_SEARCH_RESULT` 调用 `POST /v1/market/workspaces/{workspace_id}/evidence/{evidence_id}:extract`，才创建异步任务。搜索 Worker 不会自动抓取所有结果；其他 Evidence 类型、被驳回来源、跨 Workspace 来源均不能触发。
+- **安全 Provider**：新增 `SafeHttpResearchPageProvider`，默认 `unavailable`（关闭）。显式设置 `GBT_RESEARCH_PAGE_PROVIDER=safe_http` 后才开放；只允许 HTTP 80 / HTTPS 443，禁止 URL 凭证；每一跳重定向都重新校验 URL 与 DNS；DNS 返回的全部地址都必须是公网地址，socket 直接连接已校验 IP，TLS 仍用原域名验证证书/SNI；最多 3 次重定向并禁止 HTTPS 降级；最大读取 2 MiB（配置上限 4 MiB）、只接受 HTML/XHTML/纯文本、10 秒默认超时。
+- **数据留存**：不保存整页 HTML 或全文副本。提取后仅保存受限正文摘录（默认 12,000 字符，上限 20,000）以及规范化全文的 SHA-256 和字符数；来源元数据、抓取时间、最终 URL、提取器版本独立保留。全文哈希不是内容正确性证明。
+- **版本与血缘**：新增 `MarketEvidenceDerivation` / 迁移 `0038_market_evidence_derivations`，通过 organization + workspace + workflow + AgentRun + source Evidence + derived Evidence 复合外键保存只追加的派生关系；FORCE RLS；应用角色不能 UPDATE/DELETE/TRUNCATE。
+- **执行可靠性**：复用既有 WorkflowInstance、MarketWorkspaceWorkflow、BackgroundJob、AgentRun、TASK_HANDLERS、Job retry/DLQ。成功、失败、重试耗尽进入 MarketActivityEvent；API 可读取任务状态；相同来源内容与提取器版本使用 dedupe key。
+- **事实状态不升级**：抓取结果固定写入新的 `WEB_PAGE_EXTRACT` Evidence，`verification_status=UNVERIFIED`；原始搜索摘要 Evidence 不被覆盖。后续独立来源比对与事实核验属于 H1.9，不在 H1.8 的完成范围。
+- **新增测试**：纯离线 Provider 测试覆盖 URL/DNS/重定向 SSRF、安全端口、HTTP 429 可重试、404 终态、媒体类型/响应大小、隐藏内容剔除、正文截断与全文哈希；PostgreSQL 集成测试覆盖用户触发、Evidence 原文保留、异步任务执行、派生关系及状态读取。
+
+**当前验证限制**：本次代码已提交到 `feat/sprint-h1.8-source-page-extraction`，新增数据库迁移 `0038`、API、Worker 与测试；还未在当前执行环境运行 Python/真实 PostgreSQL，也未完成本分支 GitHub Actions。不得将本切片标记为已通过 CI 或已部署。生产环境默认关闭网页抓取 Provider。

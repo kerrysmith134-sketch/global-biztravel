@@ -50,6 +50,8 @@ from app.api.schemas import (
     MarketQuestionAnswerReview,
     MarketResearchQuestionCreate,
     MarketResearchQuestionRead,
+    MarketSourceExtractionAccepted,
+    MarketSourceExtractionRead,
     MarketWorkspaceCreate,
     MarketWorkspaceEntityCreate,
     MarketWorkspaceEntityRead,
@@ -65,6 +67,7 @@ from app.services import (
     market_opportunity_service,
     market_question_answer_agent_service,
     market_question_answer_service,
+    market_source_extraction_service,
     market_workspace_service,
     research_service,
 )
@@ -726,6 +729,65 @@ def list_market_evidence(
     return Page[MarketEvidenceRead](
         items=[MarketEvidenceRead.model_validate(row) for row in rows],
         next_cursor=page_cursor(rows, offset, page_size),
+    )
+
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/evidence/{evidence_id}:extract",
+    response_model=MarketSourceExtractionAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="提取用户选定搜索来源的网页正文",
+)
+def enqueue_market_source_extraction(
+    workspace_id: UUID,
+    evidence_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/evidence/{evidence_id}:extract"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), "evidence_id": str(evidence_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_source_extraction_service.enqueue_page_extraction(
+        session,
+        context.organization_id,
+        workspace_id,
+        evidence_id,
+        created_by_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_202_ACCEPTED,
+        body=MarketSourceExtractionAccepted.model_validate(result),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/source-extractions/{workflow_id}",
+    response_model=MarketSourceExtractionRead,
+    summary="读取网页正文提取任务状态",
+)
+def get_market_source_extraction(
+    workspace_id: UUID,
+    workflow_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    return MarketSourceExtractionRead.model_validate(
+        market_source_extraction_service.get_page_extraction(
+            session, context.organization_id, workspace_id, workflow_id
+        )
     )
 
 

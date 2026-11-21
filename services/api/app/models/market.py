@@ -509,6 +509,97 @@ class MarketResearchPlanEvidence(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class MarketEvidenceDerivation(Base):
+    """Immutable provenance edge from a selected search hit to an extracted page version."""
+
+    __tablename__ = "market_evidence_derivations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            ondelete="CASCADE",
+            name="fk_market_evidence_derivation_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "workflow_id"],
+            [
+                "market_workspace_workflows.organization_id",
+                "market_workspace_workflows.workspace_id",
+                "market_workspace_workflows.workflow_id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_evidence_derivation_workflow",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "source_evidence_id"],
+            ["evidence.organization_id", "evidence.id"],
+            ondelete="RESTRICT",
+            name="fk_market_evidence_derivation_source",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "derived_evidence_id"],
+            ["evidence.organization_id", "evidence.id"],
+            ondelete="RESTRICT",
+            name="fk_market_evidence_derivation_result",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "agent_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_evidence_derivation_run",
+        ),
+        UniqueConstraint(
+            "organization_id",
+            "workspace_id",
+            "source_evidence_id",
+            "derived_evidence_id",
+            "derivation_type",
+            name="uq_market_evidence_derivation",
+        ),
+        CheckConstraint(
+            "source_evidence_id <> derived_evidence_id",
+            name="source_not_result",
+        ),
+        CheckConstraint(
+            "derivation_type = 'WEB_PAGE_TEXT_EXTRACTION'",
+            name="derivation_type_allowed",
+        ),
+        CheckConstraint("length(btrim(extractor_version)) > 0", name="extractor_version_not_blank"),
+        CheckConstraint("length(content_hash) = 64", name="content_hash_length"),
+        Index(
+            "ix_market_evidence_derivation_org_workspace_source",
+            "organization_id",
+            "workspace_id",
+            "source_evidence_id",
+        ),
+        Index(
+            "ix_market_evidence_derivation_org_derived",
+            "organization_id",
+            "derived_evidence_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    source_evidence_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    derived_evidence_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    agent_run_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    derivation_type: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="WEB_PAGE_TEXT_EXTRACTION"
+    )
+    extractor_version: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = created_at()
+
+
 class MarketEntity(Base):
     """A research candidate entity; it is not a CRM Customer record."""
 
@@ -1167,6 +1258,7 @@ __all__ = [
     "MARKET_EVIDENCE_RELATIONS",
     "MarketActivityEvent",
     "MarketEntity",
+    "MarketEvidenceDerivation",
     "MarketEntityAlias",
     "MarketEntityCustomerLink",
     "MarketInsight",

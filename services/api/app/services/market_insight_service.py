@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
@@ -77,10 +78,16 @@ def record_market_evidence(
     quality: dict[str, Any] | None,
     payload: dict[str, Any],
     actor_user_id: UUID | None,
+    content_hash_override: str | None = None,
 ) -> Evidence:
     _workspace(session, organization_id, workspace_id)
     canonical = canonicalize_source_ref(canonical_ref)
-    digest = sha256(content.encode()).hexdigest()
+    if content_hash_override is None:
+        digest = sha256(content.encode("utf-8")).hexdigest()
+    else:
+        digest = content_hash_override.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise Unprocessable("content_hash_override 必须是 64 位 SHA-256 十六进制值")
     identity = sha256(f"{canonical}\n{digest}".encode()).hexdigest()
     version_ref = f"market-source:v1:{identity}"
     stored_payload = {**payload, "content": content}

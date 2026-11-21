@@ -28,6 +28,7 @@ from app.models.identity import Organization
 from app.models.reliability import BackgroundJob
 from app.services import (
     job_service,
+    market_source_extraction_service,
     memory_service,
     metrics_service,
     notification_service,
@@ -126,7 +127,8 @@ def execute_one(
             logger.warning("任务 %s 已不在本 Worker 名下（status=%s），跳过", job_id, job.status)
             return False
 
-        handler = TASK_HANDLERS.get(job.job_type)
+        job_type = job.job_type
+        handler = TASK_HANDLERS.get(job_type)
         if handler is None:
             # 未注册的任务类型是配置问题，重试不会变好：直接终态失败，让它在运维界面上可见。
             job_service.fail(
@@ -140,7 +142,11 @@ def execute_one(
         except TaskFailed as exc:
             if exc.retryable:
                 session.rollback()
-                job_service.fail(session, job_id, error=exc.message, retryable=True)
+                failed_job = job_service.fail(session, job_id, error=exc.message, retryable=True)
+                if job_type == job_service.JOB_TYPE_MARKET_PAGE_EXTRACT and failed_job.status == "DEAD":
+                    market_source_extraction_service.mark_retry_exhausted(
+                        session, org_id, failed_job.id, error=exc.message
+                    )
                 logger.warning("任务 %s 失败（可重试）：%s", job_id, exc.message)
             else:
                 # 不可重试：保留处理器已经写入的副作用再结算。计划不可行时必须把
@@ -150,7 +156,12 @@ def execute_one(
             return False
         except Exception as exc:  # noqa: BLE001 —— 未预期异常按可重试处理，绝不能炸掉整个循环
             session.rollback()
-            job_service.fail(session, job_id, error=f"{type(exc).__name__}: {exc}", retryable=True)
+            error_message = f"{type(exc).__name__}: {exc}"
+            failed_job = job_service.fail(session, job_id, error=error_message, retryable=True)
+            if job_type == job_service.JOB_TYPE_MARKET_PAGE_EXTRACT and failed_job.status == "DEAD":
+                market_source_extraction_service.mark_retry_exhausted(
+                    session, org_id, failed_job.id, error=error_message
+                )
             logger.exception("任务 %s 未预期异常，已回滚并排入重试", job_id)
             return False
 

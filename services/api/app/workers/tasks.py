@@ -23,6 +23,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from travel_planner import SolverFailed, plan_trip
 
@@ -30,6 +31,7 @@ from app.api.errors import ApiError
 from app.config import get_settings
 from app.integrations.crm import CrmUnavailable
 from app.integrations.fx import FxMarketUnavailable
+from app.integrations.research_page import ResearchPageFetchError, get_research_page_provider
 from app.integrations.research_search import (
     ResearchSearchUnavailable,
     get_research_search_provider,
@@ -42,10 +44,14 @@ from app.llm.prompts import (
     MARKET_QUESTION_ANSWER_SYSTEM,
     MARKET_QUESTION_ANSWER_TEMPLATE_ID,
 )
-from app.models.market import MarketWorkspaceWorkflow
+from app.models.market import (
+    MarketActivityEvent,
+    MarketEvidenceDerivation,
+    MarketWorkspaceWorkflow,
+)
 from app.models.reliability import BackgroundJob
 from app.models.trip import Trip
-from app.models.workflow import AgentRun, WorkflowInstance
+from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import (
     crm_service,
     evidence_service,
@@ -791,6 +797,244 @@ def handle_market_question_answer_draft(
     }
 
 
+def handle_market_source_page_extraction(
+    session: Session, job: BackgroundJob
+) -> dict[str, Any]:
+    """Extract a user-selected public page into a new immutable, still-unverified Evidence."""
+    payload = job.payload or {}
+    try:
+        workspace_id = UUID(str(payload["workspace_id"]))
+        workflow_id = UUID(str(payload["workflow_id"]))
+        source_evidence_id = UUID(str(payload["source_evidence_id"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TaskFailed("来源网页提取任务载荷无效", retryable=False) from exc
+
+    workflow = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == str(job.organization_id),
+            WorkflowInstance.id == workflow_id,
+            WorkflowInstance.workflow_type == "market_source_extraction",
+        ).with_for_update()
+    ).one_or_none()
+    if workflow is None:
+        raise TaskFailed("来源网页提取 Workflow 不存在", retryable=False)
+    if workflow.job_id is not None and workflow.job_id != job.id:
+        raise TaskFailed("来源网页提取任务已被更新的任务取代", retryable=False)
+
+    workspace_link = session.scalars(
+        select(MarketWorkspaceWorkflow).where(
+            MarketWorkspaceWorkflow.organization_id == job.organization_id,
+            MarketWorkspaceWorkflow.workspace_id == workspace_id,
+            MarketWorkspaceWorkflow.workflow_id == workflow_id,
+        )
+    ).one_or_none()
+    if workspace_link is None:
+        workflow.status = "FAILED"
+        workflow.payload = {
+            **(workflow.payload or {}),
+            "extraction_status": "FAILED",
+            "failure_code": "WORKSPACE_LINK_MISSING",
+            "failure_reason": "提取 Workflow 不属于指定 Workspace",
+        }
+        session.flush()
+        raise TaskFailed("来源网页提取 Workflow 不属于指定 Workspace", retryable=False)
+
+    source = session.scalars(
+        select(Evidence).where(
+            Evidence.organization_id == job.organization_id,
+            Evidence.id == source_evidence_id,
+            Evidence.subject_type == "market_workspace",
+            Evidence.subject_id == workspace_id,
+        )
+    ).one_or_none()
+    if source is None or source.kind != "WEB_SEARCH_RESULT" or not source.canonical_ref:
+        workflow.status = "FAILED"
+        workflow.payload = {
+            **(workflow.payload or {}),
+            "extraction_status": "FAILED",
+            "failure_code": "SOURCE_NOT_ELIGIBLE",
+            "failure_reason": "来源不存在、不是搜索结果或缺少来源 URL",
+        }
+        session.flush()
+        raise TaskFailed("仅允许提取当前 Workspace 中具备 URL 的 WEB_SEARCH_RESULT", retryable=False)
+    if source.verification_status == "REJECTED":
+        workflow.status = "FAILED"
+        workflow.payload = {
+            **(workflow.payload or {}),
+            "extraction_status": "FAILED",
+            "failure_code": "SOURCE_REJECTED",
+            "failure_reason": "该搜索来源已被驳回",
+        }
+        session.flush()
+        raise TaskFailed("已被驳回的搜索来源不能提取", retryable=False)
+
+    run = AgentRun(
+        organization_id=str(job.organization_id),
+        workflow_id=workflow.id,
+        agent_type="market_source_page_extractor",
+        status="RUNNING",
+        input={
+            "job_id": str(job.id),
+            "workspace_id": str(workspace_id),
+            "workflow_id": str(workflow.id),
+            "source_evidence_id": str(source.id),
+            "source_content_hash": source.content_hash,
+            "extractor_version": (workflow.payload or {}).get("extractor_version"),
+        },
+    )
+    session.add(run)
+    session.flush()
+
+    provider = get_research_page_provider()
+    try:
+        page = provider.fetch(source.canonical_ref)
+    except ResearchPageFetchError as exc:
+        if exc.retryable:
+            raise TaskFailed(str(exc), retryable=True) from exc
+        now = datetime.now(UTC)
+        run.status = "FAILED"
+        run.error = f"{exc.code}: {exc}"[:4000]
+        run.output = {"failure_code": exc.code, "retryable": False}
+        run.finished_at = now
+        workflow.status = "FAILED"
+        workflow.payload = {
+            **(workflow.payload or {}),
+            "extraction_status": "FAILED",
+            "failure_code": exc.code,
+            "failure_reason": str(exc)[:2000],
+            "agent_run_id": str(run.id),
+        }
+        session.add(
+            MarketActivityEvent(
+                organization_id=job.organization_id,
+                workspace_id=workspace_id,
+                actor_type="SYSTEM",
+                actor_user_id=None,
+                aggregate_type="market_source_extraction",
+                aggregate_id=workflow.id,
+                event_type="MARKET_SOURCE_EXTRACTION_FAILED",
+                payload={
+                    "source_evidence_id": str(source.id),
+                    "agent_run_id": str(run.id),
+                    "failure_code": exc.code,
+                },
+            )
+        )
+        session.flush()
+        raise TaskFailed(str(exc), retryable=False) from exc
+
+    extracted = market_insight_service.record_market_evidence(
+        session,
+        job.organization_id,
+        workspace_id,
+        canonical_ref=page.final_url,
+        content=page.excerpt,
+        content_hash_override=page.content_hash,
+        kind="WEB_PAGE_EXTRACT",
+        source=provider.name,
+        published_at=page.published_at,
+        observation=page.excerpt[:1200],
+        verification_status="UNVERIFIED",
+        quality=None,
+        payload={
+            "requested_url": page.requested_url,
+            "final_url": page.final_url,
+            "title": page.title,
+            "description": page.description,
+            "author": page.author,
+            "published_at_raw": page.published_at_raw,
+            "observed_canonical_url": page.observed_canonical_url,
+            "language": page.language,
+            "content_type": page.content_type,
+            "content_hash_scope": "normalized_full_extracted_text",
+            "content_chars": page.content_chars,
+            "stored_excerpt_chars": len(page.excerpt),
+            "excerpt_truncated": page.content_chars > len(page.excerpt),
+            "extractor_version": page.extractor_version,
+            "derived_from_evidence_id": str(source.id),
+            "extraction_workflow_id": str(workflow.id),
+            "extraction_agent_run_id": str(run.id),
+            "retrieved_at": page.retrieved_at.isoformat(),
+            "content": page.excerpt,
+        },
+        actor_user_id=None,
+    )
+
+    # If a task is replayed after a worker-side retry, the lineage edge remains unique.
+    session.execute(
+        pg_insert(MarketEvidenceDerivation.__table__)
+        .values(
+            organization_id=UUID(str(job.organization_id)),
+            workspace_id=workspace_id,
+            source_evidence_id=source.id,
+            derived_evidence_id=extracted.id,
+            workflow_id=workflow.id,
+            agent_run_id=run.id,
+            derivation_type="WEB_PAGE_TEXT_EXTRACTION",
+            extractor_version=page.extractor_version,
+            source_url=page.final_url,
+            content_hash=page.content_hash,
+        )
+        .on_conflict_do_nothing(constraint="uq_market_evidence_derivation")
+    )
+
+    now = datetime.now(UTC)
+    run.status = "SUCCEEDED"
+    run.output = {
+        "source_evidence_id": str(source.id),
+        "extracted_evidence_id": str(extracted.id),
+        "final_url": page.final_url,
+        "content_hash": page.content_hash,
+        "content_chars": page.content_chars,
+        "stored_excerpt_chars": len(page.excerpt),
+        "verification_status": "UNVERIFIED",
+        "extractor_version": page.extractor_version,
+    }
+    run.finished_at = now
+    workflow.status = "COMPLETED"
+    workflow.payload = {
+        **(workflow.payload or {}),
+        "extraction_status": "COMPLETED",
+        "extracted_evidence_id": str(extracted.id),
+        "agent_run_id": str(run.id),
+        "final_url": page.final_url,
+        "content_hash": page.content_hash,
+        "content_chars": page.content_chars,
+        "stored_excerpt_chars": len(page.excerpt),
+        "verification_status": "UNVERIFIED",
+        "retrieved_at": page.retrieved_at.isoformat(),
+        "completed_at": now.isoformat(),
+    }
+    session.add(
+        MarketActivityEvent(
+            organization_id=job.organization_id,
+            workspace_id=workspace_id,
+            actor_type="SYSTEM",
+            actor_user_id=None,
+            aggregate_type="market_source_extraction",
+            aggregate_id=workflow.id,
+            event_type="MARKET_SOURCE_PAGE_EXTRACTED",
+            payload={
+                "source_evidence_id": str(source.id),
+                "extracted_evidence_id": str(extracted.id),
+                "content_hash": page.content_hash,
+                "verification_status": "UNVERIFIED",
+            },
+        )
+    )
+    session.flush()
+    return {
+        "workspace_id": str(workspace_id),
+        "source_evidence_id": str(source.id),
+        "workflow_id": str(workflow.id),
+        "agent_run_id": str(run.id),
+        "extracted_evidence_id": str(extracted.id),
+        "content_hash": page.content_hash,
+        "verification_status": "UNVERIFIED",
+    }
+
+
+
 #: 任务处理器注册表。新增 ``job_type`` 时必须同时在这里登记，否则任务会以
 #: "没有注册处理器"直接终态失败（这是刻意的：静默丢弃任务比报错更糟）。
 TASK_HANDLERS: Mapping[str, TaskHandler] = {
@@ -800,6 +1044,7 @@ TASK_HANDLERS: Mapping[str, TaskHandler] = {
     job_service.JOB_TYPE_FX_SYNC: handle_fx_sync,
     job_service.JOB_TYPE_RESEARCH_EXECUTE: handle_research_execute,
     job_service.JOB_TYPE_MARKET_QUESTION_ANSWER: handle_market_question_answer_draft,
+    job_service.JOB_TYPE_MARKET_PAGE_EXTRACT: handle_market_source_page_extraction,
 }
 
 
@@ -813,4 +1058,5 @@ __all__ = [
     "handle_plan_trip",
     "handle_research_execute",
     "handle_market_question_answer_draft",
+    "handle_market_source_page_extraction",
 ]

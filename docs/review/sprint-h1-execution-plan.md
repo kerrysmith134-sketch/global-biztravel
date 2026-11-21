@@ -466,3 +466,14 @@ H1.7 把 H1.6 的版本化问题答案变成真正的 Agent 执行链：
 无 Evidence 或 Gateway 降级时生成明确的 INSUFFICIENT 草稿，而不是用模板伪装成功结论。外部资料的全文抓取和 Verification Agent 不在此切片内。
 
 **验证纪律：** PR #7 的 H1.6 修复断言已提交；PR #6 已严格 CI 全绿。H1.7 需独立通过 Ruff、MyPy、OpenAPI/docs、PostgreSQL migration/Alembic drift（虽无新迁移仍执行完整检查）、全量 Backend pytest、iOS SwiftLint/Build/Unit Tests 后再标记完成。
+
+
+## 16. H1.8 用户选定来源网页提取（叠加 H1.7）
+
+- 分支：`feat/sprint-h1.8-source-page-extraction`；基于 `feat/sprint-h1.7-research-answer-agent`，不从 main 重开重复基础分支。
+- 新增安全 Provider：只允许用户从 Workspace 选定一条 `WEB_SEARCH_RESULT` 后触发；搜索结果列表不会自动抓取。
+- SSRF 防护：标准 80/443 端口、拒绝 URL credentials、DNS 全地址公网校验 + IP pinning、每次重定向重新检查、HTTPS 禁止降级；响应字节、类型、超时和重定向次数均有边界。
+- 新增迁移 `0038_market_evidence_derivations`：追加式来源到提取版本 lineage，组织/Workspace/Workflow/AgentRun/Evidence 复合外键，FORCE RLS 与只追加数据库权限。
+- 复用现有 BackgroundJob/WorkflowInstance/AgentRun，不另建队列或 Agent Runtime；抓取失败进入既有重试/DLQ。
+- 内容只存有上限摘录与规范化全文 hash；输出始终 UNVERIFIED，独立事实核验留给 H1.9。
+- Draft PR 及严格 CI 尚待创建/执行；当前不声称迁移、RLS、Alembic drift、pytest 或 iOS 门禁已通过。
