@@ -14,6 +14,7 @@ from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
+from app.workers.tasks import handle_research_execute
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -197,9 +198,10 @@ def test_research_execution_uses_reviewed_queries_and_persists_unverified_source
     assert created.status_code == 201, created.text
     plan_id = created.json()["id"]
 
+    execution_key = str(uuid.uuid4())
     accepted = client.post(
         f"/v1/research/plans/{plan_id}:execute",
-        headers=headers(),
+        headers=headers(key=execution_key),
     )
     assert accepted.status_code == 202, accepted.text
     accepted_body = accepted.json()
@@ -208,14 +210,12 @@ def test_research_execution_uses_reviewed_queries_and_persists_unverified_source
 
     replay = client.post(
         f"/v1/research/plans/{plan_id}:execute",
-        headers={
-            **headers(),
-            "Idempotency-Key": accepted.request.headers.get("Idempotency-Key", ""),
-        },
+        headers=headers(key=execution_key),
     )
     # A different key is a second idempotent request, but the in-flight dedupe key reuses
     # the same job instead of creating a second search task.
     assert replay.status_code == 202, replay.text
+    assert replay.headers.get("Idempotent-Replay") == "true"
     assert replay.json()["job_id"] == job_id
     queued = client.get(f"/v1/research/plans/{plan_id}", headers=headers())
     assert queued.status_code == 200
@@ -227,9 +227,7 @@ def test_research_execution_uses_reviewed_queries_and_persists_unverified_source
         assert job is not None
         job.status = "RUNNING"
         job.locked_by = "research-test-worker"
-        result = __import__("app.workers.tasks", fromlist=["handle_research_execute"]).handle_research_execute(
-            session, job
-        )
+        result = handle_research_execute(session, job)
         job_service.complete(session, job.id, result=result)
         assert result["retrieval_status"] == "COMPLETED"
         assert result["results_count"] == 1
