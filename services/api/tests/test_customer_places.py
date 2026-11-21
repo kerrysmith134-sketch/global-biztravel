@@ -192,7 +192,7 @@ def test_customer_map_locations_aggregate_filters_and_data_quality(client: TestC
     missing_place_response = client.post(
         "/v1/places",
         headers=headers(),
-        json={"name": f"{marker} Rotterdam Factory", "city": "Rotterdam", "country_code": "NL"},
+        json={"name": f"{marker} Unlocated Factory", "country_code": "NL"},
     )
     assert missing_place_response.status_code == 201, missing_place_response.text
     missing_place = missing_place_response.json()["id"]
