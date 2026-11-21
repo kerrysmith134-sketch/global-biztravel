@@ -99,7 +99,7 @@ final class MapWorkspaceViewModel: ObservableObject {
         visits = loadedVisits
         customerLocations = []
         customerPlacesMessage = nil
-        let referencedCustomerIDs = Array(Set(loadedVisits.compactMap(\\.customerId))).sorted()
+        let referencedCustomerIDs = Array(Set(loadedVisits.compactMap(\.customerId))).sorted()
         guard !referencedCustomerIDs.isEmpty else {
             customers = []
             customerPlacesMessage = loadedVisits.isEmpty
