@@ -12,11 +12,13 @@ from app.models.market import (
     MarketActivityEvent,
     MarketResearchQuestionAnswer,
     MarketResearchQuestionAnswerEvidence,
+    MarketResearchQuestionAnswerEvidence,
     MarketWorkspace,
 )
 from app.models.workflow import Evidence
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -282,6 +284,44 @@ def test_question_answer_rejects_cross_workspace_evidence(client: TestClient) ->
             },
         )
         assert response.status_code == 409, response.text
+
+        # Service-level scope is not the only boundary: the composite database FK
+        # also rejects an answer/evidence link carrying the wrong Workspace id.
+        local_question = client.post(
+            f"/v1/market/workspaces/{workspace_one}/questions",
+            headers=headers(),
+            json={"question": "Can a same-tenant but different Workspace answer be linked?"},
+        )
+        assert local_question.status_code == 201, local_question.text
+        valid_answer = client.post(
+            f"/v1/market/workspaces/{workspace_one}/questions/{local_question.json()['id']}/answers",
+            headers=headers(),
+            json={
+                "answer_summary": "This answer is scoped to the first Workspace.",
+                "evidence": [
+                    {"evidence_id": create_evidence(
+                        client,
+                        workspace_one,
+                        "https://first-workspace.example.com/proof",
+                        "Evidence owned by the first Workspace.",
+                    ), "relation_type": "SUPPORTS"}
+                ],
+            },
+        )
+        assert valid_answer.status_code == 201, valid_answer.text
+        with org_session(UUID(ORG_A)) as session:
+            with pytest.raises(IntegrityError):
+                with session.begin_nested():
+                    session.add(
+                        MarketResearchQuestionAnswerEvidence(
+                            organization_id=UUID(ORG_A),
+                            workspace_id=UUID(workspace_two),
+                            answer_id=UUID(valid_answer.json()["id"]),
+                            evidence_id=UUID(valid_answer.json()["evidence"][0]["evidence"]["id"]),
+                            relation_type="SUPPORTS",
+                        )
+                    )
+                    session.flush()
     finally:
         for workspace_id in [workspace_one, workspace_two]:
             if workspace_id is not None:
