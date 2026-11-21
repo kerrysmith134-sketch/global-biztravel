@@ -422,4 +422,4 @@ MarketInsight 采用 `workspace_id + insight_key + version` 建立版本链；�
 
 评估维度采用开放 JSON 对象；每个维度至少有 value、rationale，允许 UNKNOWN。引用证据必须已关联到当前 Opportunity；未知值不会被当作 0，也不会生成成交概率分数。评估每次追加新版本，不覆盖历史。
 
-**验证状态：** H1.4 分支需要完整运行静态检查、OpenAPI 同步、0035 PostgreSQL 迁移、Alembic drift、全量 Backend pytest 与 iOS Build/Unit Tests。当前不宣称已通过；原生 iOS Opportunity UI 和 Research/Evidence 自动化仍在后续阶段。
+**验证状态：** 最新完成的 H1.4 严格 CI 已通过 Ruff、MyPy、OpenAPI / iOS contract、docs、0035 PostgreSQL migration、Alembic drift 与 Backend pytest（416 passed / 1 skipped）；SwiftLint 与 Xcode Build 通过。为补强集成测试的多次运行清理和 Workspace 删除语义，已追加一项测试修正，最终 iOS Unit Tests 与全量 CI 将在该最新 head 再次确认后方可关闭 PR。原生 iOS Opportunity UI 和 Research/Evidence 自动化仍在后续阶段。
