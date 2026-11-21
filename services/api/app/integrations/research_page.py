@@ -12,12 +12,12 @@ import ipaddress
 import re
 import socket
 import ssl
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.message import Message
 from hashlib import sha256
 from html.parser import HTMLParser
-from typing import Callable, Mapping
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 
