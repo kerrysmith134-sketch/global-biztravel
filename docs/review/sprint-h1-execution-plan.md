@@ -1,6 +1,6 @@
 # Sprint H1 — Domain Foundation & Evidence Data Architecture
 
-> 状态：H1.0 源码审计已完成；H1.1 领域契约已冻结；H1.2 Workspace 与候选实体后端纵向切片已实现，正在执行严格 CI / PostgreSQL 验证  
+> 状态：H1.0 源码审计已完成；H1.1 领域契约已冻结；H1.2 Workspace 与候选实体后端纵向切片已实现；H1.3 Evidence 版本化与 MarketInsight 进入工程实现  
 > 关联设计：`docs/design/market-intelligence-engine-v1.0.md`  
 > 仓库基线：`main`，核对到的最新提交 `c5e98e2b567f54705a8569d0ef7ced138d7f88b2`  
 > 计划日期：2026-11-21
@@ -348,7 +348,7 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 - Workspace、版本化 ContextSnapshot、ResearchQuestion、活动事件及 Workspace ↔ Workflow 关系；
 - Workspace 对现有用户意图 ResearchPlan 的关联与查询；
 - MarketEntity / Alias / WorkspaceEntity / EntityCustomerLink，含显式复用与 Customer 确认边界；
-- Alembic 0032 / 0033、FORCE RLS、同组织复合外键、API 和集成测试；
+- Alembic 0032 / 0033 / 0034、FORCE RLS、同组织复合外键、API 和集成测试；
 - OpenAPI 与 Swift 契约样本由项目生成器同步。
 
 **当前尚未完成：**
@@ -392,3 +392,12 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 1. 先审查并验证 ui-foundation-2026-11 上已有用户驱动 ResearchPlan PR。
 2. 该基线合并后，再合并本 H1.2 叠加 PR。
 3. 若 ResearchPlan 设计发生变化，必须同步检查 MarketWorkspaceWorkflow、workspace_id API 兼容和测试。
+
+
+## 11. H1.3 Evidence 与 Insight 纵向切片
+
+新增迁移 `0034_market_insights_evidence_versions`，扩展现有 Evidence，而不是另建证据主表；所有新增 Evidence 元数据均允许 NULL，旧证据调用方继续使用原引用语义与原唯一约束。市场来源证据采用 `market-source:v1:<sha256>` 作为版本 ref；版本 identity 同时包含规范化来源地址和原文内容哈希。相同来源、相同原文可幂等返回；来源内容变化生成新 Evidence 行；不同来源即使内容相同也保留为不同记录。
+
+MarketInsight 采用 `workspace_id + insight_key + version` 建立版本链；历史判断不提供原位编辑接口。支持、反驳和上下文证据通过 MarketInsightEvidence 明确连接。AI 创建的 Insight 默认 NEEDS_REVIEW；同时具有 SUPPORTS 和 CONTRADICTS 时标记 CONFLICTED。人工采纳必须有支持证据且不存在未解决反驳，并记录操作者、时间和说明。同一 insight_key 通过部分唯一索引最多只能有一个 ACCEPTED 版本。没有证据的判断只能以显式证据缺口创建，不能被采纳。
+
+该切片暂不包括 MarketOpportunity、OpportunityEvidence、Trip 关联、自动证据发现/核验 Agent 和 iOS 原生 Insight UI；不能将 API 持久化等同于完整 Agentic 市场研究闭环。
