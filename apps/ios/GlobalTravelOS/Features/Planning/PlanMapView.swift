@@ -6,6 +6,7 @@ import SwiftUI
 struct PlanMapView: View {
     let plan: PlanVersionDetail
     var origin: Place?
+    var title = "行程地图"
 
     @State private var position: MapCameraPosition = .automatic
     @State private var selection: PlanStop?
@@ -89,7 +90,7 @@ struct PlanMapView: View {
                 }
             }
         }
-        .navigationTitle("行程地图")
+        .navigationTitle(title)
         .onAppear { position = .automatic }
     }
 
