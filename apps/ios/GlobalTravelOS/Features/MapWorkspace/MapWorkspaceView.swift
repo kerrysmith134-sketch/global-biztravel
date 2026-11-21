@@ -46,9 +46,12 @@ final class MapWorkspaceViewModel: ObservableObject {
                     ?? trips.first?.id
             }
             if let selectedTripID {
-                await loadMissionContext(tripId: selectedTripID)
+                async let contextLoad = loadMissionContext(tripId: selectedTripID)
+                await loadSelectedPlan()
+                await contextLoad
+            } else {
+                await loadSelectedPlan()
             }
-            await loadSelectedPlan()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -66,9 +69,9 @@ final class MapWorkspaceViewModel: ObservableObject {
         customerLocations = []
         customerPlacesMessage = nil
         Task {
-            await loadMissionContext(tripId: id)
-            guard selectedTripID == id else { return }
+            async let contextLoad = loadMissionContext(tripId: id)
             await loadSelectedPlan()
+            await contextLoad
         }
     }
 
@@ -381,10 +384,9 @@ struct MapWorkspaceView: View {
 
                 if let plan = viewModel.plan {
                     PlanMapView(
-
                         customerLocations: viewModel.customerLocations,
-
                         customerPlacesMessage: viewModel.customerPlacesMessage,
+                        isLoadingCustomerPlaces: viewModel.isLoadingCustomerPlaces,
                         plan: plan,
                         origin: trip.originPlace,
                         title: "地图",
