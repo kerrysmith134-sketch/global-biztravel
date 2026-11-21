@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// 新增拜访表单（P0 审计 5.5：客户端此前只能通过 Excel 导入建拜访）。
+/// 新增拜访：明确关联 CRM 客户和客户真实地址，不把客户总部自动当成拜访地点。
 struct VisitCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
+
     let tripId: String
     let environment: AppEnvironment
     let onCreated: () async -> Void
@@ -29,9 +30,10 @@ struct VisitCreateSheet: View {
         NavigationStack {
             Form {
                 Section("拜访") {
-                    TextField("拜访标题（如 大众总部年度复审）", text: $title)
-                    TextField("客户/地点名称", text: $customerName)
+                    TextField("拜访标题（如 客户年度复审）", text: $title)
+                    TextField("实际拜访地点名称", text: $customerName)
                 }
+
                 Section("CRM 客户") {
                     Picker("关联客户", selection: $selectedCustomerID) {
                         Text("不关联客户").tag("")
@@ -41,6 +43,7 @@ struct VisitCreateSheet: View {
                         }
                     }
                     .disabled(isLoadingCustomers || customers.isEmpty)
+
                     if isLoadingCustomers {
                         ProgressView("正在读取客户…")
                     } else if customers.isEmpty {
@@ -48,6 +51,7 @@ struct VisitCreateSheet: View {
                             .font(.caption)
                             .foregroundStyle(DS.ColorToken.textSecondary)
                     }
+
                     if !selectedCustomerID.isEmpty {
                         if isLoadingCustomerPlaces {
                             ProgressView("正在读取客户已登记地址…")
@@ -62,14 +66,17 @@ struct VisitCreateSheet: View {
                             .onChange(of: selectedCustomerPlaceID) { _, placeID in
                                 applyCustomerPlace(placeID)
                             }
-                        } else {
-                            Text(customerPlacesMessage ?? "该客户暂无可选的已登记地址，可继续填写新地点。")
+                        }
+
+                        if let customerPlacesMessage {
+                            Text(customerPlacesMessage)
                                 .font(.caption)
                                 .foregroundStyle(DS.ColorToken.textSecondary)
                         }
                     }
                 }
-                Section("地点") {
+
+                Section("实际地点") {
                     TextField("城市", text: $city)
                     TextField("国家代码（如 DE）", text: $countryCode)
                         .textInputAutocapitalization(.characters)
@@ -78,6 +85,7 @@ struct VisitCreateSheet: View {
                     TextField("经度", text: $longitude)
                         .keyboardType(.decimalPad)
                 }
+
                 Section("时长与交通") {
                     TextField("服务分钟", text: $serviceMinutes)
                         .keyboardType(.numberPad)
@@ -87,8 +95,13 @@ struct VisitCreateSheet: View {
                         Text("驾车（市内）").tag("GROUND")
                     }
                 }
+
                 if let errorMessage {
-                    Section { Text(errorMessage).font(.caption).foregroundStyle(.red) }
+                    Section {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.danger)
+                    }
                 }
             }
             .navigationTitle("新增拜访")
@@ -102,40 +115,15 @@ struct VisitCreateSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
-                        saving = true
-                        Task {
-                            do {
-                                _ = try await environment.visitRepository.createVisit(
-                                    tripId: tripId,
-                                    request: VisitCreateRequest(
-                                        placeId: selectedCustomerPlaceID.isEmpty ? nil : selectedCustomerPlaceID,
-                                        customerId: selectedCustomerID.isEmpty ? nil : selectedCustomerID,
-                                        placeName: customerName.trimmingCharacters(in: .whitespaces).isEmpty
-                                            ? title : customerName,
-                                        city: city.isEmpty ? nil : city,
-                                        countryCode: countryCode.uppercased(),
-                                        latitude: Double(latitude),
-                                        longitude: Double(longitude),
-                                        timezone: nil,
-                                        title: title,
-                                        serviceMinutes: Int(serviceMinutes) ?? 60,
-                                        movementMode: movementMode
-                                    )
-                                )
-                                await onCreated()
-                                dismiss()
-                            } catch {
-                                errorMessage = environment.errorMessage(error)
-                            }
-                            saving = false
-                        }
+                        Task { await saveVisit() }
                     }
                     .disabled(
-                        saving || title.trimmingCharacters(in: .whitespaces).isEmpty
+                        saving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
                 }
             }
         }
+    }
 
     private func loadCustomers() async {
         isLoadingCustomers = true
@@ -156,18 +144,22 @@ struct VisitCreateSheet: View {
         selectedCustomerPlaceID = ""
         customerPlacesMessage = nil
         guard !customerId.isEmpty else { return }
+
         isLoadingCustomerPlaces = true
         defer { isLoadingCustomerPlaces = false }
         do {
-            customerPlaces = try await environment.customerRepository.customerPlaces(customerId: customerId)
-            if customerPlaces.isEmpty {
+            let places = try await environment.customerRepository.customerPlaces(customerId: customerId)
+            guard selectedCustomerID == customerId else { return }
+            customerPlaces = places
+            if places.isEmpty {
                 customerPlacesMessage = "该客户暂无已登记地址，可填写新的实际拜访地点。"
             }
         } catch {
-            // Local mode has not implemented customer_places yet; preserve the create-new-place flow.
+            guard selectedCustomerID == customerId else { return }
+            // Local mode has no customer_places relation yet; retain the create-new-place path.
             customerPlacesMessage = environment.isLocalMode
                 ? "本地模式尚未支持客户地址关联；仍可关联客户并填写新地点。"
-                : "读取客户地址失败：\\(environment.errorMessage(error))。仍可填写新地点。"
+                : "读取客户地址失败：\(environment.errorMessage(error))。仍可填写新地点。"
         }
     }
 
@@ -177,8 +169,57 @@ struct VisitCreateSheet: View {
         customerName = place.name
         city = place.city ?? ""
         countryCode = place.countryCode ?? countryCode
-        latitude = place.lat.map(String.init) ?? ""
-        longitude = place.lon.map(String.init) ?? ""
+        latitude = place.lat.map { String($0) } ?? ""
+        longitude = place.lon.map { String($0) } ?? ""
     }
+
+    private func saveVisit() async {
+        guard !saving else { return }
+        errorMessage = nil
+
+        let latitudeValue = Double(latitude)
+        let longitudeValue = Double(longitude)
+        if (latitudeValue == nil) != (longitudeValue == nil) {
+            errorMessage = "纬度和经度必须同时填写，或同时留空。"
+            return
+        }
+        if let latitudeValue, let longitudeValue,
+           !(-90.0...90.0).contains(latitudeValue) ||
+            !(-180.0...180.0).contains(longitudeValue) {
+            errorMessage = "经纬度超出有效范围。"
+            return
+        }
+
+        let serviceValue = Int(serviceMinutes) ?? 60
+        guard (1...1440).contains(serviceValue) else {
+            errorMessage = "服务时长必须在 1–1440 分钟之间。"
+            return
+        }
+
+        saving = true
+        defer { saving = false }
+        do {
+            _ = try await environment.visitRepository.createVisit(
+                tripId: tripId,
+                request: VisitCreateRequest(
+                    placeId: selectedCustomerPlaceID.isEmpty ? nil : selectedCustomerPlaceID,
+                    customerId: selectedCustomerID.isEmpty ? nil : selectedCustomerID,
+                    placeName: customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? title : customerName,
+                    city: city.isEmpty ? nil : city,
+                    countryCode: countryCode.isEmpty ? nil : countryCode.uppercased(),
+                    latitude: latitudeValue,
+                    longitude: longitudeValue,
+                    timezone: nil,
+                    title: title,
+                    serviceMinutes: serviceValue,
+                    movementMode: movementMode
+                )
+            )
+            await onCreated()
+            dismiss()
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
     }
 }
