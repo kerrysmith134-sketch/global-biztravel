@@ -3,7 +3,7 @@ included:
   - apps/ios/GlobalTravelOS
   - apps/ios/GlobalTravelOSTests
   - apps/ios/GlobalTravelOSUITests
-write_baseline: .swiftlint-baseline.json
+write_baseline: swiftlint-baseline.json
 excluded:
   - apps/ios/build
 line_length:
