@@ -313,4 +313,4 @@
 
 新增 API 包括机会列表/创建/详情、证据关联、候选实体关联、评估、状态迁移、人工资格确认、结果记录，以及 Workspace Trip 列表/关联/解除。
 
-H1.4 分支仍需通过完整 PostgreSQL 迁移、Alembic drift、全量 pytest、OpenAPI 契约和 iOS CI。未通过前不得标记生产可用；当前没有实现原生 iOS Opportunity UI。
+H1.4 当前代码 head 已通过 Backend 严格门禁：Ruff、MyPy、OpenAPI、文档、0035 PostgreSQL migration、Alembic drift 和全量 Backend pytest（416 passed / 1 skipped）。SwiftLint 与 Xcode Build 也已通过；iOS Unit Tests 正在对最新清理提交重新执行。PR #5 保持 Draft，尚未合并或部署。原生 iOS Opportunity UI 尚未实现。
