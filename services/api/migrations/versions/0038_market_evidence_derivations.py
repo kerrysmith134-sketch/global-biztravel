@@ -28,6 +28,8 @@ def upgrade() -> None:
             source_url text NOT NULL,
             content_hash text NOT NULL,
             created_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT fk_market_evidence_derivations_organization_id_organizations
+                FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE,
             CONSTRAINT fk_market_evidence_derivation_workspace
                 FOREIGN KEY (organization_id, workspace_id)
                 REFERENCES market_workspaces (organization_id, id) ON DELETE CASCADE,
@@ -56,6 +58,10 @@ def upgrade() -> None:
                 CHECK (length(content_hash) = 64)
         )
         """
+    )
+    op.execute(
+        "CREATE INDEX ix_market_evidence_derivations_organization_id "
+        "ON market_evidence_derivations (organization_id)"
     )
     op.execute(
         "CREATE INDEX ix_market_evidence_derivation_org_workspace_source "
