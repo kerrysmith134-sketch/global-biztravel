@@ -118,10 +118,15 @@ final class LocalPlanRepository: PlanRepository {
         let visits = try visitPayloads.map { try DateCoding.decoder().decode(TripVisit.self, from: $0) }
         let placePayloads = try database.loadPayloads(table: "places")
         let places = try placePayloads.map { try DateCoding.decoder().decode(Place.self, from: $0) }
+        // 客户 tier 参与商业价值推导（审计整改：本地规划此前完全不感知客户重要性）。
+        let customerPayloads = try database.loadPayloads(table: "customers")
+        let customers = try customerPayloads.map {
+            try DateCoding.decoder().decode(Customer.self, from: $0)
+        }
 
         let problem = EngineMapping.makeProblem(
             trip: trip, visits: visits, places: places,
-            budgetSeconds: request.solverBudgetSeconds ?? 10
+            customers: customers, budgetSeconds: request.solverBudgetSeconds ?? 10
         )
         guard !problem.stops.isEmpty else {
             throw APIError.serverError(

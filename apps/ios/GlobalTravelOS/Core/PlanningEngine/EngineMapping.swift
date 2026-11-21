@@ -3,19 +3,25 @@ import Foundation
 /// 领域 DTO ⇄ 引擎契约转换（本地模式，对应服务端 planning_service.py 的转换职责）。
 enum EngineMapping {
 
-    /// 行程 + 拜访 + 地点 → 引擎规划问题。
-    /// 拜访坐标从地点表查（visits 本身无坐标列，与服务端联查语义一致）。
+    /// 行程 + 拜访 + 地点 + 客户 → 引擎规划问题。
+    /// 拜访坐标从地点表查（visits 本身无坐标列，与服务端联查语义一致）；
+    /// 商业价值从客户 tier 推导（A=3/B=2/C=1，审计整改：此前硬编码 0，
+    /// 本地规划完全不感知客户重要性）。缺坐标的地点不进规划（0,0 会污染路线）。
     static func makeProblem(
         trip: Trip, visits: [TripVisit], places: [Place],
+        customers: [Customer] = [],
         budgetSeconds: Int
     ) -> EnginePlanningProblem {
         var placeById: [String: Place] = [:]
         for place in places { placeById[place.id ?? ""] = place }
+        var tierByCustomer: [String: String] = [:]
+        for customer in customers { tierByCustomer[customer.id] = customer.tier }
 
         var stops: [EngineStopInput] = []
         for (index, visit) in visits.enumerated() {
             let place = visit.placeId.flatMap { placeById[$0] }
-            guard let place else { continue } // 无地点的拜访不进规划（显式缺口语义）
+            // 无地点或缺坐标的拜访不进规划（显式缺口语义；0,0 坐标会扭曲整条路线）。
+            guard let place, let lat = place.latitude, let lon = place.longitude else { continue }
             let windows: [EngineTimeWindow]
             if let start = visit.timeWindowStart, let end = visit.timeWindowEnd {
                 windows = [EngineTimeWindow(start: start, end: end)]
@@ -26,12 +32,14 @@ enum EngineMapping {
                 EngineStopInput(
                     visitId: visitUUID(visit.id, fallbackIndex: index),
                     placeId: UUID(uuidString: place.id ?? "") ?? UUID(),
-                    lat: place.latitude ?? 0,
-                    lon: place.longitude ?? 0,
+                    lat: lat,
+                    lon: lon,
                     serviceMinutes: visit.serviceMinutes ?? 60,
                     timeWindows: windows,
                     priority: visit.priority ?? 2,
-                    businessValue: 0,
+                    businessValue: Self.businessValue(
+                        forCustomerId: visit.customerId, tierByCustomer: tierByCustomer
+                    ),
                     movementMode: EngineMovementMode(rawValue: visit.movementMode ?? "GROUND") ?? .ground
                 )
             )
@@ -172,6 +180,20 @@ enum EngineMapping {
             )
         }
     }
+    /// 客户 tier → 商业价值权重（A=3/B=2/C=1，未知/无关联归 C 档 1.0）。
+    ///
+    /// iOS 侧 Customer 模型没有独立 businessValue 字段（服务端 CustomerRead 契约也不含），
+    /// tier 是唯一可用的价值信号；权重差让价值目标函数真正区分客户重要性。
+    static func businessValue(forCustomerId customerId: String?, tierByCustomer: [String: String]) -> Double {
+        guard let customerId, let tier = tierByCustomer[customerId]?.uppercased() else {
+            return 1.0
+        }
+        switch tier {
+        case "A": return 3.0
+        case "B": return 2.0
+        default: return 1.0
+        }
+    }
 }
 
 extension JSONDecoder {
@@ -198,4 +220,5 @@ extension JSONEncoder {
         encoder.dateEncodingStrategy = .iso8601
         return encoder
     }
+
 }

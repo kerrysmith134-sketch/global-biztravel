@@ -10,9 +10,10 @@ struct VisitCreateSheet: View {
     @State private var title = ""
     @State private var customerName = ""
     @State private var city = ""
-    @State private var countryCode = "DE"
-    @State private var latitude = "52.5200"
-    @State private var longitude = "13.4050"
+    // 审计整改：默认 DE/柏林坐标会让没改坐标的用户把拜访静默存到柏林——一律留空必填。
+    @State private var countryCode = ""
+    @State private var latitude = ""
+    @State private var longitude = ""
     @State private var serviceMinutes = "60"
     @State private var movementMode = "AIR"
     @State private var saving = false
@@ -27,7 +28,7 @@ struct VisitCreateSheet: View {
                 }
                 Section("地点") {
                     TextField("城市", text: $city)
-                    TextField("国家代码（如 DE）", text: $countryCode)
+                    TextField("国家代码（如 DE，必填）", text: $countryCode)
                         .textInputAutocapitalization(.characters)
                     TextField("纬度", text: $latitude)
                         .keyboardType(.decimalPad)
@@ -57,6 +58,13 @@ struct VisitCreateSheet: View {
                         saving = true
                         Task {
                             do {
+                                let lat = Double(latitude)
+                                let lon = Double(longitude)
+                                guard let lat, let lon else {
+                                    errorMessage = "纬度/经度必须是有效数字（可在地图 App 长按地点复制坐标）"
+                                    saving = false
+                                    return
+                                }
                                 _ = try await environment.visitRepository.createVisit(
                                     tripId: tripId,
                                     request: VisitCreateRequest(
@@ -64,8 +72,8 @@ struct VisitCreateSheet: View {
                                             ? title : customerName,
                                         city: city.isEmpty ? nil : city,
                                         countryCode: countryCode.uppercased(),
-                                        latitude: Double(latitude),
-                                        longitude: Double(longitude),
+                                        latitude: lat,
+                                        longitude: lon,
                                         timezone: nil,
                                         title: title,
                                         serviceMinutes: Int(serviceMinutes) ?? 60,
@@ -81,7 +89,11 @@ struct VisitCreateSheet: View {
                         }
                     }
                     .disabled(
-                        saving || title.trimmingCharacters(in: .whitespaces).isEmpty
+                        saving
+                            || title.trimmingCharacters(in: .whitespaces).isEmpty
+                            || countryCode.trimmingCharacters(in: .whitespaces).isEmpty
+                            || Double(latitude) == nil
+                            || Double(longitude) == nil
                     )
                 }
             }
