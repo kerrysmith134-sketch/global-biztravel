@@ -1,5 +1,11 @@
 import SwiftUI
 
+private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 /// 新增拜访：明确关联 CRM 客户和客户真实地址，不把客户总部自动当成拜访地点。
 struct VisitCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -20,6 +26,8 @@ struct VisitCreateSheet: View {
     @State private var selectedCustomerID = ""
     @State private var customerPlaces: [CustomerPlace] = []
     @State private var selectedCustomerPlaceID = ""
+    @State private var addsNewPlaceToCustomer = true
+    @State private var didCreateVisit = false
     @State private var isLoadingCustomers = false
     @State private var isLoadingCustomerPlaces = false
     @State private var customerPlacesMessage: String?
@@ -73,6 +81,13 @@ struct VisitCreateSheet: View {
                                 .font(.caption)
                                 .foregroundStyle(DS.ColorToken.textSecondary)
                         }
+
+                        if selectedCustomerPlaceID.isEmpty && !environment.isLocalMode {
+                            Toggle("将新地点加入客户地址簿", isOn: $addsNewPlaceToCustomer)
+                            Text("仅关联为普通地址，不会自动设为客户主地址。")
+                                .font(.caption2)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                        }
                     }
                 }
 
@@ -114,11 +129,12 @@ struct VisitCreateSheet: View {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button(didCreateVisit ? "已创建" : "保存") {
                         Task { await saveVisit() }
                     }
                     .disabled(
-                        saving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        saving || didCreateVisit ||
+                            title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
                 }
             }
@@ -205,7 +221,7 @@ struct VisitCreateSheet: View {
         saving = true
         defer { saving = false }
         do {
-            _ = try await environment.visitRepository.createVisit(
+            let createdVisit = try await environment.visitRepository.createVisit(
                 tripId: tripId,
                 request: VisitCreateRequest(
                     placeId: selectedCustomerPlaceID.isEmpty ? nil : selectedCustomerPlaceID,
@@ -222,6 +238,34 @@ struct VisitCreateSheet: View {
                     movementMode: movementMode
                 )
             )
+
+            if addsNewPlaceToCustomer,
+               !environment.isLocalMode,
+               let customerID = selectedCustomerID.nonEmpty,
+               selectedCustomerPlaceID.isEmpty {
+                guard let createdPlaceID = createdVisit.placeId else {
+                    didCreateVisit = true
+                    await onCreated()
+                    errorMessage = "拜访已创建，但服务端没有返回地点编号；请在客户档案中检查地址，勿重复保存。"
+                    return
+                }
+                do {
+                    _ = try await environment.customerRepository.linkCustomerPlace(
+                        customerId: customerID,
+                        request: CustomerPlaceLinkRequest(
+                            placeId: createdPlaceID,
+                            label: "拜访地址",
+                            isPrimary: false
+                        )
+                    )
+                } catch {
+                    didCreateVisit = true
+                    await onCreated()
+                    errorMessage = "拜访已创建，但新地点加入客户地址簿失败：\\(environment.errorMessage(error))。请稍后在客户档案补关联，勿重复保存。"
+                    return
+                }
+            }
+
             await onCreated()
             dismiss()
         } catch {
