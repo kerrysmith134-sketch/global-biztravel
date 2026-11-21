@@ -326,6 +326,7 @@ def create_workspace_entity(
         session,
         context.organization_id,
         workspace_id,
+        existing_entity_id=payload.existing_entity_id,
         entity_kind=payload.entity_kind,
         display_name=payload.display_name,
         description=payload.description,
