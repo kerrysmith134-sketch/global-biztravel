@@ -26,7 +26,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(place.placeId, "place-1")
         XCTAssertEqual(place.label, "工厂")
         XCTAssertTrue(place.isPrimary)
-        XCTAssertEqual(place.displayAddress, "Industriestrasse 12 · Berlin · Berlin · DE")
+        XCTAssertEqual(place.displayAddress, "Industriestrasse 12 · Berlin · DE")
         XCTAssertTrue(place.hasValidCoordinates)
         XCTAssertEqual(place.geocodeStatus, "RESOLVED")
         XCTAssertEqual(place.geocodeSource, "google-maps")
@@ -46,7 +46,7 @@ final class ModelDecodingTests: XCTestCase {
         """
         let place = try DateCoding.decode(CustomerPlace.self, fromJSON: json)
         XCTAssertFalse(place.hasValidCoordinates)
-        XCTAssertNil(place.displayAddress.isEmpty ? nil : place.displayAddress)
+        XCTAssertEqual(place.displayAddress, "")
     }
 
     func testVisitCreateRequestEncodesCRMCustomerId() throws {
