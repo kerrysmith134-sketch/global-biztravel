@@ -2,7 +2,7 @@ name: ci
 
 # Cancel superseded runs for the same PR/ref so Xcode runners validate the newest tree only.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-baseline-migration
   cancel-in-progress: true
 
 on:
