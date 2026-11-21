@@ -7,8 +7,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from sqlalchemy import func, select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.api.errors import BadRequest, Conflict, NotFound
@@ -171,8 +170,9 @@ def create_workspace_entity(
     organization_id: UUID | str,
     workspace_id: UUID,
     *,
-    entity_kind: str,
-    display_name: str,
+    existing_entity_id: UUID | None,
+    entity_kind: str | None,
+    display_name: str | None,
     description: str | None,
     canonical_domain: str | None,
     country_code: str | None,
@@ -181,80 +181,58 @@ def create_workspace_entity(
     relevance_note: str | None,
     created_by_user_id: UUID,
 ) -> dict:
-    _workspace_or_404(session, organization_id, workspace_id)
-    normalized_name = normalize_name(display_name)
-    if not normalized_name:
-        raise BadRequest("实体名称不能为空")
+    """Add a new candidate, or explicitly attach an existing candidate by its ID.
 
-    domain = normalize_domain(canonical_domain)
-    country = country_code.upper() if country_code else None
-    if country is not None and len(country) != 2:
-        raise BadRequest("country_code 必须为 ISO alpha-2 格式")
+    A shared domain is only a possible-duplicate signal; it never auto-merges entities.
+    """
+    _workspace_or_404(session, organization_id, workspace_id)
 
     possible_duplicates: list[UUID] = []
-    duplicate_stmt = select(MarketEntity.id).where(
-        MarketEntity.organization_id == str(organization_id),
-        MarketEntity.normalized_name == normalized_name,
-    )
-    if country:
-        duplicate_stmt = duplicate_stmt.where(
-            func.coalesce(MarketEntity.country_code, "") == country
-        )
+    is_new_entity = existing_entity_id is None
+    if existing_entity_id is not None:
+        entity = get_market_entity(session, organization_id, existing_entity_id)
+        if entity is None:
+            raise NotFound(
+                "待关联的市场候选实体不存在",
+                details={"entity_id": str(existing_entity_id)},
+            )
     else:
-        duplicate_stmt = duplicate_stmt.where(MarketEntity.country_code.is_(None))
-    possible_duplicates = list(session.scalars(duplicate_stmt).all())
+        if not entity_kind or not display_name:
+            raise BadRequest("新建候选实体必须提供实体类型和名称")
+        normalized_name = normalize_name(display_name)
+        if not normalized_name:
+            raise BadRequest("实体名称不能为空")
 
-    reused_by_domain = False
-    entity: MarketEntity | None = None
-    if domain:
-        # Let PostgreSQL arbitrate concurrent creates against the partial unique index.
-        inserted_id = session.scalar(
-            pg_insert(MarketEntity)
-            .values(
-                organization_id=str(organization_id),
-                entity_kind=entity_kind.strip(),
-                display_name=display_name,
-                normalized_name=normalized_name,
-                description=description,
-                canonical_domain=domain,
-                country_code=country,
-                attributes=attributes,
-                status="CANDIDATE",
-                created_by_user_id=created_by_user_id,
+        domain = normalize_domain(canonical_domain)
+        country = country_code.upper() if country_code else None
+        if country is not None and len(country) != 2:
+            raise BadRequest("country_code 必须为 ISO alpha-2 格式")
+
+        duplicate_conditions = [
+            (MarketEntity.normalized_name == normalized_name)
+            & (
+                func.coalesce(MarketEntity.country_code, "")
+                == (country or "")
             )
-            .on_conflict_do_nothing(
-                index_elements=["organization_id", "canonical_domain"],
-                index_where=text("canonical_domain IS NOT NULL"),
-            )
-            .returning(MarketEntity.id)
+        ]
+        if domain is not None:
+            duplicate_conditions.append(MarketEntity.canonical_domain == domain)
+        possible_duplicates = list(
+            session.scalars(
+                select(MarketEntity.id).where(
+                    MarketEntity.organization_id == str(organization_id),
+                    or_(*duplicate_conditions),
+                )
+            ).all()
         )
-        if inserted_id is None:
-            entity = session.scalars(
-                select(MarketEntity).where(
-                    MarketEntity.organization_id == str(organization_id),
-                    MarketEntity.canonical_domain == domain,
-                )
-            ).one_or_none()
-            if entity is None:
-                raise Conflict(
-                    "实体主域名创建发生并发冲突，请重试",
-                    details={"canonical_domain": domain},
-                )
-            reused_by_domain = True
-        else:
-            entity = session.scalars(
-                select(MarketEntity).where(
-                    MarketEntity.organization_id == str(organization_id),
-                    MarketEntity.id == inserted_id,
-                )
-            ).one()
-    else:
+
         entity = MarketEntity(
             organization_id=str(organization_id),
             entity_kind=entity_kind.strip(),
             display_name=display_name,
             normalized_name=normalized_name,
             description=description,
+            canonical_domain=domain,
             country_code=country,
             attributes=attributes,
             status="CANDIDATE",
@@ -263,23 +241,23 @@ def create_workspace_entity(
         session.add(entity)
         session.flush()
 
-    _ensure_alias(
-        session,
-        organization_id,
-        entity.id,
-        alias_type="NAME",
-        raw_value=display_name,
-        normalized_value=normalized_name,
-    )
-    if domain:
         _ensure_alias(
             session,
             organization_id,
             entity.id,
-            alias_type="DOMAIN",
-            raw_value=canonical_domain or domain,
-            normalized_value=domain,
+            alias_type="NAME",
+            raw_value=display_name,
+            normalized_value=normalized_name,
         )
+        if domain:
+            _ensure_alias(
+                session,
+                organization_id,
+                entity.id,
+                alias_type="DOMAIN",
+                raw_value=canonical_domain or domain,
+                normalized_value=domain,
+            )
 
     link = session.scalars(
         select(MarketWorkspaceEntity).where(
@@ -314,8 +292,7 @@ def create_workspace_entity(
         if link.relevance_note is None and relevance_note:
             link.relevance_note = relevance_note
 
-    if not reused_by_domain:
-        # This event is intentionally scoped to the Workspace where the candidate was added.
+    if is_new_entity:
         _record_workspace_entity_event(
             session,
             organization_id,
@@ -337,7 +314,6 @@ def create_workspace_entity(
         "possible_duplicate_entity_ids": [
             item for item in possible_duplicates if item != entity.id
         ],
-        "reused_by_domain": reused_by_domain,
     }
 
 
@@ -441,7 +417,6 @@ def list_workspace_entities(
                 "first_seen_at": link.first_seen_at,
                 "last_seen_at": link.last_seen_at,
                 "possible_duplicate_entity_ids": duplicate_map[entity.id],
-                "reused_by_domain": False,
             }
         )
     return result
