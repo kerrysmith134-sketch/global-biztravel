@@ -9,12 +9,16 @@ struct PlanMapView: View {
     var title = "行程地图"
     var visits: [TripVisit] = []
     var customers: [Customer] = []
+    var customerLocations: [CustomerMapLocation] = []
+    var customerPlacesMessage: String?
     var isPlanActive = false
     var isSubmittingChange = false
     var onCancelVisit: ((PlanStop) -> Void)?
 
     @State private var position: MapCameraPosition = .automatic
     @State private var selectedStopID: String?
+    @State private var selectedCustomerPlaceID: String?
+    @State private var showsCustomerLayer = true
     @State private var selectedDayIndex: Int?
     @State private var showsOpenVisitsOnly = false
 
@@ -106,18 +110,42 @@ struct PlanMapView: View {
         plan.legs ?? []
     }
 
+    private var mappedCustomerLocations: [CustomerMapLocation] {
+        customerLocations.filter { $0.place.hasValidCoordinates }
+    }
+
+    private var selectedCustomerLocation: CustomerMapLocation? {
+        guard let selectedCustomerPlaceID else { return nil }
+        return customerLocations.first { $0.id == selectedCustomerPlaceID }
+    }
+
     var body: some View {
         Group {
-            if dayRoutes.isEmpty {
-                ContentUnavailableView(
-                    "没有可展示的坐标",
-                    systemImage: DSIconCatalog.map,
-                    description: Text("拜访地点缺少经纬度。请补齐地址坐标后重新生成计划，地图不会用虚构位置代替。")
-                )
+            if dayRoutes.isEmpty && mappedCustomerLocations.isEmpty {
+                VStack(spacing: DS.Spacing.sm) {
+                    ContentUnavailableView(
+                        "没有可展示的地图坐标",
+                        systemImage: DSIconCatalog.map,
+                        description: Text("拜访地点和客户地址都没有可用的有效坐标。地图不会用城市中心点或虚构位置代替。")
+                    )
+                    if let customerPlacesMessage {
+                        Text(customerPlacesMessage)
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, DS.Spacing.lg)
+                    }
+                    if !customerLocations.isEmpty {
+                        Text("已读取客户地址 (customerLocations.count) 个，其中 (customerLocations.filter { !$0.place.hasValidCoordinates }.count) 个缺少有效坐标。")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.warning)
+                    }
+                }
             } else {
                 VStack(spacing: 0) {
                     dayFilter
-                    routeAccuracyNotice
+                    if !dayRoutes.isEmpty { routeAccuracyNotice }
+                    customerPlacesNotice
                     Map(position: $position, selection: $selectedStopID) {
                         ForEach(visibleDayRoutes, id: \.dayIndex) { route in
                             if route.coordinates.count >= 2 {
@@ -135,6 +163,42 @@ struct PlanMapView: View {
                                 }
                             }
                         }
+                        if showsCustomerLayer {
+                            ForEach(mappedCustomerLocations) { location in
+                                if let latitude = location.place.lat, let longitude = location.place.lon {
+                                    Annotation(
+                                        location.customer.name,
+                                        coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+                                        anchor: .bottom
+                                    ) {
+                                        Button {
+                                            selectedStopID = nil
+                                            selectedCustomerPlaceID = location.id
+                                        } label: {
+                                            VStack(spacing: 2) {
+                                                Image(systemName: "building.2.fill")
+                                                    .font(.system(size: 13, weight: .semibold))
+                                                    .foregroundStyle(.white)
+                                                    .frame(width: 32, height: 32)
+                                                    .background(DS.ColorToken.info, in: Circle())
+                                                    .overlay(Circle().stroke(DS.ColorToken.surface, lineWidth: 2))
+                                                    .shadow(color: .black.opacity(0.16), radius: 4, y: 2)
+                                                if location.place.isPrimary {
+                                                    Text("主地址")
+                                                        .font(.system(size: 9, weight: .semibold))
+                                                        .foregroundStyle(DS.ColorToken.textPrimary)
+                                                        .padding(.horizontal, 5)
+                                                        .padding(.vertical, 2)
+                                                        .background(DS.ColorToken.surface, in: Capsule())
+                                                }
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("(location.customer.name)，(location.place.label ?? location.place.name)")
+                                    }
+                                }
+                            }
+                        }
                     }
                     .mapStyle(.standard)
                     .mapControls {
@@ -145,6 +209,11 @@ struct PlanMapView: View {
                     if let selectedStop {
                         selectedStopDrawer(selectedStop)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if let selectedCustomerLocation {
+                        MapCustomerPlaceDrawer(location: selectedCustomerLocation) {
+                            selectedCustomerPlaceID = nil
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     routeLegend
                 }
@@ -155,8 +224,40 @@ struct PlanMapView: View {
         .onAppear { position = .automatic }
         .onChange(of: plan.id) { _, _ in
             selectedStopID = nil
+            selectedCustomerPlaceID = nil
             selectedDayIndex = nil
             position = .automatic
+        }
+    }
+
+    @ViewBuilder
+    private var customerPlacesNotice: some View {
+        if !customerLocations.isEmpty || customerPlacesMessage != nil {
+            let mappedCount = mappedCustomerLocations.count
+            HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                Image(systemName: "building.2")
+                    .foregroundStyle(DS.ColorToken.info)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("客户地址图层 · (mappedCount)/(customerLocations.count) 个地址有有效坐标")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.ColorToken.textPrimary)
+                    if let customerPlacesMessage {
+                        Text(customerPlacesMessage)
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("客户地址独立于计划拜访点显示；主地址标记不代表该地点已安排拜访。")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, DS.Spacing.md)
+            .padding(.vertical, DS.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DS.ColorToken.info.opacity(0.06))
         }
     }
 
@@ -199,6 +300,13 @@ struct PlanMapView: View {
                 filterChip(title: "待执行", selected: showsOpenVisitsOnly) {
                     showsOpenVisitsOnly = true
                     selectedStopID = nil
+                    selectedCustomerPlaceID = nil
+                }
+                if !customerLocations.isEmpty {
+                    filterChip(title: "客户地址 · (mappedCustomerLocations.count)", selected: showsCustomerLayer) {
+                        showsCustomerLayer.toggle()
+                        selectedCustomerPlaceID = nil
+                    }
                 }
                 ForEach(dayRoutes, id: .dayIndex) { route in
                     filterChip(
