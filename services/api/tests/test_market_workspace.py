@@ -23,6 +23,7 @@ from app.models.market import (
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -483,6 +484,7 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
         )
         assert listed.status_code == 200, listed.text
         assert len(listed.json()["items"]) == 2
+        assert any(item["possible_duplicate_entity_ids"] for item in listed.json()["items"])
 
         # Candidate discovery never creates or mutates a Customer record.
         with org_session(UUID(ORG_A)) as session:
@@ -521,6 +523,22 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
             json={"customer_id": str(customer_b_id), "matching_basis": {"signal": "name"}},
         )
         assert cross_tenant_customer.status_code == 404, cross_tenant_customer.text
+
+        # Database composite FK must also reject (organization A, Customer B),
+        # even if an application caller bypasses the HTTP-level tenant lookup.
+        with org_session(UUID(ORG_A)) as session:
+            with pytest.raises(IntegrityError):
+                with session.begin_nested():
+                    session.add(
+                        MarketEntityCustomerLink(
+                            organization_id=UUID(ORG_A),
+                            entity_id=UUID(entity_id),
+                            customer_id=customer_b_id,
+                            link_status="MATCH_CANDIDATE",
+                            matching_basis={"source": "negative-tenant-fixture"},
+                        )
+                    )
+                    session.flush()
 
         confirmed = client.post(
             f"/v1/market/entities/{entity_id}/customer-links/{link_id}:confirm",
