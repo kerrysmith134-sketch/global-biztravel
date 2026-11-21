@@ -400,8 +400,8 @@ struct ResearchWorkspaceView: View {
         DSCard(padding: DS.Spacing.md) {
             VStack(alignment: .leading, spacing: DS.Spacing.sm) {
                 DSSectionHeader(
-                    title: "已有来源",
-                    subtitle: "仅列出本次输入和显式选定的内部记录"
+                    title: "来源与证据",
+                    subtitle: "每条来源保留采集渠道；搜索摘要不等于事实核验"
                 )
                 if plan.evidence.isEmpty {
                     Text("当前没有来源记录。")
@@ -409,20 +409,52 @@ struct ResearchWorkspaceView: View {
                         .foregroundStyle(DS.ColorToken.textSecondary)
                 } else {
                     ForEach(plan.evidence) { item in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.kind.replacingOccurrences(of: "_", with: " "))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(DS.ColorToken.textPrimary)
-                            if let source = item.source {
-                                Text("来源：\\(source)")
-                                    .font(.caption2)
-                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                            HStack(alignment: .top) {
+                                Text(item.title ?? item.kind.replacingOccurrences(of: "_", with: " "))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(DS.ColorToken.textPrimary)
+                                Spacer()
+                                if item.isUnverifiedSearchResult {
+                                    DSBadge(text: "未核验", color: DS.ColorToken.warning)
+                                }
                             }
-                            Text(item.ref)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(DS.ColorToken.textSecondary)
-                                .textSelection(.enabled)
+                            if let snippet = item.snippet, !snippet.isEmpty {
+                                Text(snippet)
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            HStack(spacing: DS.Spacing.sm) {
+                                if let source = item.source {
+                                    Text(source)
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                }
+                                if let engine = item.engine {
+                                    Text("引擎：\\(engine)")
+                                        .font(.caption2)
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                }
+                                if let publishedAt = item.publishedAt {
+                                    Text("发布：\\(publishedAt)")
+                                        .font(.caption2)
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                }
+                            }
+                            if let url = item.sourceURL {
+                                Link(destination: url) {
+                                    Label("打开原始来源", systemImage: "arrow.up.right")
+                                        .font(.caption2.weight(.semibold))
+                                }
+                            } else {
+                                Text(item.ref)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                    .textSelection(.enabled)
+                            }
                         }
+                        .padding(.vertical, DS.Spacing.xs)
                     }
                 }
             }
