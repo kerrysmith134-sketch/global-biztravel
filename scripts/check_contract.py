@@ -79,7 +79,7 @@ def _describe_differences(
                 f"{label} {path}: 数组长度提交={len(committed)} / 生成={len(generated)}"
             ]
         result = []
-        for index, (left, right) in enumerate(zip(committed, generated)):
+        for index, (left, right) in enumerate(zip(committed, generated, strict=False)):
             result.extend(
                 _describe_differences(
                     label, left, right, path=f"{path}[{index}]", limit=limit
