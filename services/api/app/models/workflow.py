@@ -117,6 +117,11 @@ class Evidence(Base):
         ),
         Index("ix_evidence_org_subject", "organization_id", "subject_type", "subject_id"),
         Index("ix_evidence_org_canonical_ref", "organization_id", "canonical_ref"),
+        CheckConstraint(
+            "verification_status IS NULL OR verification_status IN "
+            "('UNVERIFIED','PARTIALLY_VERIFIED','VERIFIED','DISPUTED','REJECTED')",
+            name="verification_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
