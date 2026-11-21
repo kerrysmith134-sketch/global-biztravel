@@ -1,11 +1,20 @@
 import SwiftUI
 
+private struct CustomerPlacesFetchResult {
+    var customerId: String
+    var places: [CustomerPlace]
+    var errorMessage: String?
+}
+
 @MainActor
 final class MapWorkspaceViewModel: ObservableObject {
     @Published private(set) var trips: [Trip] = []
     @Published private(set) var plan: PlanVersionDetail?
     @Published private(set) var visits: [TripVisit] = []
     @Published private(set) var customers: [Customer] = []
+    @Published private(set) var customerLocations: [CustomerMapLocation] = []
+    @Published private(set) var customerPlacesMessage: String?
+    @Published private(set) var isLoadingCustomerPlaces = false
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingPlan = false
     @Published private(set) var isSubmittingChange = false
@@ -54,6 +63,8 @@ final class MapWorkspaceViewModel: ObservableObject {
         planChangeMessage = nil
         visits = []
         customers = []
+        customerLocations = []
+        customerPlacesMessage = nil
         Task {
             await loadMissionContext(tripId: id)
             guard selectedTripID == id else { return }
@@ -78,6 +89,85 @@ final class MapWorkspaceViewModel: ObservableObject {
         visits = loadedVisits
         let referencedCustomerIDs = Set(loadedVisits.compactMap(\.customerId))
         customers = loadedCustomers.filter { referencedCustomerIDs.contains($0.id) }
+        await loadCustomerPlaces(for: customers, tripId: tripId)
+    }
+
+    /// Fetch linked addresses only for customers referenced by this Mission.
+    /// Four concurrent requests cap API pressure without serialising every customer lookup.
+    private func loadCustomerPlaces(for missionCustomers: [Customer], tripId: String) async {
+        customerLocations = []
+        customerPlacesMessage = nil
+        guard !missionCustomers.isEmpty else { return }
+        guard !environment.isLocalMode else {
+            customerPlacesMessage = "本地模式尚未建立客户—地址关联表；当前仅显示行程拜访点。"
+            return
+        }
+
+        isLoadingCustomerPlaces = true
+        defer { isLoadingCustomerPlaces = false }
+        let repository = environment.customerRepository
+        var iterator = missionCustomers.makeIterator()
+        var locations: [CustomerMapLocation] = []
+        var failures = 0
+
+        await withTaskGroup(of: CustomerPlacesFetchResult.self) { group in
+            for _ in 0..<min(4, missionCustomers.count) {
+                guard let customer = iterator.next() else { break }
+                group.addTask {
+                    do {
+                        return CustomerPlacesFetchResult(
+                            customerId: customer.id,
+                            places: try await repository.customerPlaces(customerId: customer.id),
+                            errorMessage: nil
+                        )
+                    } catch {
+                        return CustomerPlacesFetchResult(
+                            customerId: customer.id,
+                            places: [],
+                            errorMessage: error.localizedDescription
+                        )
+                    }
+                }
+            }
+
+            while let result = await group.next() {
+                if let customer = missionCustomers.first(where: { $0.id == result.customerId }) {
+                    locations.append(contentsOf: result.places.map {
+                        CustomerMapLocation(customer: customer, place: $0)
+                    })
+                }
+                if result.errorMessage != nil { failures += 1 }
+                if let nextCustomer = iterator.next() {
+                    group.addTask {
+                        do {
+                            return CustomerPlacesFetchResult(
+                                customerId: nextCustomer.id,
+                                places: try await repository.customerPlaces(customerId: nextCustomer.id),
+                                errorMessage: nil
+                            )
+                        } catch {
+                            return CustomerPlacesFetchResult(
+                                customerId: nextCustomer.id,
+                                places: [],
+                                errorMessage: error.localizedDescription
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        guard selectedTripID == tripId else { return }
+        customerLocations = locations.sorted {
+            if $0.customer.name != $1.customer.name { return $0.customer.name < $1.customer.name }
+            if $0.place.isPrimary != $1.place.isPrimary { return $0.place.isPrimary }
+            return $0.place.name < $1.place.name
+        }
+        if failures > 0 {
+            customerPlacesMessage = "\(failures) 个客户的地址读取失败；已显示成功读取的地址，其他地址状态未知。"
+        } else if locations.isEmpty {
+            customerPlacesMessage = "当前 Mission 的客户没有返回已关联地址；请在客户档案中维护总部、工厂或拜访地址。"
+        }
     }
 
     /// The server is the only authority that mutates visit inputs and produces a new plan version.
@@ -291,6 +381,10 @@ struct MapWorkspaceView: View {
 
                 if let plan = viewModel.plan {
                     PlanMapView(
+
+                        customerLocations: viewModel.customerLocations,
+
+                        customerPlacesMessage: viewModel.customerPlacesMessage,
                         plan: plan,
                         origin: trip.originPlace,
                         title: "地图",
