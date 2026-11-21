@@ -18,7 +18,6 @@ from app.api.errors import NotFound
 from app.api.idempotent import IdempotentWrite
 from app.api.pagination import clamp_limit, decode_cursor
 from app.api.pagination import next_cursor as page_cursor
-from app.api.schemas import Page
 from app.api.market_schemas import (
     MarketActivityEventRead,
     MarketContextCreate,
@@ -30,6 +29,7 @@ from app.api.market_schemas import (
     MarketWorkspaceRead,
     MarketWorkspaceUpdate,
 )
+from app.api.schemas import Page
 from app.services import market_service
 
 router = APIRouter(tags=["market"])
