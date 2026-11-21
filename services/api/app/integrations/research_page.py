@@ -212,12 +212,10 @@ def _request_pinned(url: str, address: str, timeout: float, max_bytes: int) -> t
         connection = _PinnedHTTPSConnection(host, port, address, timeout)
     else:
         connection = _PinnedHTTPConnection(host, port, address, timeout)
-    host_header = f"[{host}]" if ":" in host else host
     connection.request(
         "GET",
         target,
         headers={
-            "Host": host_header,
             "User-Agent": "GlobalBusinessTravelResearchBot/1.0",
             "Accept": "text/html,application/xhtml+xml,text/plain;q=0.8",
             "Accept-Encoding": "identity",
