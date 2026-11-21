@@ -458,8 +458,8 @@ def create_market_evidence(
         source=payload.source,
         published_at=payload.published_at,
         observation=payload.observation,
-        verification_status=payload.verification_status,
-        quality=payload.quality,
+        verification_status="UNVERIFIED",
+        quality=None,
         payload=payload.payload,
     )
     return guard.finish(
