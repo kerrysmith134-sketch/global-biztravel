@@ -123,6 +123,13 @@ class Settings(BaseSettings):
     # 指向本地 APNs mock 即可在没有 Apple 凭证的机器上端到端联调。
     apns_api_base: str | None = None
 
+    # 通用研究检索（用户明确启动后才调用；默认关闭；SearXNG 可自托管）
+    research_search_provider: str = "unavailable"  # unavailable | searxng
+    research_search_base_url: str | None = None
+    research_search_timeout_seconds: float = 12.0
+    research_search_max_queries: int = 8
+    research_search_max_results: int = 8
+
     # LLM 网关（第 7 章）
     llm_provider: str = "stub"                # stub | openai_compatible
     llm_temperature: float = 0.0
