@@ -9,7 +9,7 @@ from uuid import UUID
 
 import pytest
 from app.db import org_session
-from app.integrations.research_page import ResearchPage
+from app.integrations.research_page import ResearchPage, ResearchPageProvider
 from app.main import app
 from app.models.market import MarketEvidenceDerivation, MarketWorkspace
 from app.models.reliability import BackgroundJob
@@ -45,6 +45,7 @@ def create_workspace(client: TestClient) -> str:
         json={
             "name": f"Source extraction {uuid.uuid4().hex[:8]}",
             "objective": "Inspect a source selected by the traveler and retain its provenance.",
+            "initial_context": "A generic user-provided research brief for a public market.",
         },
     )
     assert response.status_code == 201, response.text
@@ -287,5 +288,27 @@ def test_non_search_evidence_cannot_be_submitted_for_extraction(
             headers=headers(),
         )
         assert rejected.status_code == 422, rejected.text
+    finally:
+        cleanup(workspace_ids, [], [])
+
+
+def test_extraction_is_closed_by_default(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace_ids: list[str] = []
+    monkeypatch.setattr(
+        "app.services.market_source_extraction_service.get_research_page_provider",
+        lambda: ResearchPageProvider(),
+    )
+    try:
+        workspace_id = create_workspace(client)
+        workspace_ids.append(workspace_id)
+        source_id = create_search_evidence(client, workspace_id)
+        response = client.post(
+            f"/v1/market/workspaces/{workspace_id}/evidence/{source_id}:extract",
+            headers=headers(),
+        )
+        assert response.status_code == 503, response.text
+        assert response.json()["error"]["code"] == "EXTERNAL_SOURCE_UNAVAILABLE"
     finally:
         cleanup(workspace_ids, [], [])
