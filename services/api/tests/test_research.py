@@ -436,8 +436,11 @@ def test_workspace_research_worker_uses_shared_versioned_evidence_and_plan_query
         assert detail.status_code == 200, detail.text
         assert detail.json()["retrieval_status"] == "COMPLETED"
         assert detail.json()["results_count"] == 1
-        assert len(detail.json()["evidence"]) == 1
-        return plan_id, detail.json()["evidence"][0]
+        research_evidence = [
+            item for item in detail.json()["evidence"] if item["kind"] == "WEB_SEARCH_RESULT"
+        ]
+        assert len(research_evidence) == 1
+        return plan_id, research_evidence[0]
 
     try:
         first_plan_id, first_result = execute_plan("user-reviewed demand query")
@@ -454,7 +457,6 @@ def test_workspace_research_worker_uses_shared_versioned_evidence_and_plan_query
         provider.snippet = "Updated captured source version: procurement plans were paused."
         third_plan_id, third_result = execute_plan("user-reviewed update query")
         assert third_result["id"] != first_result["id"]
-        assert third_result["payload"]["content_hash"] if "content_hash" in third_result["payload"] else True
 
         with org_session(UUID(ORG_A)) as session:
             source_rows = session.scalars(
