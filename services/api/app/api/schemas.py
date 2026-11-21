@@ -1440,6 +1440,89 @@ class AssistantActionCreate(BaseModel):
     subject_id: UUID
 
 
+# ------------------------------------------------------------ user-intent research
+ResearchSourceScope = Literal[
+    "AUTO",
+    "INTERNAL_ONLY",
+    "EXTERNAL_ONLY",
+    "INTERNAL_AND_EXTERNAL",
+]
+
+
+class ResearchPlanCreate(BaseModel):
+    """显式研究请求。上下文文本由用户主动提供或从用户材料中提取。"""
+
+    request: str = Field(min_length=3, max_length=6000)
+    source_scope: ResearchSourceScope = "AUTO"
+    trip_id: UUID | None = None
+    customer_id: UUID | None = None
+    context_text: str | None = Field(default=None, max_length=16000)
+    locale: str | None = Field(default=None, max_length=35)
+
+    @model_validator(mode="after")
+    def _normalise_request(self) -> ResearchPlanCreate:
+        self.request = self.request.strip()
+        if len(self.request) < 3:
+            raise ValueError("request 至少需要 3 个非空字符")
+        if self.context_text is not None:
+            self.context_text = self.context_text.strip() or None
+        if self.locale is not None:
+            self.locale = self.locale.strip() or None
+        return self
+
+
+class ResearchPlanIntentRead(BaseModel):
+    """模型从本次用户输入中提取的任务范围，不内置任何行业。"""
+
+    intent_summary: str
+    objective: str
+    subject: str
+    domain: str | None = None
+    geographies: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
+    time_scope: str | None = None
+    research_questions: list[str] = Field(default_factory=list)
+    search_queries: list[str] = Field(default_factory=list)
+    source_types: list[str] = Field(default_factory=list)
+    deliverables: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    external_research_needed: bool = False
+
+
+class ResearchPlannerAuditRead(BaseModel):
+    agent_run_id: UUID
+    llm_invocation_id: UUID | None = None
+    model: str
+    degraded: bool = False
+    error: str | None = None
+
+
+class ResearchEvidenceRead(ORMModel):
+    id: UUID
+    kind: str
+    ref: str
+    source: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    retrieved_at: datetime | None = None
+    created_at: datetime
+
+
+class ResearchPlanRead(BaseModel):
+    id: UUID
+    trip_id: UUID | None = None
+    request: str
+    requested_scope: ResearchSourceScope
+    recommended_scope: Literal[
+        "INTERNAL_ONLY", "EXTERNAL_ONLY", "INTERNAL_AND_EXTERNAL"
+    ]
+    status: Literal["PLANNED"] = "PLANNED"
+    retrieval_status: Literal["NOT_STARTED"] = "NOT_STARTED"
+    plan: ResearchPlanIntentRead
+    planner: ResearchPlannerAuditRead
+    evidence: list[ResearchEvidenceRead] = Field(default_factory=list)
+    created_at: datetime
+
+
 # ------------------------------------------------------------ local guide
 class LocalGuideSectionRead(BaseModel):
     key: str
