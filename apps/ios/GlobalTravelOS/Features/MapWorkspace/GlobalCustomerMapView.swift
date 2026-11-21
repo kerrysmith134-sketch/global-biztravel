@@ -89,7 +89,6 @@ final class GlobalCustomerMapViewModel: ObservableObject {
 }
 
 struct GlobalCustomerMapView: View {
-    @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var model: GlobalCustomerMapViewModel
 
     init(environment: AppEnvironment) {

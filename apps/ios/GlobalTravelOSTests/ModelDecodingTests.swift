@@ -61,6 +61,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(value.items[0].customer.name, "ACME Energy")
         XCTAssertEqual(value.items[0].place.displayAddress, "Industriestrasse 12 · Berlin · DE")
         XCTAssertTrue(value.items[0].place.hasValidCoordinates)
+        XCTAssertEqual(value.items[0].place.geocodeConfidence, Decimal(string: "0.98"))
         XCTAssertEqual(value.summary.locationsMissingCoordinates, 1)
         XCTAssertEqual(value.summary.countries["DE"], 2)
         XCTAssertEqual(value.nextCursor, "200")
