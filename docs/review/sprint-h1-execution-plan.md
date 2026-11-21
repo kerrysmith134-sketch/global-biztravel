@@ -477,3 +477,14 @@ H1.7 把 H1.6 的版本化问题答案变成真正的 Agent 执行链：
 - 复用现有 BackgroundJob/WorkflowInstance/AgentRun，不另建队列或 Agent Runtime；抓取失败进入既有重试/DLQ。
 - 内容只存有上限摘录与规范化全文 hash；输出始终 UNVERIFIED，独立事实核验留给 H1.9。
 - Draft PR 及严格 CI 尚待创建/执行；当前不声称迁移、RLS、Alembic drift、pytest 或 iOS 门禁已通过。
+
+
+## 17. H1.9 Claim-level Verification Agent
+
+- 分支：`feat/sprint-h1.9-claim-verification-agent`，直接叠加 H1.8，保留既有 PR 栈。
+- 用户显式选定某一答案版本后触发；不自动抓取、不自动扩展证据集合。
+- LLM 把答案拆成原子主张并为每条主张映射 SUPPORTS / CONTRADICTS / CONTEXT；服务端校验 Evidence ID，重算冲突与暂定结论。
+- 新增 `MarketClaimVerificationRun`、`MarketClaim`、`MarketClaimEvidence`；迁移 `0039_market_claim_verification`；复用现有队列、Workflow、AgentRun 和 LLM Gateway。
+- 不将不同 host 视为来源独立；数据库固定 `confirmed_independent_source_count=0`；Agent 不会产生 VERIFIED，也不会输出 HIGH confidence。
+- 管理员只可人工采纳无反驳且有支持关系的暂定主张；人工采纳不等于事实认证，也不更改原答案版本。
+- 严格 CI 尚待执行，尤其 Alembic metadata drift、PostgreSQL RLS 与全量 pytest。
