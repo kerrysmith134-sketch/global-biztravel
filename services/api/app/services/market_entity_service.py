@@ -338,8 +338,14 @@ def create_workspace_entity(
 
 
 def list_workspace_entities(
-    session: Session, organization_id: UUID | str, workspace_id: UUID
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    *,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[dict]:
+    """Load workspace entities and aliases in two bounded queries (no per-row N+1)."""
     _workspace_or_404(session, organization_id, workspace_id)
     rows = session.execute(
         select(MarketWorkspaceEntity, MarketEntity)
@@ -353,20 +359,66 @@ def list_workspace_entities(
             MarketWorkspaceEntity.workspace_id == workspace_id,
         )
         .order_by(MarketWorkspaceEntity.first_seen_at.desc(), MarketWorkspaceEntity.id)
+        .limit(limit)
+        .offset(offset)
     ).all()
-    return [
-        {
-            "entity": _entity_with_aliases(session, organization_id, entity),
-            "discovery_reason": link.discovery_reason,
-            "relevance_note": link.relevance_note,
-            "status": link.status,
-            "first_seen_at": link.first_seen_at,
-            "last_seen_at": link.last_seen_at,
-            "possible_duplicate_entity_ids": [],
-            "reused_by_domain": False,
+
+    entity_ids = [entity.id for _, entity in rows]
+    alias_map: dict[UUID, list[dict]] = {entity_id: [] for entity_id in entity_ids}
+    if entity_ids:
+        aliases = session.scalars(
+            select(MarketEntityAlias)
+            .where(
+                MarketEntityAlias.organization_id == str(organization_id),
+                MarketEntityAlias.entity_id.in_(entity_ids),
+            )
+            .order_by(
+                MarketEntityAlias.entity_id,
+                MarketEntityAlias.alias_type,
+                MarketEntityAlias.raw_value,
+            )
+        ).all()
+        for alias in aliases:
+            alias_map[alias.entity_id].append(
+                {
+                    "id": alias.id,
+                    "alias_type": alias.alias_type,
+                    "raw_value": alias.raw_value,
+                    "normalized_value": alias.normalized_value,
+                    "source_evidence_id": alias.source_evidence_id,
+                    "created_at": alias.created_at,
+                }
+            )
+
+    result: list[dict] = []
+    for link, entity in rows:
+        entity_payload = {
+            "id": entity.id,
+            "entity_kind": entity.entity_kind,
+            "display_name": entity.display_name,
+            "normalized_name": entity.normalized_name,
+            "description": entity.description,
+            "canonical_domain": entity.canonical_domain,
+            "country_code": entity.country_code,
+            "attributes": entity.attributes,
+            "status": entity.status,
+            "created_at": entity.created_at,
+            "updated_at": entity.updated_at,
+            "aliases": alias_map[entity.id],
         }
-        for link, entity in rows
-    ]
+        result.append(
+            {
+                "entity": entity_payload,
+                "discovery_reason": link.discovery_reason,
+                "relevance_note": link.relevance_note,
+                "status": link.status,
+                "first_seen_at": link.first_seen_at,
+                "last_seen_at": link.last_seen_at,
+                "possible_duplicate_entity_ids": [],
+                "reused_by_domain": False,
+            }
+        )
+    return result
 
 
 def _record_entity_customer_activity(
