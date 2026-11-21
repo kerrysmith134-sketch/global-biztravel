@@ -8884,6 +8884,128 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/evidence/{evidence_id}:extract": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "提取用户选定搜索来源的网页正文",
+        "operationId": "enqueue_market_source_extraction_v1_market_workspaces__workspace_id__evidence__evidence_id__extract_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "title": "Idempotency-Key"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketSourceExtractionAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/source-extractions/{workflow_id}": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取网页正文提取任务状态",
+        "operationId": "get_market_source_extraction_v1_market_workspaces__workspace_id__source_extractions__workflow_id__get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketSourceExtractionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9105,8 +9227,8 @@
           },
           "required_approvals": {
             "type": "integer",
-            "maximum": 10.0,
-            "minimum": 1.0,
+            "maximum": 10,
+            "minimum": 1,
             "title": "Required Approvals",
             "default": 1
           },
@@ -11256,7 +11378,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "exclusiveMinimum": 0.0
+                "exclusiveMinimum": 0
               },
               {
                 "type": "string"
@@ -11656,8 +11778,8 @@
           },
           "confidence": {
             "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
+            "maximum": 1,
+            "minimum": 0,
             "title": "Confidence",
             "default": 0.7
           },
@@ -12011,7 +12133,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "exclusiveMinimum": 0.0
+                "exclusiveMinimum": 0
               },
               {
                 "type": "string"
@@ -15092,8 +15214,8 @@
           },
           "priority": {
             "type": "integer",
-            "maximum": 5.0,
-            "minimum": 1.0,
+            "maximum": 5,
+            "minimum": 1,
             "title": "Priority",
             "default": 3
           },
@@ -16828,8 +16950,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 90.0,
-                "minimum": -90.0
+                "maximum": 90,
+                "minimum": -90
               },
               {
                 "type": "null"
@@ -16841,8 +16963,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 180.0,
-                "minimum": -180.0
+                "maximum": 180,
+                "minimum": -180
               },
               {
                 "type": "null"
@@ -17093,7 +17215,7 @@
           },
           "base_trip_version": {
             "type": "integer",
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Base Trip Version"
           },
           "source": {
@@ -19492,7 +19614,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "string"
@@ -19507,7 +19629,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "string"
@@ -19522,7 +19644,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "null"
@@ -19672,7 +19794,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "string"
@@ -19687,7 +19809,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "string"
@@ -19702,7 +19824,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "null"
@@ -19830,10 +19952,10 @@
           },
           "confidence": {
             "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
+            "maximum": 1,
+            "minimum": 0,
             "title": "Confidence",
-            "default": 1.0
+            "default": 1
           }
         },
         "type": "object",
@@ -19915,7 +20037,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "string"
@@ -20374,7 +20496,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "string"
@@ -20834,8 +20956,8 @@
           },
           "service_minutes": {
             "type": "integer",
-            "maximum": 1440.0,
-            "exclusiveMinimum": 0.0,
+            "maximum": 1440,
+            "exclusiveMinimum": 0,
             "title": "Service Minutes",
             "default": 60
           },
@@ -20865,8 +20987,8 @@
           },
           "priority": {
             "type": "integer",
-            "maximum": 3.0,
-            "minimum": 1.0,
+            "maximum": 3,
+            "minimum": 1,
             "title": "Priority",
             "default": 2
           },
@@ -20874,7 +20996,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "string"
@@ -21217,8 +21339,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 1440.0,
-                "exclusiveMinimum": 0.0
+                "maximum": 1440,
+                "exclusiveMinimum": 0
               },
               {
                 "type": "null"
@@ -21254,8 +21376,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 3.0,
-                "minimum": 1.0
+                "maximum": 3,
+                "minimum": 1
               },
               {
                 "type": "null"
@@ -21267,7 +21389,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0.0
+                "minimum": 0
               },
               {
                 "type": "string"
@@ -21455,6 +21577,201 @@
         ],
         "title": "WeatherPullRequest",
         "description": "按出行拉取目的地当前天气（Open-Meteo，免钥公开源，ADR-0034）。"
+      },
+      "MarketSourceExtractionAccepted": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "source_evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Evidence Id"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workflow Id"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "COMPLETED"
+            ],
+            "title": "Status"
+          },
+          "reused": {
+            "type": "boolean",
+            "title": "Reused"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "source_evidence_id",
+          "workflow_id",
+          "job_id",
+          "status",
+          "reused"
+        ],
+        "title": "MarketSourceExtractionAccepted"
+      },
+      "MarketSourceExtractionRead": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "source_evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Evidence Id"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workflow Id"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Job Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Job Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extraction_status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Extraction Status"
+          },
+          "extracted_evidence_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Extracted Evidence Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "agent_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Agent Run Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Failure Code"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Failure Reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Source Url"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extractor_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "title": "Extractor Version"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "source_evidence_id",
+          "workflow_id",
+          "job_id",
+          "job_status",
+          "extraction_status",
+          "extracted_evidence_id",
+          "agent_run_id",
+          "failure_code",
+          "failure_reason",
+          "source_url",
+          "extractor_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MarketSourceExtractionRead"
       }
     }
   }
