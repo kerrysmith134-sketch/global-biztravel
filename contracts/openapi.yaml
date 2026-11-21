@@ -7581,15 +7581,25 @@ components:
       title: MarketWorkspaceCreate
     MarketWorkspaceEntityCreate:
       properties:
+        existing_entity_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Existing Entity Id
         entity_kind:
-          type: string
-          maxLength: 80
-          minLength: 1
+          anyOf:
+          - type: string
+            maxLength: 80
+            minLength: 1
+          - type: 'null'
           title: Entity Kind
         display_name:
-          type: string
-          maxLength: 300
-          minLength: 1
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 1
+          - type: 'null'
           title: Display Name
         description:
           anyOf:
@@ -7627,9 +7637,6 @@ components:
           - type: 'null'
           title: Relevance Note
       type: object
-      required:
-      - entity_kind
-      - display_name
       title: MarketWorkspaceEntityCreate
     MarketWorkspaceEntityRead:
       properties:
@@ -7667,10 +7674,6 @@ components:
             format: uuid
           type: array
           title: Possible Duplicate Entity Ids
-        reused_by_domain:
-          type: boolean
-          title: Reused By Domain
-          default: false
       type: object
       required:
       - entity
