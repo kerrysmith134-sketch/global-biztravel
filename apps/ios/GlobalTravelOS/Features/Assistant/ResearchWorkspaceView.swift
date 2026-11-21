@@ -7,6 +7,8 @@ final class ResearchWorkspaceViewModel: ObservableObject {
     @Published var contextText = ""
     @Published private(set) var plan: ResearchPlan?
     @Published private(set) var isSubmitting = false
+    @Published private(set) var isExecutingResearch = false
+    @Published private(set) var isRefreshingPlan = false
     @Published var errorMessage: String?
 
     private let repository: ResearchRepository
@@ -48,6 +50,31 @@ final class ResearchWorkspaceViewModel: ObservableObject {
                     contextText: context.isEmpty ? nil : context
                 )
             )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func executeResearch() async {
+        guard let currentPlan = plan, currentPlan.plan.externalResearchNeeded else { return }
+        isExecutingResearch = true
+        errorMessage = nil
+        defer { isExecutingResearch = false }
+        do {
+            _ = try await repository.executePlan(id: currentPlan.id)
+            plan = try await repository.plan(id: currentPlan.id)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshPlan() async {
+        guard let currentPlan = plan else { return }
+        isRefreshingPlan = true
+        errorMessage = nil
+        defer { isRefreshingPlan = false }
+        do {
+            plan = try await repository.plan(id: currentPlan.id)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -286,11 +313,56 @@ struct ResearchWorkspaceView: View {
                 }
                 Text(
                     plan.plan.externalResearchNeeded
-                        ? "计划已生成，外部证据尚未采集。"
+                        ? "计划已生成。外部检索只会使用本次审阅过的查询。"
                         : "计划已生成，本次请求无需外部检索。"
                 )
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DS.ColorToken.textPrimary)
+                if plan.plan.externalResearchNeeded {
+                    if plan.retrievalStatus == "NOT_STARTED" || plan.retrievalStatus == "FAILED" {
+                        Button {
+                            Task { await model.executeResearch() }
+                        } label: {
+                            Label(
+                                model.isExecutingResearch ? "正在启动…" : "开始检索",
+                                systemImage: "magnifyingglass"
+                            )
+                            .font(.caption.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .foregroundStyle(.white)
+                            .background(
+                                DS.ColorToken.brand,
+                                in: RoundedRectangle(cornerRadius: DS.Radius.control)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(model.isExecutingResearch)
+                        .accessibilityIdentifier("research-start-execution")
+                    }
+                    if plan.jobId != nil {
+                        Button {
+                            Task { await model.refreshPlan() }
+                        } label: {
+                            Label(
+                                model.isRefreshingPlan ? "正在刷新…" : "刷新执行状态",
+                                systemImage: "arrow.clockwise"
+                            )
+                            .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(model.isRefreshingPlan || model.isExecutingResearch)
+                    }
+                    if plan.resultsCount > 0 {
+                        Text("已保存 \(plan.resultsCount) 条搜索来源。搜索摘要是研究线索，尚未完成事实核验。")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.warning)
+                    }
+                    if let retrievalError = plan.retrievalError {
+                        Text(retrievalError)
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.warning)
+                    }
+                }
                 Text("规划器：\(plan.planner.model)\(plan.planner.degraded ? " · 已降级" : "")")
                     .font(.caption2)
                     .foregroundStyle(DS.ColorToken.textSecondary)
