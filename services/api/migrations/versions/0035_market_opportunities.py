@@ -66,6 +66,7 @@ def upgrade() -> None:
                 CHECK (
                     status NOT IN ('QUALIFIED','ACTION_PLANNED','WON','LOST') OR
                     (qualified_by_user_id IS NOT NULL AND qualified_at IS NOT NULL
+                     AND qualification_reason IS NOT NULL
                      AND length(btrim(qualification_reason)) > 0)
                 ),
             CONSTRAINT ck_market_opportunities_terminal_outcome_has_actor_and_note
@@ -73,10 +74,14 @@ def upgrade() -> None:
                     status NOT IN ('WON','LOST') OR
                     (outcome_recorded_by_user_id IS NOT NULL
                      AND outcome_recorded_at IS NOT NULL
+                     AND outcome_note IS NOT NULL
                      AND length(btrim(outcome_note)) > 0)
                 ),
             CONSTRAINT ck_market_opportunities_disqualified_has_reason
-                CHECK (status <> 'DISQUALIFIED' OR length(btrim(disqualification_reason)) > 0),
+                CHECK (
+                    status <> 'DISQUALIFIED' OR
+                    (disqualification_reason IS NOT NULL AND length(btrim(disqualification_reason)) > 0)
+                ),
             CONSTRAINT fk_market_opportunity_workspace_same_org
                 FOREIGN KEY (organization_id, workspace_id)
                 REFERENCES market_workspaces (organization_id, id) ON DELETE CASCADE,
@@ -211,7 +216,7 @@ def upgrade() -> None:
             CONSTRAINT fk_market_opp_entity_workspace_entity
                 FOREIGN KEY (organization_id, workspace_id, entity_id)
                 REFERENCES market_workspace_entities (organization_id, workspace_id, entity_id)
-                ON DELETE RESTRICT,
+                ON DELETE CASCADE,
             CONSTRAINT fk_market_opportunity_entities_organization_id_organizations
                 FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE
         )
