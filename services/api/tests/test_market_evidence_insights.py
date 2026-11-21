@@ -13,6 +13,7 @@ from app.models.workflow import Evidence
 from app.services import evidence_service
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -326,6 +327,35 @@ def test_insight_cannot_reference_another_workspaces_evidence(client: TestClient
             },
         )
         assert response.status_code == 409, response.text
+
+        valid_insight = client.post(
+            f"/v1/market/workspaces/{workspace_one}/insights",
+            headers=headers(),
+            json={
+                "insight_key": "workspace-one-proof",
+                "insight_type": "signal",
+                "statement": "This evidence belongs to the first Workspace.",
+                "evidence": [
+                    {"evidence_id": evidence.json()["id"], "relation_type": "SUPPORTS"}
+                ],
+            },
+        )
+        assert valid_insight.status_code == 201, valid_insight.text
+
+        # The composite database FK must reject cross-tenant references even if
+        # a caller bypasses the service-level scope validation.
+        with org_session(UUID(ORG_B)) as session:
+            with pytest.raises(IntegrityError):
+                with session.begin_nested():
+                    session.add(
+                        MarketInsightEvidence(
+                            organization_id=UUID(ORG_B),
+                            insight_id=UUID(valid_insight.json()["id"]),
+                            evidence_id=UUID(evidence.json()["id"]),
+                            relation_type="SUPPORTS",
+                        )
+                    )
+                    session.flush()
     finally:
         cleanup_workspace(workspace_one)
         cleanup_workspace(workspace_two)
