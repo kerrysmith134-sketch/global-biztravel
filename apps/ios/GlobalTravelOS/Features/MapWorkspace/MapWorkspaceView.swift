@@ -83,7 +83,7 @@ final class MapWorkspaceViewModel: ObservableObject {
 
     /// The server is the only authority that mutates visit inputs and produces a new plan version.
     func cancelVisit(_ stop: PlanStop) async {
-        guard let trip = selectedTrip, let plan, plan.status == .active else {
+        guard let trip = selectedTrip, let currentPlan = self.plan, currentPlan.status == .active else {
             errorMessage = "只能从当前已激活的计划发起拜访调整"
             return
         }
@@ -98,7 +98,7 @@ final class MapWorkspaceViewModel: ObservableObject {
             let accepted = try await environment.planRepository.createPlanChange(
                 tripId: trip.id,
                 request: PlanChangeCreate(
-                    basePlanVersionId: plan.id,
+                    basePlanVersionId: currentPlan.id,
                     baseTripVersion: trip.version,
                     operationType: .cancelVisit,
                     payload: ["visit_id": stop.visitId],
