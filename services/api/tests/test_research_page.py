@@ -5,7 +5,6 @@ from __future__ import annotations
 from hashlib import sha256
 
 import pytest
-
 from app.integrations.research_page import (
     ResearchPageFetchError,
     SafeHttpResearchPageProvider,
@@ -45,7 +44,7 @@ def html_page(paragraph: str | None = None) -> bytes:
         "</article></main>"
         "<script>window.secret='script content';</script>"
         "</body></html>"
-    ).encode("utf-8")
+    ).encode()
 
 
 def test_extracts_metadata_and_discards_navigation_hidden_and_script_content() -> None:
