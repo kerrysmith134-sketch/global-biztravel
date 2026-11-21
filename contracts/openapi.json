@@ -2641,6 +2641,141 @@
         }
       }
     },
+    "/v1/customers/map-locations": {
+      "get": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "组织级客户地图位置（单次聚合查询）",
+        "operationId": "list_customer_map_locations_v1_customers_map_locations_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "name": "tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(A|B|C|a|b|c)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tier"
+            }
+          },
+          {
+            "name": "country_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 2,
+                  "maxLength": 2
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Country Code"
+            }
+          },
+          {
+            "name": "geocode_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(MISSING|RESOLVED|FAILED|missing|resolved|failed)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Geocode Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerMapLocationsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/customers/{customer_id}": {
       "get": {
         "tags": [
@@ -5112,6 +5247,1056 @@
         }
       }
     },
+    "/v1/research/plans": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "根据用户意图生成研究计划（不执行检索）",
+        "operationId": "create_plan_v1_research_plans_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchPlanCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchPlanRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research/plans/{plan_id}:execute": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "启动已审阅研究计划的外部检索（异步）",
+        "operationId": "execute_plan_v1_research_plans__plan_id__execute_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchExecuteCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchExecuteAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research/plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "读取研究计划、运行审计与证据来源",
+        "operationId": "get_plan_v1_research_plans__plan_id__get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchPlanRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "市场工作空间列表",
+        "operationId": "list_workspaces_v1_market_workspaces_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_MarketWorkspaceRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "创建市场工作空间",
+        "operationId": "create_workspace_v1_market_workspaces_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketWorkspaceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketWorkspaceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "市场工作空间详情",
+        "operationId": "get_workspace_v1_market_workspaces__workspace_id__get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketWorkspaceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/contexts": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "工作空间上下文版本列表",
+        "operationId": "list_contexts_v1_market_workspaces__workspace_id__contexts_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketContextRead"
+                  },
+                  "title": "Response List Contexts V1 Market Workspaces  Workspace Id  Contexts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "新增业务上下文版本",
+        "operationId": "create_context_v1_market_workspaces__workspace_id__contexts_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketContextCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketContextRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/contexts/{context_id}:adopt": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "采纳一个业务上下文版本",
+        "operationId": "adopt_context_v1_market_workspaces__workspace_id__contexts__context_id__adopt_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "context_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Context Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketContextRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/questions": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "市场研究问题列表",
+        "operationId": "list_questions_v1_market_workspaces__workspace_id__questions_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_MarketResearchQuestionRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "新增市场研究问题",
+        "operationId": "create_question_v1_market_workspaces__workspace_id__questions_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketResearchQuestionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketResearchQuestionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/entities": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "工作空间候选实体列表",
+        "operationId": "list_workspace_entities_v1_market_workspaces__workspace_id__entities_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_MarketWorkspaceEntityRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "向工作空间添加候选实体",
+        "operationId": "create_workspace_entity_v1_market_workspaces__workspace_id__entities_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketWorkspaceEntityCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketWorkspaceEntityRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/entities/{entity_id}/customer-links": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "创建候选实体与正式客户的匹配建议",
+        "operationId": "create_customer_link_candidate_v1_market_entities__entity_id__customer_links_post",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entity Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketEntityCustomerLinkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketEntityCustomerLinkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/entities/{entity_id}/customer-links/{link_id}:confirm": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "明确确认候选实体与正式客户的关联",
+        "operationId": "confirm_customer_link_v1_market_entities__entity_id__customer_links__link_id__confirm_post",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entity Id"
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Link Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketEntityCustomerLinkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/research-plans": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取工作空间关联的研究计划",
+        "operationId": "list_workspace_research_plans_v1_market_workspaces__workspace_id__research_plans_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResearchPlanRead"
+                  },
+                  "title": "Response List Workspace Research Plans V1 Market Workspaces  Workspace Id  Research Plans Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/activity": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "工作空间活动时间线",
+        "operationId": "list_activity_v1_market_workspaces__workspace_id__activity_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketActivityEventRead"
+                  },
+                  "title": "Response List Activity V1 Market Workspaces  Workspace Id  Activity Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/trips/{trip_id}/memory": {
       "get": {
         "tags": [
@@ -5969,312 +7154,6 @@
           }
         }
       }
-    },
-    "/v1/customers/map-locations": {
-      "get": {
-        "tags": [
-          "customers"
-        ],
-        "summary": "组织级客户地图位置（单次聚合查询）",
-        "operationId": "list_customer_map_locations_v1_customers_map_locations_get",
-        "parameters": [
-          {
-            "name": "query",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 200
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Query"
-            }
-          },
-          {
-            "name": "tier",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "pattern": "^(A|B|C|a|b|c)$"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Tier"
-            }
-          },
-          {
-            "name": "country_code",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "minLength": 2,
-                  "maxLength": 2
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Country Code"
-            }
-          },
-          {
-            "name": "geocode_status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "pattern": "^(MISSING|RESOLVED|FAILED|missing|resolved|failed)$"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Geocode Status"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CustomerMapLocationsRead"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/research/plans": {
-      "post": {
-        "tags": [
-          "research"
-        ],
-        "summary": "根据用户意图生成研究计划（不执行检索）",
-        "operationId": "create_plan_v1_research_plans_post",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResearchPlanCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResearchPlanRead"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/research/plans/{plan_id}": {
-      "get": {
-        "tags": [
-          "research"
-        ],
-        "summary": "读取研究计划、运行审计与证据来源",
-        "operationId": "get_plan_v1_research_plans__plan_id__get",
-        "parameters": [
-          {
-            "name": "plan_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Plan Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResearchPlanRead"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/research/plans/{plan_id}:execute": {
-      "post": {
-        "tags": [
-          "research"
-        ],
-        "summary": "启动已审阅研究计划的外部检索（异步）",
-        "operationId": "execute_plan_v1_research_plans__plan_id__execute_post",
-        "parameters": [
-          {
-            "name": "plan_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Plan Id"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResearchExecuteAccepted"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResearchExecuteCreate"
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -6496,8 +7375,8 @@
           },
           "required_approvals": {
             "type": "integer",
-            "maximum": 10,
-            "minimum": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
             "title": "Required Approvals",
             "default": 1
           },
@@ -7719,6 +8598,363 @@
         ],
         "title": "CustomerCreate"
       },
+      "CustomerMapCountryCoverageRead": {
+        "properties": {
+          "country_code": {
+            "type": "string",
+            "title": "Country Code"
+          },
+          "customers_total": {
+            "type": "integer",
+            "title": "Customers Total",
+            "default": 0
+          },
+          "tier_a_customers": {
+            "type": "integer",
+            "title": "Tier A Customers",
+            "default": 0
+          },
+          "tier_b_customers": {
+            "type": "integer",
+            "title": "Tier B Customers",
+            "default": 0
+          },
+          "tier_c_customers": {
+            "type": "integer",
+            "title": "Tier C Customers",
+            "default": 0
+          },
+          "active_customers": {
+            "type": "integer",
+            "title": "Active Customers",
+            "default": 0
+          },
+          "prospect_customers": {
+            "type": "integer",
+            "title": "Prospect Customers",
+            "default": 0
+          },
+          "inactive_customers": {
+            "type": "integer",
+            "title": "Inactive Customers",
+            "default": 0
+          },
+          "locations_total": {
+            "type": "integer",
+            "title": "Locations Total",
+            "default": 0
+          },
+          "locations_mapped": {
+            "type": "integer",
+            "title": "Locations Mapped",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "country_code"
+        ],
+        "title": "CustomerMapCountryCoverageRead",
+        "description": "按实际关联地点归集的国家客户覆盖；客户按国家去重，不表示外部市场规模。"
+      },
+      "CustomerMapCustomerRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C"
+            ],
+            "title": "Tier"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "INACTIVE",
+              "PROSPECT"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "tier",
+          "status"
+        ],
+        "title": "CustomerMapCustomerRead",
+        "description": "地图最小客户投影：不返回联系人等与地图无关的个人信息。"
+      },
+      "CustomerMapLocationRead": {
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/CustomerMapCustomerRead"
+          },
+          "place": {
+            "$ref": "#/components/schemas/CustomerMapPlaceRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer",
+          "place"
+        ],
+        "title": "CustomerMapLocationRead"
+      },
+      "CustomerMapLocationsRead": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerMapLocationRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CustomerMapSummaryRead"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "summary"
+        ],
+        "title": "CustomerMapLocationsRead"
+      },
+      "CustomerMapPlaceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "default": false
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "address_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address Line"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "geocode_status": {
+            "type": "string",
+            "enum": [
+              "MISSING",
+              "RESOLVED",
+              "FAILED"
+            ],
+            "title": "Geocode Status"
+          },
+          "geocode_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geocode Source"
+          },
+          "geocode_confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geocode Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "geocode_status"
+        ],
+        "title": "CustomerMapPlaceRead"
+      },
+      "CustomerMapSummaryRead": {
+        "properties": {
+          "customers_with_locations": {
+            "type": "integer",
+            "title": "Customers With Locations",
+            "default": 0
+          },
+          "customers_without_locations": {
+            "type": "integer",
+            "title": "Customers Without Locations",
+            "default": 0
+          },
+          "locations_total": {
+            "type": "integer",
+            "title": "Locations Total",
+            "default": 0
+          },
+          "locations_mapped": {
+            "type": "integer",
+            "title": "Locations Mapped",
+            "default": 0
+          },
+          "locations_missing_coordinates": {
+            "type": "integer",
+            "title": "Locations Missing Coordinates",
+            "default": 0
+          },
+          "countries": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Countries"
+          },
+          "country_stats": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerMapCountryCoverageRead"
+            },
+            "type": "array",
+            "title": "Country Stats"
+          }
+        },
+        "type": "object",
+        "title": "CustomerMapSummaryRead"
+      },
       "CustomerPlaceCreate": {
         "properties": {
           "place_id": {
@@ -8290,7 +9526,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "exclusiveMinimum": 0
+                "exclusiveMinimum": 0.0
               },
               {
                 "type": "string"
@@ -8690,8 +9926,8 @@
           },
           "confidence": {
             "type": "number",
-            "maximum": 1,
-            "minimum": 0,
+            "maximum": 1.0,
+            "minimum": 0.0,
             "title": "Confidence",
             "default": 0.7
           },
@@ -9045,7 +10281,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "exclusiveMinimum": 0
+                "exclusiveMinimum": 0.0
               },
               {
                 "type": "string"
@@ -10023,6 +11259,931 @@
         ],
         "title": "LocalGuideSectionRead"
       },
+      "MarketActivityEventRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "actor_type": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "SYSTEM"
+            ],
+            "title": "Actor Type"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "aggregate_type": {
+            "type": "string",
+            "title": "Aggregate Type"
+          },
+          "aggregate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Aggregate Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "actor_type",
+          "actor_user_id",
+          "aggregate_type",
+          "aggregate_id",
+          "event_type",
+          "payload",
+          "created_at"
+        ],
+        "title": "MarketActivityEventRead"
+      },
+      "MarketContextCreate": {
+        "properties": {
+          "raw_input": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Raw Input"
+          },
+          "adopt": {
+            "type": "boolean",
+            "title": "Adopt",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "raw_input"
+        ],
+        "title": "MarketContextCreate"
+      },
+      "MarketContextRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "raw_input": {
+            "type": "string",
+            "title": "Raw Input"
+          },
+          "extracted_context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extracted Context"
+          },
+          "user_overrides": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "User Overrides"
+          },
+          "unknowns": {
+            "items": {},
+            "type": "array",
+            "title": "Unknowns"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Provenance"
+          },
+          "extraction_status": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "PENDING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Extraction Status"
+          },
+          "extraction_prompt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Prompt Id"
+          },
+          "extraction_prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Prompt Version"
+          },
+          "is_current": {
+            "type": "boolean",
+            "title": "Is Current"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "version",
+          "raw_input",
+          "extracted_context",
+          "user_overrides",
+          "unknowns",
+          "provenance",
+          "extraction_status",
+          "extraction_prompt_id",
+          "extraction_prompt_version",
+          "is_current",
+          "created_by_user_id",
+          "created_at"
+        ],
+        "title": "MarketContextRead"
+      },
+      "MarketEntityAliasRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "alias_type": {
+            "type": "string",
+            "title": "Alias Type"
+          },
+          "raw_value": {
+            "type": "string",
+            "title": "Raw Value"
+          },
+          "normalized_value": {
+            "type": "string",
+            "title": "Normalized Value"
+          },
+          "source_evidence_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Evidence Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "alias_type",
+          "raw_value",
+          "normalized_value",
+          "source_evidence_id",
+          "created_at"
+        ],
+        "title": "MarketEntityAliasRead"
+      },
+      "MarketEntityCustomerLinkCreate": {
+        "properties": {
+          "customer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Id"
+          },
+          "matching_basis": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Matching Basis"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer_id"
+        ],
+        "title": "MarketEntityCustomerLinkCreate"
+      },
+      "MarketEntityCustomerLinkRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Entity Id"
+          },
+          "customer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Id"
+          },
+          "link_status": {
+            "type": "string",
+            "enum": [
+              "MATCH_CANDIDATE",
+              "USER_CONFIRMED",
+              "REJECTED",
+              "CONFLICTED"
+            ],
+            "title": "Link Status"
+          },
+          "matching_basis": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Matching Basis"
+          },
+          "confirmed_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By User Id"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "entity_id",
+          "customer_id",
+          "link_status",
+          "matching_basis",
+          "confirmed_by_user_id",
+          "confirmed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MarketEntityCustomerLinkRead"
+      },
+      "MarketEntityRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "entity_kind": {
+            "type": "string",
+            "title": "Entity Kind"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "normalized_name": {
+            "type": "string",
+            "title": "Normalized Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "canonical_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Domain"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attributes"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "CANDIDATE",
+              "REVIEWED",
+              "VERIFIED",
+              "REJECTED",
+              "MERGED"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "aliases": {
+            "items": {
+              "$ref": "#/components/schemas/MarketEntityAliasRead"
+            },
+            "type": "array",
+            "title": "Aliases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "entity_kind",
+          "display_name",
+          "normalized_name",
+          "description",
+          "canonical_domain",
+          "country_code",
+          "attributes",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MarketEntityRead"
+      },
+      "MarketResearchQuestionCreate": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "priority": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Priority",
+            "default": 3
+          },
+          "acceptance_criteria": {
+            "items": {},
+            "type": "array",
+            "title": "Acceptance Criteria"
+          },
+          "parent_question_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Question Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "MarketResearchQuestionCreate"
+      },
+      "MarketResearchQuestionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "parent_question_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Question Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "AGENT"
+            ],
+            "title": "Source"
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "IN_PROGRESS",
+              "ANSWERED",
+              "BLOCKED",
+              "CANCELLED"
+            ],
+            "title": "Status"
+          },
+          "acceptance_criteria": {
+            "items": {},
+            "type": "array",
+            "title": "Acceptance Criteria"
+          },
+          "answer_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Summary"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "parent_question_id",
+          "question",
+          "rationale",
+          "source",
+          "priority",
+          "status",
+          "acceptance_criteria",
+          "answer_summary",
+          "blocked_reason",
+          "created_by_user_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MarketResearchQuestionRead"
+      },
+      "MarketWorkspaceCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective"
+          },
+          "initial_context": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Context"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "MarketWorkspaceCreate"
+      },
+      "MarketWorkspaceEntityCreate": {
+        "properties": {
+          "entity_kind": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Entity Kind"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "canonical_domain": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Domain"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attributes"
+          },
+          "discovery_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovery Reason"
+          },
+          "relevance_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_kind",
+          "display_name"
+        ],
+        "title": "MarketWorkspaceEntityCreate"
+      },
+      "MarketWorkspaceEntityRead": {
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/MarketEntityRead"
+          },
+          "discovery_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovery Reason"
+          },
+          "relevance_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Note"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DISCOVERED",
+              "RESEARCHING",
+              "INCLUDED",
+              "EXCLUDED"
+            ],
+            "title": "Status"
+          },
+          "first_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen At"
+          },
+          "possible_duplicate_entity_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Possible Duplicate Entity Ids"
+          },
+          "reused_by_domain": {
+            "type": "boolean",
+            "title": "Reused By Domain",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity",
+          "discovery_reason",
+          "relevance_note",
+          "status",
+          "first_seen_at",
+          "last_seen_at"
+        ],
+        "title": "MarketWorkspaceEntityRead"
+      },
+      "MarketWorkspaceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "PAUSED",
+              "COMPLETED",
+              "ARCHIVED"
+            ],
+            "title": "Status"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner User Id"
+          },
+          "current_context_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Context Version"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "objective",
+          "status",
+          "owner_user_id",
+          "current_context_version",
+          "settings",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MarketWorkspaceRead"
+      },
       "MemberAdd": {
         "properties": {
           "user_id": {
@@ -10823,6 +12984,87 @@
         ],
         "title": "Page[CustomerRead]"
       },
+      "Page_MarketResearchQuestionRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketResearchQuestionRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[MarketResearchQuestionRead]"
+      },
+      "Page_MarketWorkspaceEntityRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketWorkspaceEntityRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[MarketWorkspaceEntityRead]"
+      },
+      "Page_MarketWorkspaceRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketWorkspaceRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[MarketWorkspaceRead]"
+      },
       "Page_PlaceRead_": {
         "properties": {
           "items": {
@@ -10945,8 +13187,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 90,
-                "minimum": -90
+                "maximum": 90.0,
+                "minimum": -90.0
               },
               {
                 "type": "null"
@@ -10958,8 +13200,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 180,
-                "minimum": -180
+                "maximum": 180.0,
+                "minimum": -180.0
               },
               {
                 "type": "null"
@@ -11210,7 +13452,7 @@
           },
           "base_trip_version": {
             "type": "integer",
-            "minimum": 1,
+            "minimum": 1.0,
             "title": "Base Trip Version"
           },
           "source": {
@@ -12574,6 +14816,505 @@
         "title": "ProposedActionRead",
         "description": "建议被批准后系统打算做的动作。``requires_approval=true`` 时只是草稿。"
       },
+      "ResearchEvidenceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "retrieved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieved At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "ref",
+          "created_at"
+        ],
+        "title": "ResearchEvidenceRead"
+      },
+      "ResearchExecuteAccepted": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Id"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED",
+              "DEAD",
+              "CANCELLED"
+            ],
+            "title": "Status"
+          },
+          "reused": {
+            "type": "boolean",
+            "title": "Reused",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "job_id",
+          "status"
+        ],
+        "title": "ResearchExecuteAccepted"
+      },
+      "ResearchExecuteCreate": {
+        "properties": {
+          "search_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Search Queries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "search_queries"
+        ],
+        "title": "ResearchExecuteCreate",
+        "description": "用户审阅后确认的查询。执行器只允许使用此列表。"
+      },
+      "ResearchPlanCreate": {
+        "properties": {
+          "request": {
+            "type": "string",
+            "maxLength": 6000,
+            "minLength": 3,
+            "title": "Request"
+          },
+          "source_scope": {
+            "type": "string",
+            "enum": [
+              "AUTO",
+              "INTERNAL_ONLY",
+              "EXTERNAL_ONLY",
+              "INTERNAL_AND_EXTERNAL"
+            ],
+            "title": "Source Scope",
+            "default": "AUTO"
+          },
+          "trip_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Id"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          },
+          "context_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Text"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 35
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "title": "ResearchPlanCreate",
+        "description": "显式研究请求。上下文文本由用户主动提供或从用户材料中提取。"
+      },
+      "ResearchPlanIntentRead": {
+        "properties": {
+          "intent_summary": {
+            "type": "string",
+            "title": "Intent Summary"
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "geographies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Geographies"
+          },
+          "entities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Entities"
+          },
+          "time_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Scope"
+          },
+          "research_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Research Questions"
+          },
+          "search_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Search Queries"
+          },
+          "source_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Types"
+          },
+          "deliverables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Deliverables"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "external_research_needed": {
+            "type": "boolean",
+            "title": "External Research Needed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "intent_summary",
+          "objective",
+          "subject"
+        ],
+        "title": "ResearchPlanIntentRead",
+        "description": "模型从本次用户输入中提取的任务范围，不内置任何行业。"
+      },
+      "ResearchPlanRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "trip_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Id"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "retrieval_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Error"
+          },
+          "results_count": {
+            "type": "integer",
+            "title": "Results Count",
+            "default": 0
+          },
+          "reviewed_search_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reviewed Search Queries"
+          },
+          "request": {
+            "type": "string",
+            "title": "Request"
+          },
+          "requested_scope": {
+            "type": "string",
+            "enum": [
+              "AUTO",
+              "INTERNAL_ONLY",
+              "EXTERNAL_ONLY",
+              "INTERNAL_AND_EXTERNAL"
+            ],
+            "title": "Requested Scope"
+          },
+          "recommended_scope": {
+            "type": "string",
+            "enum": [
+              "INTERNAL_ONLY",
+              "EXTERNAL_ONLY",
+              "INTERNAL_AND_EXTERNAL"
+            ],
+            "title": "Recommended Scope"
+          },
+          "status": {
+            "type": "string",
+            "const": "PLANNED",
+            "title": "Status",
+            "default": "PLANNED"
+          },
+          "retrieval_status": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "QUEUED",
+              "RUNNING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Retrieval Status",
+            "default": "NOT_STARTED"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ResearchPlanIntentRead"
+          },
+          "planner": {
+            "$ref": "#/components/schemas/ResearchPlannerAuditRead"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchEvidenceRead"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "request",
+          "requested_scope",
+          "recommended_scope",
+          "plan",
+          "planner",
+          "created_at"
+        ],
+        "title": "ResearchPlanRead"
+      },
+      "ResearchPlannerAuditRead": {
+        "properties": {
+          "agent_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Agent Run Id"
+          },
+          "llm_invocation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Invocation Id"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "degraded": {
+            "type": "boolean",
+            "title": "Degraded",
+            "default": false
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_run_id",
+          "model"
+        ],
+        "title": "ResearchPlannerAuditRead"
+      },
       "RetentionReportRead": {
         "properties": {
           "records_redacted": {
@@ -13110,7 +15851,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string"
@@ -13125,7 +15866,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string"
@@ -13140,7 +15881,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -13290,7 +16031,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string"
@@ -13305,7 +16046,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string"
@@ -13320,7 +16061,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -13448,10 +16189,10 @@
           },
           "confidence": {
             "type": "number",
-            "maximum": 1,
-            "minimum": 0,
+            "maximum": 1.0,
+            "minimum": 0.0,
             "title": "Confidence",
-            "default": 1
+            "default": 1.0
           }
         },
         "type": "object",
@@ -13533,7 +16274,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string"
@@ -13992,7 +16733,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string"
@@ -14452,8 +17193,8 @@
           },
           "service_minutes": {
             "type": "integer",
-            "maximum": 1440,
-            "exclusiveMinimum": 0,
+            "maximum": 1440.0,
+            "exclusiveMinimum": 0.0,
             "title": "Service Minutes",
             "default": 60
           },
@@ -14483,8 +17224,8 @@
           },
           "priority": {
             "type": "integer",
-            "maximum": 3,
-            "minimum": 1,
+            "maximum": 3.0,
+            "minimum": 1.0,
             "title": "Priority",
             "default": 2
           },
@@ -14492,7 +17233,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string"
@@ -14835,8 +17576,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 1440,
-                "exclusiveMinimum": 0
+                "maximum": 1440.0,
+                "exclusiveMinimum": 0.0
               },
               {
                 "type": "null"
@@ -14872,8 +17613,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 3,
-                "minimum": 1
+                "maximum": 3.0,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -14885,7 +17626,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string"
@@ -15073,838 +17814,6 @@
         ],
         "title": "WeatherPullRequest",
         "description": "按出行拉取目的地当前天气（Open-Meteo，免钥公开源，ADR-0034）。"
-      },
-      "CustomerMapCustomerRead": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "tier": {
-            "type": "string",
-            "enum": [
-              "A",
-              "B",
-              "C"
-            ],
-            "title": "Tier"
-          },
-          "country_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Country Code"
-          },
-          "industry": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Industry"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "ACTIVE",
-              "INACTIVE",
-              "PROSPECT"
-            ],
-            "title": "Status"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "tier",
-          "status"
-        ],
-        "title": "CustomerMapCustomerRead",
-        "description": "地图最小客户投影：不返回联系人等与地图无关的个人信息。"
-      },
-      "CustomerMapPlaceRead": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label"
-          },
-          "is_primary": {
-            "type": "boolean",
-            "title": "Is Primary",
-            "default": false
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "address_line": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Address Line"
-          },
-          "city": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "City"
-          },
-          "region": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Region"
-          },
-          "country_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Country Code"
-          },
-          "timezone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timezone"
-          },
-          "lat": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lat"
-          },
-          "lon": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lon"
-          },
-          "geocode_status": {
-            "type": "string",
-            "enum": [
-              "MISSING",
-              "RESOLVED",
-              "FAILED"
-            ],
-            "title": "Geocode Status"
-          },
-          "geocode_source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Geocode Source"
-          },
-          "geocode_confidence": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Geocode Confidence"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "geocode_status"
-        ],
-        "title": "CustomerMapPlaceRead"
-      },
-      "CustomerMapLocationRead": {
-        "properties": {
-          "customer": {
-            "$ref": "#/components/schemas/CustomerMapCustomerRead"
-          },
-          "place": {
-            "$ref": "#/components/schemas/CustomerMapPlaceRead"
-          }
-        },
-        "type": "object",
-        "required": [
-          "customer",
-          "place"
-        ],
-        "title": "CustomerMapLocationRead"
-      },
-      "CustomerMapSummaryRead": {
-        "properties": {
-          "customers_with_locations": {
-            "type": "integer",
-            "title": "Customers With Locations",
-            "default": 0
-          },
-          "customers_without_locations": {
-            "type": "integer",
-            "title": "Customers Without Locations",
-            "default": 0
-          },
-          "locations_total": {
-            "type": "integer",
-            "title": "Locations Total",
-            "default": 0
-          },
-          "locations_mapped": {
-            "type": "integer",
-            "title": "Locations Mapped",
-            "default": 0
-          },
-          "locations_missing_coordinates": {
-            "type": "integer",
-            "title": "Locations Missing Coordinates",
-            "default": 0
-          },
-          "countries": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "Countries"
-          },
-          "country_stats": {
-            "items": {
-              "$ref": "#/components/schemas/CustomerMapCountryCoverageRead"
-            },
-            "type": "array",
-            "title": "Country Stats"
-          }
-        },
-        "type": "object",
-        "title": "CustomerMapSummaryRead"
-      },
-      "CustomerMapLocationsRead": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/CustomerMapLocationRead"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "summary": {
-            "$ref": "#/components/schemas/CustomerMapSummaryRead"
-          },
-          "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Cursor"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "summary"
-        ],
-        "title": "CustomerMapLocationsRead"
-      },
-      "CustomerMapCountryCoverageRead": {
-        "properties": {
-          "country_code": {
-            "type": "string",
-            "title": "Country Code"
-          },
-          "customers_total": {
-            "type": "integer",
-            "title": "Customers Total",
-            "default": 0
-          },
-          "tier_a_customers": {
-            "type": "integer",
-            "title": "Tier A Customers",
-            "default": 0
-          },
-          "tier_b_customers": {
-            "type": "integer",
-            "title": "Tier B Customers",
-            "default": 0
-          },
-          "tier_c_customers": {
-            "type": "integer",
-            "title": "Tier C Customers",
-            "default": 0
-          },
-          "active_customers": {
-            "type": "integer",
-            "title": "Active Customers",
-            "default": 0
-          },
-          "prospect_customers": {
-            "type": "integer",
-            "title": "Prospect Customers",
-            "default": 0
-          },
-          "inactive_customers": {
-            "type": "integer",
-            "title": "Inactive Customers",
-            "default": 0
-          },
-          "locations_total": {
-            "type": "integer",
-            "title": "Locations Total",
-            "default": 0
-          },
-          "locations_mapped": {
-            "type": "integer",
-            "title": "Locations Mapped",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "country_code"
-        ],
-        "title": "CustomerMapCountryCoverageRead",
-        "description": "按实际关联地点归集的国家客户覆盖；客户按国家去重，不表示外部市场规模。"
-      },
-      "ResearchPlanCreate": {
-        "properties": {
-          "request": {
-            "type": "string",
-            "maxLength": 6000,
-            "minLength": 3,
-            "title": "Request"
-          },
-          "source_scope": {
-            "type": "string",
-            "enum": [
-              "AUTO",
-              "INTERNAL_ONLY",
-              "EXTERNAL_ONLY",
-              "INTERNAL_AND_EXTERNAL"
-            ],
-            "title": "Source Scope",
-            "default": "AUTO"
-          },
-          "trip_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Trip Id"
-          },
-          "customer_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Customer Id"
-          },
-          "context_text": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 16000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Context Text"
-          },
-          "locale": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 35
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Locale"
-          }
-        },
-        "type": "object",
-        "required": [
-          "request"
-        ],
-        "title": "ResearchPlanCreate",
-        "description": "显式研究请求。上下文文本由用户主动提供或从用户材料中提取。"
-      },
-      "ResearchPlanIntentRead": {
-        "properties": {
-          "intent_summary": {
-            "type": "string",
-            "title": "Intent Summary"
-          },
-          "objective": {
-            "type": "string",
-            "title": "Objective"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject"
-          },
-          "domain": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Domain"
-          },
-          "geographies": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Geographies"
-          },
-          "entities": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Entities"
-          },
-          "time_scope": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Time Scope"
-          },
-          "research_questions": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Research Questions"
-          },
-          "search_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Search Queries"
-          },
-          "source_types": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Source Types"
-          },
-          "deliverables": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Deliverables"
-          },
-          "missing_information": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Missing Information"
-          },
-          "external_research_needed": {
-            "type": "boolean",
-            "title": "External Research Needed",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "intent_summary",
-          "objective",
-          "subject"
-        ],
-        "title": "ResearchPlanIntentRead",
-        "description": "模型从本次用户输入中提取的任务范围，不内置任何行业。"
-      },
-      "ResearchPlannerAuditRead": {
-        "properties": {
-          "agent_run_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Agent Run Id"
-          },
-          "llm_invocation_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Llm Invocation Id"
-          },
-          "model": {
-            "type": "string",
-            "title": "Model"
-          },
-          "degraded": {
-            "type": "boolean",
-            "title": "Degraded",
-            "default": false
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": [
-          "agent_run_id",
-          "model"
-        ],
-        "title": "ResearchPlannerAuditRead"
-      },
-      "ResearchEvidenceRead": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
-          "ref": {
-            "type": "string",
-            "title": "Ref"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "payload": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Payload"
-          },
-          "retrieved_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Retrieved At"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "ref",
-          "created_at"
-        ],
-        "title": "ResearchEvidenceRead"
-      },
-      "ResearchPlanRead": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "trip_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Trip Id"
-          },
-          "customer_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Customer Id"
-          },
-          "request": {
-            "type": "string",
-            "title": "Request"
-          },
-          "requested_scope": {
-            "type": "string",
-            "enum": [
-              "AUTO",
-              "INTERNAL_ONLY",
-              "EXTERNAL_ONLY",
-              "INTERNAL_AND_EXTERNAL"
-            ],
-            "title": "Requested Scope"
-          },
-          "recommended_scope": {
-            "type": "string",
-            "enum": [
-              "INTERNAL_ONLY",
-              "EXTERNAL_ONLY",
-              "INTERNAL_AND_EXTERNAL"
-            ],
-            "title": "Recommended Scope"
-          },
-          "status": {
-            "type": "string",
-            "const": "PLANNED",
-            "title": "Status",
-            "default": "PLANNED"
-          },
-          "retrieval_status": {
-            "type": "string",
-            "enum": [
-              "NOT_STARTED",
-              "QUEUED",
-              "RUNNING",
-              "COMPLETED",
-              "FAILED"
-            ],
-            "title": "Retrieval Status",
-            "default": "NOT_STARTED"
-          },
-          "plan": {
-            "$ref": "#/components/schemas/ResearchPlanIntentRead"
-          },
-          "planner": {
-            "$ref": "#/components/schemas/ResearchPlannerAuditRead"
-          },
-          "evidence": {
-            "items": {
-              "$ref": "#/components/schemas/ResearchEvidenceRead"
-            },
-            "type": "array",
-            "title": "Evidence"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "job_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Job Id"
-          },
-          "retrieval_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Retrieval Error"
-          },
-          "results_count": {
-            "type": "integer",
-            "title": "Results Count",
-            "default": 0
-          },
-          "reviewed_search_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Reviewed Search Queries"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "request",
-          "requested_scope",
-          "recommended_scope",
-          "plan",
-          "planner",
-          "created_at"
-        ],
-        "title": "ResearchPlanRead"
-      },
-      "ResearchExecuteAccepted": {
-        "properties": {
-          "plan_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Plan Id"
-          },
-          "job_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Job Id"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "RUNNING",
-              "SUCCEEDED",
-              "FAILED",
-              "DEAD",
-              "CANCELLED"
-            ],
-            "title": "Status"
-          },
-          "reused": {
-            "type": "boolean",
-            "title": "Reused",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "plan_id",
-          "job_id",
-          "status"
-        ],
-        "title": "ResearchExecuteAccepted"
-      },
-      "ResearchExecuteCreate": {
-        "properties": {
-          "search_queries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 12,
-            "minItems": 1,
-            "title": "Search Queries"
-          }
-        },
-        "type": "object",
-        "required": [
-          "search_queries"
-        ],
-        "title": "ResearchExecuteCreate",
-        "description": "用户审阅后确认的查询。执行器只允许使用此列表。"
       }
     }
   }
