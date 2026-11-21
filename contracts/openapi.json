@@ -15157,6 +15157,13 @@
             },
             "type": "object",
             "title": "Countries"
+          },
+          "country_stats": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerMapCountryCoverageRead"
+            },
+            "type": "array",
+            "title": "Country Stats"
           }
         },
         "type": "object",
@@ -15192,6 +15199,65 @@
           "summary"
         ],
         "title": "CustomerMapLocationsRead"
+      },
+      "CustomerMapCountryCoverageRead": {
+        "properties": {
+          "country_code": {
+            "type": "string",
+            "title": "Country Code"
+          },
+          "customers_total": {
+            "type": "integer",
+            "title": "Customers Total",
+            "default": 0
+          },
+          "tier_a_customers": {
+            "type": "integer",
+            "title": "Tier A Customers",
+            "default": 0
+          },
+          "tier_b_customers": {
+            "type": "integer",
+            "title": "Tier B Customers",
+            "default": 0
+          },
+          "tier_c_customers": {
+            "type": "integer",
+            "title": "Tier C Customers",
+            "default": 0
+          },
+          "active_customers": {
+            "type": "integer",
+            "title": "Active Customers",
+            "default": 0
+          },
+          "prospect_customers": {
+            "type": "integer",
+            "title": "Prospect Customers",
+            "default": 0
+          },
+          "inactive_customers": {
+            "type": "integer",
+            "title": "Inactive Customers",
+            "default": 0
+          },
+          "locations_total": {
+            "type": "integer",
+            "title": "Locations Total",
+            "default": 0
+          },
+          "locations_mapped": {
+            "type": "integer",
+            "title": "Locations Mapped",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "country_code"
+        ],
+        "title": "CustomerMapCountryCoverageRead",
+        "description": "按实际关联地点归集的国家客户覆盖；客户按国家去重，不表示外部市场规模。"
       }
     }
   }
