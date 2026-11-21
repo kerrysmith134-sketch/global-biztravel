@@ -179,6 +179,7 @@ def list_customer_map_locations(
             "locations_total": int(locations_total),
             "locations_mapped": int(locations_mapped),
             "locations_missing_coordinates": int(locations_total - locations_mapped),
-            "countries": countries,\n            "country_stats": country_stats,
+            "countries": countries,
+            "country_stats": country_stats,
         },
     }
