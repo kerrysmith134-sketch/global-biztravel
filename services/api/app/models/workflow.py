@@ -48,6 +48,9 @@ class WorkflowInstance(Base):
             "status IN ('ACCEPTED','RUNNING','COMPLETED','FAILED','REJECTED')",
             name="status_allowed",
         ),
+        UniqueConstraint(
+            "organization_id", "id", name="uq_workflow_instances_org_id"
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -106,6 +109,7 @@ class AgentRun(Base):
 class Evidence(Base):
     __tablename__ = "evidence"
     __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_evidence_org_id"),
         UniqueConstraint(
             "organization_id", "subject_type", "subject_id", "kind", "ref",
             name="uq_evidence_org_subject_kind_ref",

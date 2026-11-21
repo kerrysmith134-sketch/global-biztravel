@@ -15,15 +15,18 @@ final class ResearchWorkspaceViewModel: ObservableObject {
     private let repository: ResearchRepository
     private let tripId: String?
     private let customerId: String?
+    private let workspaceId: String?
 
     init(
         repository: ResearchRepository,
         tripId: String? = nil,
-        customerId: String? = nil
+        customerId: String? = nil,
+        workspaceId: String? = nil
     ) {
         self.repository = repository
         self.tripId = tripId
         self.customerId = customerId
+        self.workspaceId = workspaceId
     }
 
     var canSubmit: Bool {
@@ -48,6 +51,7 @@ final class ResearchWorkspaceViewModel: ObservableObject {
                     sourceScope: sourceScope,
                     tripId: tripId,
                     customerId: customerId,
+                    workspaceId: workspaceId,
                     contextText: context.isEmpty ? nil : context
                 )
             )
@@ -116,13 +120,15 @@ struct ResearchWorkspaceView: View {
     init(
         environment: AppEnvironment,
         tripId: String? = nil,
-        customerId: String? = nil
+        customerId: String? = nil,
+        workspaceId: String? = nil
     ) {
         _model = StateObject(
             wrappedValue: ResearchWorkspaceViewModel(
                 repository: environment.researchRepository,
                 tripId: tripId,
-                customerId: customerId
+                customerId: customerId,
+                workspaceId: workspaceId
             )
         )
     }

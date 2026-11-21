@@ -1456,6 +1456,7 @@ class ResearchPlanCreate(BaseModel):
     source_scope: ResearchSourceScope = "AUTO"
     trip_id: UUID | None = None
     customer_id: UUID | None = None
+    workspace_id: UUID | None = None
     context_text: str | None = Field(default=None, max_length=16000)
     locale: str | None = Field(default=None, max_length=35)
 
@@ -1545,6 +1546,7 @@ class ResearchPlanRead(BaseModel):
     id: UUID
     trip_id: UUID | None = None
     customer_id: UUID | None = None
+    workspace_id: UUID | None = None
     job_id: UUID | None = None
     retrieval_error: str | None = None
     results_count: int = 0
@@ -1820,5 +1822,205 @@ class CrmSyncJobRead(ORMModel):
     job_id: UUID | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ------------------------------------------------------ market workspaces
+MarketWorkspaceStatus = Literal["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "ARCHIVED"]
+MarketContextExtractionStatus = Literal["NOT_STARTED", "PENDING", "COMPLETED", "FAILED"]
+MarketQuestionSource = Literal["USER", "AGENT"]
+MarketQuestionStatus = Literal["OPEN", "IN_PROGRESS", "ANSWERED", "BLOCKED", "CANCELLED"]
+MarketActivityActor = Literal["USER", "SYSTEM"]
+
+
+class MarketWorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    objective: str | None = Field(default=None, max_length=4000)
+    initial_context: str | None = Field(default=None, max_length=20000)
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _non_blank_values(self) -> MarketWorkspaceCreate:
+        if not self.name.strip():
+            raise ValueError("工作空间名称不能为空")
+        if self.initial_context is not None and not self.initial_context.strip():
+            raise ValueError("初始业务背景不能为空白")
+        return self
+
+
+class MarketWorkspaceRead(ORMModel):
+    id: UUID
+    name: str
+    objective: str | None
+    status: MarketWorkspaceStatus
+    owner_user_id: UUID | None
+    current_context_version: int | None
+    settings: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketContextCreate(BaseModel):
+    raw_input: str = Field(min_length=1, max_length=20000)
+    adopt: bool = False
+
+    @model_validator(mode="after")
+    def _raw_input_not_blank(self) -> MarketContextCreate:
+        if not self.raw_input.strip():
+            raise ValueError("业务背景不能为空白")
+        return self
+
+
+class MarketContextRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    version: int
+    raw_input: str
+    extracted_context: dict[str, Any]
+    user_overrides: dict[str, Any]
+    unknowns: list[Any]
+    provenance: dict[str, Any]
+    extraction_status: MarketContextExtractionStatus
+    extraction_prompt_id: str | None
+    extraction_prompt_version: str | None
+    is_current: bool
+    created_by_user_id: UUID | None
+    created_at: datetime
+
+
+class MarketResearchQuestionCreate(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    rationale: str | None = Field(default=None, max_length=4000)
+    priority: int = Field(default=3, ge=1, le=5)
+    acceptance_criteria: list[Any] = Field(default_factory=list)
+    parent_question_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _question_not_blank(self) -> MarketResearchQuestionCreate:
+        if not self.question.strip():
+            raise ValueError("研究问题不能为空白")
+        return self
+
+
+class MarketResearchQuestionRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    parent_question_id: UUID | None
+    question: str
+    rationale: str | None
+    source: MarketQuestionSource
+    priority: int
+    status: MarketQuestionStatus
+    acceptance_criteria: list[Any]
+    answer_summary: str | None
+    blocked_reason: str | None
+    created_by_user_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketActivityEventRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    actor_type: MarketActivityActor
+    actor_user_id: UUID | None
+    aggregate_type: str
+    aggregate_id: UUID
+    event_type: str
+    payload: dict[str, Any]
+    created_at: datetime
+
+
+# ----------------------------------------------------------- market entities
+MarketEntityStatus = Literal["CANDIDATE", "REVIEWED", "VERIFIED", "REJECTED", "MERGED"]
+MarketWorkspaceEntityStatus = Literal["DISCOVERED", "RESEARCHING", "INCLUDED", "EXCLUDED"]
+MarketEntityCustomerLinkStatus = Literal[
+    "MATCH_CANDIDATE", "USER_CONFIRMED", "REJECTED", "CONFLICTED"
+]
+
+
+class MarketWorkspaceEntityCreate(BaseModel):
+    existing_entity_id: UUID | None = None
+    entity_kind: str | None = Field(default=None, min_length=1, max_length=80)
+    display_name: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=5000)
+    canonical_domain: str | None = Field(default=None, max_length=500)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    discovery_reason: str | None = Field(default=None, max_length=2000)
+    relevance_note: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _entity_values_not_blank(self) -> MarketWorkspaceEntityCreate:
+        if self.existing_entity_id is not None:
+            if any(
+                value is not None
+                for value in (
+                    self.entity_kind,
+                    self.display_name,
+                    self.description,
+                    self.canonical_domain,
+                    self.country_code,
+                )
+            ) or self.attributes:
+                raise ValueError("关联已有实体时，不允许覆盖实体主档字段")
+        else:
+            if not self.entity_kind or not self.entity_kind.strip():
+                raise ValueError("新建实体必须提供实体类型")
+            if not self.display_name or not self.display_name.strip():
+                raise ValueError("新建实体必须提供实体名称")
+            if self.country_code is not None:
+                self.country_code = self.country_code.strip().upper()
+        return self
+
+
+class MarketEntityAliasRead(ORMModel):
+    id: UUID
+    alias_type: str
+    raw_value: str
+    normalized_value: str
+    source_evidence_id: UUID | None
+    created_at: datetime
+
+
+class MarketEntityRead(ORMModel):
+    id: UUID
+    entity_kind: str
+    display_name: str
+    normalized_name: str
+    description: str | None
+    canonical_domain: str | None
+    country_code: str | None
+    attributes: dict[str, Any]
+    status: MarketEntityStatus
+    created_at: datetime
+    updated_at: datetime
+    aliases: list[MarketEntityAliasRead] = Field(default_factory=list)
+
+
+class MarketWorkspaceEntityRead(BaseModel):
+    entity: MarketEntityRead
+    discovery_reason: str | None
+    relevance_note: str | None
+    status: MarketWorkspaceEntityStatus
+    first_seen_at: datetime
+    last_seen_at: datetime
+    possible_duplicate_entity_ids: list[UUID] = Field(default_factory=list)
+
+
+class MarketEntityCustomerLinkCreate(BaseModel):
+    customer_id: UUID
+    matching_basis: dict[str, Any] = Field(default_factory=dict)
+
+
+class MarketEntityCustomerLinkRead(ORMModel):
+    id: UUID
+    entity_id: UUID
+    customer_id: UUID
+    link_status: MarketEntityCustomerLinkStatus
+    matching_basis: dict[str, Any]
+    confirmed_by_user_id: UUID | None
+    confirmed_at: datetime | None
     created_at: datetime
     updated_at: datetime

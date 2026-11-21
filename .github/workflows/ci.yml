@@ -30,7 +30,10 @@ jobs:
           make docs-check
           make ios-contract-check
       - name: Database
-        run: make db-up && make migrate
+        run: |
+          make db-up
+          make migrate
+          make check
       - name: Tests
         run: make test
 

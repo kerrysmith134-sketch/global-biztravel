@@ -70,6 +70,7 @@ class Customer(Base):
     __table_args__ = (
         CheckConstraint("tier IN ('A','B','C')", name="tier_allowed"),
         CheckConstraint("status IN ('ACTIVE','INACTIVE','PROSPECT')", name="status_allowed"),
+        UniqueConstraint("organization_id", "id", name="uq_customers_org_id"),
         Index(
             "uq_customers_organization_id_external_ref",
             "organization_id",

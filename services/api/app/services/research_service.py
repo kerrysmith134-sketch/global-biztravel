@@ -32,6 +32,7 @@ from app.llm.prompts import (
     RESEARCH_PLAN_SYSTEM,
     RESEARCH_PLAN_TEMPLATE_ID,
 )
+from app.models.market import MarketActivityEvent, MarketWorkspace, MarketWorkspaceWorkflow
 from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import customer_service, evidence_service, job_service, trip_service
 
@@ -257,6 +258,19 @@ def create_research_plan(
 ) -> ResearchPlanRead:
     requested_scope = payload.source_scope
     include_internal = requested_scope != "EXTERNAL_ONLY"
+
+    if payload.workspace_id is not None:
+        workspace = session.scalars(
+            select(MarketWorkspace).where(
+                MarketWorkspace.organization_id == str(organization_id),
+                MarketWorkspace.id == payload.workspace_id,
+            )
+        ).one_or_none()
+        if workspace is None:
+            raise NotFound(
+                "市场工作空间不存在",
+                details={"workspace_id": str(payload.workspace_id)},
+            )
     selected_context, context_evidence = _selected_context(
         session, organization_id, payload, include_internal=include_internal
     )
@@ -297,15 +311,38 @@ def create_research_plan(
             "requested_scope": requested_scope,
             "retrieval_status": "NOT_STARTED",
             "customer_id": (
-            str(payload.customer_id)
-            if include_internal and payload.customer_id is not None
-            else None
-        ),
+                str(payload.customer_id)
+                if include_internal and payload.customer_id is not None
+                else None
+            ),
         },
         created_by_user_id=str(user_id),
     )
     session.add(workflow)
     session.flush()
+
+    if payload.workspace_id is not None:
+        session.add(
+            MarketWorkspaceWorkflow(
+                organization_id=str(organization_id),
+                workspace_id=payload.workspace_id,
+                workflow_id=workflow.id,
+                linked_by_user_id=str(user_id),
+            )
+        )
+        session.add(
+            MarketActivityEvent(
+                organization_id=str(organization_id),
+                workspace_id=payload.workspace_id,
+                actor_type="USER",
+                actor_user_id=str(user_id),
+                aggregate_type="workflow_instance",
+                aggregate_id=workflow.id,
+                event_type="RESEARCH_PLAN_LINKED",
+                payload={"workflow_type": WORKFLOW_TYPE},
+            )
+        )
+        session.flush()
 
     # Keep potentially sensitive pasted material out of generic JSONB run logs.
     # The LLM invocation hash and Evidence digest retain provenance without duplicating content.
@@ -362,6 +399,7 @@ def create_research_plan(
 
     workflow.payload = {
         "request": payload.request,
+        "workspace_id": str(payload.workspace_id) if payload.workspace_id else None,
         "requested_scope": requested_scope,
         "recommended_scope": recommended_scope,
         "locale": payload.locale,
@@ -454,6 +492,7 @@ def get_research_plan(
     return ResearchPlanRead(
         id=workflow.id,
         trip_id=workflow.trip_id,
+        workspace_id=(UUID(str(payload["workspace_id"])) if payload.get("workspace_id") else None),
         customer_id=(
             UUID(str(payload["customer_id"])) if payload.get("customer_id") else None
         ),
@@ -473,6 +512,38 @@ def get_research_plan(
         evidence=[ResearchEvidenceRead.model_validate(row) for row in evidence_rows],
         created_at=workflow.created_at,
     )
+
+
+def list_research_plans_for_workspace(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID | str,
+) -> list[ResearchPlanRead]:
+    """List the existing ResearchPlan workflows attached to a Market Workspace."""
+    workspace = session.scalars(
+        select(MarketWorkspace).where(
+            MarketWorkspace.organization_id == str(organization_id),
+            MarketWorkspace.id == str(workspace_id),
+        )
+    ).one_or_none()
+    if workspace is None:
+        raise NotFound(
+            "市场工作空间不存在",
+            details={"workspace_id": str(workspace_id)},
+        )
+
+    workflow_ids = session.scalars(
+        select(MarketWorkspaceWorkflow.workflow_id)
+        .where(
+            MarketWorkspaceWorkflow.organization_id == str(organization_id),
+            MarketWorkspaceWorkflow.workspace_id == str(workspace_id),
+        )
+        .order_by(MarketWorkspaceWorkflow.created_at.desc())
+    ).all()
+    return [
+        get_research_plan(session, organization_id, workflow_id)
+        for workflow_id in workflow_ids
+    ]
 
 
 def enqueue_research_execution(
@@ -559,4 +630,5 @@ __all__ = [
     "create_research_plan",
     "enqueue_research_execution",
     "get_research_plan",
+    "list_research_plans_for_workspace",
 ]
