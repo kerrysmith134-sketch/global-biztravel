@@ -103,6 +103,7 @@
                            0035_market_opportunities
                            0036_market_research_plan_evidence
                            0037_market_question_answers
+                            0038_market_evidence_derivations
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
