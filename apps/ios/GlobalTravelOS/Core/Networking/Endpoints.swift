@@ -193,7 +193,7 @@ enum Endpoints {
 
     /// All explicitly linked addresses for a customer.
     static func customerPlaces(customerId: String) -> APIRequest {
-        APIRequest(method: .get, path: "/v1/customers/\\(customerId)/places")
+        APIRequest(method: .get, path: "/v1/customers/\(customerId)/places")
     }
 
     // MARK: - Assistant
