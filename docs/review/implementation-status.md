@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0034`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0035`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -100,6 +100,7 @@
                            0032_market_workspace_foundation
                            0033_market_entities
                            0034_market_insights_evidence_versions
+                           0035_market_opportunities
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -293,3 +294,23 @@
 - POST .../insights/{insight_id}:reject
 
 本节代码仍需在 PR #4 分支通过完整 CI 与 PostgreSQL 集成测试后，才能标记为验证完成。当前未声称 E2E、iOS UI 或生产数据库迁移已完成。MarketOpportunity、Trip 关联、iOS Workspace 原生 UI 与 Agent 自动化仍在后续切片。
+
+
+## 11. 市场情报引擎 H1.4 — Opportunity 与 Trip 行动关联
+
+> 本节记录 `feat/sprint-h1.4-opportunities-trip-links` 叠加分支的实现状态；以 PR #5 最新 CI 为最终验收依据。
+
+| 能力 | 实现 | 约束 |
+|---|---|---|
+| MarketOpportunity | Workspace 级机会候选、负责人、当前阶段及下一步动作 | 动态行业/机会类型；不替代 Customer 主档 |
+| Assessment 历史 | 每次评估写入 MarketOpportunityAssessment 不可变快照，Opportunity 行只保存当前投影 | 每维必须有 value 与 rationale；UNKNOWN 明确保留；证据引用必须属于该 Opportunity；不自动合成成交概率 |
+| 机会证据 | MarketOpportunityEvidence 显式 SUPPORTS / CONTRADICTS / CONTEXT | 必须引用当前 Workspace 或其 ResearchPlan Evidence；Evidence 删除受保护 |
+| 候选实体关联 | MarketOpportunityEntity 关联当前 Workspace 已纳入的 MarketEntity | 不能跨 Workspace 任意挂实体，不修改 Customer 主档 |
+| 人工资格确认 | QUALIFICATION_PENDING → QUALIFIED | 必须有支持证据、无未解决反驳，并记录确认人/时间/理由 |
+| 结果闭环 | ACTION_PLANNED → WON / LOST | 只允许人工记录且必须提供实际业务结果说明；DISQUALIFIED 必须提供理由 |
+| Workspace–Trip | MarketWorkspaceTripLink 多对多关联现有 Trip，允许解除和重新关联 | 复合组织外键；解除保留审计历史；Workspace 删除不级联删除 Trip |
+| 活动时间线 | 阶段变化、评估、机会证据/实体关联、Trip 关联/解除均写 MarketActivityEvent | 领域活动事件不替代 Outbox |
+
+新增 API 包括机会列表/创建/详情、证据关联、候选实体关联、评估、状态迁移、人工资格确认、结果记录，以及 Workspace Trip 列表/关联/解除。
+
+H1.4 当前代码 head 已通过 Backend 严格门禁：Ruff、MyPy、OpenAPI、文档、0035 PostgreSQL migration、Alembic drift 和全量 Backend pytest（416 passed / 1 skipped）。SwiftLint 与 Xcode Build 也已通过；iOS Unit Tests 正在对最新清理提交重新执行。PR #5 保持 Draft，尚未合并或部署。原生 iOS Opportunity UI 尚未实现。

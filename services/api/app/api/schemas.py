@@ -2120,6 +2120,152 @@ class MarketInsightReview(BaseModel):
     review_note: str | None = Field(default=None, max_length=3000)
 
 
+MarketOpportunityStatus = Literal[
+    "DISCOVERED", "RESEARCHING", "EVIDENCE_READY", "QUALIFICATION_PENDING",
+    "QUALIFIED", "ACTION_PLANNED", "WON", "LOST", "DISQUALIFIED", "ON_HOLD",
+]
+MarketAssessmentConfidence = Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
+
+
+class MarketOpportunityCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=10000)
+    next_action: str | None = Field(default=None, max_length=2000)
+    owner_user_id: UUID | None = None
+    created_by_run_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _title_not_blank(self) -> MarketOpportunityCreate:
+        if not self.title.strip():
+            raise ValueError("机会标题不能为空白")
+        return self
+
+
+class MarketOpportunityRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    title: str
+    description: str | None
+    status: MarketOpportunityStatus
+    next_action: str | None
+    qualification_reason: str | None
+    disqualification_reason: str | None
+    assessment_version: int
+    assessment_dimensions: dict[str, Any]
+    assessment_summary: str | None
+    assessment_confidence: MarketAssessmentConfidence
+    created_by_run_id: UUID | None
+    owner_user_id: UUID | None
+    created_by_user_id: UUID | None
+    qualified_by_user_id: UUID | None
+    qualified_at: datetime | None
+    outcome_recorded_by_user_id: UUID | None
+    outcome_recorded_at: datetime | None
+    outcome_note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketOpportunityEvidenceCreate(BaseModel):
+    evidence_id: UUID
+    relation_type: MarketEvidenceRelation
+    rationale: str | None = Field(default=None, max_length=2000)
+
+
+class MarketOpportunityEvidenceRead(BaseModel):
+    relation_type: MarketEvidenceRelation
+    rationale: str | None
+    evidence: MarketEvidenceRead
+
+
+class MarketOpportunityEntitiesAttach(BaseModel):
+    entity_ids: list[UUID] = Field(min_length=1, max_length=100)
+    relationship_note: str | None = Field(default=None, max_length=2000)
+
+
+class MarketOpportunityAssessmentCreate(BaseModel):
+    dimensions: dict[str, dict[str, Any]]
+    summary: str | None = Field(default=None, max_length=5000)
+    confidence_level: MarketAssessmentConfidence = "INSUFFICIENT"
+    assessed_by_run_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _dimensions_present(self) -> MarketOpportunityAssessmentCreate:
+        if not self.dimensions:
+            raise ValueError("评估至少需要一个维度")
+        return self
+
+
+class MarketOpportunityAssessmentRead(ORMModel):
+    id: UUID
+    opportunity_id: UUID
+    version: int
+    dimensions: dict[str, Any]
+    summary: str | None
+    confidence_level: MarketAssessmentConfidence
+    assessed_by_run_id: UUID | None
+    assessed_by_user_id: UUID | None
+    created_at: datetime
+
+
+class MarketOpportunityDetailRead(BaseModel):
+    opportunity: MarketOpportunityRead
+    evidence: list[MarketOpportunityEvidenceRead]
+    entities: list[MarketEntityRead]
+    assessments: list[MarketOpportunityAssessmentRead]
+
+
+class MarketOpportunityTransition(BaseModel):
+    target_status: Literal[
+        "RESEARCHING", "EVIDENCE_READY", "QUALIFICATION_PENDING",
+        "ACTION_PLANNED", "ON_HOLD", "DISQUALIFIED",
+    ]
+    note: str | None = Field(default=None, max_length=3000)
+
+
+class MarketOpportunityQualify(BaseModel):
+    qualification_reason: str = Field(min_length=1, max_length=3000)
+
+    @model_validator(mode="after")
+    def _reason_not_blank(self) -> MarketOpportunityQualify:
+        if not self.qualification_reason.strip():
+            raise ValueError("确认机会资格必须提供理由")
+        return self
+
+
+class MarketOpportunityOutcome(BaseModel):
+    outcome: Literal["WON", "LOST"]
+    outcome_note: str = Field(min_length=1, max_length=5000)
+
+    @model_validator(mode="after")
+    def _note_not_blank(self) -> MarketOpportunityOutcome:
+        if not self.outcome_note.strip():
+            raise ValueError("记录结果必须提供业务事件或结果说明")
+        return self
+
+
+class MarketWorkspaceTripLinkCreate(BaseModel):
+    trip_id: UUID
+    link_note: str | None = Field(default=None, max_length=2000)
+
+
+class MarketWorkspaceTripLinkRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    trip_id: UUID
+    link_status: Literal["LINKED", "UNLINKED"]
+    link_note: str | None
+    linked_by_user_id: UUID | None
+    linked_at: datetime
+    unlinked_by_user_id: UUID | None
+    unlinked_at: datetime | None
+    trip_name: str | None
+    trip_status: TripStatus | None
+    window_start: datetime | None
+    window_end: datetime | None
+    countries: list[str]
+
+
 class MarketEntityCustomerLinkRead(ORMModel):
     id: UUID
     entity_id: UUID

@@ -25,23 +25,39 @@ from app.api.schemas import (
     MarketContextRead,
     MarketEntityCustomerLinkCreate,
     MarketEntityCustomerLinkRead,
+    MarketEntityRead,
     MarketEvidenceCreate,
     MarketEvidenceRead,
     MarketInsightCreate,
     MarketInsightRead,
     MarketInsightReview,
+    MarketOpportunityAssessmentCreate,
+    MarketOpportunityAssessmentRead,
+    MarketOpportunityCreate,
+    MarketOpportunityDetailRead,
+    MarketOpportunityEntitiesAttach,
+    MarketOpportunityEvidenceCreate,
+    MarketOpportunityEvidenceRead,
+    MarketOpportunityOutcome,
+    MarketOpportunityQualify,
+    MarketOpportunityRead,
+    MarketOpportunityStatus,
+    MarketOpportunityTransition,
     MarketResearchQuestionCreate,
     MarketResearchQuestionRead,
     MarketWorkspaceCreate,
     MarketWorkspaceEntityCreate,
     MarketWorkspaceEntityRead,
     MarketWorkspaceRead,
+    MarketWorkspaceTripLinkCreate,
+    MarketWorkspaceTripLinkRead,
     Page,
     ResearchPlanRead,
 )
 from app.services import (
     market_entity_service,
     market_insight_service,
+    market_opportunity_service,
     market_workspace_service,
     research_service,
 )
@@ -49,6 +65,7 @@ from app.services import (
 router = APIRouter(tags=["market intelligence"])
 
 WORKSPACES_ENDPOINT = "POST /v1/market/workspaces"
+OPPORTUNITY_STATUS_QUERY = Query(default=None, alias="status")
 
 
 @router.get(
@@ -636,6 +653,462 @@ def reject_market_insight(
 ):
     return _review_market_insight(
         "REJECTED", workspace_id, insight_id, payload, context, session, idempotency_key
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities",
+    response_model=MarketOpportunityRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建市场商业机会候选",
+)
+def create_market_opportunity(
+    workspace_id: UUID,
+    payload: MarketOpportunityCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"POST /v1/market/workspaces/{workspace_id}/opportunities"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_opportunity_service.create_opportunity(
+        session,
+        context.organization_id,
+        workspace_id,
+        title=payload.title,
+        description=payload.description,
+        next_action=payload.next_action,
+        owner_user_id=payload.owner_user_id,
+        created_by_run_id=payload.created_by_run_id,
+        created_by_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketOpportunityRead.model_validate(row),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/opportunities",
+    response_model=Page[MarketOpportunityRead],
+    summary="读取 Workspace 商业机会",
+)
+def list_market_opportunities(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    limit: int | None = Query(default=None, ge=1),
+    cursor: str | None = Query(default=None),
+    status_filter: MarketOpportunityStatus | None = OPPORTUNITY_STATUS_QUERY,
+):
+    require_role(context, ROLE_VIEWER)
+    page_size = clamp_limit(limit)
+    offset = decode_cursor(cursor)
+    rows = market_opportunity_service.list_opportunities(
+        session,
+        context.organization_id,
+        workspace_id,
+        status_filter=status_filter,
+        limit=page_size,
+        offset=offset,
+    )
+    return Page[MarketOpportunityRead](
+        items=[MarketOpportunityRead.model_validate(row) for row in rows],
+        next_cursor=page_cursor(rows, offset, page_size),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}",
+    response_model=MarketOpportunityDetailRead,
+    summary="读取商业机会详情、证据、实体和评估历史",
+)
+def get_market_opportunity(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    result = market_opportunity_service.get_opportunity_detail(
+        session, context.organization_id, workspace_id, opportunity_id
+    )
+    return MarketOpportunityDetailRead.model_validate(result)
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/evidence",
+    response_model=MarketOpportunityEvidenceRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="为商业机会关联支持、反驳或上下文证据",
+)
+def add_market_opportunity_evidence(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    payload: MarketOpportunityEvidenceCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/evidence"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "opportunity_id": str(opportunity_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_opportunity_service.add_opportunity_evidence(
+        session,
+        context.organization_id,
+        workspace_id,
+        opportunity_id,
+        evidence_id=payload.evidence_id,
+        relation_type=payload.relation_type,
+        rationale=payload.rationale,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketOpportunityEvidenceRead.model_validate(result),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/entities",
+    response_model=list[MarketEntityRead],
+    status_code=status.HTTP_201_CREATED,
+    summary="将当前 Workspace 候选实体关联到商业机会",
+)
+def attach_market_opportunity_entities(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    payload: MarketOpportunityEntitiesAttach,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/entities"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "opportunity_id": str(opportunity_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    rows = market_opportunity_service.attach_opportunity_entities(
+        session,
+        context.organization_id,
+        workspace_id,
+        opportunity_id,
+        entity_ids=payload.entity_ids,
+        relationship_note=payload.relationship_note,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=[MarketEntityRead.model_validate(row) for row in rows],
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:assess",
+    response_model=MarketOpportunityAssessmentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="追加一版商业机会评估快照",
+)
+def assess_market_opportunity(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    payload: MarketOpportunityAssessmentCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:assess"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "opportunity_id": str(opportunity_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_opportunity_service.assess_opportunity(
+        session,
+        context.organization_id,
+        workspace_id,
+        opportunity_id,
+        dimensions=payload.dimensions,
+        summary=payload.summary,
+        confidence_level=payload.confidence_level,
+        assessed_by_run_id=payload.assessed_by_run_id,
+        assessed_by_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketOpportunityAssessmentRead.model_validate(row),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:transition",
+    response_model=MarketOpportunityRead,
+    summary="按服务端状态机推进或退回商业机会",
+)
+def transition_market_opportunity(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    payload: MarketOpportunityTransition,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:transition"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "opportunity_id": str(opportunity_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_opportunity_service.transition_opportunity(
+        session,
+        context.organization_id,
+        workspace_id,
+        opportunity_id,
+        target_status=payload.target_status,
+        note=payload.note,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketOpportunityRead.model_validate(row),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:qualify",
+    response_model=MarketOpportunityRead,
+    summary="人工确认商业机会资格",
+)
+def qualify_market_opportunity(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    payload: MarketOpportunityQualify,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_ADMIN)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:qualify"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "opportunity_id": str(opportunity_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_opportunity_service.qualify_opportunity(
+        session,
+        context.organization_id,
+        workspace_id,
+        opportunity_id,
+        qualification_reason=payload.qualification_reason,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketOpportunityRead.model_validate(row),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:outcome",
+    response_model=MarketOpportunityRead,
+    summary="记录商业机会 WON/LOST 的实际业务结果",
+)
+def record_market_opportunity_outcome(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    payload: MarketOpportunityOutcome,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_ADMIN)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:outcome"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "opportunity_id": str(opportunity_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_opportunity_service.record_opportunity_outcome(
+        session,
+        context.organization_id,
+        workspace_id,
+        opportunity_id,
+        outcome=payload.outcome,
+        outcome_note=payload.outcome_note,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketOpportunityRead.model_validate(row),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/trips",
+    response_model=list[MarketWorkspaceTripLinkRead],
+    summary="读取工作空间关联的出差任务",
+)
+def list_workspace_trips(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    include_unlinked: bool = Query(default=False),
+):
+    require_role(context, ROLE_VIEWER)
+    rows = market_opportunity_service.list_workspace_trips(
+        session, context.organization_id, workspace_id, linked_only=not include_unlinked
+    )
+    return [MarketWorkspaceTripLinkRead.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/trips",
+    response_model=MarketWorkspaceTripLinkRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="关联现有 Trip 到市场工作空间",
+)
+def link_trip_to_workspace(
+    workspace_id: UUID,
+    payload: MarketWorkspaceTripLinkCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"POST /v1/market/workspaces/{workspace_id}/trips"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_opportunity_service.link_trip_to_workspace(
+        session,
+        context.organization_id,
+        workspace_id,
+        payload.trip_id,
+        link_note=payload.link_note,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketWorkspaceTripLinkRead.model_validate(row),
+    )
+
+
+@router.delete(
+    "/market/workspaces/{workspace_id}/trips/{trip_id}",
+    response_model=MarketWorkspaceTripLinkRead,
+    summary="解除 Workspace 与 Trip 关联并保留历史",
+)
+def unlink_trip_from_workspace(
+    workspace_id: UUID,
+    trip_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"DELETE /v1/market/workspaces/{workspace_id}/trips/{trip_id}"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), "trip_id": str(trip_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_opportunity_service.unlink_trip_from_workspace(
+        session,
+        context.organization_id,
+        workspace_id,
+        trip_id,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketWorkspaceTripLinkRead.model_validate(row),
     )
 
 

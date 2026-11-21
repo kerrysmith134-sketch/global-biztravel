@@ -1,6 +1,6 @@
 # Sprint H1 — Domain Foundation & Evidence Data Architecture
 
-> 状态：H1.0 源码审计已完成；H1.1 领域契约已冻结；H1.2 Workspace 与候选实体后端纵向切片已实现；H1.3 Evidence 版本化与 MarketInsight 进入工程实现  
+> 状态：H1.0 源码审计已完成；H1.1 领域契约已冻结；H1.2 Workspace 与候选实体后端纵向切片已实现；H1.3 Evidence 版本化与 MarketInsight 已实现；H1.4 Opportunity 与 Workspace–Trip 关联已进入工程验证  
 > 关联设计：`docs/design/market-intelligence-engine-v1.0.md`  
 > 仓库基线：`main`，核对到的最新提交 `c5e98e2b567f54705a8569d0ef7ced138d7f88b2`  
 > 计划日期：2026-11-21
@@ -352,7 +352,7 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 - OpenAPI 与 Swift 契约样本由项目生成器同步。
 
 **当前尚未完成：**
-- MarketOpportunity、OpportunityEvidence、Workspace ↔ Trip 关联；
+- 原生 iOS Workspace / Opportunity / Insight 工作台；自动研究与证据验证 Agent；
 - 原生 iOS Workspace 列表/详情/Context Review；
 - 真实数据库迁移与完整门禁最终验证。
 
@@ -401,3 +401,25 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 MarketInsight 采用 `workspace_id + insight_key + version` 建立版本链；历史判断不提供原位编辑接口。支持、反驳和上下文证据通过 MarketInsightEvidence 明确连接。AI 创建的 Insight 默认 NEEDS_REVIEW；同时具有 SUPPORTS 和 CONTRADICTS 时标记 CONFLICTED。人工采纳必须有支持证据且不存在未解决反驳，并记录操作者、时间和说明。同一 insight_key 通过部分唯一索引最多只能有一个 ACCEPTED 版本。没有证据的判断只能以显式证据缺口创建，不能被采纳。
 
 该切片暂不包括 MarketOpportunity、OpportunityEvidence、Trip 关联、自动证据发现/核验 Agent 和 iOS 原生 Insight UI；不能将 API 持久化等同于完整 Agentic 市场研究闭环。
+
+
+## 12. H1.4 Opportunity 与 Trip 纵向切片
+
+新增迁移文件 `0035_market_opportunities.py`（revision `0035_market_opps`，父 revision `0034_market_insights`），实现：
+- MarketOpportunity：Workspace 级候选机会与受控状态机；
+- MarketOpportunityAssessment：追加式、带版本的评估快照；Opportunity 主记录仅保留当前评估投影；
+- MarketOpportunityEvidence：显式支持/反驳/上下文证据关系，且只允许引用 Workspace 或关联 ResearchPlan 的 Evidence；
+- MarketOpportunityEntity：Opportunity 只能关联当前 Workspace 已关联的 MarketEntity；
+- MarketWorkspaceTripLink：Workspace ↔ 现有 Trip 多对多；解除是软状态并写审计，不会级联删除 Trip；
+- trips 增加 (organization_id,id) 唯一键，以数据库复合外键保证 Workspace Trip Link 的租户安全。
+
+状态机不接受任意 PATCH：
+- DISCOVERED → RESEARCHING → EVIDENCE_READY → QUALIFICATION_PENDING；
+- QUALIFIED 必须通过 Admin 人工动作，具备至少一条 SUPPORTS，且没有未解决 CONTRADICTS；
+- ACTION_PLANNED 只能从 QUALIFIED 推进；
+- WON / LOST 必须从 ACTION_PLANNED 记录，并提供实际业务结果说明；
+- DISQUALIFIED 必须提供原因；ON_HOLD 的恢复路径由服务端白名单管理。
+
+评估维度采用开放 JSON 对象；每个维度至少有 value、rationale，允许 UNKNOWN。引用证据必须已关联到当前 Opportunity；未知值不会被当作 0，也不会生成成交概率分数。评估每次追加新版本，不覆盖历史。
+
+**验证状态：** 最新完成的 H1.4 严格 CI 已通过 Ruff、MyPy、OpenAPI / iOS contract、docs、0035 PostgreSQL migration、Alembic drift 与 Backend pytest（416 passed / 1 skipped）；SwiftLint 与 Xcode Build 通过。为补强集成测试的多次运行清理和 Workspace 删除语义，已追加一项测试修正，最终 iOS Unit Tests 与全量 CI 将在该最新 head 再次确认后方可关闭 PR。原生 iOS Opportunity UI 和 Research/Evidence 自动化仍在后续阶段。
