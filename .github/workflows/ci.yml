@@ -43,10 +43,12 @@ jobs:
       # Temporary migration step: capture current repository-wide findings as a reviewed baseline.
       - name: Generate SwiftLint baseline artifact
         run: swiftlint --lenient
+      - name: Verify baseline file
+        run: test -s swiftlint-baseline.json
       - uses: actions/upload-artifact@v4
         with:
           name: swiftlint-baseline
-          path: .swiftlint-baseline.json
+          path: swiftlint-baseline.json
           if-no-files-found: error
       - name: Build
         run: make ios-build
