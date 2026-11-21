@@ -8,6 +8,7 @@ protocol CustomerRepository {
     func createCustomer(_ request: CustomerCreateRequest) async throws -> Customer
     func customerPlaces(customerId: String) async throws -> [CustomerPlace]
     func listPlaces(query: String?, countryCode: String?, page: PageRequest) async throws -> Page<PlaceCatalogItem>
+    func listGlobalCustomerMapLocations(filters: GlobalCustomerMapFilters, page: PageRequest) async throws -> GlobalCustomerMapResponse
     func createAndLinkCustomerPlace(
         customerId: String,
         place: PlaceCreateRequest,
@@ -50,6 +51,13 @@ final class RemoteCustomerRepository: CustomerRepository {
             Endpoints.listPlaces(query: query, countryCode: countryCode, page: page),
             as: Page<PlaceCatalogItem>.self
         )
+    }
+
+    func listGlobalCustomerMapLocations(
+        filters: GlobalCustomerMapFilters,
+        page: PageRequest
+    ) async throws -> GlobalCustomerMapResponse {
+        try await client.send(Endpoints.customerMapLocations(filters: filters, page: page), as: GlobalCustomerMapResponse.self)
     }
 
     func createAndLinkCustomerPlace(
@@ -178,6 +186,77 @@ final class LocalCustomerRepository: CustomerRepository {
         let items = Array(filtered.dropFirst(offset).prefix(page.limit))
         let next = offset + page.limit < filtered.count ? "offset:\(offset + page.limit)" : nil
         return Page(items: items, nextCursor: next)
+    }
+
+    func listGlobalCustomerMapLocations(
+        filters: GlobalCustomerMapFilters,
+        page: PageRequest
+    ) async throws -> GlobalCustomerMapResponse {
+        let customerRows = try database.loadPayloads(table: "customers", order: "name")
+        let customers = try customerRows.map { try DateCoding.decoder().decode(Customer.self, from: $0) }
+        let customerByID = Dictionary(uniqueKeysWithValues: customers.map { ($0.id, $0) })
+        let links = try database.loadPayloads(table: "customer_places")
+        var locations: [GlobalCustomerMapLocation] = []
+        var linkedIDs = Set<String>()
+
+        for payload in links {
+            let link = try DateCoding.decoder().decode(LocalCustomerPlaceLink.self, from: payload)
+            guard let customer = customerByID[link.customerId] else { continue }
+            let place = try localPlace(id: link.placeId)
+            linkedIDs.insert(customer.id)
+            locations.append(GlobalCustomerMapLocation(
+                customer: GlobalMapCustomer(
+                    id: customer.id, name: customer.name, tier: customer.tier,
+                    countryCode: customer.countryCode, industry: customer.industry, status: customer.status
+                ),
+                place: GlobalMapPlace(
+                    id: link.placeId, label: link.label, isPrimary: link.isPrimary, name: place.name,
+                    addressLine: place.address, city: place.city, region: place.region,
+                    countryCode: place.countryCode, timezone: place.timezone,
+                    lat: place.latitude, lon: place.longitude,
+                    geocodeStatus: place.geocodeStatus ?? (
+                        place.latitude != nil && place.longitude != nil ? "RESOLVED" : "MISSING"
+                    ),
+                    geocodeSource: place.geocodeSource, geocodeConfidence: place.geocodeConfidence
+                )
+            ))
+        }
+
+        let search = filters.query?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tier = filters.tier?.uppercased()
+        let country = filters.countryCode?.uppercased()
+        let quality = filters.geocodeStatus?.uppercased()
+        let filtered = locations.filter { item in
+            if let tier, !tier.isEmpty, item.customer.tier.uppercased() != tier { return false }
+            if let country, !country.isEmpty, item.place.countryCode?.uppercased() != country { return false }
+            if let quality, !quality.isEmpty, item.place.geocodeStatus.uppercased() != quality { return false }
+            guard let search, !search.isEmpty else { return true }
+            let values = [
+                item.customer.name, item.customer.industry, item.place.name,
+                item.place.addressLine, item.place.city, item.place.region
+            ].compactMap { $0 }
+            return values.contains { $0.localizedCaseInsensitiveContains(search) }
+        }.sorted {
+            let left = $0.place.countryCode ?? "ZZ"
+            let right = $1.place.countryCode ?? "ZZ"
+            if left != right { return left < right }
+            if $0.customer.name != $1.customer.name { return $0.customer.name < $1.customer.name }
+            if $0.place.isPrimary != $1.place.isPrimary { return $0.place.isPrimary }
+            return $0.place.name < $1.place.name
+        }
+
+        let offset = page.cursor.flatMap { Int($0.replacingOccurrences(of: "offset:", with: "")) } ?? 0
+        let items = Array(filtered.dropFirst(offset).prefix(page.limit))
+        let mapped = filtered.filter { $0.place.hasValidCoordinates }.count
+        let countries = Dictionary(grouping: filtered, by: { $0.place.countryCode ?? "UNKNOWN" }).mapValues(\.count)
+        let summary = GlobalCustomerMapSummary(
+            customersWithLocations: Set(filtered.map { $0.customer.id }).count,
+            customersWithoutLocations: max(0, customers.count - linkedIDs.count),
+            locationsTotal: filtered.count, locationsMapped: mapped,
+            locationsMissingCoordinates: filtered.count - mapped, countries: countries
+        )
+        let next = offset + page.limit < filtered.count ? "offset:\(offset + page.limit)" : nil
+        return GlobalCustomerMapResponse(items: items, summary: summary, nextCursor: next)
     }
 
     func createAndLinkCustomerPlace(

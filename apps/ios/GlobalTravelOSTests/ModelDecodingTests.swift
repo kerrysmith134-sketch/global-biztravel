@@ -31,6 +31,41 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(string.geocodeConfidence, Decimal(string: "0.82"))
     }
 
+    func testGlobalCustomerMapResponseDecodesNestedCustomerPlaceAndSummary() throws {
+        let json = """
+        {
+          "items": [{
+            "customer": {
+              "id": "customer-1", "name": "ACME Energy", "tier": "A",
+              "country_code": "DE", "industry": "Energy", "status": "ACTIVE"
+            },
+            "place": {
+              "id": "place-1", "label": "Headquarters", "is_primary": true,
+              "name": "Berlin HQ", "address_line": "Industriestrasse 12",
+              "city": "Berlin", "region": "Berlin", "country_code": "DE",
+              "timezone": "Europe/Berlin", "lat": 52.52, "lon": 13.405,
+              "geocode_status": "RESOLVED", "geocode_source": "client",
+              "geocode_confidence": "0.98"
+            }
+          }],
+          "summary": {
+            "customers_with_locations": 1, "customers_without_locations": 2,
+            "locations_total": 3, "locations_mapped": 2,
+            "locations_missing_coordinates": 1, "countries": {"DE": 2, "NL": 1}
+          },
+          "next_cursor": "200"
+        }
+        """
+        let value = try DateCoding.decode(GlobalCustomerMapResponse.self, fromJSON: json)
+        XCTAssertEqual(value.items.count, 1)
+        XCTAssertEqual(value.items[0].customer.name, "ACME Energy")
+        XCTAssertEqual(value.items[0].place.displayAddress, "Industriestrasse 12 · Berlin · DE")
+        XCTAssertTrue(value.items[0].place.hasValidCoordinates)
+        XCTAssertEqual(value.summary.locationsMissingCoordinates, 1)
+        XCTAssertEqual(value.summary.countries["DE"], 2)
+        XCTAssertEqual(value.nextCursor, "200")
+    }
+
     func testCustomerPlaceDecodesAddressAndGeocodeProvenance() throws {
         let json = """
         {

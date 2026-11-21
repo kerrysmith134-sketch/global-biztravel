@@ -372,6 +372,14 @@ struct MapWorkspaceView: View {
             .navigationTitle("地图")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        GlobalCustomerMapView(environment: environment)
+                    } label: {
+                        Image(systemName: "globe")
+                    }
+                    .accessibilityLabel("打开全球客户地图")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await viewModel.load() }

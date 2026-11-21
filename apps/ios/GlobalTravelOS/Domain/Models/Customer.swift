@@ -372,3 +372,86 @@ struct PlaceCreateRequest: Encodable, Equatable {
         return nil
     }
 }
+
+
+struct GlobalCustomerMapFilters: Equatable {
+    var query: String?
+    var tier: String?
+    var countryCode: String?
+    var geocodeStatus: String?
+    static let all = GlobalCustomerMapFilters()
+}
+
+struct GlobalMapCustomer: Decodable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var tier: String
+    var countryCode: String?
+    var industry: String?
+    var status: String
+}
+
+struct GlobalMapPlace: Decodable, Equatable, Identifiable {
+    var id: String
+    var label: String?
+    var isPrimary: Bool
+    var name: String
+    var addressLine: String?
+    var city: String?
+    var region: String?
+    var countryCode: String?
+    var timezone: String?
+    var lat: Double?
+    var lon: Double?
+    var geocodeStatus: String
+    var geocodeSource: String?
+    var geocodeConfidence: Decimal?
+
+    var hasValidCoordinates: Bool {
+        guard let lat, let lon else { return false }
+        return (-90.0...90.0).contains(lat) && (-180.0...180.0).contains(lon)
+    }
+
+    var displayAddress: String {
+        let cityText = city?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let regionText = region?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let visibleRegion = regionText.flatMap {
+            $0.isEmpty || $0.caseInsensitiveCompare(cityText ?? "") == .orderedSame ? nil : $0
+        }
+        return [addressLine, cityText, visibleRegion, countryCode]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
+    var confidenceLabel: String? {
+        guard let geocodeConfidence else { return nil }
+        return String(format: "%.0f%%", NSDecimalNumber(decimal: geocodeConfidence).doubleValue * 100)
+    }
+}
+
+struct GlobalCustomerMapLocation: Decodable, Equatable, Identifiable {
+    var customer: GlobalMapCustomer
+    var place: GlobalMapPlace
+    var id: String { "\(customer.id)::\(place.id)" }
+}
+
+struct GlobalCustomerMapSummary: Decodable, Equatable {
+    var customersWithLocations: Int
+    var customersWithoutLocations: Int
+    var locationsTotal: Int
+    var locationsMapped: Int
+    var locationsMissingCoordinates: Int
+    var countries: [String: Int]
+
+    static let empty = GlobalCustomerMapSummary(
+        customersWithLocations: 0, customersWithoutLocations: 0, locationsTotal: 0,
+        locationsMapped: 0, locationsMissingCoordinates: 0, countries: [:]
+    )
+}
+
+struct GlobalCustomerMapResponse: Decodable, Equatable {
+    var items: [GlobalCustomerMapLocation]
+    var summary: GlobalCustomerMapSummary
+    var nextCursor: String?
+}

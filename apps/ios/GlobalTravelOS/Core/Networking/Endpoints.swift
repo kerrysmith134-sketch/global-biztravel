@@ -203,6 +203,24 @@ enum Endpoints {
         )
     }
 
+    static func customerMapLocations(filters: GlobalCustomerMapFilters, page: PageRequest) -> APIRequest {
+        var items = [URLQueryItem(name: "limit", value: String(page.limit))]
+        if let query = filters.query, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "query", value: query))
+        }
+        if let tier = filters.tier, !tier.isEmpty {
+            items.append(URLQueryItem(name: "tier", value: tier.uppercased()))
+        }
+        if let country = filters.countryCode, !country.isEmpty {
+            items.append(URLQueryItem(name: "country_code", value: country.uppercased()))
+        }
+        if let quality = filters.geocodeStatus, !quality.isEmpty {
+            items.append(URLQueryItem(name: "geocode_status", value: quality.uppercased()))
+        }
+        if let cursor = page.cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return APIRequest(method: .get, path: "/v1/customers/map-locations", queryItems: items)
+    }
+
     static func createCustomer(_ body: CustomerCreateRequest) throws -> APIRequest {
         APIRequest(
             method: .post,
