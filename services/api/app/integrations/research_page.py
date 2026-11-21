@@ -212,22 +212,23 @@ def _request_pinned(url: str, address: str, timeout: float, max_bytes: int) -> t
         connection = _PinnedHTTPSConnection(host, port, address, timeout)
     else:
         connection = _PinnedHTTPConnection(host, port, address, timeout)
-    connection.request(
-        "GET",
-        target,
-        headers={
-            "User-Agent": "GlobalBusinessTravelResearchBot/1.0",
-            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.8",
-            "Accept-Encoding": "identity",
-            "Connection": "close",
-        },
-    )
-    response = connection.getresponse()
-    headers = {key.lower(): value.strip() for key, value in response.getheaders()}
-    raw = response.read(max_bytes + 1)
-    status = response.status
-    connection.close()
-    return status, headers, raw
+    try:
+        connection.request(
+            "GET",
+            target,
+            headers={
+                "User-Agent": "GlobalBusinessTravelResearchBot/1.0",
+                "Accept": "text/html,application/xhtml+xml,text/plain;q=0.8",
+                "Accept-Encoding": "identity",
+                "Connection": "close",
+            },
+        )
+        response = connection.getresponse()
+        headers = {key.lower(): value.strip() for key, value in response.getheaders()}
+        raw = response.read(max_bytes + 1)
+        return response.status, headers, raw
+    finally:
+        connection.close()
 
 
 def _parse_published_at(value: str | None) -> datetime | None:
