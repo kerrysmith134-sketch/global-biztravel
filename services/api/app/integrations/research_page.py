@@ -278,7 +278,7 @@ class _ArticleParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = {key.lower(): (value or "") for key, value in attrs}
         if self._skip_stack:
-            if tag in _SKIP_TAGS and tag not in _VOID_TAGS:
+            if tag not in _VOID_TAGS:
                 self._skip_stack.append(tag)
             return
 
@@ -316,8 +316,10 @@ class _ArticleParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if self._skip_stack:
-            if self._skip_stack[-1] == tag:
-                self._skip_stack.pop()
+            if tag in self._skip_stack:
+                # Close the matching element and any malformed descendants above it.
+                index = len(self._skip_stack) - 1 - self._skip_stack[::-1].index(tag)
+                del self._skip_stack[index:]
             return
         if tag == "title":
             self._in_title = False
