@@ -86,6 +86,7 @@ struct TripVisit: Codable, Equatable, Identifiable {
 /// 新增拜访请求（客户端本地组装；服务端契约 POST /trips/{id}/visits 的字段子集）。
 struct VisitCreateRequest: Codable, Equatable {
     var placeId: String?
+    var customerId: String?
     /// 新客户地点（placeId 为空时由仓储先创建地点）。
     var placeName: String?
     var city: String?
@@ -102,6 +103,7 @@ struct VisitCreateRequest: Codable, Equatable {
 
     init(
         placeId: String? = nil,
+        customerId: String? = nil,
         placeName: String? = nil,
         city: String? = nil,
         countryCode: String? = nil,
@@ -115,6 +117,7 @@ struct VisitCreateRequest: Codable, Equatable {
         movementMode: String = "GROUND"
     ) {
         self.placeId = placeId
+        self.customerId = customerId
         self.placeName = placeName
         self.city = city
         self.countryCode = countryCode
