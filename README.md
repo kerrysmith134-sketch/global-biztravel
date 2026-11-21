@@ -5,6 +5,8 @@
 多线事务"变成"系统主动推进、人只做决策"。
 
 设计文档：`docs/design/global-business-travel-os-design-v2.0.md`（v2.0，优化后正式版）
+市场情报引擎：`docs/design/market-intelligence-engine-v1.0.md`（Sprint H，通用市场情报领域与 Agent 架构）
+H1 实施计划：`docs/review/sprint-h1-execution-plan.md`（领域基础、证据数据架构与工程验收）
 评审报告：`docs/review/design-review-and-optimization-plan.md`
 实施进度：`docs/review/implementation-status.md`（按里程碑与批次逐项核对，含验证记录）
 
