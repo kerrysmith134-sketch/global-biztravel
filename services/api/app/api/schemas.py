@@ -170,6 +170,21 @@ class CustomerMapLocationRead(BaseModel):
     place: CustomerMapPlaceRead
 
 
+class CustomerMapCountryCoverageRead(BaseModel):
+    """按实际关联地点归集的国家客户覆盖；客户按国家去重，不表示外部市场规模。"""
+
+    country_code: str
+    customers_total: int = 0
+    tier_a_customers: int = 0
+    tier_b_customers: int = 0
+    tier_c_customers: int = 0
+    active_customers: int = 0
+    prospect_customers: int = 0
+    inactive_customers: int = 0
+    locations_total: int = 0
+    locations_mapped: int = 0
+
+
 class CustomerMapSummaryRead(BaseModel):
     customers_with_locations: int = 0
     customers_without_locations: int = 0
@@ -177,6 +192,7 @@ class CustomerMapSummaryRead(BaseModel):
     locations_mapped: int = 0
     locations_missing_coordinates: int = 0
     countries: dict[str, int] = Field(default_factory=dict)
+    country_stats: list[CustomerMapCountryCoverageRead] = Field(default_factory=list)
 
 
 class CustomerMapLocationsRead(BaseModel):
