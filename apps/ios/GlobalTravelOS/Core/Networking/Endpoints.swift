@@ -295,6 +295,21 @@ enum Endpoints {
         )
     }
 
+    // MARK: - User-intent research
+
+    static func createResearchPlan(_ body: ResearchPlanCreateRequest) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/research/plans",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func researchPlan(id: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/research/plans/\(id)")
+    }
+
     // MARK: - Traveler profile
 
     static func travelerProfile() -> APIRequest {
