@@ -96,3 +96,84 @@ struct CustomerCreateRequest: Codable, Equatable {
         self.notes = notes
     }
 }
+
+
+/// One address explicitly linked to a customer by the backend customer_places relation.
+/// Coordinates and geocoding provenance belong to the address, not to the customer record.
+struct CustomerPlace: Decodable, Equatable, Identifiable {
+    var placeId: String
+    var label: String?
+    var isPrimary: Bool
+    var name: String
+    var addressLine: String?
+    var city: String?
+    var region: String?
+    var countryCode: String?
+    var lat: Double?
+    var lon: Double?
+    var geocodeStatus: String
+    var geocodeSource: String?
+    var geocodeConfidence: Decimal?
+
+    var id: String { placeId }
+
+    var hasValidCoordinates: Bool {
+        guard let lat, let lon else { return false }
+        return (-90.0...90.0).contains(lat) && (-180.0...180.0).contains(lon)
+    }
+
+    var displayAddress: String {
+        [addressLine, city, region, countryCode]
+            .compactMap { $0 }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
+    var confidenceLabel: String? {
+        guard let geocodeConfidence else { return nil }
+        let value = NSDecimalNumber(decimal: geocodeConfidence).doubleValue
+        return String(format: "%.0f%%", value * 100)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case placeId
+        case label
+        case isPrimary
+        case name
+        case addressLine
+        case city
+        case region
+        case countryCode
+        case lat
+        case lon
+        case geocodeStatus
+        case geocodeSource
+        case geocodeConfidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        placeId = try container.decode(String.self, forKey: .placeId)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        isPrimary = try container.decodeIfPresent(Bool.self, forKey: .isPrimary) ?? false
+        name = try container.decode(String.self, forKey: .name)
+        addressLine = try container.decodeIfPresent(String.self, forKey: .addressLine)
+        city = try container.decodeIfPresent(String.self, forKey: .city)
+        region = try container.decodeIfPresent(String.self, forKey: .region)
+        countryCode = try container.decodeIfPresent(String.self, forKey: .countryCode)
+        lat = try container.decodeIfPresent(Double.self, forKey: .lat)
+        lon = try container.decodeIfPresent(Double.self, forKey: .lon)
+        geocodeStatus = try container.decode(String.self, forKey: .geocodeStatus)
+        geocodeSource = try container.decodeIfPresent(String.self, forKey: .geocodeSource)
+        geocodeConfidence = try container.decodeDecimalIfPresent(forKey: .geocodeConfidence)
+    }
+}
+
+/// Map projection keeps the customer identity beside its address relation.
+struct CustomerMapLocation: Equatable, Identifiable {
+    var customer: Customer
+    var place: CustomerPlace
+
+    var id: String { place.id }
+}
