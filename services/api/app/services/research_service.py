@@ -142,22 +142,23 @@ def _normalise_plan(
         # The user's own wording is the only safe fallback query; never add an industry.
         queries = [request[:500]]
 
+    raw_domain = raw.get("domain")
+    domain = raw_domain.strip()[:200] if isinstance(raw_domain, str) and raw_domain.strip() else None
+    raw_time_scope = raw.get("time_scope")
+    time_scope = (
+        raw_time_scope.strip()[:200]
+        if isinstance(raw_time_scope, str) and raw_time_scope.strip()
+        else None
+    )
+
     plan = {
         "intent_summary": str(raw.get("intent_summary") or request)[:1000],
         "objective": str(raw.get("objective") or request)[:1000],
         "subject": str(raw.get("subject") or "以用户请求中明确指定的对象为准")[:500],
-        "domain": (
-            str(raw.get("domain"))[:200]
-            if isinstance(raw.get("domain"), str) and raw.get("domain").strip()
-            else None
-        ),
+        "domain": domain,
         "geographies": _string_list(raw.get("geographies"), limit=MAX_LIST_ITEMS, item_limit=120),
         "entities": _string_list(raw.get("entities"), limit=MAX_LIST_ITEMS, item_limit=200),
-        "time_scope": (
-            str(raw.get("time_scope"))[:200]
-            if isinstance(raw.get("time_scope"), str) and raw.get("time_scope").strip()
-            else None
-        ),
+        "time_scope": time_scope,
         "research_questions": _string_list(
             raw.get("research_questions"), limit=MAX_QUESTIONS, item_limit=1000
         ),
@@ -291,7 +292,9 @@ def create_research_plan(
 
     # Keep potentially sensitive pasted material out of generic JSONB run logs.
     # The LLM invocation hash and Evidence digest retain provenance without duplicating content.
-    agent_input = {key: value for key, value in variables.items() if key != "user_provided_context"}
+    agent_input: dict[str, Any] = {
+        key: value for key, value in variables.items() if key != "user_provided_context"
+    }
     if payload.context_text:
         agent_input["user_provided_context_sha256"] = _sha256(payload.context_text)
         agent_input["user_provided_context_character_count"] = len(payload.context_text)
