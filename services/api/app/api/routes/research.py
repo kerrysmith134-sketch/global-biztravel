@@ -19,7 +19,11 @@ from app.api.deps import (
     require_role,
 )
 from app.api.idempotent import IdempotentWrite
-from app.api.schemas import ResearchPlanCreate, ResearchPlanRead
+from app.api.schemas import (
+    ResearchExecuteAccepted,
+    ResearchPlanCreate,
+    ResearchPlanRead,
+)
 from app.services import research_service
 
 router = APIRouter(tags=["research"])
@@ -55,6 +59,37 @@ def create_plan(
         user_id=context.user_id,
     )
     return guard.finish(status_code=status.HTTP_201_CREATED, body=plan)
+
+
+@router.post(
+    "/research/plans/{plan_id}:execute",
+    response_model=ResearchExecuteAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="启动已审阅研究计划的外部检索（异步）",
+)
+def execute_plan(
+    plan_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=f"POST /v1/research/plans/{plan_id}:execute",
+        key=idempotency_key,
+        payload={"plan_id": str(plan_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    body = research_service.enqueue_research_execution(
+        session,
+        context.organization_id,
+        plan_id,
+        user_id=context.user_id,
+    )
+    return guard.finish(status_code=status.HTTP_202_ACCEPTED, body=body)
 
 
 @router.get(
