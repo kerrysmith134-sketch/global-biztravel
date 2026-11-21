@@ -238,3 +238,137 @@ struct LocalCustomerPlaceLink: Codable, Equatable {
     var label: String?
     var isPrimary: Bool
 }
+
+
+/// Searchable organization-level place returned by GET /v1/places.
+struct PlaceCatalogItem: Decodable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var addressLine: String?
+    var city: String?
+    var region: String?
+    var countryCode: String?
+    var timezone: String?
+    var lat: Double?
+    var lon: Double?
+    var geocodeStatus: String
+    var geocodeSource: String?
+    var geocodeConfidence: Decimal?
+
+    init(
+        id: String,
+        name: String,
+        addressLine: String? = nil,
+        city: String? = nil,
+        region: String? = nil,
+        countryCode: String? = nil,
+        timezone: String? = nil,
+        lat: Double? = nil,
+        lon: Double? = nil,
+        geocodeStatus: String = "MISSING",
+        geocodeSource: String? = nil,
+        geocodeConfidence: Decimal? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.addressLine = addressLine
+        self.city = city
+        self.region = region
+        self.countryCode = countryCode
+        self.timezone = timezone
+        self.lat = lat
+        self.lon = lon
+        self.geocodeStatus = geocodeStatus
+        self.geocodeSource = geocodeSource
+        self.geocodeConfidence = geocodeConfidence
+    }
+
+    var hasValidCoordinates: Bool {
+        guard let lat, let lon else { return false }
+        return (-90.0...90.0).contains(lat) && (-180.0...180.0).contains(lon)
+    }
+
+    var displayAddress: String {
+        [addressLine, city, region, countryCode]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
+    var confidenceLabel: String? {
+        guard let geocodeConfidence else { return nil }
+        return String(format: "%.0f%%", NSDecimalNumber(decimal: geocodeConfidence).doubleValue * 100)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, addressLine, city, region, countryCode, timezone
+        case lat, lon, geocodeStatus, geocodeSource, geocodeConfidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        addressLine = try container.decodeIfPresent(String.self, forKey: .addressLine)
+        city = try container.decodeIfPresent(String.self, forKey: .city)
+        region = try container.decodeIfPresent(String.self, forKey: .region)
+        countryCode = try container.decodeIfPresent(String.self, forKey: .countryCode)
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
+        lat = try container.decodeIfPresent(Double.self, forKey: .lat)
+        lon = try container.decodeIfPresent(Double.self, forKey: .lon)
+        geocodeStatus = try container.decodeIfPresent(String.self, forKey: .geocodeStatus) ?? "MISSING"
+        geocodeSource = try container.decodeIfPresent(String.self, forKey: .geocodeSource)
+        geocodeConfidence = try container.decodeDecimalIfPresent(forKey: .geocodeConfidence)
+    }
+}
+
+/// Request body for POST /v1/places. Coordinates are optional but must be supplied as a pair.
+struct PlaceCreateRequest: Encodable, Equatable {
+    var name: String
+    var addressLine: String?
+    var city: String?
+    var region: String?
+    var countryCode: String?
+    var timezone: String?
+    var lat: Double?
+    var lon: Double?
+
+    init(
+        name: String,
+        addressLine: String? = nil,
+        city: String? = nil,
+        region: String? = nil,
+        countryCode: String? = nil,
+        timezone: String? = nil,
+        lat: Double? = nil,
+        lon: Double? = nil
+    ) {
+        self.name = name
+        self.addressLine = addressLine
+        self.city = city
+        self.region = region
+        self.countryCode = countryCode?.uppercased()
+        self.timezone = timezone
+        self.lat = lat
+        self.lon = lon
+    }
+
+    var validationMessage: String? {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "地点名称不能为空"
+        }
+        guard (lat == nil) == (lon == nil) else {
+            return "纬度和经度必须同时填写，或同时留空"
+        }
+        if let lat, !(-90.0...90.0).contains(lat) {
+            return "纬度必须在 -90 到 90 之间"
+        }
+        if let lon, !(-180.0...180.0).contains(lon) {
+            return "经度必须在 -180 到 180 之间"
+        }
+        if let countryCode, countryCode.count != 2 {
+            return "国家代码必须使用 ISO 二位代码，例如 DE"
+        }
+        return nil
+    }
+}

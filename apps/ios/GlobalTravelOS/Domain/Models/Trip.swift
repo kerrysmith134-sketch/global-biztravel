@@ -13,6 +13,10 @@ struct Place: Codable, Equatable, Identifiable {
     var longitude: Double?
     var city: String?
     var address: String?
+    var region: String?
+    var geocodeStatus: String?
+    var geocodeSource: String?
+    var geocodeConfidence: Decimal?
 
     init(
         id: String? = nil,
@@ -22,7 +26,11 @@ struct Place: Codable, Equatable, Identifiable {
         latitude: Double? = nil,
         longitude: Double? = nil,
         city: String? = nil,
-        address: String? = nil
+        address: String? = nil,
+        region: String? = nil,
+        geocodeStatus: String? = nil,
+        geocodeSource: String? = nil,
+        geocodeConfidence: Decimal? = nil
     ) {
         self.id = id
         self.name = name
@@ -32,6 +40,10 @@ struct Place: Codable, Equatable, Identifiable {
         self.longitude = longitude
         self.city = city
         self.address = address
+        self.region = region
+        self.geocodeStatus = geocodeStatus
+        self.geocodeSource = geocodeSource
+        self.geocodeConfidence = geocodeConfidence
     }
 
     var hasCoordinates: Bool {

@@ -179,6 +179,30 @@ enum Endpoints {
         return APIRequest(method: .get, path: "/v1/customers", queryItems: items)
     }
 
+    /// Organization-level place catalog for attaching a location to one or more customers.
+    static func listPlaces(query: String?, countryCode: String?, page: PageRequest) -> APIRequest {
+        var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(page.limit))]
+        if let query, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "query", value: query))
+        }
+        if let countryCode, !countryCode.isEmpty {
+            items.append(URLQueryItem(name: "country_code", value: countryCode.uppercased()))
+        }
+        if let cursor = page.cursor {
+            items.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        return APIRequest(method: .get, path: "/v1/places", queryItems: items)
+    }
+
+    static func createPlace(_ body: PlaceCreateRequest) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/places",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func createCustomer(_ body: CustomerCreateRequest) throws -> APIRequest {
         APIRequest(
             method: .post,
@@ -210,6 +234,13 @@ enum Endpoints {
             path: "/v1/customers/\(customerId)/places",
             body: try JSONSerialization.data(withJSONObject: payload),
             idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func unlinkCustomerPlace(customerId: String, placeId: String) -> APIRequest {
+        APIRequest(
+            method: .delete,
+            path: "/v1/customers/\(customerId)/places/\(placeId)"
         )
     }
 

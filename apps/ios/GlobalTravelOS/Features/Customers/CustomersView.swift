@@ -148,6 +148,7 @@ struct CustomerDetailView: View {
                     Text("未登记联系人").foregroundStyle(.secondary)
                 }
             }
+            CustomerAddressBookSection(customerId: customer.id)
         }
         .navigationTitle(customer.name)
     }

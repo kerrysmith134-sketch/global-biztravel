@@ -183,6 +183,55 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(storedCount, 2)
     }
 
+    func testCustomerAddressBookCreateSearchAndUnlinkKeepsSharedPlace() async throws {
+        let repository = LocalCustomerRepository(database: database)
+        let customer = try await repository.createCustomer(
+            CustomerCreateRequest(name: "Address Book Customer", tier: "A")
+        )
+        let request = PlaceCreateRequest(
+            name: "Rotterdam Factory",
+            addressLine: "Harbor Road 8",
+            city: "Rotterdam",
+            region: "South Holland",
+            countryCode: "NL",
+            timezone: "Europe/Amsterdam",
+            lat: 51.9244,
+            lon: 4.4777
+        )
+
+        let created = try await repository.createAndLinkCustomerPlace(
+            customerId: customer.id,
+            place: request,
+            label: "工厂",
+            isPrimary: true
+        )
+        XCTAssertTrue(created.isPrimary)
+        XCTAssertEqual(created.region, "South Holland")
+        XCTAssertEqual(created.geocodeStatus, "RESOLVED")
+        XCTAssertEqual(created.geocodeSource, "manual")
+        XCTAssertTrue(created.hasValidCoordinates)
+
+        let catalog = try await repository.listPlaces(
+            query: "Rotterdam",
+            countryCode: "NL",
+            page: PageRequest(limit: 20)
+        )
+        XCTAssertEqual(catalog.items.count, 1)
+        XCTAssertEqual(catalog.items.first?.id, created.placeId)
+        XCTAssertEqual(catalog.items.first?.displayAddress, "Harbor Road 8 · Rotterdam · South Holland · NL")
+
+        try await repository.unlinkCustomerPlace(customerId: customer.id, placeId: created.placeId)
+        XCTAssertTrue(try await repository.customerPlaces(customerId: customer.id).isEmpty)
+
+        // Removing a customer relation must not delete the organization-level shared place.
+        let retained = try await repository.listPlaces(
+            query: "Rotterdam",
+            countryCode: "NL",
+            page: PageRequest(limit: 20)
+        )
+        XCTAssertEqual(retained.items.map(\.id), [created.placeId])
+    }
+
     func testLocalVisitKeepsCRMCustomerAssociation() async throws {
         let trip = try await makeRepository().createTrip(makeRequest(name: "CRM 关联行程"))
         let customer = try await LocalCustomerRepository(database: database).createCustomer(
