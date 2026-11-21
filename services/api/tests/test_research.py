@@ -517,7 +517,15 @@ def test_workspace_research_worker_uses_shared_versioned_evidence_and_plan_query
             headers=headers(),
         )
         assert workspace_evidence.status_code == 200, workspace_evidence.text
-        assert len(workspace_evidence.json()["items"]) == 2
+        # Workspace Evidence view also includes original user-provided ResearchPlan material;
+        # assert the number of shared source/content versions separately.
+        versioned_sources = [
+            item
+            for item in workspace_evidence.json()["items"]
+            if item["subject_type"] == "market_workspace"
+            and item["kind"] == "WEB_SEARCH_RESULT"
+        ]
+        assert len(versioned_sources) == 2
         assert executed_queries == [
             "user-reviewed demand query",
             "user-reviewed competitor query",
