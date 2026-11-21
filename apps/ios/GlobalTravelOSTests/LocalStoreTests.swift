@@ -292,6 +292,59 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(missing.items.map(\.place.id), ["map-rotterdam-factory"])
     }
 
+    func testAddingExistingCustomerAddressToTripReusesPlace() async throws {
+        let trip = try await makeRepository().createTrip(makeRequest(name: "地图客户加入 Mission"))
+        let customerRepository = LocalCustomerRepository(database: database)
+        let customer = try await customerRepository.createCustomer(
+            CustomerCreateRequest(name: "Map Mission Customer", tier: "A")
+        )
+        let place = Place(
+            id: "map-mission-existing-place",
+            name: "Customer Berlin HQ",
+            countryCode: "DE",
+            latitude: 52.5200,
+            longitude: 13.4050,
+            city: "Berlin",
+            address: "Industriestrasse 12",
+            geocodeStatus: "RESOLVED",
+            geocodeSource: "client"
+        )
+        try database.upsert(
+            table: "places",
+            id: place.id ?? "",
+            columns: ["name": place.name, "city": place.city],
+            payload: try DateCoding.encode(place)
+        )
+        _ = try await customerRepository.linkCustomerPlace(
+            customerId: customer.id,
+            request: CustomerPlaceLinkRequest(
+                placeId: place.id ?? "",
+                label: "总部",
+                isPrimary: true
+            )
+        )
+        let placesBefore = try database.count(table: "places")
+
+        let visit = try await LocalVisitRepository(database: database).createVisit(
+            tripId: trip.id,
+            request: VisitCreateRequest(
+                placeId: place.id,
+                customerId: customer.id,
+                title: "客户现场沟通",
+                serviceMinutes: 90,
+                priority: 1,
+                movementMode: "GROUND"
+            )
+        )
+
+        XCTAssertEqual(visit.customerId, customer.id)
+        XCTAssertEqual(visit.placeId, place.id)
+        XCTAssertEqual(try database.count(table: "places"), placesBefore)
+        let storedVisits = try await LocalVisitRepository(database: database).listVisits(tripId: trip.id)
+        XCTAssertEqual(storedVisits.first?.placeId, place.id)
+        XCTAssertEqual(storedVisits.first?.customerId, customer.id)
+    }
+
     func testLocalVisitKeepsCRMCustomerAssociation() async throws {
         let trip = try await makeRepository().createTrip(makeRequest(name: "CRM 关联行程"))
         let customer = try await LocalCustomerRepository(database: database).createCustomer(

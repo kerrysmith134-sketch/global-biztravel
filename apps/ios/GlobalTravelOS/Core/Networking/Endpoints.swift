@@ -162,7 +162,8 @@ enum Endpoints {
         APIRequest(
             method: .post,
             path: "/v1/trips/\(tripId)/visits",
-            body: try JSONSerialization.data(withJSONObject: body)
+            body: try JSONSerialization.data(withJSONObject: body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
         )
     }
 

@@ -135,6 +135,16 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(payload["is_primary"] as? Bool, false)
     }
 
+    func testCreateVisitEndpointCarriesIdempotencyKey() throws {
+        let request = try Endpoints.createVisit(
+            tripId: "trip-1",
+            body: ["place_id": "place-1", "title": "客户拜访"]
+        )
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/v1/trips/trip-1/visits")
+        XCTAssertNotNil(request.idempotencyKey)
+    }
+
     func testVisitCreateRequestEncodesCRMCustomerId() throws {
         let request = VisitCreateRequest(
             customerId: "customer-1",

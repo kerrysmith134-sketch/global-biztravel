@@ -90,8 +90,11 @@ final class GlobalCustomerMapViewModel: ObservableObject {
 
 struct GlobalCustomerMapView: View {
     @StateObject private var model: GlobalCustomerMapViewModel
+    @State private var missionTarget: GlobalCustomerMapLocation?
+    private let environment: AppEnvironment
 
     init(environment: AppEnvironment) {
+        self.environment = environment
         _model = StateObject(wrappedValue: GlobalCustomerMapViewModel(repository: environment.customerRepository))
     }
 
@@ -122,6 +125,13 @@ struct GlobalCustomerMapView: View {
         }
         .task { await model.load() }
         .refreshable { await model.load() }
+        .sheet(item: $missionTarget) { location in
+            CustomerToMissionSheet(
+                location: location,
+                environment: environment,
+                onCreated: { await model.load() }
+            )
+        }
     }
 
     private var metrics: some View {
@@ -311,10 +321,26 @@ struct GlobalCustomerMapView: View {
                 Text(item.place.displayAddress.isEmpty ? "地址信息不完整" : item.place.displayAddress)
                     .font(.caption)
                     .foregroundStyle(DS.ColorToken.textSecondary)
-                NavigationLink {
-                    CustomerDetailView(customer: domainCustomer(item.customer))
-                } label: {
-                    Label("打开客户档案", systemImage: "arrow.up.right").font(.caption.weight(.semibold))
+                HStack(spacing: DS.Spacing.sm) {
+                    Button {
+                        missionTarget = item
+                    } label: {
+                        Label("加入 Mission", systemImage: "plus.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                            .foregroundStyle(.white)
+                            .background(DS.ColorToken.brand, in: RoundedRectangle(cornerRadius: DS.Radius.control))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("global-map-add-to-mission")
+
+                    NavigationLink {
+                        CustomerDetailView(customer: domainCustomer(item.customer))
+                    } label: {
+                        Label("客户档案", systemImage: "arrow.up.right")
+                            .font(.caption.weight(.semibold))
+                            .frame(minHeight: 38)
+                    }
                 }
             }
         }
@@ -362,14 +388,29 @@ struct GlobalCustomerMapKitView: UIViewRepresentable {
     func updateUIView(_ map: MKMapView, context: Context) {
         context.coordinator.onSelect = { selectedID = $0 }
         let valid = locations.filter { $0.place.hasValidCoordinates }
-        let signature = valid.map(\.id).sorted().joined(separator: "|")
+        let signature = valid
+            .sorted { $0.id < $1.id }
+            .map { item in
+                [
+                    item.id,
+                    item.customer.name,
+                    item.customer.tier,
+                    String(item.place.lat ?? .nan),
+                    String(item.place.lon ?? .nan),
+                    item.place.displayAddress,
+                ].joined(separator: "~")
+            }
+            .joined(separator: "||")
         if signature != context.coordinator.signature {
             context.coordinator.signature = signature
+            context.coordinator.selectedID = nil
             map.removeAnnotations(map.annotations.compactMap { $0 as? GlobalCustomerPin })
             let pins = valid.map(GlobalCustomerPin.init(location:))
             map.addAnnotations(pins)
-            if !pins.isEmpty { map.showAnnotations(pins, animated: context.coordinator.didSetRegion) }
-            context.coordinator.didSetRegion = true
+            if !pins.isEmpty && !context.coordinator.didSetRegion {
+                map.showAnnotations(pins, animated: false)
+                context.coordinator.didSetRegion = true
+            }
         }
         guard let selectedID else {
             if let annotation = map.selectedAnnotations.first {
