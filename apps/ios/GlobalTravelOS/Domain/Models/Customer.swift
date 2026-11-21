@@ -55,6 +55,7 @@ struct Customer: Codable, Equatable, Identifiable {
     }
 
     var isActive: Bool { status.uppercased() == "ACTIVE" }
+    var canScheduleVisit: Bool { status.uppercased() != "INACTIVE" }
 
     var contactSummary: String? {
         [primaryContactName, primaryContactEmail, primaryContactPhone]
