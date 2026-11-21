@@ -79,7 +79,7 @@ def record_market_evidence(
     _workspace(session, organization_id, workspace_id)
     canonical = canonicalize_source_ref(canonical_ref)
     digest = sha256(content.encode()).hexdigest()
-    identity = sha256(f"{canonical}\n{digest}".encode("utf-8")).hexdigest()
+    identity = sha256(f"{canonical}\n{digest}".encode()).hexdigest()
     version_ref = f"market-source:v1:{identity}"
     stored_payload = {**payload, "content": content}
     statement = (
@@ -471,7 +471,7 @@ def review_insight(
         raise Unprocessable("不支持的 Insight 审核动作")
     row.status = decision
     row.reviewed_by_user_id = actor_user_id
-    row.reviewed_at = datetime.now(timezone.utc)
+    row.reviewed_at = datetime.now(UTC)
     row.review_note = review_note.strip() if review_note and review_note.strip() else None
     session.add(
         MarketActivityEvent(
