@@ -181,3 +181,16 @@ struct CustomerMapLocation: Equatable, Identifiable {
 
     var id: String { place.id }
 }
+
+/// Request to attach an existing organization place to a CRM customer.
+struct CustomerPlaceLinkRequest: Equatable {
+    var placeId: String
+    var label: String?
+    var isPrimary: Bool
+
+    init(placeId: String, label: String? = nil, isPrimary: Bool = false) {
+        self.placeId = placeId
+        self.label = label
+        self.isPrimary = isPrimary
+    }
+}
