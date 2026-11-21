@@ -291,11 +291,13 @@ struct PlanMapView: View {
                 filterChip(title: "全部日期", selected: selectedDayIndex == nil) {
                     selectedDayIndex = nil
                     selectedStopID = nil
+                    selectedCustomerPlaceID = nil
                     position = .automatic
                 }
                 filterChip(title: "全部拜访", selected: !showsOpenVisitsOnly) {
                     showsOpenVisitsOnly = false
                     selectedStopID = nil
+                    selectedCustomerPlaceID = nil
                 }
                 filterChip(title: "待执行", selected: showsOpenVisitsOnly) {
                     showsOpenVisitsOnly = true
@@ -308,7 +310,7 @@ struct PlanMapView: View {
                         selectedCustomerPlaceID = nil
                     }
                 }
-                ForEach(dayRoutes, id: .dayIndex) { route in
+                ForEach(dayRoutes, id: \.dayIndex) { route in
                     filterChip(
                         title: "第 \(route.dayIndex) 天",
                         selected: selectedDayIndex == route.dayIndex
