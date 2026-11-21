@@ -237,6 +237,49 @@ class MarketQuestionDependency(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+
+class MarketWorkspaceWorkflow(Base):
+    """Connect a long-lived Market Workspace to one or more existing workflows."""
+
+    __tablename__ = "market_workspace_workflows"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            ondelete="CASCADE",
+            name="fk_market_workspace_workflow_workspace_same_org",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workflow_id"],
+            ["workflow_instances.organization_id", "workflow_instances.id"],
+            ondelete="CASCADE",
+            name="fk_market_workspace_workflow_instance_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "workflow_id",
+            name="uq_market_workspace_workflow",
+        ),
+        Index(
+            "ix_market_workspace_workflows_org_workspace",
+            "organization_id", "workspace_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    linked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at()
+
+
 class MarketActivityEvent(Base):
     __tablename__ = "market_activity_events"
     __table_args__ = (
@@ -287,4 +330,5 @@ __all__ = [
     "MarketQuestionDependency",
     "MarketResearchQuestion",
     "MarketWorkspace",
+    "MarketWorkspaceWorkflow",
 ]
