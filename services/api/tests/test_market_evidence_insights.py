@@ -184,7 +184,7 @@ def test_insight_requires_evidence_and_human_review(client: TestClient) -> None:
                 "statement": "Demand is accelerating.",
             },
         )
-        assert ungrounded.status_code == 422, ungrounded.text
+        assert ungrounded.status_code == 400, ungrounded.text
 
         draft_payload = {
             "insight_key": "buyer-demand",
