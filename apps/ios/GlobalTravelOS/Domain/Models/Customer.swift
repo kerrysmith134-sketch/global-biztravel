@@ -114,6 +114,36 @@ struct CustomerPlace: Decodable, Equatable, Identifiable {
     var geocodeSource: String?
     var geocodeConfidence: Decimal?
 
+    init(
+        placeId: String,
+        label: String? = nil,
+        isPrimary: Bool = false,
+        name: String,
+        addressLine: String? = nil,
+        city: String? = nil,
+        region: String? = nil,
+        countryCode: String? = nil,
+        lat: Double? = nil,
+        lon: Double? = nil,
+        geocodeStatus: String,
+        geocodeSource: String? = nil,
+        geocodeConfidence: Decimal? = nil
+    ) {
+        self.placeId = placeId
+        self.label = label
+        self.isPrimary = isPrimary
+        self.name = name
+        self.addressLine = addressLine
+        self.city = city
+        self.region = region
+        self.countryCode = countryCode
+        self.lat = lat
+        self.lon = lon
+        self.geocodeStatus = geocodeStatus
+        self.geocodeSource = geocodeSource
+        self.geocodeConfidence = geocodeConfidence
+    }
+
     var id: String { placeId }
 
     var hasValidCoordinates: Bool {
@@ -193,4 +223,12 @@ struct CustomerPlaceLinkRequest: Equatable {
         self.label = label
         self.isPrimary = isPrimary
     }
+}
+
+/// Local-only persistence payload for the customer_places join relation.
+struct LocalCustomerPlaceLink: Codable, Equatable {
+    var customerId: String
+    var placeId: String
+    var label: String?
+    var isPrimary: Bool
 }
