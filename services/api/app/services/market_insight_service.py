@@ -474,4 +474,4 @@ def review_insight(
         )
     )
     session.flush()
-    return _serialize_insights(session, [row])[0]
+    return _serialize_insights(session, organization_id, [row])[0]
