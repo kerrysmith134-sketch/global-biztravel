@@ -8920,13 +8920,13 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "title": "Idempotency-Key"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -21646,24 +21646,24 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "title": "Job Id"
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Job Id"
           },
           "job_status": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Job Status"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Job Status"
           },
           "extraction_status": {
             "type": "string",
@@ -21679,69 +21679,69 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "title": "Extracted Evidence Id"
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Extracted Evidence Id"
           },
           "agent_run_id": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "title": "Agent Run Id"
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Agent Run Id"
           },
           "failure_code": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Failure Code"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Failure Code"
           },
           "failure_reason": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Failure Reason"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Failure Reason"
           },
           "source_url": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Source Url"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Source Url"
           },
           "extractor_version": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Extractor Version"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Extractor Version"
           },
           "created_at": {
             "type": "string",
