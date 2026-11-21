@@ -41,6 +41,7 @@ from app.api.schemas import (
     MarketOpportunityOutcome,
     MarketOpportunityQualify,
     MarketOpportunityRead,
+    MarketOpportunityStatus,
     MarketOpportunityTransition,
     MarketWorkspaceTripLinkCreate,
     MarketWorkspaceTripLinkRead,
@@ -706,7 +707,7 @@ def list_market_opportunities(
     session: SessionDep,
     limit: int | None = Query(default=None, ge=1),
     cursor: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
+    status_filter: MarketOpportunityStatus | None = Query(default=None, alias="status"),
 ):
     require_role(context, ROLE_VIEWER)
     page_size = clamp_limit(limit)
