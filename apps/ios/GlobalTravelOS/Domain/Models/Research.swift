@@ -32,6 +32,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
     var sourceScope: ResearchSourceScope
     var tripId: String?
     var customerId: String?
+    var workspaceId: String?
     var contextText: String?
     var locale: String
 
@@ -40,6 +41,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
         sourceScope: ResearchSourceScope = .automatic,
         tripId: String? = nil,
         customerId: String? = nil,
+        workspaceId: String? = nil,
         contextText: String? = nil,
         locale: String = Locale.current.identifier
     ) {
@@ -47,6 +49,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
         self.sourceScope = sourceScope
         self.tripId = tripId
         self.customerId = customerId
+        self.workspaceId = workspaceId
         self.contextText = contextText
         self.locale = locale
     }
@@ -167,6 +170,7 @@ struct ResearchPlan: Decodable, Equatable, Identifiable {
     var id: String
     var tripId: String?
     var customerId: String?
+    var workspaceId: String?
     var jobId: String?
     var retrievalError: String?
     var resultsCount: Int
