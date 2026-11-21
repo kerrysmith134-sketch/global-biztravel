@@ -20,6 +20,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy import select
