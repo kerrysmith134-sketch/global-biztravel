@@ -32,6 +32,7 @@ from app.llm.prompts import (
     RESEARCH_PLAN_SYSTEM,
     RESEARCH_PLAN_TEMPLATE_ID,
 )
+from app.models.market import MarketWorkspace, MarketWorkspaceWorkflow
 from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import customer_service, evidence_service, job_service, trip_service
 
@@ -257,6 +258,19 @@ def create_research_plan(
 ) -> ResearchPlanRead:
     requested_scope = payload.source_scope
     include_internal = requested_scope != "EXTERNAL_ONLY"
+
+    if payload.workspace_id is not None:
+        workspace = session.scalars(
+            select(MarketWorkspace).where(
+                MarketWorkspace.organization_id == str(organization_id),
+                MarketWorkspace.id == payload.workspace_id,
+            )
+        ).one_or_none()
+        if workspace is None:
+            raise NotFound(
+                "市场工作空间不存在",
+                details={"workspace_id": str(payload.workspace_id)},
+            )
     selected_context, context_evidence = _selected_context(
         session, organization_id, payload, include_internal=include_internal
     )
@@ -306,6 +320,17 @@ def create_research_plan(
     )
     session.add(workflow)
     session.flush()
+
+    if payload.workspace_id is not None:
+        session.add(
+            MarketWorkspaceWorkflow(
+                organization_id=str(organization_id),
+                workspace_id=payload.workspace_id,
+                workflow_id=workflow.id,
+                linked_by_user_id=str(user_id),
+            )
+        )
+        session.flush()
 
     # Keep potentially sensitive pasted material out of generic JSONB run logs.
     # The LLM invocation hash and Evidence digest retain provenance without duplicating content.
@@ -362,6 +387,7 @@ def create_research_plan(
 
     workflow.payload = {
         "request": payload.request,
+        "workspace_id": str(payload.workspace_id) if payload.workspace_id else None,
         "requested_scope": requested_scope,
         "recommended_scope": recommended_scope,
         "locale": payload.locale,
@@ -454,6 +480,7 @@ def get_research_plan(
     return ResearchPlanRead(
         id=workflow.id,
         trip_id=workflow.trip_id,
+        workspace_id=(UUID(str(payload["workspace_id"])) if payload.get("workspace_id") else None),
         customer_id=(
             UUID(str(payload["customer_id"])) if payload.get("customer_id") else None
         ),
