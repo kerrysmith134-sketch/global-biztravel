@@ -48,13 +48,13 @@ def upgrade() -> None:
                 REFERENCES agent_runs (organization_id, id) ON DELETE RESTRICT,
             CONSTRAINT uq_market_evidence_derivation
                 UNIQUE (organization_id, workspace_id, source_evidence_id, derived_evidence_id, derivation_type),
-            CONSTRAINT ck_market_evidence_derivation_source_not_result
+            CONSTRAINT ck_market_evidence_derivations_source_not_result
                 CHECK (source_evidence_id <> derived_evidence_id),
-            CONSTRAINT ck_market_evidence_derivation_derivation_type_allowed
+            CONSTRAINT ck_market_evidence_derivations_derivation_type_allowed
                 CHECK (derivation_type = 'WEB_PAGE_TEXT_EXTRACTION'),
-            CONSTRAINT ck_market_evidence_derivation_extractor_version_not_blank
+            CONSTRAINT ck_market_evidence_derivations_extractor_version_not_blank
                 CHECK (length(btrim(extractor_version)) > 0),
-            CONSTRAINT ck_market_evidence_derivation_content_hash_length
+            CONSTRAINT ck_market_evidence_derivations_content_hash_length
                 CHECK (length(content_hash) = 64)
         )
         """
