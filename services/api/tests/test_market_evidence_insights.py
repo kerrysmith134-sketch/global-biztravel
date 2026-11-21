@@ -10,6 +10,7 @@ from app.db import org_session
 from app.main import app
 from app.models.market import MarketInsight, MarketInsightEvidence, MarketWorkspace
 from app.models.workflow import Evidence
+from app.services import evidence_service
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
 
@@ -321,3 +322,67 @@ def test_insight_cannot_reference_another_workspaces_evidence(client: TestClient
     finally:
         cleanup_workspace(workspace_one)
         cleanup_workspace(workspace_two)
+
+
+def test_legacy_evidence_record_many_contract_is_unchanged() -> None:
+    workspace_id: str | None = None
+    try:
+        with org_session(UUID(ORG_A)) as session:
+            workspace = MarketWorkspace(
+                organization_id=UUID(ORG_A),
+                name=f"Legacy evidence test {uuid.uuid4().hex[:8]}",
+                status="DRAFT",
+                settings={},
+                owner_user_id=UUID(ADMIN_A),
+                created_by_user_id=UUID(ADMIN_A),
+            )
+            session.add(workspace)
+            session.flush()
+            workspace_id = str(workspace.id)
+            item = {
+                "kind": "LEGACY_REFERENCE",
+                "ref": "legacy://same-reference",
+                "source": "existing caller",
+                "payload": {"unchanged": True},
+            }
+            first = evidence_service.record_many(
+                session,
+                UUID(ORG_A),
+                subject_type="LEGACY_TEST",
+                subject_id=workspace.id,
+                items=[item],
+            )
+            second = evidence_service.record_many(
+                session,
+                UUID(ORG_A),
+                subject_type="LEGACY_TEST",
+                subject_id=workspace.id,
+                items=[item],
+            )
+            assert first == 1
+            assert second == 0
+            rows = session.scalars(
+                select(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "LEGACY_TEST",
+                    Evidence.subject_id == workspace.id,
+                )
+            ).all()
+            assert len(rows) == 1
+            assert rows[0].ref == "legacy://same-reference"
+            assert rows[0].payload == {"unchanged": True}
+    finally:
+        if workspace_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.subject_type == "LEGACY_TEST",
+                        Evidence.subject_id == UUID(workspace_id),
+                    )
+                )
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.id == UUID(workspace_id)
+                    )
+                )
