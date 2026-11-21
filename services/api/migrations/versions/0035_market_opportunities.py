@@ -62,6 +62,8 @@ def upgrade() -> None:
                 CHECK (length(btrim(title)) > 0),
             CONSTRAINT ck_market_opportunities_assessment_confidence_allowed
                 CHECK (assessment_confidence IN ('HIGH','MEDIUM','LOW','INSUFFICIENT')),
+            CONSTRAINT ck_market_opportunities_assessment_confidence_allowed
+                CHECK (assessment_confidence IN ('HIGH','MEDIUM','LOW','INSUFFICIENT')),
             CONSTRAINT ck_market_opportunities_qualified_has_human_approval
                 CHECK (
                     status NOT IN ('QUALIFIED','ACTION_PLANNED','WON','LOST') OR
@@ -90,9 +92,9 @@ def upgrade() -> None:
             CONSTRAINT fk_market_opportunities_created_by_user_id_users
                 FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL,
             CONSTRAINT fk_market_opportunities_qualified_by_user_id_users
-                FOREIGN KEY (qualified_by_user_id) REFERENCES users (id) ON DELETE SET NULL,
+                FOREIGN KEY (qualified_by_user_id) REFERENCES users (id) ON DELETE RESTRICT,
             CONSTRAINT fk_market_opportunities_outcome_recorded_by_user_id_users
-                FOREIGN KEY (outcome_recorded_by_user_id) REFERENCES users (id) ON DELETE SET NULL
+                FOREIGN KEY (outcome_recorded_by_user_id) REFERENCES users (id) ON DELETE RESTRICT
         )
         """
     )
@@ -261,7 +263,7 @@ def upgrade() -> None:
             CONSTRAINT fk_market_workspace_trip_links_linked_by_user_id_users
                 FOREIGN KEY (linked_by_user_id) REFERENCES users (id) ON DELETE SET NULL,
             CONSTRAINT fk_market_workspace_trip_links_unlinked_by_user_id_users
-                FOREIGN KEY (unlinked_by_user_id) REFERENCES users (id) ON DELETE SET NULL
+                FOREIGN KEY (unlinked_by_user_id) REFERENCES users (id) ON DELETE RESTRICT
         )
         """
     )
