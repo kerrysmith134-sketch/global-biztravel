@@ -1,6 +1,6 @@
 # Sprint H1 — Domain Foundation & Evidence Data Architecture
 
-> 状态：工程执行基线（进入实施前须完成代码级核对）  
+> 状态：H1.0 源码审计已完成；H1.1 领域契约冻结待实施  
 > 关联设计：`docs/design/market-intelligence-engine-v1.0.md`  
 > 仓库基线：`main`，核对到的最新提交 `c5e98e2b567f54705a8569d0ef7ced138d7f88b2`  
 > 计划日期：2026-11-21
@@ -43,14 +43,14 @@ H1 不实现完整外部研究抓取、行业策略生成或自主商务外联�
 | 客户与出差 | Customers、Places、Trips、Visits、拜访记录、会议纪要、Trip Outcome 已存在 | 不重复建主对象 |
 | 记忆 | 三层记忆、pgvector、混合检索、复盘 Worker 已有实现记录 | 复用反馈闭环 |
 
-### 2.2 发现的文档版本不一致
+### 2.2 迁移文档漂移（H1.0 已定位）
 
-当前 README 的迁移说明写到 `0030_traveler_nationality`，实施进度文档的迁移清单则列出 `0031_visa_catalog_overrides`。因此：
+源码审计已确认 `0031_visa_catalog_overrides.py` 存在，revision 为 `0031_visa_catalog_overrides`，其父 revision 为 `0030_traveler_nationality`；模型注册入口也已导入 `VisaCatalogOverride`。README 的迁移目录说明曾停留在 0030，属于 README 落后，而不是迁移文件缺失。H1.0 审计报告：`docs/review/sprint-h1-code-audit.md`。
 
-- H1 不得直接依据文档写死下一条迁移编号。
-- 实施前必须读取仓库实际 Alembic migration 文件、执行 `alembic heads` 和 `alembic current`。
-- 若存在多个 head，先按项目既有规则解决迁移图，不得绕过。
-- H1 完成后同步更新 README、实施进度和迁移清单，消除文档漂移。
+- README 已更新为源码最新 revision 0031。
+- H1.1 仍须在实际数据库环境执行 `alembic heads` 和 `alembic current`；源码 revision 图不能证明部署数据库已升级。
+- 新迁移必须从 0031_visa_catalog_overrides 后向前新增，不得改写历史迁移。
+- 若实际数据库发现多个 head 或版本落后，先按项目既有流程解决，不得绕过迁移治理。
 
 ### 2.3 代码审计必须覆盖
 
@@ -65,7 +65,7 @@ H1 不实现完整外部研究抓取、行业策略生成或自主商务外联�
 7. iOS 当前导航、Design System、网络层、离线缓存和 API decode 约定。
 8. 所有组织级表的 RLS policy、FORCE ROW LEVEL SECURITY 和应用角色权限。
 
-**审计交付物**：一份字段级复用矩阵，标出“直接复用 / 最小扩展 / 新增”，并附实际文件路径、模型字段、迁移编号和测试依据。没有源码依据的推断不得进入迁移。
+**审计交付物已完成**：`docs/review/sprint-h1-code-audit.md`，包含字段级复用矩阵、Evidence / Workflow / Customer / Trip / Visit 审查、迁移治理和发布安全发现。未读取源码或未执行的部分均明确标记为待核实。没有源码依据的推断不得进入迁移。
 
 ---
 
