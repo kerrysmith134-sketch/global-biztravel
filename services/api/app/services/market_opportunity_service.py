@@ -767,6 +767,12 @@ def unlink_trip_from_workspace(
             {"trip_id": str(trip_id)},
         )
         session.flush()
+    trip = session.scalars(
+        select(Trip).where(
+            Trip.organization_id == organization_id,
+            Trip.id == trip_id,
+        )
+    ).one_or_none()
     return {
         "id": row.id,
         "workspace_id": row.workspace_id,
@@ -777,11 +783,11 @@ def unlink_trip_from_workspace(
         "linked_at": row.linked_at,
         "unlinked_by_user_id": row.unlinked_by_user_id,
         "unlinked_at": row.unlinked_at,
-        "trip_name": None,
-        "trip_status": None,
-        "window_start": None,
-        "window_end": None,
-        "countries": [],
+        "trip_name": trip.name if trip else None,
+        "trip_status": trip.status if trip else None,
+        "window_start": trip.window_start if trip else None,
+        "window_end": trip.window_end if trip else None,
+        "countries": trip.countries if trip else [],
     }
 
 
