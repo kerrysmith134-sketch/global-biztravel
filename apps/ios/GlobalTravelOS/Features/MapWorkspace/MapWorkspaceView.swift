@@ -48,6 +48,7 @@ final class MapWorkspaceViewModel: ObservableObject {
     func selectTrip(_ id: String) {
         guard id != selectedTripID else { return }
         errorMessage = nil
+        planChangeMessage = nil
         selectedTripID = id
         visits = []
         customers = []
@@ -263,7 +264,7 @@ struct MapWorkspaceView: View {
                 DSCard(padding: DS.Spacing.md) {
                     Label(message, systemImage: "clock.badge.checkmark")
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(DS.ColorToken.success)
+                        .foregroundStyle(message.contains("已生成草稿") ? DS.ColorToken.success : DS.ColorToken.warning)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
