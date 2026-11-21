@@ -196,6 +196,23 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/customers/\(customerId)/places")
     }
 
+    static func linkCustomerPlace(
+        customerId: String,
+        request: CustomerPlaceLinkRequest
+    ) throws -> APIRequest {
+        var payload: [String: Any] = [
+            "place_id": request.placeId,
+            "is_primary": request.isPrimary,
+        ]
+        if let label = request.label { payload["label"] = label }
+        return APIRequest(
+            method: .post,
+            path: "/v1/customers/\(customerId)/places",
+            body: try JSONSerialization.data(withJSONObject: payload),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     // MARK: - Assistant
 
     static func createAssistantConversation(body: [String: String]) throws -> APIRequest {
