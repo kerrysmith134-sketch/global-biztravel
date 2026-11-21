@@ -26,7 +26,8 @@ struct PlanCalendarView: View {
             }
             .padding()
         }
-        .navigationTitle("行程日历")\n        .background(DS.ColorToken.canvas.ignoresSafeArea())
+        .navigationTitle("行程日历")
+        .background(DS.ColorToken.canvas.ignoresSafeArea())
     }
 
     // MARK: - 单日时间轴
