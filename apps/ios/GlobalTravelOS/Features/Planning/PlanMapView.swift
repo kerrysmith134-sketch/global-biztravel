@@ -210,7 +210,7 @@ struct PlanMapView: View {
                         MapCompass()
                         MapScaleView()
                     }
-                    .accessibilityLabel("商务拜访点位顺序示意地图；虚线不代表真实道路导航路线")
+                    .accessibilityLabel(dayRoutes.isEmpty ? "客户地址地图" : "商务拜访点位顺序示意地图；虚线不代表真实道路导航路线")
                     if let selectedStop {
                         selectedStopDrawer(selectedStop)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -223,12 +223,16 @@ struct PlanMapView: View {
                     if !visibleDayRoutes.isEmpty { routeLegend }
                 }
                 .animation(.easeInOut(duration: DS.Motion.standard), value: selectedStopID)
+                .animation(.easeInOut(duration: DS.Motion.standard), value: selectedCustomerPlaceID)
             }
         }
         .navigationTitle(title)
         .onAppear { position = .automatic }
         .onChange(of: customerLocations.map(\.id)) { oldIDs, newIDs in
             if oldIDs.isEmpty && !newIDs.isEmpty { position = .automatic }
+        }
+        .onChange(of: selectedStopID) { _, newValue in
+            if newValue != nil { selectedCustomerPlaceID = nil }
         }
         .onChange(of: plan?.id) { _, _ in
             selectedStopID = nil
