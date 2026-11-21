@@ -18,7 +18,7 @@ struct PlanMapView: View {
         var color: Color
     }
 
-    private static let palette: [Color] = [.blue, .green, .orange, .purple, .teal, .pink, .indigo]
+    private static let palette: [Color] = DS.ColorToken.routePalette
 
     /// 每天一条连续路径：出发地/上一段终点 → 当日各停靠（跳过缺坐标的点）。
     private var dayRoutes: [DayRoute] {
