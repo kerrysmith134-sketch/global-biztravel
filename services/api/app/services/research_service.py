@@ -289,12 +289,19 @@ def create_research_plan(
     session.add(workflow)
     session.flush()
 
+    # Keep potentially sensitive pasted material out of generic JSONB run logs.
+    # The LLM invocation hash and Evidence digest retain provenance without duplicating content.
+    agent_input = {key: value for key, value in variables.items() if key != "user_provided_context"}
+    if payload.context_text:
+        agent_input["user_provided_context_sha256"] = _sha256(payload.context_text)
+        agent_input["user_provided_context_character_count"] = len(payload.context_text)
+
     agent_run = AgentRun(
         organization_id=str(organization_id),
         workflow_id=workflow.id,
         agent_type=AGENT_TYPE,
         status="RUNNING",
-        input=variables,
+        input=agent_input,
     )
     session.add(agent_run)
     session.flush()
@@ -406,6 +413,9 @@ def get_research_plan(
     return ResearchPlanRead(
         id=workflow.id,
         trip_id=workflow.trip_id,
+        customer_id=(
+            UUID(str(payload["customer_id"])) if payload.get("customer_id") else None
+        ),
         request=str(payload.get("request") or ""),
         requested_scope=str(payload.get("requested_scope") or "AUTO"),
         recommended_scope=str(payload.get("recommended_scope") or "INTERNAL_ONLY"),
