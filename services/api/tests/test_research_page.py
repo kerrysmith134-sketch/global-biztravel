@@ -1,3 +1,5 @@
+
+# ruff: noqa: I001  # Keep stdlib/abc imports grouped for the security provider and tests.
 """Security and parsing tests for public research page extraction."""
 
 from __future__ import annotations
