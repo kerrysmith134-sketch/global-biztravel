@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前 head `0030`）
+## 5. 迁移清单（当前源码 head `0033`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -97,6 +97,8 @@
                            0029_assistant_msg_updated_at
                            0030_traveler_nationality
                            0031_visa_catalog_overrides
+                           0032_market_workspace_foundation
+                           0033_market_entities
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -257,3 +259,13 @@
   - `EngineMapping.makePlanDays` 用**设备时区**格式化计划日键 → 跨洲行程日整体偏移一天；
     改为按出发地时区格式化，并新增回归测试（上海 11/17 00:00 = 11/16T16:00Z）。
 - 验证：83 单测全绿；`LocalModeUITests` 增加驾驶舱断言与首启通知权限中断处理，通过并附截图。
+
+## 2026-11-21 市场情报引擎 H1 工程进展
+
+- **H1.0 源码审计**：已核对 Customer、Evidence、WorkflowInstance、AgentRun、BackgroundJob、Trip、Visit、Worker 注册、RLS helper、API 装配与 iOS Repository 组合根；详见 docs/review/sprint-h1-code-audit.md。
+- **H1.1 领域契约**：已冻结 Workspace、上下文快照、ResearchQuestion、MarketEntity、Insight、Opportunity 与证据关系边界；详见 docs/architecture/market-intelligence-domain-contract-v1.0.md。
+- **0032_market_workspace_foundation**：新增 MarketWorkspace、不可变 ContextSnapshot 版本、MarketResearchQuestion、依赖关系、MarketActivityEvent 和 MarketWorkspaceWorkflow；全部新组织表 FORCE RLS，并以 organization_id 复合关系限制跨组织关联。
+- **0033_market_entities**：新增 MarketEntity、Alias、WorkspaceEntity、EntityCustomerLink；候选实体与正式 Customer 分离，正式 Customer 只在 Admin 明确确认后关联；域名相同只提示可能重复，不自动合并，跨 Workspace 复用必须显式提供 entity_id。
+- **ResearchPlan 整合**：复用现有 ResearchPlan Workflow / AgentRun / BackgroundJob / Evidence，Workspace 可关联多个单次研究；不重复建设检索 Worker 和研究计划主表。
+- **API 契约**：已由仓库生成器导出 OpenAPI（107 paths / 182 schemas）并生成 28 份 iOS 契约样本；CI #196 的 Ruff、MyPy、contract-check 已通过。
+- **尚未通过的门禁**：CI #196 在 docs-check 阶段发现 0032/0033 未登记，本次已补齐本迁移清单；PostgreSQL migration、全量 pytest、Alembic drift check、E2E 与当前分支 iOS 完整验证仍以最新严格 CI 为准。不得将未执行项宣称为通过。
