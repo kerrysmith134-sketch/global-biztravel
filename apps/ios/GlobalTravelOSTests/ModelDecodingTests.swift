@@ -673,10 +673,23 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(detail.method, .get)
         XCTAssertEqual(detail.path, "/v1/research/plans/plan-1")
 
-        let execute = Endpoints.executeResearchPlan(id: "plan-1")
+        let execute = try Endpoints.executeResearchPlan(
+            id: "plan-1",
+            body: ResearchExecutionRequest(
+                searchQueries: ["reviewed query one", "reviewed query two"]
+            )
+        )
         XCTAssertEqual(execute.method, .post)
         XCTAssertEqual(execute.path, "/v1/research/plans/plan-1:execute")
         XCTAssertNotNil(execute.idempotencyKey)
+        let executeBody = try XCTUnwrap(execute.body)
+        let executePayload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: executeBody) as? [String: Any]
+        )
+        XCTAssertEqual(
+            executePayload["search_queries"] as? [String],
+            ["reviewed query one", "reviewed query two"]
+        )
     }
 
     func testResearchExecutionAcceptedDecodesQueuedJob() throws {
@@ -709,6 +722,7 @@ final class ModelDecodingTests: XCTestCase {
           "job_id": null,
           "retrieval_error": null,
           "results_count": 0,
+          "reviewed_search_queries": [],
           "plan": {
             "intent_summary": "研究目标企业并准备拜访",
             "objective": "为下周拜访准备事实与问题",
