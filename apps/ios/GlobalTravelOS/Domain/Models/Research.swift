@@ -20,9 +20,9 @@ enum ResearchSourceScope: String, Codable, CaseIterable, Identifiable {
     var explanation: String {
         switch self {
         case .automatic: return "根据本次请求判断是否需要外部资料"
-        case .internalOnly: return "不生成外部网页检索查询"
+        case .internalOnly: return "只分析本次明确选定的 Trip/Customer 摘要和你提供的文本，不调用外部搜索"
         case .externalOnly: return "不读取已选客户或行程记录"
-        case .internalAndExternal: return "允许结合已选记录与外部资料"
+        case .internalAndExternal: return "结合本次明确选定的 Trip/Customer 摘要、你提供的文本和外部搜索结果"
         }
     }
 }
