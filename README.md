@@ -8,6 +8,7 @@
 市场情报引擎：`docs/design/market-intelligence-engine-v1.0.md`（Sprint H，通用市场情报领域与 Agent 架构）
 H1 实施计划：`docs/review/sprint-h1-execution-plan.md`（领域基础、证据数据架构与工程验收）
 H1.0 源码审计：`docs/review/sprint-h1-code-audit.md`（真实模型复用矩阵、Evidence 缺口与安全发现）
+H1.1 领域契约：`docs/architecture/market-intelligence-domain-contract-v1.0.md`（实体、状态机、证据版本化与租户关系约束）
 评审报告：`docs/review/design-review-and-optimization-plan.md`
 实施进度：`docs/review/implementation-status.md`（按里程碑与批次逐项核对，含验证记录）
 
