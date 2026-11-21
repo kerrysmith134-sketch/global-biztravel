@@ -284,14 +284,13 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
     queries = payload.get("reviewed_search_queries")
     if not isinstance(queries, list):
         raise TaskFailed("研究计划缺少用户确认的搜索查询", retryable=False)
-    settings = get_settings()
     queries = [
         item.strip()[:500]
-        for item in queries[: max(1, min(settings.research_search_max_queries, 12))]
+        for item in queries
         if isinstance(item, str) and item.strip()
     ]
-    if not queries:
-        raise TaskFailed("没有可执行的用户确认查询", retryable=False)
+    if not queries or len(queries) > 12:
+        raise TaskFailed("用户确认的搜索查询数量不符合约束", retryable=False)
 
     reviewed_digest = sha256("\n".join(queries).encode("utf-8")).hexdigest()
     expected_workflow_digest = payload.get("reviewed_search_queries_sha256")
