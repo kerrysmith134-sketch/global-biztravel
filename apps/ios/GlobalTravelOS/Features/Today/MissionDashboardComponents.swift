@@ -143,7 +143,7 @@ struct MissionHeroCard: View {
                 .padding(DS.Spacing.xl)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(DS.ColorToken.brandPressed)
+            .background(DS.ColorToken.heroSurface)
             .clipShape(RoundedRectangle(cornerRadius: DS.Radius.prominentCard))
             .overlay(
                 RoundedRectangle(cornerRadius: DS.Radius.prominentCard)
