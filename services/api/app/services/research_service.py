@@ -16,11 +16,11 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound
 from app.api.schemas import (
+    ResearchEvidenceRead,
     ResearchPlanCreate,
     ResearchPlanIntentRead,
-    ResearchPlanRead,
     ResearchPlannerAuditRead,
-    ResearchEvidenceRead,
+    ResearchPlanRead,
 )
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
