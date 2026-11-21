@@ -109,6 +109,8 @@ def test_research_plan_is_user_intent_driven_and_does_not_fake_retrieval(client:
         assert runs[0].input["user_provided_context_sha256"]
         assert {row.kind for row in evidence} == {"USER_REQUEST", "USER_PROVIDED_CONTEXT"}
         assert {row.source for row in evidence} == {"user_input"}
+        assert all("sha256" in row.payload for row in evidence)
+        assert all("payload" not in row.payload for row in evidence)
 
     with org_session(UUID(ORG_A)) as session:
         session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
@@ -323,7 +325,7 @@ def test_research_execute_rejects_empty_reviewed_queries(client: TestClient) -> 
         headers=headers(),
         json={"search_queries": [" ", ""]},
     )
-    assert invalid.status_code == 422, invalid.text
+    assert invalid.status_code == 400, invalid.text
     detail = client.get(f"/v1/research/plans/{plan_id}", headers=headers())
     assert detail.json()["retrieval_status"] == "NOT_STARTED"
     with org_session(UUID(ORG_A)) as session:
