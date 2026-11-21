@@ -209,7 +209,8 @@ struct CustomerMapLocation: Equatable, Identifiable {
     var customer: Customer
     var place: CustomerPlace
 
-    var id: String { place.id }
+    /// One place may be linked to multiple customer records; the pair is the map identity.
+    var id: String { "\(customer.id)::\(place.id)" }
 }
 
 /// Request to attach an existing organization place to a CRM customer.
