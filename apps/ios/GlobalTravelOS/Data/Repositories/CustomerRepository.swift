@@ -95,7 +95,7 @@ final class LocalCustomerRepository: CustomerRepository {
         request: CustomerPlaceLinkRequest
     ) async throws -> CustomerPlace {
         // Verify both records locally; never create a dangling customer-place link.
-        _ = try customer(id: customerId)
+        _ = try await customer(id: customerId)
         let place = try localPlace(id: request.placeId)
         let normalizedLabel = request.label?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -167,7 +167,7 @@ final class LocalCustomerRepository: CustomerRepository {
                 code: "NOT_FOUND",
                 message: "地点不存在",
                 traceId: nil,
-                details: ["place_id": id]
+                details: ["place_id": .string(id)]
             )
         }
         return try DateCoding.decoder().decode(Place.self, from: payload)
