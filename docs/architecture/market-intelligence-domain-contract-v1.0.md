@@ -332,6 +332,29 @@ ResearchPlan 不是独立 ORM 主表。现有用户意图驱动研究以 Workflo
 
 MarketWorkspace 通过 MarketWorkspaceWorkflow 关联一个或多个 ResearchPlan Workflow。Workspace 不复制检索查询、Job 或 Evidence 内容；它只负责长期组织研究目标、上下文版本、问题和后续洞察/机会。
 
+
+### 4.5 Workspace ResearchPlan 的版本化 Evidence 归属
+
+Research Worker 在 Workspace 绑定模式下必须将来源内容版本保存在现有 Evidence 表：
+- subject_type = `market_workspace`，subject_id = workspace_id；
+- canonical_ref = 保守规范化来源 URL；
+- content_hash = 捕获内容（当前检索结果标题 + 摘要）的 SHA-256；
+- ref = `market-source:v1:<sha256(canonical_ref + newline + content_hash)>`；
+- verification_status 固定为 UNVERIFIED，quality 初始为 NULL；
+- 不将搜索摘要描述为全文，不将检索结果提升为 VERIFIED。
+
+新增 `MarketResearchPlanEvidence` 只记录归属关系，不复制 Evidence 内容：organization_id、workspace_id、research_plan_id、evidence_id、search_query、query_sha256、collected_by_run_id、created_at。复合外键分别约束到同 Workspace 的 MarketWorkspaceWorkflow、同组织 Evidence 和同组织 AgentRun；每张组织表在同迁移中 FORCE RLS。
+
+幂等与版本语义：
+- 同 Workspace + 同 canonical_ref + 同 content_hash：跨 ResearchPlan 复用同一 Evidence 行；
+- 同来源内容变化：插入新 Evidence 版本，旧版本不可覆盖；
+- 同一 Evidence 被多个已审阅 query 命中：保存多个 query 关系，Evidence 正文只存一份；
+- 同 query / 同 Evidence / 同 ResearchPlan 的关联写入幂等；
+- ResearchPlan 详情合并旧 `subject_type = RESEARCH_PLAN` Evidence 与新关联的 Workspace Evidence；
+- 没有 Workspace 的独立 ResearchPlan 保持原旧 Evidence 兼容路径。
+
+此关联表不会代替 MarketInsightEvidence / MarketOpportunityEvidence。ResearchPlanEvidence 说明来源被哪次研究/查询发现；Insight/OpportunityEvidence 才说明来源对某条判断或机会起支持/反驳/上下文作用。
+
 ## 5. 关系表与既有业务对象连接
 
 首批关系表：
@@ -343,6 +366,7 @@ MarketWorkspace 通过 MarketWorkspaceWorkflow 关联一个或多个 ResearchPla
 | MarketEntityCustomerLink | MarketEntity ↔ 现有 Customer，记录 MATCH_CANDIDATE / USER_CONFIRMED / REJECTED / CONFLICTED |
 | MarketWorkspaceTripLink | Workspace ↔ 现有 Trip，多对多；解除保留关联历史，不删除 Trip |
 | MarketWorkspaceWorkflow | Workspace ↔ 现有 WorkflowInstance，多对多；ResearchPlan 是其中一种 workflow_type |
+| MarketResearchPlanEvidence | Workspace 级版本化 Evidence ↔ ResearchPlan + 搜索 query + 采集 AgentRun 的来源归属关系 |
 
 关联规则：
 - TargetAccount 不新建，使用 MarketEntity + 用户确认的 Customer link。
