@@ -44,8 +44,6 @@ def canonicalize_source_ref(value: str) -> str:
     default_port = (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
     netloc = hostname if port is None or default_port else f"{hostname}:{port}"
     path = parts.path or "/"
-    if path != "/":
-        path = path.rstrip("/") or "/"
     return urlunsplit((scheme, netloc, path, parts.query, ""))
 
 
@@ -200,18 +198,30 @@ def _workspace_evidence_map(
     return by_id
 
 
-def _serialize_insights(session: Session, rows: list[MarketInsight]) -> list[dict[str, Any]]:
+def _serialize_insights(
+    session: Session,
+    organization_id: UUID | str,
+    rows: list[MarketInsight],
+) -> list[dict[str, Any]]:
     if not rows:
         return []
     insight_ids = [row.id for row in rows]
     links = session.scalars(
         select(MarketInsightEvidence)
-        .where(MarketInsightEvidence.insight_id.in_(insight_ids))
+        .where(
+            MarketInsightEvidence.organization_id == organization_id,
+            MarketInsightEvidence.insight_id.in_(insight_ids),
+        )
         .order_by(MarketInsightEvidence.created_at, MarketInsightEvidence.id)
     ).all()
     evidence_ids = list({link.evidence_id for link in links})
     evidence_rows = (
-        session.scalars(select(Evidence).where(Evidence.id.in_(evidence_ids))).all()
+        session.scalars(
+            select(Evidence).where(
+                Evidence.organization_id == organization_id,
+                Evidence.id.in_(evidence_ids),
+            )
+        ).all()
         if evidence_ids else []
     )
     evidence_by_id = {row.id: row for row in evidence_rows}
@@ -277,7 +287,7 @@ def list_insights(
             .offset(offset)
         ).all()
     )
-    return _serialize_insights(session, rows)
+    return _serialize_insights(session, organization_id, rows)
 
 
 def create_insight(
@@ -386,7 +396,7 @@ def create_insight(
         )
     )
     session.flush()
-    return _serialize_insights(session, [row])[0]
+    return _serialize_insights(session, organization_id, [row])[0]
 
 
 def review_insight(
