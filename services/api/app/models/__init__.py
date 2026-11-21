@@ -20,6 +20,9 @@ from app.models.integrations import ExternalSignal
 from app.models.llm import LLMInvocation
 from app.models.market import (
     MarketActivityEvent,
+    MarketClaim,
+    MarketClaimEvidence,
+    MarketClaimVerificationRun,
     MarketContextSnapshot,
     MarketEntity,
     MarketEntityAlias,
@@ -98,6 +101,9 @@ __all__ = [
     "ImportRow",
     "LLMInvocation",
     "MarketActivityEvent",
+    "MarketClaim",
+    "MarketClaimEvidence",
+    "MarketClaimVerificationRun",
     "MarketContextSnapshot",
     "MarketEntity",
     "MarketEntityAlias",
