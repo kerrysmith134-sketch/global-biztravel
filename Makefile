@@ -1,4 +1,5 @@
-SHELL := /bin/zsh
+# Bash is available on both macOS developer machines and Linux CI runners.
+SHELL := /bin/bash
 # 绝对路径：migrate/revision/worker 需要在子目录里执行，相对路径会失效。
 # 必须加引号：工作目录含空格（".../Coding Work/..."），不加会被 shell 拆成两段。
 PY := "$(CURDIR)/.venv/bin/python"
