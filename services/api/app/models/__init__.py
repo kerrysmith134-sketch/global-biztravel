@@ -18,6 +18,12 @@ from app.models.geo import Customer, CustomerPlace, Place
 from app.models.identity import Membership, Organization, User
 from app.models.integrations import ExternalSignal
 from app.models.llm import LLMInvocation
+from app.models.market import (
+    MarketActivityEvent,
+    MarketContextSnapshot,
+    MarketResearchQuestion,
+    MarketWorkspace,
+)
 from app.models.memory import PlanAttemptLog, TravelerProfile, TripMemorySummary
 from app.models.metrics import MetricSnapshot
 from app.models.notification_preferences import NotificationPreference
@@ -74,6 +80,10 @@ __all__ = [
     "ImportBatch",
     "ImportRow",
     "LLMInvocation",
+    "MarketActivityEvent",
+    "MarketContextSnapshot",
+    "MarketResearchQuestion",
+    "MarketWorkspace",
     "Membership",
     "MetricSnapshot",
     "Notification",
