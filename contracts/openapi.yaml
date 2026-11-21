@@ -5447,6 +5447,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/evidence/{evidence_id}:extract:
+    post:
+      tags:
+      - market intelligence
+      summary: 提取用户选定搜索来源的网页正文
+      operationId: enqueue_market_source_extraction_v1_market_workspaces__workspace_id__evidence__evidence_id__extract_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: evidence_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Evidence Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketSourceExtractionAccepted'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/source-extractions/{workflow_id}:
+    get:
+      tags:
+      - market intelligence
+      summary: 读取网页正文提取任务状态
+      operationId: get_market_source_extraction_v1_market_workspaces__workspace_id__source_extractions__workflow_id__get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: workflow_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workflow Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketSourceExtractionRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     ActionCenterRead:
@@ -13721,3 +13797,131 @@ components:
       - trip_id
       title: WeatherPullRequest
       description: 按出行拉取目的地当前天气（Open-Meteo，免钥公开源，ADR-0034）。
+
+    MarketSourceExtractionAccepted:
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+          title: Workspace Id
+        source_evidence_id:
+          type: string
+          format: uuid
+          title: Source Evidence Id
+        workflow_id:
+          type: string
+          format: uuid
+          title: Workflow Id
+        job_id:
+          type: string
+          format: uuid
+          title: Job Id
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - COMPLETED
+          title: Status
+        reused:
+          type: boolean
+          title: Reused
+      type: object
+      required:
+      - workspace_id
+      - source_evidence_id
+      - workflow_id
+      - job_id
+      - status
+      - reused
+      title: MarketSourceExtractionAccepted
+    MarketSourceExtractionRead:
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+          title: Workspace Id
+        source_evidence_id:
+          type: string
+          format: uuid
+          title: Source Evidence Id
+        workflow_id:
+          type: string
+          format: uuid
+          title: Workflow Id
+        job_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Job Id
+        job_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Job Status
+        extraction_status:
+          type: string
+          enum:
+          - QUEUED
+          - RUNNING
+          - COMPLETED
+          - FAILED
+          title: Extraction Status
+        extracted_evidence_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Extracted Evidence Id
+        agent_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agent Run Id
+        failure_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Code
+        failure_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Reason
+        source_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Url
+        extractor_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Extractor Version
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - workspace_id
+      - source_evidence_id
+      - workflow_id
+      - job_id
+      - job_status
+      - extraction_status
+      - extracted_evidence_id
+      - agent_run_id
+      - failure_code
+      - failure_reason
+      - source_url
+      - extractor_version
+      - created_at
+      - updated_at
+      title: MarketSourceExtractionRead
