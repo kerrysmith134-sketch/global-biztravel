@@ -6044,6 +6044,85 @@
         }
       }
     },
+    "/v1/market/workspaces/{workspace_id}/questions/{question_id}:draft-answer": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "启动研究问题答案草拟 Agent",
+        "operationId": "enqueue_market_question_answer_draft_v1_market_workspaces__workspace_id__questions__question_id__draft_answer_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketQuestionAnswerGenerationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketQuestionAnswerGenerationAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{answer_id}:accept": {
       "post": {
         "tags": [
@@ -14737,6 +14816,67 @@
           "evidence"
         ],
         "title": "MarketQuestionAnswerEvidenceRead"
+      },
+      "MarketQuestionAnswerGenerationAccepted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workflow Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING"
+            ],
+            "title": "Status"
+          },
+          "evidence_count": {
+            "type": "integer",
+            "title": "Evidence Count"
+          },
+          "reused": {
+            "type": "boolean",
+            "title": "Reused"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "workflow_id",
+          "status",
+          "evidence_count",
+          "reused"
+        ],
+        "title": "MarketQuestionAnswerGenerationAccepted"
+      },
+      "MarketQuestionAnswerGenerationCreate": {
+        "properties": {
+          "evidence_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 24
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Ids"
+          }
+        },
+        "type": "object",
+        "title": "MarketQuestionAnswerGenerationCreate"
       },
       "MarketQuestionAnswerRead": {
         "properties": {
