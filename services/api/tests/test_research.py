@@ -129,6 +129,33 @@ def test_research_plan_internal_only_has_no_external_queries(client: TestClient)
         session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == UUID(plan_id)))
 
 
+def test_auto_scope_does_not_mistake_user_material_for_internal_records(client: TestClient) -> None:
+    created = client.post(
+        "/v1/research/plans",
+        headers=headers(),
+        json={
+            "request": "研究 ACME GmbH 的近期业务背景",
+            "source_scope": "AUTO",
+            "context_text": "用户粘贴的公司介绍材料",
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    plan_id = body["id"]
+    assert body["recommended_scope"] == "EXTERNAL_ONLY"
+    assert "用户主动提供的材料" in body["plan"]["source_types"]
+    assert body["plan"]["external_research_needed"] is True
+    assert {item["kind"] for item in body["evidence"]} == {
+        "USER_REQUEST",
+        "USER_PROVIDED_CONTEXT",
+    }
+    assert not any(item["kind"] == "INTERNAL_CUSTOMER_CONTEXT" for item in body["evidence"])
+    with org_session(UUID(ORG_A)) as session:
+        session.execute(delete(Evidence).where(Evidence.subject_id == UUID(plan_id)))
+        session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(plan_id)))
+        session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == UUID(plan_id)))
+
+
 def test_research_plan_is_tenant_scoped(client: TestClient) -> None:
     created = client.post(
         "/v1/research/plans",
