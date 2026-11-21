@@ -21,6 +21,10 @@ from app.api.pagination import clamp_limit, decode_cursor
 from app.api.pagination import next_cursor as page_cursor
 from app.api.schemas import (
     MarketActivityEventRead,
+    MarketClaimRead,
+    MarketClaimReview,
+    MarketClaimVerificationAccepted,
+    MarketClaimVerificationRunRead,
     MarketContextCreate,
     MarketContextRead,
     MarketEntityCustomerLinkCreate,
@@ -65,6 +69,7 @@ from app.services import (
     market_entity_service,
     market_insight_service,
     market_opportunity_service,
+    market_claim_verification_service,
     market_question_answer_agent_service,
     market_question_answer_service,
     market_source_extraction_service,
@@ -516,6 +521,188 @@ def reject_market_question_answer(
         session,
         idempotency_key,
     )
+
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims",
+    response_model=MarketClaimVerificationAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="启动答案版本的原子主张核验 Agent",
+)
+def enqueue_market_claim_verification(
+    workspace_id: UUID,
+    answer_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), "answer_id": str(answer_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_claim_verification_service.enqueue_claim_verification(
+        session,
+        context.organization_id,
+        workspace_id,
+        answer_id,
+        created_by_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_202_ACCEPTED,
+        body=MarketClaimVerificationAccepted.model_validate(result),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/claim-verification-runs/{verification_run_id}",
+    response_model=MarketClaimVerificationRunRead,
+    summary="读取主张核验运行结果及原子主张",
+)
+def get_market_claim_verification_run(
+    workspace_id: UUID,
+    verification_run_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    result = market_claim_verification_service.get_verification_run(
+        session,
+        context.organization_id,
+        workspace_id,
+        verification_run_id,
+    )
+    return MarketClaimVerificationRunRead.model_validate(result)
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/claims",
+    response_model=Page[MarketClaimRead],
+    summary="读取 Workspace 的原子研究主张",
+)
+def list_market_claims(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    answer_id: UUID | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1),
+    cursor: str | None = Query(default=None),
+):
+    require_role(context, ROLE_VIEWER)
+    page_size = clamp_limit(limit)
+    offset = decode_cursor(cursor)
+    rows = market_claim_verification_service.list_claims(
+        session,
+        context.organization_id,
+        workspace_id,
+        answer_id=answer_id,
+        limit=page_size,
+        offset=offset,
+    )
+    return Page[MarketClaimRead](
+        items=[MarketClaimRead.model_validate(row) for row in rows],
+        next_cursor=page_cursor(rows, offset, page_size),
+    )
+
+
+def _review_market_claim(
+    decision: str,
+    workspace_id: UUID,
+    claim_id: UUID,
+    payload: MarketClaimReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_ADMIN)
+    action = "accept" if decision == "ACCEPTED" else "reject"
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/claims/{claim_id}:{action}"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "claim_id": str(claim_id),
+            "review_note": payload.review_note,
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_claim_verification_service.review_claim(
+        session,
+        context.organization_id,
+        workspace_id,
+        claim_id,
+        decision=decision,
+        actor_user_id=context.user_id,
+        review_note=payload.review_note,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketClaimRead.model_validate(row),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/claims/{claim_id}:accept",
+    response_model=MarketClaimRead,
+    summary="人工采纳一条原子研究主张",
+)
+def accept_market_claim(
+    workspace_id: UUID,
+    claim_id: UUID,
+    payload: MarketClaimReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    return _review_market_claim(
+        "ACCEPTED",
+        workspace_id,
+        claim_id,
+        payload,
+        context,
+        session,
+        idempotency_key,
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/claims/{claim_id}:reject",
+    response_model=MarketClaimRead,
+    summary="人工驳回一条原子研究主张",
+)
+def reject_market_claim(
+    workspace_id: UUID,
+    claim_id: UUID,
+    payload: MarketClaimReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    return _review_market_claim(
+        "REJECTED",
+        workspace_id,
+        claim_id,
+        payload,
+        context,
+        session,
+        idempotency_key,
+    )
+
 
 
 
