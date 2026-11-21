@@ -78,7 +78,7 @@ struct MissionHeroCard: View {
 
     private var planStatus: String {
         guard let plan else { return "尚未生成计划" }
-        return plan.status == .active ? "执行计划已激活" : "計画待确认 · \(plan.versionLabel)"
+        return plan.status == .active ? "执行计划已激活" : "计划待确认 · \(plan.versionLabel)"
     }
 
     private var planTint: Color {
@@ -175,7 +175,8 @@ struct MissionMetricStrip: View {
     let plan: PlanVersionDetail?
 
     private var customerValue: String {
-        trip.stats?.customerCount.map(String.init) ?? "—"
+        guard let count = trip.stats?.customerCount else { return "—" }
+        return String(count)
     }
 
     private var visitValue: String {
@@ -279,8 +280,6 @@ struct MissionPulseStrip: View {
 
 /// Next stop is the most immediate field action; it opens the real plan/map context.
 struct MissionNextStopCard: View {
-    @EnvironmentObject private var environment: AppEnvironment
-
     let cockpit: TravelCockpit
     let trip: Trip
     let plan: PlanVersionDetail
@@ -434,7 +433,7 @@ struct MissionRiskSummaryCard: View {
                             DSBadge(text: "低风险 / 提醒", color: DS.ColorToken.success)
                         }
                     }
-                    ForEach(Array(cockpit.risks.prefix(4).enumerated()), id: \.element.element.id) { index, item in
+                    ForEach(Array(cockpit.risks.prefix(4).enumerated()), id: \.element.id) { index, item in
                         CockpitRiskRow(risk: item, trip: cockpit.trip)
                         if index < min(cockpit.risks.count, 4) - 1 {
                             Divider()
