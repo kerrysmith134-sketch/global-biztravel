@@ -76,6 +76,14 @@ MIE 是 Global Business Travel OS 的可选智能能力，不取代现有 Trip �
 
 > 实施前必须逐字段审查当前模型、迁移和服务代码。上表确认的是复用原则，不代表当前 Evidence 或 Customer 表已经具备本文件提出的全部字段。
 
+### 2.2 ResearchPlan 与 MarketWorkspace 的职责边界
+
+当前用户意图研究能力中的 ResearchPlan 是**一次研究请求与执行运行**，由现有 WorkflowInstance（workflow_type = research_plan）、AgentRun、BackgroundJob 和 Evidence 表达；不新增独立 ResearchPlan 主表，也不另建搜索 Worker。
+
+MarketWorkspace 是**跨多次研究持续存在的工作空间**，保存上下文版本、研究问题、候选实体、洞察和机会。一个 Workspace 可以关联多个现有 ResearchPlan Workflow；一个 ResearchPlan 也允许不属于任何 Workspace，保持单次研究与既有入口兼容。
+
+二者通过 MarketWorkspaceWorkflow 关系连接，必须在数据库层保证 Workspace 与 WorkflowInstance 属于同一 organization。ResearchPlan 的外部检索继续遵循用户确认查询、Provider 显式配置、结果初始未核验的既有边界；MarketWorkspace 不得绕过这些规则或复制一套检索执行器。
+
 ### 2.2 技术实现约束
 
 - 后端继续使用仓库现有 Python / FastAPI / Pydantic / SQLAlchemy / Alembic 体系；不得引入 TypeScript 数据模型作为后端契约真相。
