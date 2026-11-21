@@ -83,7 +83,7 @@ def upgrade() -> None:
                 REFERENCES agent_runs (organization_id, id) ON DELETE RESTRICT,
             CONSTRAINT fk_market_insight_supersedes_same_workspace
                 FOREIGN KEY (organization_id, workspace_id, supersedes_id)
-                REFERENCES market_insights (organization_id, workspace_id, id) ON DELETE RESTRICT,
+                REFERENCES market_insights (organization_id, workspace_id, id) ON DELETE NO ACTION,
             CONSTRAINT fk_market_insights_organization_id_organizations
                 FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE,
             CONSTRAINT fk_market_insights_created_by_user_id_users
