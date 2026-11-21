@@ -2,7 +2,7 @@ import Foundation
 
 protocol ResearchRepository {
     func createPlan(_ request: ResearchPlanCreateRequest) async throws -> ResearchPlan
-    func executePlan(id: String) async throws -> ResearchExecutionAccepted
+    func executePlan(id: String, searchQueries: [String]) async throws -> ResearchExecutionAccepted
     func plan(id: String) async throws -> ResearchPlan
 }
 
@@ -19,8 +19,14 @@ final class RemoteResearchRepository: ResearchRepository {
         try await client.send(try Endpoints.createResearchPlan(request), as: ResearchPlan.self)
     }
 
-    func executePlan(id: String) async throws -> ResearchExecutionAccepted {
-        try await client.send(Endpoints.executeResearchPlan(id: id), as: ResearchExecutionAccepted.self)
+    func executePlan(id: String, searchQueries: [String]) async throws -> ResearchExecutionAccepted {
+        try await client.send(
+            try Endpoints.executeResearchPlan(
+                id: id,
+                body: ResearchExecutionRequest(searchQueries: searchQueries)
+            ),
+            as: ResearchExecutionAccepted.self
+        )
     }
 
     func plan(id: String) async throws -> ResearchPlan {
