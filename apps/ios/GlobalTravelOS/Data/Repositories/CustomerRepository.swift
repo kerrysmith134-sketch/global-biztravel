@@ -228,7 +228,8 @@ final class LocalCustomerRepository: CustomerRepository {
         let quality = filters.geocodeStatus?.uppercased()
         let filtered = locations.filter { item in
             if let tier, !tier.isEmpty, item.customer.tier.uppercased() != tier { return false }
-            if let country, !country.isEmpty, item.place.countryCode?.uppercased() != country { return false }
+            if let country, !country.isEmpty,
+               (item.place.countryCode ?? item.customer.countryCode)?.uppercased() != country { return false }
             if let quality, !quality.isEmpty, item.place.geocodeStatus.uppercased() != quality { return false }
             guard let search, !search.isEmpty else { return true }
             let values = [
@@ -248,12 +249,34 @@ final class LocalCustomerRepository: CustomerRepository {
         let offset = page.cursor.flatMap { Int($0.replacingOccurrences(of: "offset:", with: "")) } ?? 0
         let items = Array(filtered.dropFirst(offset).prefix(page.limit))
         let mapped = filtered.filter { $0.place.hasValidCoordinates }.count
-        let countries = Dictionary(grouping: filtered, by: { $0.place.countryCode ?? "UNKNOWN" }).mapValues(\.count)
+        let countries = Dictionary(grouping: filtered) {
+            ($0.place.countryCode ?? $0.customer.countryCode ?? "UNKNOWN").uppercased()
+        }.mapValues(\.count)
+        let countryStats = countries.keys.sorted().map { countryCode -> GlobalCustomerCountryCoverage in
+            let rows = filtered.filter {
+                ($0.place.countryCode ?? $0.customer.countryCode ?? "UNKNOWN").uppercased() == countryCode
+            }
+            let uniqueCustomers = Dictionary(grouping: rows, by: { $0.customer.id })
+                .compactMap { $0.value.first?.customer }
+            return GlobalCustomerCountryCoverage(
+                countryCode: countryCode,
+                customersTotal: uniqueCustomers.count,
+                tierACustomers: uniqueCustomers.filter { $0.tier.uppercased() == "A" }.count,
+                tierBCustomers: uniqueCustomers.filter { $0.tier.uppercased() == "B" }.count,
+                tierCCustomers: uniqueCustomers.filter { $0.tier.uppercased() == "C" }.count,
+                activeCustomers: uniqueCustomers.filter { $0.status.uppercased() == "ACTIVE" }.count,
+                prospectCustomers: uniqueCustomers.filter { $0.status.uppercased() == "PROSPECT" }.count,
+                inactiveCustomers: uniqueCustomers.filter { $0.status.uppercased() == "INACTIVE" }.count,
+                locationsTotal: rows.count,
+                locationsMapped: rows.filter { $0.place.hasValidCoordinates }.count
+            )
+        }
         let summary = GlobalCustomerMapSummary(
             customersWithLocations: Set(filtered.map { $0.customer.id }).count,
             customersWithoutLocations: max(0, customers.count - linkedIDs.count),
             locationsTotal: filtered.count, locationsMapped: mapped,
-            locationsMissingCoordinates: filtered.count - mapped, countries: countries
+            locationsMissingCoordinates: filtered.count - mapped,
+            countries: countries, countryStats: countryStats
         )
         let next = offset + page.limit < filtered.count ? "offset:\(offset + page.limit)" : nil
         return GlobalCustomerMapResponse(items: items, summary: summary, nextCursor: next)
