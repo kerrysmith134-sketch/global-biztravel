@@ -134,7 +134,7 @@ def test_redirect_to_private_network_is_rejected_before_second_request() -> None
 
     def requester(url: str, address: str):
         requests.append(url)
-        return 302, {"location": "http://127.0.0.1:8080/admin"}, b""
+        return 302, {"location": "http://127.0.0.1/admin"}, b""
 
     provider = SafeHttpResearchPageProvider(
         resolver=resolver_public,
