@@ -23,6 +23,29 @@ final class LocalModeUITests: XCTestCase {
         app.tap() // 触发中断监视器（若有系统弹窗在此关闭）。
     }
 
+    func testFivePrimaryWorkspacesAreReachable() throws {
+        let mapTab = app.buttons["地图"]
+        XCTAssertTrue(mapTab.waitForExistence(timeout: 10), "缺少地图一级入口")
+        mapTab.tap()
+        XCTAssertTrue(app.navigationBars["地图"].waitForExistence(timeout: 10), "地图工作区未打开")
+
+        let briefTab = app.buttons["简报"]
+        XCTAssertTrue(briefTab.waitForExistence(timeout: 10), "缺少目的地简报一级入口")
+        briefTab.tap()
+        XCTAssertTrue(
+            app.navigationBars["目的地简报"].waitForExistence(timeout: 10),
+            "目的地简报工作区未打开"
+        )
+
+        let customersTab = app.buttons["客户"]
+        XCTAssertTrue(customersTab.waitForExistence(timeout: 10), "缺少客户一级入口")
+        customersTab.tap()
+        XCTAssertTrue(app.navigationBars["客户"].waitForExistence(timeout: 10), "客户工作区未打开")
+
+        XCTAssertTrue(app.buttons["任务"].exists, "缺少 Mission 一级入口")
+        XCTAssertTrue(app.buttons["我的"].exists, "缺少个人设置一级入口")
+    }
+
     func testLocalModeSeededTripSections() throws {
         XCTAssertTrue(
             app.navigationBars["今日"].waitForExistence(timeout: 20),
