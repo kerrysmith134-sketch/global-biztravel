@@ -99,7 +99,7 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
 
         def create_answer(
             summary: str,
-            relations: list[tuple[str, str]],
+            relations: list[tuple[str, str, str]],
             *,
             gap: str | None = None,
         ) -> dict:
@@ -218,7 +218,7 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
                     MarketResearchQuestionAnswerEvidence.organization_id == UUID(ORG_A),
                     MarketResearchQuestionAnswerEvidence.answer_id.in_(answer_ids),
                 )
-            ) == 7
+            ) == 8
             answer_events = session.scalar(
                 select(func.count()).select_from(MarketActivityEvent).where(
                     MarketActivityEvent.organization_id == UUID(ORG_A),
