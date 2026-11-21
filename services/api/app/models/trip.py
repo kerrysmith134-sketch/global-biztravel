@@ -47,6 +47,7 @@ IMPORT_ROW_STATUSES = ("VALID", "INVALID", "DUPLICATE", "ACCEPTED", "REJECTED", 
 class Trip(Base):
     __tablename__ = "trips"
     __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_trips_org_id"),
         CheckConstraint("window_end > window_start", name="window_order"),
         CheckConstraint(
             "status IN ('DRAFT','PLANNING','READY','ACTIVE','HOLD','COMPLETED','CANCELLED')",
