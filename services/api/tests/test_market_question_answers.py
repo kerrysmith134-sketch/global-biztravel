@@ -10,8 +10,6 @@ from app.db import org_session
 from app.main import app
 from app.models.market import (
     MarketActivityEvent,
-    MarketResearchQuestionAnswer,
-    MarketResearchQuestionAnswerEvidence,
     MarketResearchQuestionAnswerEvidence,
     MarketWorkspace,
 )
