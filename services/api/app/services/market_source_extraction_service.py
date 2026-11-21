@@ -168,7 +168,7 @@ def enqueue_page_extraction(
         "source_evidence_id": source.id,
         "workflow_id": workflow.id,
         "job_id": job.id,
-        "status": "QUEUED" if job.status == "PENDING" else "RUNNING",
+        "status": job.status,
         "reused": False,
     }
 
