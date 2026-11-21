@@ -4,7 +4,7 @@ from alembic import op
 
 from migrations import helpers
 
-revision = "0034_market_insights_evidence_versions"
+revision = "0034_market_insights"
 down_revision = "0033_market_entities"
 branch_labels = None
 depends_on = None
