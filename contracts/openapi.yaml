@@ -22745,8 +22745,7 @@
         "required": [
           "review_note"
         ],
-        "title": "MarketClaimReview",
-        "additionalProperties": false
+        "title": "MarketClaimReview"
       },
       "Page_MarketClaimRead_": {
         "properties": {
