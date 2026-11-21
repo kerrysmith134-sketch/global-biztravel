@@ -3616,6 +3616,201 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/questions/{question_id}/answers:
+    post:
+      tags:
+      - market intelligence
+      summary: 创建带证据链的研究问题答案版本
+      operationId: create_market_question_answer_v1_market_workspaces__workspace_id__questions__question_id__answers_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: question_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Question Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketQuestionAnswerCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketQuestionAnswerRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - market intelligence
+      summary: 读取研究问题的全部答案版本
+      operationId: list_market_question_answers_v1_market_workspaces__workspace_id__questions__question_id__answers_get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: question_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Question Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MarketQuestionAnswerRead'
+                title: Response List Market Question Answers V1 Market Workspaces  Workspace
+                  Id  Questions  Question Id  Answers Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{answer_id}:accept:
+    post:
+      tags:
+      - market intelligence
+      summary: 人工采纳研究问题答案
+      operationId: accept_market_question_answer_v1_market_workspaces__workspace_id__questions__question_id__answers__answer_id__accept_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: question_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Question Id
+      - name: answer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Answer Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketQuestionAnswerReview'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketQuestionAnswerRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{answer_id}:reject:
+    post:
+      tags:
+      - market intelligence
+      summary: 人工驳回研究问题答案
+      operationId: reject_market_question_answer_v1_market_workspaces__workspace_id__questions__question_id__answers__answer_id__reject_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: question_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Question Id
+      - name: answer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Answer Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketQuestionAnswerReview'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketQuestionAnswerRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/market/workspaces/{workspace_id}/entities:
     get:
       tags:
@@ -9046,6 +9241,223 @@ components:
       required:
       - target_status
       title: MarketOpportunityTransition
+    MarketQuestionAnswerCreate:
+      properties:
+        answer_summary:
+          type: string
+          maxLength: 12000
+          minLength: 1
+          title: Answer Summary
+        assumptions:
+          items: {}
+          type: array
+          title: Assumptions
+        unknowns:
+          items: {}
+          type: array
+          title: Unknowns
+        confidence_level:
+          type: string
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - INSUFFICIENT
+          title: Confidence Level
+          default: INSUFFICIENT
+        generated_by_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Generated By Run Id
+        evidence:
+          items:
+            $ref: '#/components/schemas/MarketQuestionAnswerEvidenceInput'
+          type: array
+          maxItems: 100
+          title: Evidence
+        evidence_gap:
+          anyOf:
+          - type: string
+            maxLength: 3000
+          - type: 'null'
+          title: Evidence Gap
+      type: object
+      required:
+      - answer_summary
+      title: MarketQuestionAnswerCreate
+    MarketQuestionAnswerEvidenceInput:
+      properties:
+        evidence_id:
+          type: string
+          format: uuid
+          title: Evidence Id
+        relation_type:
+          type: string
+          enum:
+          - SUPPORTS
+          - CONTRADICTS
+          - CONTEXT
+          title: Relation Type
+        rationale:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Rationale
+      type: object
+      required:
+      - evidence_id
+      - relation_type
+      title: MarketQuestionAnswerEvidenceInput
+    MarketQuestionAnswerEvidenceRead:
+      properties:
+        relation_type:
+          type: string
+          enum:
+          - SUPPORTS
+          - CONTRADICTS
+          - CONTEXT
+          title: Relation Type
+        rationale:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rationale
+        evidence:
+          $ref: '#/components/schemas/MarketEvidenceRead'
+      type: object
+      required:
+      - relation_type
+      - rationale
+      - evidence
+      title: MarketQuestionAnswerEvidenceRead
+    MarketQuestionAnswerRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        workspace_id:
+          type: string
+          format: uuid
+          title: Workspace Id
+        question_id:
+          type: string
+          format: uuid
+          title: Question Id
+        version:
+          type: integer
+          title: Version
+        answer_summary:
+          type: string
+          title: Answer Summary
+        assumptions:
+          items: {}
+          type: array
+          title: Assumptions
+        unknowns:
+          items: {}
+          type: array
+          title: Unknowns
+        confidence_level:
+          type: string
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          - INSUFFICIENT
+          title: Confidence Level
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - NEEDS_REVIEW
+          - CONFLICTED
+          - ACCEPTED
+          - REJECTED
+          - SUPERSEDED
+          title: Status
+        evidence_gap:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Evidence Gap
+        generated_by_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Generated By Run Id
+        supersedes_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supersedes Id
+        created_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Created By User Id
+        reviewed_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Reviewed By User Id
+        reviewed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reviewed At
+        review_note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Review Note
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        evidence:
+          items:
+            $ref: '#/components/schemas/MarketQuestionAnswerEvidenceRead'
+          type: array
+          title: Evidence
+      type: object
+      required:
+      - id
+      - workspace_id
+      - question_id
+      - version
+      - answer_summary
+      - assumptions
+      - unknowns
+      - confidence_level
+      - status
+      - evidence_gap
+      - generated_by_run_id
+      - supersedes_id
+      - created_by_user_id
+      - reviewed_by_user_id
+      - reviewed_at
+      - review_note
+      - created_at
+      title: MarketQuestionAnswerRead
+    MarketQuestionAnswerReview:
+      properties:
+        review_note:
+          anyOf:
+          - type: string
+            maxLength: 3000
+          - type: 'null'
+          title: Review Note
+      type: object
+      title: MarketQuestionAnswerReview
     MarketResearchQuestionCreate:
       properties:
         question:

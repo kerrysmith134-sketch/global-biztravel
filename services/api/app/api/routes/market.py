@@ -43,6 +43,9 @@ from app.api.schemas import (
     MarketOpportunityRead,
     MarketOpportunityStatus,
     MarketOpportunityTransition,
+    MarketQuestionAnswerCreate,
+    MarketQuestionAnswerRead,
+    MarketQuestionAnswerReview,
     MarketResearchQuestionCreate,
     MarketResearchQuestionRead,
     MarketWorkspaceCreate,
@@ -58,6 +61,7 @@ from app.services import (
     market_entity_service,
     market_insight_service,
     market_opportunity_service,
+    market_question_answer_service,
     market_workspace_service,
     research_service,
 )
@@ -294,6 +298,173 @@ def create_question(
         body=MarketResearchQuestionRead.model_validate(item),
     )
 
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/questions/{question_id}/answers",
+    response_model=MarketQuestionAnswerRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建带证据链的研究问题答案版本",
+)
+def create_market_question_answer(
+    workspace_id: UUID,
+    question_id: UUID,
+    payload: MarketQuestionAnswerCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/questions/{question_id}/answers"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "question_id": str(question_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_question_answer_service.create_answer(
+        session,
+        context.organization_id,
+        workspace_id,
+        question_id,
+        answer_summary=payload.answer_summary,
+        assumptions=payload.assumptions,
+        unknowns=payload.unknowns,
+        confidence_level=payload.confidence_level,
+        generated_by_run_id=payload.generated_by_run_id,
+        evidence=[item.model_dump() for item in payload.evidence],
+        evidence_gap=payload.evidence_gap,
+        created_by_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketQuestionAnswerRead.model_validate(row),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/questions/{question_id}/answers",
+    response_model=list[MarketQuestionAnswerRead],
+    summary="读取研究问题的全部答案版本",
+)
+def list_market_question_answers(
+    workspace_id: UUID,
+    question_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    rows = market_question_answer_service.list_answers(
+        session, context.organization_id, workspace_id, question_id
+    )
+    return [MarketQuestionAnswerRead.model_validate(row) for row in rows]
+
+
+def _review_market_question_answer(
+    decision: str,
+    workspace_id: UUID,
+    question_id: UUID,
+    answer_id: UUID,
+    payload: MarketQuestionAnswerReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_ADMIN)
+    action = "accept" if decision == "ACCEPTED" else "reject"
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/"
+        f"{answer_id}:{action}"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "question_id": str(question_id),
+            "answer_id": str(answer_id),
+            "review_note": payload.review_note,
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = market_question_answer_service.review_answer(
+        session,
+        context.organization_id,
+        workspace_id,
+        question_id,
+        answer_id,
+        decision=decision,
+        actor_user_id=context.user_id,
+        review_note=payload.review_note,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketQuestionAnswerRead.model_validate(row),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/questions/{question_id}/answers/{answer_id}:accept",
+    response_model=MarketQuestionAnswerRead,
+    summary="人工采纳研究问题答案",
+)
+def accept_market_question_answer(
+    workspace_id: UUID,
+    question_id: UUID,
+    answer_id: UUID,
+    payload: MarketQuestionAnswerReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    return _review_market_question_answer(
+        "ACCEPTED",
+        workspace_id,
+        question_id,
+        answer_id,
+        payload,
+        context,
+        session,
+        idempotency_key,
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/questions/{question_id}/answers/{answer_id}:reject",
+    response_model=MarketQuestionAnswerRead,
+    summary="人工驳回研究问题答案",
+)
+def reject_market_question_answer(
+    workspace_id: UUID,
+    question_id: UUID,
+    answer_id: UUID,
+    payload: MarketQuestionAnswerReview,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    return _review_market_question_answer(
+        "REJECTED",
+        workspace_id,
+        question_id,
+        answer_id,
+        payload,
+        context,
+        session,
+        idempotency_key,
+    )
 
 
 

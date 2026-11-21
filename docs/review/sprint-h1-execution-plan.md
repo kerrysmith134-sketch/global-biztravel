@@ -438,3 +438,14 @@ MarketInsight 采用 `workspace_id + insight_key + version` 建立版本链；�
 迁移 `0036_market_plan_ev` 对 Workflow 关联、Evidence 与 AgentRun 全部使用同组织复合外键并启用 FORCE RLS。新增集成测试验证共享去重、查询归因、内容变化版本、详情读取和活动事件幂等。
 
 **验证纪律：** 该分支需要对最新 H1.5 head 重新执行 Ruff、MyPy、文档/契约检查、0036 PostgreSQL migration、Alembic drift、全量 Backend pytest 与 iOS Build/Unit Tests。此时不宣称该新切片已通过 CI。
+
+
+## 14. H1.6 ResearchQuestion → Evidence-backed Answer
+
+问题不再只有 OPEN/IN_PROGRESS/ANSWERED/BLOCKED 状态及一个覆盖式 answer_summary。新增 MarketResearchQuestionAnswer 版本记录和 MarketResearchQuestionAnswerEvidence 显式证据关系。
+
+一次回答从 NEEDS_REVIEW 开始；存在支持与反驳时标记 CONFLICTED。只有 Admin 审核采纳后，Question 才更新为 ANSWERED。采纳必须有 SUPPORTS 且无 CONTRADICTS；independent_sources minimum 通过不同来源 host 数量校验；其他无法自动核验的 acceptance criteria 要求 review_note。修订答案追加版本并保留 supersedes 关系，同一 Question 只允许一个 ACCEPTED 版本。
+
+本切片提供答案版本创建/查询、采纳、驳回 API；它为未来 Research Answer Agent 提供持久化边界，但当前并未声称 LLM 自动综合、全文抓取或事实核验 Agent 已经完成。
+
+验证：最新 CI 对该分支完整树运行后，方可确认 0037 迁移、Alembic drift、Backend 集成测试及 iOS 回归全部通过。

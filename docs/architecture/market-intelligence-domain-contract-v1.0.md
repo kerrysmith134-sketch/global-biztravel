@@ -333,6 +333,31 @@ ResearchPlan 不是独立 ORM 主表。现有用户意图驱动研究以 Workflo
 MarketWorkspace 通过 MarketWorkspaceWorkflow 关联一个或多个 ResearchPlan Workflow。Workspace 不复制检索查询、Job 或 Evidence 内容；它只负责长期组织研究目标、上下文版本、问题和后续洞察/机会。
 
 
+
+### 4.6 ResearchQuestion 的答案版本与证据审阅
+
+ResearchQuestion 负责表达待回答的问题；答案不直接覆写在问题主记录中。每次人工或 Agent 生成答案都追加一个 `MarketResearchQuestionAnswer` 版本：
+- question_id / workspace_id / organization_id；
+- version（按问题单调递增）；
+- answer_summary、assumptions、unknowns、confidence_level；
+- status：DRAFT / NEEDS_REVIEW / CONFLICTED / ACCEPTED / REJECTED / SUPERSEDED；
+- evidence_gap（无可用来源时说明缺口）；
+- generated_by_run_id / created_by_user_id；
+- reviewed_by_user_id / reviewed_at / review_note；
+- supersedes_id（前一答案版本，可空）。
+
+答案依据通过 `MarketResearchQuestionAnswerEvidence` 显式连接，relation_type 为 SUPPORTS / CONTRADICTS / CONTEXT。Service 必须校验 Evidence 属于当前 Workspace 或其关联 ResearchPlan；数据库复合外键确保 Answer 与 Question 同组织/同 Workspace，并确保 Evidence 同组织；Evidence 删除受 RESTRICT 保护。
+
+审核规则：
+- AI/用户创建答案均默认待审核，不直接把问题标记为 ANSWERED；
+- 同时存在 SUPPORTS 与 CONTRADICTS 时答案为 CONFLICTED；
+- 采纳必须至少有一条 SUPPORTS，且无未解决 CONTRADICTS；
+- `independent_sources` 验收标准会核对不同来源 host 数量；其余无法机器核验的验收标准必须由审核者填写 review_note；
+- 只有 Admin 显式采纳后，问题才进入 ANSWERED，question.answer_summary 更新为当前采纳版本；
+- 新版本采纳后，旧 ACCEPTED 版本转 SUPERSEDED；同一问题只能有一个 ACCEPTED 版本；
+- 驳回只改变当前答案版本状态，不抹掉之前已采纳的答案。
+
+
 ### 4.5 Workspace ResearchPlan 的版本化 Evidence 归属
 
 Research Worker 在 Workspace 绑定模式下必须将来源内容版本保存在现有 Evidence 表：
