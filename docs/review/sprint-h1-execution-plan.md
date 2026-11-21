@@ -1,6 +1,6 @@
 # Sprint H1 — Domain Foundation & Evidence Data Architecture
 
-> 状态：H1.0 源码审计已完成；H1.1 领域契约已提交；H1.2 后端基础实施待开始  
+> 状态：H1.0 源码审计已完成；H1.1 领域契约已提交；H1.2 首批后端基础切片已实现（待 CI / PostgreSQL 验证）  
 > 关联设计：`docs/design/market-intelligence-engine-v1.0.md`  
 > 仓库基线：`main`，核对到的最新提交 `c5e98e2b567f54705a8569d0ef7ced138d7f88b2`  
 > 计划日期：2026-11-21
@@ -341,8 +341,11 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 
 ## 9. 当前交付状态说明
 
-本文件与 Market Intelligence Engine v1.0 是**设计文档提交**，不是 H1 代码实现提交。
+H1.0 审计和 H1.1 领域契约已提交。H1.2 当前分支已实施首个可独立验收的后端纵向切片：
 
-本次提交不包含数据库迁移、API、SwiftUI 页面或 Agent 代码；因此本次不声称任何新增功能已运行，也不声称新增代码测试已通过。
+- 新增 `MarketWorkspace`、`MarketContextSnapshot`、`MarketResearchQuestion`、`MarketActivityEvent` ORM 与迁移 `0032_market_workspace_foundation`；
+- 新增 Workspace、上下文版本、研究问题和活动时间线 API；
+- 新增真实 PostgreSQL 集成测试文件，覆盖租户隔离、原始输入、上下文采纳、幂等和问题关系；
+- 复用现有会员权限、RLS、幂等、错误 envelope，不增加第二套 Agent Runtime / CRM。
 
-下一次工程提交必须从 H1.0 代码与 schema 审计开始，给出实际文件路径、字段级复用判断和可复现测试结果后，再实施 H1.1–H1.5。
+**这不是 H1.2 或 H1 完成声明。** 本分支尚待 GitHub Actions 执行 lint、typecheck、OpenAPI / iOS 契约检查、Alembic migration / metadata check 和真实 PostgreSQL 集成测试；当前不能声称迁移已在任何部署数据库执行或测试已通过。MarketEntity、Insight、Opportunity、Evidence 扩展/关联、完整研究 Worker 与 iOS 工作区仍待实施。
