@@ -15,6 +15,7 @@ struct PlanMapView: View {
 
     @State private var position: MapCameraPosition = .automatic
     @State private var selectedStopID: String?
+    @State private var selectedDayIndex: Int?
 
     private struct DayRoute {
         var dayIndex: Int
@@ -61,8 +62,13 @@ struct PlanMapView: View {
         return routes
     }
 
+    private var visibleDayRoutes: [DayRoute] {
+        guard let selectedDayIndex else { return dayRoutes }
+        return dayRoutes.filter { $0.dayIndex == selectedDayIndex }
+    }
+
     private var allStops: [PlanStop] {
-        dayRoutes.flatMap(\.stops)
+        visibleDayRoutes.flatMap(\.stops)
     }
 
     private var selectedStop: PlanStop? {
@@ -99,8 +105,9 @@ struct PlanMapView: View {
                 )
             } else {
                 VStack(spacing: 0) {
+                    dayFilter
                     Map(position: $position, selection: $selectedStopID) {
-                        ForEach(dayRoutes, id: \.dayIndex) { route in
+                        ForEach(visibleDayRoutes, id: \.dayIndex) { route in
                             if route.coordinates.count >= 2 {
                                 MapPolyline(coordinates: route.coordinates)
                                     .stroke(route.color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
@@ -136,8 +143,54 @@ struct PlanMapView: View {
         .onAppear { position = .automatic }
         .onChange(of: plan.id) { _, _ in
             selectedStopID = nil
+            selectedDayIndex = nil
             position = .automatic
         }
+    }
+
+    /// Day filtering changes only the map projection, never the underlying plan inputs.
+    private var dayFilter: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DS.Spacing.xs) {
+                filterChip(title: "全部", selected: selectedDayIndex == nil) {
+                    selectedDayIndex = nil
+                    selectedStopID = nil
+                    position = .automatic
+                }
+                ForEach(dayRoutes, id: \.dayIndex) { route in
+                    filterChip(
+                        title: "第 \(route.dayIndex) 天",
+                        selected: selectedDayIndex == route.dayIndex
+                    ) {
+                        selectedDayIndex = route.dayIndex
+                        selectedStopID = nil
+                        position = .automatic
+                    }
+                }
+            }
+            .padding(.horizontal, DS.Spacing.sm)
+            .padding(.vertical, DS.Spacing.sm)
+        }
+        .background(DS.ColorToken.surfaceSecondary)
+    }
+
+    private func filterChip(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(selected ? .white : DS.ColorToken.textSecondary)
+                .padding(.horizontal, DS.Spacing.md)
+                .frame(minHeight: 34)
+                .background(
+                    selected ? DS.ColorToken.brand : DS.ColorToken.surface,
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().stroke(selected ? DS.ColorToken.brand : DS.ColorToken.border, lineWidth: 0.8)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func selectedStopDrawer(_ stop: PlanStop) -> some View {
@@ -272,7 +325,7 @@ struct PlanMapView: View {
     private var routeLegend: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: DS.Spacing.sm) {
-                ForEach(dayRoutes, id: \.dayIndex) { route in
+                ForEach(visibleDayRoutes, id: \.dayIndex) { route in
                     Button {
                         selectedStopID = route.stops.first?.visitId
                     } label: {
