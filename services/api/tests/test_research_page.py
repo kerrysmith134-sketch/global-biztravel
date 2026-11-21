@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from hashlib import sha256
 
-import pytest
 from app.integrations.research_page import (
     ResearchPageFetchError,
     SafeHttpResearchPageProvider,
     _normalise_article_text,
 )
+import pytest
 
 
 PUBLIC_IP = "93.184.216.34"
