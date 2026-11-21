@@ -964,12 +964,12 @@ def handle_market_source_page_extraction(
     session.execute(
         pg_insert(MarketEvidenceDerivation.__table__)
         .values(
-            organization_id=str(job.organization_id),
-            workspace_id=str(workspace_id),
-            source_evidence_id=str(source.id),
-            derived_evidence_id=str(extracted.id),
-            workflow_id=str(workflow.id),
-            agent_run_id=str(run.id),
+            organization_id=UUID(str(job.organization_id)),
+            workspace_id=workspace_id,
+            source_evidence_id=source.id,
+            derived_evidence_id=extracted.id,
+            workflow_id=workflow.id,
+            agent_run_id=run.id,
             derivation_type="WEB_PAGE_TEXT_EXTRACTION",
             extractor_version=page.extractor_version,
             source_url=page.final_url,
