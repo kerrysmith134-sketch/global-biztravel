@@ -80,7 +80,6 @@ final class MapWorkspaceViewModel: ObservableObject {
         customers = loadedCustomers.filter { referencedCustomerIDs.contains($0.id) }
     }
 
-
     /// The server is the only authority that mutates visit inputs and produces a new plan version.
     func cancelVisit(_ stop: PlanStop) async {
         guard let trip = selectedTrip, let currentPlan = self.plan, currentPlan.status == .active else {
