@@ -15,7 +15,7 @@ struct VisitCreateSheet: View {
     @State private var latitude = ""
     @State private var longitude = ""
     @State private var serviceMinutes = "60"
-    @State private var movementMode = "AIR"
+    @State private var movementMode = "GROUND"
     @State private var customers: [Customer] = []
     @State private var selectedCustomerID = ""
     @State private var customerPlaces: [CustomerPlace] = []
@@ -179,8 +179,13 @@ struct VisitCreateSheet: View {
         customerName = place.name
         city = place.city ?? ""
         countryCode = place.countryCode ?? countryCode
-        latitude = place.lat.map { String($0) } ?? ""
-        longitude = place.lon.map { String($0) } ?? ""
+        if place.hasValidCoordinates, let lat = place.lat, let lon = place.lon {
+            latitude = String(lat)
+            longitude = String(lon)
+        } else {
+            latitude = ""
+            longitude = ""
+        }
     }
 
     private func saveVisit() async {
