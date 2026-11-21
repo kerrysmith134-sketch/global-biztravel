@@ -442,14 +442,14 @@ struct MapWorkspaceView: View {
 
                 if let plan = viewModel.plan {
                     PlanMapView(
-                        customerLocations: viewModel.customerLocations,
-                        customerPlacesMessage: viewModel.customerPlacesMessage,
-                        isLoadingCustomerPlaces: viewModel.isLoadingCustomerPlaces,
                         plan: plan,
                         origin: trip.originPlace,
                         title: "地图",
                         visits: viewModel.visits,
                         customers: viewModel.customers,
+                        customerLocations: viewModel.customerLocations,
+                        customerPlacesMessage: viewModel.customerPlacesMessage,
+                        isLoadingCustomerPlaces: viewModel.isLoadingCustomerPlaces,
                         isPlanActive: plan.status == .active,
                         isSubmittingChange: viewModel.isSubmittingChange,
                         onCancelVisit: { stop in
@@ -478,14 +478,14 @@ struct MapWorkspaceView: View {
                         .frame(maxHeight: .infinity)
                 } else if viewModel.isLoadingCustomerPlaces || !viewModel.customerLocations.isEmpty {
                     PlanMapView(
-                        customerLocations: viewModel.customerLocations,
-                        customerPlacesMessage: viewModel.customerPlacesMessage,
-                        isLoadingCustomerPlaces: viewModel.isLoadingCustomerPlaces,
                         plan: nil,
                         origin: trip.originPlace,
                         title: "客户地图",
                         visits: viewModel.visits,
-                        customers: viewModel.customers
+                        customers: viewModel.customers,
+                        customerLocations: viewModel.customerLocations,
+                        customerPlacesMessage: viewModel.customerPlacesMessage,
+                        isLoadingCustomerPlaces: viewModel.isLoadingCustomerPlaces
                     )
                     .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card))
                     .overlay(
