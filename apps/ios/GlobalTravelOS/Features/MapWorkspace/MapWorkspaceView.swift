@@ -50,6 +50,8 @@ final class MapWorkspaceViewModel: ObservableObject {
         errorMessage = nil
         planChangeMessage = nil
         selectedTripID = id
+        plan = nil
+        planChangeMessage = nil
         visits = []
         customers = []
         Task {
@@ -280,9 +282,9 @@ struct MapWorkspaceView: View {
                     }
                     Spacer(minLength: 4)
                     DSBadge(
-                        text: (trip.activePlan != nil || trip.activePlanVersionId != nil)
-                            ? "已激活计划" : "计划预览",
-                        color: (trip.activePlan != nil || trip.activePlanVersionId != nil)
+                        text: viewModel.plan?.status == .active
+                            ? "已激活计划" : (viewModel.plan == nil ? "加载计划" : "计划预览"),
+                        color: viewModel.plan?.status == .active
                             ? DS.ColorToken.success : DS.ColorToken.warning
                     )
                 }
