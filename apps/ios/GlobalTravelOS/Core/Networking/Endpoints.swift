@@ -310,6 +310,14 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/research/plans/\(id)")
     }
 
+    static func executeResearchPlan(id: String) -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/research/plans/\(id):execute",
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     // MARK: - Traveler profile
 
     static func travelerProfile() -> APIRequest {
