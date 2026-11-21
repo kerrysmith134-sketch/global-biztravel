@@ -87,7 +87,7 @@ struct VisitCreateSheet: View {
 
                 Section("实际地点") {
                     TextField("城市", text: $city)
-                    TextField("国家代码（如 DE）", text: $countryCode)
+                    TextField("国家代码（如 DE；新地点必填）", text: $countryCode)
                         .textInputAutocapitalization(.characters)
                     TextField("纬度", text: $latitude)
                         .keyboardType(.decimalPad)
@@ -128,10 +128,18 @@ struct VisitCreateSheet: View {
                     }
                     .disabled(
                         saving || didCreateVisit ||
-                            title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                            (selectedCustomerPlaceID.isEmpty && !isValidCountryCode)
                     )
                 }
             }
+        }
+    }
+
+    private var isValidCountryCode: Bool {
+        let code = countryCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return code.count == 2 && code.unicodeScalars.allSatisfy {
+            (65...90).contains(Int($0.value))
         }
     }
 
@@ -200,6 +208,11 @@ struct VisitCreateSheet: View {
     private func saveVisit() async {
         guard !saving else { return }
         errorMessage = nil
+
+        if selectedCustomerPlaceID.isEmpty && !isValidCountryCode {
+            errorMessage = "新地点必须填写有效的两位国家代码（例如 DE、KE、US）。"
+            return
+        }
 
         let latitudeValue = Double(latitude)
         let longitudeValue = Double(longitude)
