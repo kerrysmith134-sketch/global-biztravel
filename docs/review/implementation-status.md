@@ -344,7 +344,7 @@ H1.4 当前代码 head 已通过 Backend 严格门禁：Ruff、MyPy、OpenAPI、
 - 人工审核接口：答案默认 NEEDS_REVIEW；支持、反驳并存标记 CONFLICTED；只有人工 Admin 接受后，ResearchQuestion 才变为 ANSWERED；
 - 版本修订追加写入；新版本被采纳时旧 ACCEPTED 版本转 SUPERSEDED，同一问题至多一个 ACCEPTED；
 - acceptance_criteria 中的 independent_sources 在采纳前由后端检查独立来源 host 数量；其它未实现自动判定的标准要求审核说明，不伪装成机器验证；
-- 答案 Evidence 只允许来自当前 Workspace 或其关联 ResearchPlan；跨 Workspace 引用在 Service 层拒绝，数据库复合外键约束组织和 Workspace 边界；
+- 答案 Evidence 只允许来自当前 Workspace 或其关联 ResearchPlan；Service 校验 Workspace 来源范围，数据库复合外键确保答案/问题的组织与 Workspace 归属，以及 Evidence 同组织；
 - 创建、采纳、驳回事件进入 MarketActivityEvent。
 
 新增 API：
