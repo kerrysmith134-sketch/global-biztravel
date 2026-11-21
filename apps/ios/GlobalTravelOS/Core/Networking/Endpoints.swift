@@ -310,10 +310,14 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/research/plans/\(id)")
     }
 
-    static func executeResearchPlan(id: String) -> APIRequest {
+    static func executeResearchPlan(
+        id: String,
+        body: ResearchExecutionRequest
+    ) throws -> APIRequest {
         APIRequest(
             method: .post,
             path: "/v1/research/plans/\(id):execute",
+            body: try DateCoding.encode(body),
             idempotencyKey: APIRequest.newIdempotencyKey()
         )
     }
