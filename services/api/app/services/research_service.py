@@ -285,14 +285,22 @@ def create_research_plan(
 
     workflow = WorkflowInstance(
         organization_id=str(organization_id),
-        trip_id=None if payload.trip_id is None else str(payload.trip_id),
+        trip_id=(
+            str(payload.trip_id)
+            if include_internal and payload.trip_id is not None
+            else None
+        ),
         workflow_type=WORKFLOW_TYPE,
         status="RUNNING",
         payload={
             "request": payload.request,
             "requested_scope": requested_scope,
             "retrieval_status": "NOT_STARTED",
-            "customer_id": None if payload.customer_id is None else str(payload.customer_id),
+            "customer_id": (
+            str(payload.customer_id)
+            if include_internal and payload.customer_id is not None
+            else None
+        ),
         },
         created_by_user_id=str(user_id),
     )
