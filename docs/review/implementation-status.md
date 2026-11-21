@@ -284,7 +284,7 @@
 | InsightEvidence | 显式 SUPPORTS / CONTRADICTS / CONTEXT 关联 | 同组织复合外键；Evidence 删除受保护；不使用多态 target_id |
 | 人工审核 | ACCEPTED / REJECTED 必须由用户动作记录 reviewer 和时间 | 采纳必须至少有一条支持证据，且不能有未解决反驳；同一 insight_key 同时只允许一个 ACCEPTED 版本 |
 | 证据不足 | 可通过 insufficient_evidence_reason 明确记录信息缺口 | 不允许将无证据判断采纳为已确认事实 |
-| 活动时间线 | Insight 创建/采纳/驳回追加 MarketActivityEvent | 不提供普通修改/删除事件的 API |
+| 活动时间线 | 首次保存证据版本、Insight 创建/采纳/驳回追加 MarketActivityEvent | 幂等证据重放不重复产生事件；不提供普通修改/删除事件的 API |
 
 新增 API：
 - POST/GET /v1/market/workspaces/{workspace_id}/evidence
