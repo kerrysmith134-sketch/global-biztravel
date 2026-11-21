@@ -32,12 +32,12 @@ jobs:
       - name: Commit generated contracts
         run: |
           TARGET_BRANCH="${{ github.head_ref || github.ref_name }}"
-          git fetch origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
-          git rebase "origin/${TARGET_BRANCH}"
           if ! git diff --quiet -- contracts/openapi.json contracts/openapi.yaml apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+actions-bot@users.noreply.github.com"
             git add contracts/openapi.json contracts/openapi.yaml apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift
             git commit -m "chore(api): sync generated OpenAPI and iOS contract samples"
+            git fetch origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+            git rebase "origin/${TARGET_BRANCH}"
             git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
           fi
