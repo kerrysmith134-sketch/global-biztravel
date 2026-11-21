@@ -126,7 +126,8 @@ struct ResearchPlan: Decodable, Equatable, Identifiable {
 
     var retrievalStatusLabel: String {
         switch retrievalStatus.uppercased() {
-        case "NOT_STARTED": return "尚未采集外部证据"
+        case "NOT_STARTED":
+            return plan.externalResearchNeeded ? "尚未采集外部证据" : "本次不需要外部检索"
         case "RUNNING": return "正在采集证据"
         case "COMPLETED": return "证据采集已完成"
         case "FAILED": return "证据采集失败"
