@@ -108,21 +108,25 @@ final class MapWorkspaceViewModel: ObservableObject {
             // Follow the same server-owned job lifecycle as the Generate Plan flow.
             // The old active plan stays visible until a new server version is returned.
             for attempt in 0..<30 {
+                guard selectedTripID == trip.id else { return }
                 let job = try await environment.planRepository.job(id: accepted.optimizationJobId)
                 if job.resolvedStatus.isTerminal {
                     guard job.resolvedStatus.isSuccess else {
                         let detail = job.displayError.map { "：\($0)" } ?? ""
-                        planChangeMessage = "计划优化\(job.statusLabel)\(detail)"
+                        errorMessage = "计划优化\(job.statusLabel)\(detail)"
+                        planChangeMessage = nil
                         return
                     }
                     guard let newPlanId = job.producedPlanVersionId else {
-                        planChangeMessage = "优化任务已完成，但服务端没有返回计划版本编号。请打开行程详情核查。"
+                        errorMessage = "优化任务已完成，但服务端没有返回计划版本编号。请打开行程详情核查。"
+                        planChangeMessage = nil
                         return
                     }
                     let newPlan = try await environment.planRepository.planDetail(
                         tripId: trip.id,
                         planId: newPlanId
                     )
+                    guard selectedTripID == trip.id else { return }
                     plan = newPlan
                     planChangeMessage = "新计划 \(newPlan.versionLabel) 已生成草稿。旧激活计划仍保留，请检查新方案后再激活。"
                     return
@@ -136,6 +140,9 @@ final class MapWorkspaceViewModel: ObservableObject {
             planChangeMessage = "优化仍在后台运行 · 任务 \(accepted.optimizationJobId.prefix(8))。当前计划未被客户端修改，请稍后刷新查看新版本。"
         } catch {
             errorMessage = environment.errorMessage(error)
+            if planChangeMessage != nil {
+                planChangeMessage = "变更请求已受理，但暂时无法读取优化任务状态。请稍后刷新计划版本。"
+            }
         }
     }
 
