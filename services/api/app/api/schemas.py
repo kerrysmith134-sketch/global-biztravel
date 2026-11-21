@@ -1634,3 +1634,109 @@ class CrmSyncJobRead(ORMModel):
     error: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+# ------------------------------------------------------ market workspaces
+MarketWorkspaceStatus = Literal["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "ARCHIVED"]
+MarketContextExtractionStatus = Literal["NOT_STARTED", "PENDING", "COMPLETED", "FAILED"]
+MarketQuestionSource = Literal["USER", "AGENT"]
+MarketQuestionStatus = Literal["OPEN", "IN_PROGRESS", "ANSWERED", "BLOCKED", "CANCELLED"]
+MarketActivityActor = Literal["USER", "SYSTEM"]
+
+
+class MarketWorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    objective: str | None = Field(default=None, max_length=4000)
+    initial_context: str | None = Field(default=None, max_length=20000)
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _non_blank_values(self) -> MarketWorkspaceCreate:
+        if not self.name.strip():
+            raise ValueError("工作空间名称不能为空")
+        if self.initial_context is not None and not self.initial_context.strip():
+            raise ValueError("初始业务背景不能为空白")
+        return self
+
+
+class MarketWorkspaceRead(ORMModel):
+    id: UUID
+    name: str
+    objective: str | None
+    status: MarketWorkspaceStatus
+    owner_user_id: UUID | None
+    current_context_version: int | None
+    settings: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketContextCreate(BaseModel):
+    raw_input: str = Field(min_length=1, max_length=20000)
+    adopt: bool = False
+
+    @model_validator(mode="after")
+    def _raw_input_not_blank(self) -> MarketContextCreate:
+        if not self.raw_input.strip():
+            raise ValueError("业务背景不能为空白")
+        return self
+
+
+class MarketContextRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    version: int
+    raw_input: str
+    extracted_context: dict[str, Any]
+    user_overrides: dict[str, Any]
+    unknowns: list[Any]
+    provenance: dict[str, Any]
+    extraction_status: MarketContextExtractionStatus
+    extraction_prompt_id: str | None
+    extraction_prompt_version: str | None
+    is_current: bool
+    created_by_user_id: UUID | None
+    created_at: datetime
+
+
+class MarketResearchQuestionCreate(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    rationale: str | None = Field(default=None, max_length=4000)
+    priority: int = Field(default=3, ge=1, le=5)
+    acceptance_criteria: list[Any] = Field(default_factory=list)
+    parent_question_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _question_not_blank(self) -> MarketResearchQuestionCreate:
+        if not self.question.strip():
+            raise ValueError("研究问题不能为空白")
+        return self
+
+
+class MarketResearchQuestionRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    parent_question_id: UUID | None
+    question: str
+    rationale: str | None
+    source: MarketQuestionSource
+    priority: int
+    status: MarketQuestionStatus
+    acceptance_criteria: list[Any]
+    answer_summary: str | None
+    blocked_reason: str | None
+    created_by_user_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketActivityEventRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    actor_type: MarketActivityActor
+    actor_user_id: UUID | None
+    aggregate_type: str
+    aggregate_id: UUID
+    event_type: str
+    payload: dict[str, Any]
+    created_at: datetime
