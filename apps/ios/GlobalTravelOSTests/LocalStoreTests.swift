@@ -208,7 +208,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(created.isPrimary)
         XCTAssertEqual(created.region, "South Holland")
         XCTAssertEqual(created.geocodeStatus, "RESOLVED")
-        XCTAssertEqual(created.geocodeSource, "manual")
+        XCTAssertEqual(created.geocodeSource, "client")
         XCTAssertTrue(created.hasValidCoordinates)
 
         let catalog = try await repository.listPlaces(
@@ -221,7 +221,8 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(catalog.items.first?.displayAddress, "Harbor Road 8 · Rotterdam · South Holland · NL")
 
         try await repository.unlinkCustomerPlace(customerId: customer.id, placeId: created.placeId)
-        XCTAssertTrue(try await repository.customerPlaces(customerId: customer.id).isEmpty)
+        let remainingLinks = try await repository.customerPlaces(customerId: customer.id)
+        XCTAssertTrue(remainingLinks.isEmpty)
 
         // Removing a customer relation must not delete the organization-level shared place.
         let retained = try await repository.listPlaces(

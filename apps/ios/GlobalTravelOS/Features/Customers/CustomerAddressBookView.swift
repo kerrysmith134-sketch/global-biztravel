@@ -408,9 +408,9 @@ struct CustomerAddressEditorSheet: View {
             }
             Section("地图坐标") {
                 TextField("纬度（可留空）", text: $latitude)
-                    .keyboardType(.decimalPad)
+                    .keyboardType(.numbersAndPunctuation)
                 TextField("经度（可留空）", text: $longitude)
-                    .keyboardType(.decimalPad)
+                    .keyboardType(.numbersAndPunctuation)
                 Text("不填写坐标时，地点仍会保存，但不会被当作可定位地址参与路线计算。系统不会猜测坐标。")
                     .font(.caption)
                     .foregroundStyle(DS.ColorToken.textSecondary)
