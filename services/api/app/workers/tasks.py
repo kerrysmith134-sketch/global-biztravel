@@ -27,6 +27,14 @@ from sqlalchemy.orm import Session
 from travel_planner import SolverFailed, plan_trip
 
 from app.api.errors import ApiError
+from app.llm.contracts import LLMRequest
+from app.llm.gateway import get_gateway
+from app.llm.prompts import (
+    MARKET_QUESTION_ANSWER_PROMPT_VERSION,
+    MARKET_QUESTION_ANSWER_SCHEMA,
+    MARKET_QUESTION_ANSWER_SYSTEM,
+    MARKET_QUESTION_ANSWER_TEMPLATE_ID,
+)
 from app.config import get_settings
 from app.integrations.crm import CrmUnavailable
 from app.integrations.fx import FxMarketUnavailable
@@ -44,6 +52,8 @@ from app.services import (
     fx_market_service,
     job_service,
     market_insight_service,
+    market_question_answer_agent_service,
+    market_question_answer_service,
     memory_service,
     minutes_service,
     outbox_service,
@@ -502,6 +512,278 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
     }
 
 
+def _answer_text_list(value: Any, *, limit: int = 12, item_limit: int = 1200) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value[:limit]:
+        if isinstance(item, str) and item.strip():
+            result.append(item.strip()[:item_limit])
+    return result
+
+
+def handle_market_question_answer_draft(
+    session: Session, job: BackgroundJob
+) -> dict[str, Any]:
+    """Draft an evidence-cited answer; never accept it or mutate the question status."""
+    payload = job.payload or {}
+    try:
+        workspace_id = UUID(str(payload["workspace_id"]))
+        question_id = UUID(str(payload["question_id"]))
+        workflow_id = UUID(str(payload["workflow_id"]))
+        raw_evidence_ids = payload.get("evidence_ids") or []
+        evidence_ids = [UUID(str(item)) for item in raw_evidence_ids]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TaskFailed("研究问题答案任务载荷无效", retryable=False) from exc
+
+    workflow = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == str(job.organization_id),
+            WorkflowInstance.id == workflow_id,
+            WorkflowInstance.workflow_type == market_question_answer_agent_service.WORKFLOW_TYPE,
+        ).with_for_update()
+    ).one_or_none()
+    if workflow is None:
+        raise TaskFailed("研究问题答案 Workflow 不存在", retryable=False)
+    if workflow.job_id is not None and workflow.job_id != job.id:
+        raise TaskFailed("研究问题答案任务已被更新的任务取代", retryable=False)
+
+    try:
+        question, evidence_rows = (
+            market_question_answer_agent_service.load_answer_draft_inputs(
+                session,
+                job.organization_id,
+                workspace_id,
+                question_id,
+                evidence_ids,
+                workflow_id,
+            )
+        )
+    except Exception as exc:
+        from app.api.errors import ApiError
+
+        if isinstance(exc, ApiError):
+            raise TaskFailed(exc.message, retryable=False) from exc
+        raise
+
+    evidence_context: list[dict[str, Any]] = []
+    evidence_by_id: dict[str, Any] = {}
+    for row in evidence_rows:
+        body = str((row.payload or {}).get("content") or "").strip()
+        source_ref = row.canonical_ref or (row.payload or {}).get("url") or row.ref
+        item = {
+            "evidence_id": str(row.id),
+            "source_ref": str(source_ref)[:2000],
+            "kind": row.kind,
+            "source": row.source,
+            "published_at": row.published_at.isoformat() if row.published_at else None,
+            "verification_status": row.verification_status or "UNVERIFIED",
+            "quality": row.quality or {},
+            "content": body[:4000],
+            "content_truncated": len(body) > 4000,
+        }
+        evidence_context.append(item)
+        evidence_by_id[str(row.id)] = row
+
+    variables = {
+        "workspace_id": str(workspace_id),
+        "question_id": str(question_id),
+        "question": question.question,
+        "question_rationale": question.rationale,
+        "acceptance_criteria": question.acceptance_criteria or [],
+        "evidence": evidence_context,
+        "evidence_count": len(evidence_context),
+    }
+    run = AgentRun(
+        organization_id=str(job.organization_id),
+        workflow_id=workflow.id,
+        agent_type="MARKET_QUESTION_ANSWER",
+        status="RUNNING",
+        input={
+            "job_id": str(job.id),
+            "workspace_id": str(workspace_id),
+            "question_id": str(question_id),
+            "evidence_ids": [str(item) for item in evidence_ids],
+            "prompt_template_id": MARKET_QUESTION_ANSWER_TEMPLATE_ID,
+            "prompt_version": MARKET_QUESTION_ANSWER_PROMPT_VERSION,
+        },
+    )
+    session.add(run)
+    session.flush()
+
+    fallback = {
+        "answer_summary": (
+            "当前工作空间尚无可引用的来源材料，无法形成有证据支持的答案。"
+            if not evidence_context
+            else "当前模型服务未能可靠生成答案；现有来源材料仍需人工分析和核验。"
+        ),
+        "assumptions": [],
+        "unknowns": (
+            ["尚未采集或关联可供分析的来源证据。"]
+            if not evidence_context
+            else ["模型生成未成功；本次没有形成可审核的证据判断。"]
+        ),
+        "confidence_level": "INSUFFICIENT",
+        "evidence_assessments": [],
+        "evidence_gap": (
+            "当前没有可引用的 Evidence。请先采集或关联来源材料，再重新生成答案。"
+            if not evidence_context
+            else "LLM Gateway 已降级或输出不可用；答案未由模型可靠生成。"
+        ),
+    }
+    request = LLMRequest(
+        task="market_question_answer_draft",
+        prompt_template_id=MARKET_QUESTION_ANSWER_TEMPLATE_ID,
+        prompt_version=MARKET_QUESTION_ANSWER_PROMPT_VERSION,
+        variables=variables,
+        schema=MARKET_QUESTION_ANSWER_SCHEMA,
+        fallback=fallback,
+        system=MARKET_QUESTION_ANSWER_SYSTEM,
+        max_tokens=1800,
+        temperature=0.1,
+    )
+    try:
+        response = get_gateway().complete(
+            session,
+            job.organization_id,
+            request,
+            trace_id=str(job.id),
+        )
+    except Exception as exc:  # Gateway unexpected failure should retry with the job lease policy.
+        raise TaskFailed(
+            f"研究问题答案 LLM Gateway 调用失败：{type(exc).__name__}: {exc}",
+            retryable=True,
+        ) from exc
+
+    output = response.output or fallback
+    if response.degraded or not evidence_context:
+        output = fallback
+    answer_summary = output.get("answer_summary")
+    if not isinstance(answer_summary, str) or not answer_summary.strip():
+        output = fallback
+        answer_summary = fallback["answer_summary"]
+
+    assumptions = _answer_text_list(output.get("assumptions"))
+    unknowns = _answer_text_list(output.get("unknowns"))
+    confidence = str(output.get("confidence_level") or "INSUFFICIENT").upper()
+    if confidence not in {"HIGH", "MEDIUM", "LOW", "INSUFFICIENT"}:
+        confidence = "INSUFFICIENT"
+
+    answer_evidence: list[dict[str, Any]] = []
+    excluded_citations = 0
+    assessments = output.get("evidence_assessments")
+    if isinstance(assessments, list):
+        seen: set[tuple[UUID, str]] = set()
+        for assessment in assessments[:50]:
+            if not isinstance(assessment, dict):
+                continue
+            try:
+                evidence_id = UUID(str(assessment.get("evidence_id")))
+            except (TypeError, ValueError):
+                excluded_citations += 1
+                continue
+            relation = str(assessment.get("relation_type") or "").upper()
+            key = (evidence_id, relation)
+            if str(evidence_id) not in evidence_by_id or relation not in {
+                "SUPPORTS",
+                "CONTRADICTS",
+                "CONTEXT",
+            } or key in seen:
+                excluded_citations += 1
+                continue
+            seen.add(key)
+            rationale = assessment.get("rationale")
+            answer_evidence.append(
+                {
+                    "evidence_id": evidence_id,
+                    "relation_type": relation,
+                    "rationale": (
+                        rationale.strip()[:2000]
+                        if isinstance(rationale, str) and rationale.strip()
+                        else None
+                    ),
+                }
+            )
+
+    evidence_gap = output.get("evidence_gap")
+    evidence_gap = (
+        evidence_gap.strip()[:3000]
+        if isinstance(evidence_gap, str) and evidence_gap.strip()
+        else None
+    )
+    if excluded_citations:
+        unknowns.append(
+            f"模型输出中有 {excluded_citations} 条引用未能映射到本次提供的 Evidence，已排除。"
+        )
+    if not answer_evidence and evidence_gap is None:
+        evidence_gap = "模型未能建立答案主张与可用 Evidence 之间的明确映射。"
+    if not answer_evidence and not evidence_gap:
+        evidence_gap = "当前没有可用于采纳答案的证据关联。"
+
+    # Unverified source snippets can never support a HIGH-confidence answer.
+    has_unverified = any(
+        (row.verification_status or "UNVERIFIED") != "VERIFIED"
+        for row in evidence_rows
+    )
+    if has_unverified and confidence == "HIGH":
+        confidence = "MEDIUM"
+    if not answer_evidence and confidence != "INSUFFICIENT":
+        confidence = "INSUFFICIENT"
+
+    answer = market_question_answer_service.create_answer(
+        session,
+        job.organization_id,
+        workspace_id,
+        question_id,
+        answer_summary=answer_summary.strip()[:12000],
+        assumptions=assumptions,
+        unknowns=unknowns,
+        confidence_level=confidence,
+        generated_by_run_id=run.id,
+        evidence=answer_evidence,
+        evidence_gap=evidence_gap,
+        created_by_user_id=None,
+    )
+    run.status = "SUCCEEDED"
+    run.output = {
+        "answer_id": str(answer["id"]),
+        "answer_version": answer["version"],
+        "llm_invocation_id": str(response.invocation_id),
+        "model": response.model,
+        "degraded": response.degraded,
+        "cached": response.cached,
+        "selected_evidence_count": len(evidence_context),
+        "linked_evidence_count": len(answer_evidence),
+        "excluded_citation_count": excluded_citations,
+        "confidence_level": confidence,
+        "answer_status": answer["status"],
+    }
+    run.finished_at = datetime.now(UTC)
+    workflow.payload = {
+        **(workflow.payload or {}),
+        "generation_status": "COMPLETED",
+        "answer_id": str(answer["id"]),
+        "answer_version": answer["version"],
+        "agent_run_id": str(run.id),
+        "llm_invocation_id": str(response.invocation_id),
+        "degraded": response.degraded,
+    }
+    workflow.status = "COMPLETED"
+    session.flush()
+    return {
+        "workspace_id": str(workspace_id),
+        "question_id": str(question_id),
+        "workflow_id": str(workflow.id),
+        "agent_run_id": str(run.id),
+        "answer_id": str(answer["id"]),
+        "answer_version": answer["version"],
+        "answer_status": answer["status"],
+        "llm_invocation_id": str(response.invocation_id),
+        "degraded": response.degraded,
+        "linked_evidence_count": len(answer_evidence),
+    }
+
+
 #: 任务处理器注册表。新增 ``job_type`` 时必须同时在这里登记，否则任务会以
 #: "没有注册处理器"直接终态失败（这是刻意的：静默丢弃任务比报错更糟）。
 TASK_HANDLERS: Mapping[str, TaskHandler] = {
@@ -510,6 +792,7 @@ TASK_HANDLERS: Mapping[str, TaskHandler] = {
     job_service.JOB_TYPE_CRM_SYNC: handle_crm_sync,
     job_service.JOB_TYPE_FX_SYNC: handle_fx_sync,
     job_service.JOB_TYPE_RESEARCH_EXECUTE: handle_research_execute,
+    job_service.JOB_TYPE_MARKET_QUESTION_ANSWER: handle_market_question_answer_draft,
 }
 
 
@@ -522,4 +805,5 @@ __all__ = [
     "handle_fx_sync",
     "handle_plan_trip",
     "handle_research_execute",
+    "handle_market_question_answer_draft",
 ]
