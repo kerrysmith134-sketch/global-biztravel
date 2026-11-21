@@ -559,6 +559,8 @@ def mark_job_failed(
         )
         .with_for_update()
     ).one_or_none()
+    if workflow.status == "FAILED" and verification_run is not None and verification_run.status == "FAILED":
+        return
     if verification_run is not None:
         verification_run.status = "FAILED"
         verification_run.failure_reason = error[:2000]
