@@ -10,6 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, Unprocessable
+from app.models.identity import Membership
 from app.models.market import (
     MarketActivityEvent,
     MarketEntity,
@@ -22,7 +23,6 @@ from app.models.market import (
     MarketWorkspaceTripLink,
     MarketWorkspaceWorkflow,
 )
-from app.models.identity import Membership
 from app.models.trip import Trip
 from app.models.workflow import AgentRun, Evidence
 
