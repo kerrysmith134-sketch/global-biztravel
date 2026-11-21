@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 from uuid import UUID
 
@@ -112,7 +113,7 @@ def create_workspace(
         workspace_id=workspace.id,
         version=1,
         raw_input=raw_input,
-        extracted_context=dict(_INITIAL_EXTRACTED_CONTEXT),
+        extracted_context=deepcopy(_INITIAL_EXTRACTED_CONTEXT),
         user_overrides={},
         unknowns={},
         provenance={"raw_input": {"source": "USER"}},
@@ -234,10 +235,13 @@ def create_context_snapshot(
         extracted_context=dict(_INITIAL_EXTRACTED_CONTEXT),
         user_overrides=(
             user_overrides if user_overrides is not None
-            else (dict(current.user_overrides) if current else {})
+            else (deepcopy(current.user_overrides) if current else {})
         ),
         unknowns={},
-        provenance={"raw_input": {"source": "USER"}},
+        provenance={
+            "raw_input": {"source": "USER"},
+            "user_overrides": {"source": "USER_EDIT"} if user_overrides is not None else {},
+        },
         extraction_status="NOT_STARTED",
         is_current=False,
         created_by_user_id=actor_user_id,
