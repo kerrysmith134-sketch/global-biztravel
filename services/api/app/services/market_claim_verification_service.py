@@ -32,6 +32,38 @@ WORKFLOW_TYPE = "market_claim_verification"
 MAX_EVIDENCE_PER_VERIFICATION = 24
 
 
+def compute_input_digest(
+    answer: MarketResearchQuestionAnswer,
+    evidence_rows: list[Evidence],
+) -> str:
+    """Hash the exact answer and ordered Evidence payload/status snapshot used by the agent."""
+    material = {
+        "answer_id": str(answer.id),
+        "answer_version": answer.version,
+        "answer_summary": answer.answer_summary,
+        "prompt_version": MARKET_CLAIM_VERIFY_PROMPT_VERSION,
+        "evidence": [
+            {
+                "id": str(row.id),
+                "content_hash": row.content_hash,
+                "verification_status": row.verification_status or "UNVERIFIED",
+                "content_sha256": sha256(
+                    str((row.payload or {}).get("content", "")).encode("utf-8")
+                ).hexdigest(),
+            }
+            for row in evidence_rows
+        ],
+    }
+    return sha256(
+        json.dumps(
+            material,
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _workspace(
     session: Session, organization_id: UUID | str, workspace_id: UUID
 ) -> MarketWorkspace:
@@ -118,31 +150,7 @@ def enqueue_claim_verification(
     if not content_rows:
         raise Conflict("答案关联的 Evidence 均没有可分析的正文或摘要")
 
-    digest_material = {
-        "answer_id": str(answer.id),
-        "answer_version": answer.version,
-        "answer_summary": answer.answer_summary,
-        "prompt_version": MARKET_CLAIM_VERIFY_PROMPT_VERSION,
-        "evidence": [
-            {
-                "id": str(row.id),
-                "content_hash": row.content_hash,
-                "verification_status": row.verification_status or "UNVERIFIED",
-                "content_sha256": sha256(
-                    str((row.payload or {}).get("content", "")).encode("utf-8")
-                ).hexdigest(),
-            }
-            for row in content_rows
-        ],
-    }
-    input_digest = sha256(
-        json.dumps(
-            digest_material,
-            sort_keys=True,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
+    input_digest = compute_input_digest(answer, content_rows)
     dedupe_key = (
         f"market_claim_verify:{answer_id}:"
         f"{MARKET_CLAIM_VERIFY_PROMPT_VERSION}:{input_digest}"
@@ -202,14 +210,13 @@ def enqueue_claim_verification(
     )
     session.add(workflow)
     session.flush()
-    session.add(
-        MarketWorkspaceWorkflow(
-            organization_id=organization_id,
-            workspace_id=workspace_id,
-            workflow_id=workflow.id,
-            linked_by_user_id=created_by_user_id,
-        )
+    workflow_link = MarketWorkspaceWorkflow(
+        organization_id=organization_id,
+        workspace_id=workspace_id,
+        workflow_id=workflow.id,
+        linked_by_user_id=created_by_user_id,
     )
+    session.add(workflow_link)
 
     verification_run = MarketClaimVerificationRun(
         organization_id=organization_id,
@@ -239,6 +246,34 @@ def enqueue_claim_verification(
         dedupe_key=dedupe_key,
         created_by_user_id=created_by_user_id,
     )
+    queued_workflow_id = (job.payload or {}).get("workflow_id")
+    if queued_workflow_id and str(queued_workflow_id) != str(workflow.id):
+        existing_run_id = (job.payload or {}).get("verification_run_id")
+        existing_workflow_id = UUID(str(queued_workflow_id))
+        session.delete(verification_run)
+        session.flush()
+        session.delete(workflow_link)
+        session.delete(workflow)
+        session.flush()
+        existing_run = session.scalars(
+            select(MarketClaimVerificationRun).where(
+                MarketClaimVerificationRun.organization_id == organization_id,
+                MarketClaimVerificationRun.workspace_id == workspace_id,
+                MarketClaimVerificationRun.id == UUID(str(existing_run_id)),
+                MarketClaimVerificationRun.workflow_id == existing_workflow_id,
+            )
+        ).one_or_none()
+        if existing_run is None:
+            raise Conflict("检测到并发幂等任务，但未找到对应核验运行记录")
+        return {
+            "job_id": job.id,
+            "workflow_id": existing_workflow_id,
+            "verification_run_id": existing_run.id,
+            "status": job.status,
+            "evidence_count": len(content_rows),
+            "reused": True,
+        }
+
     workflow.job_id = job.id
     session.add(
         MarketActivityEvent(
@@ -583,6 +618,7 @@ __all__ = [
     "WORKFLOW_TYPE",
     "MAX_EVIDENCE_PER_VERIFICATION",
     "enqueue_claim_verification",
+    "compute_input_digest",
     "get_verification_run",
     "list_claims",
     "review_claim",
