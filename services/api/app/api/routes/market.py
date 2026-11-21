@@ -461,6 +461,7 @@ def create_market_evidence(
         verification_status="UNVERIFIED",
         quality=None,
         payload=payload.payload,
+        actor_user_id=context.user_id,
     )
     return guard.finish(
         status_code=status.HTTP_201_CREATED,
