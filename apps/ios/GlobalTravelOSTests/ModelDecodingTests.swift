@@ -49,6 +49,28 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(place.displayAddress, "")
     }
 
+    func testCustomerPlaceLinkRequestUsesBackendSnakeCaseAndIdempotency() throws {
+        let request = try Endpoints.linkCustomerPlace(
+            customerId: "customer-1",
+            request: CustomerPlaceLinkRequest(
+                placeId: "place-1",
+                label: "拜访地址",
+                isPrimary: false
+            )
+        )
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/v1/customers/customer-1/places")
+        XCTAssertNotNil(request.idempotencyKey)
+
+        let data = try XCTUnwrap(request.body)
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertEqual(payload["place_id"] as? String, "place-1")
+        XCTAssertEqual(payload["label"] as? String, "拜访地址")
+        XCTAssertEqual(payload["is_primary"] as? Bool, false)
+    }
+
     func testVisitCreateRequestEncodesCRMCustomerId() throws {
         let request = VisitCreateRequest(
             customerId: "customer-1",
