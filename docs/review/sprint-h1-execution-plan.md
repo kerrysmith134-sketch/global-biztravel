@@ -342,13 +342,21 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 
 ## 9. 当前交付状态说明
 
-本文件与 Market Intelligence Engine v1.0 是**设计文档提交**，不是 H1 代码实现提交。
+本计划已经从设计阶段进入 H1.2 工程实现。源码审计结果见 `docs/review/sprint-h1-code-audit.md`；领域契约见 `docs/architecture/market-intelligence-domain-contract-v1.0.md`。当前分支中的实际代码、迁移与测试以 PR #3 为准，不再沿用早期“只有设计文档、没有实现代码”的历史描述。
 
-本次提交不包含数据库迁移、API、SwiftUI 页面或 Agent 代码；因此本次不声称任何新增功能已运行，也不声称新增代码测试已通过。
+**当前已实现：**
+- Workspace、版本化 ContextSnapshot、ResearchQuestion、活动事件及 Workspace ↔ Workflow 关系；
+- Workspace 对现有用户意图 ResearchPlan 的关联与查询；
+- MarketEntity / Alias / WorkspaceEntity / EntityCustomerLink，含显式复用与 Customer 确认边界；
+- Alembic 0032 / 0033、FORCE RLS、同组织复合外键、API 和集成测试；
+- OpenAPI 与 Swift 契约样本由项目生成器同步。
 
-下一次工程提交必须从 H1.0 代码与 schema 审计开始，给出实际文件路径、字段级复用判断和可复现测试结果后，再实施 H1.1–H1.5。
+**当前尚未完成：**
+- MarketInsight、MarketOpportunity、Evidence 内容版本化及显式证据关系；
+- 原生 iOS Workspace 列表/详情/Context Review；
+- 真实数据库迁移与完整门禁最终验证。
 
----
+**验证纪律：** 当前已有 CI #196 的 Ruff、MyPy 和 OpenAPI contract-check 通过记录；docs-check 当时因 0032/0033 未登记失败，迁移文档现已修正。CI #206 正在对更新后的分支执行严格检查；在 CI 最终完成前，不宣称 PostgreSQL migration、Alembic check、全量测试、E2E 或 iOS 全套验证通过。
 
 ## 10. H1.2 纵向切片（叠加现有用户驱动 ResearchPlan）
 
