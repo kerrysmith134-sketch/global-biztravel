@@ -448,6 +448,9 @@ def get_research_plan(
         job_id=workflow.job_id,
         retrieval_error=str(retrieval_error) if retrieval_error else None,
         results_count=int(payload.get("results_count") or 0),
+        reviewed_search_queries=_string_list(
+            payload.get("reviewed_search_queries"), limit=MAX_QUERIES
+        ),
         request=str(payload.get("request") or ""),
         requested_scope=str(payload.get("requested_scope") or "AUTO"),
         recommended_scope=str(payload.get("recommended_scope") or "INTERNAL_ONLY"),
