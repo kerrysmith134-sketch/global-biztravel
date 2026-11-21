@@ -2029,6 +2029,14 @@ class MarketEvidenceCreate(BaseModel):
     observation: str | None = Field(default=None, max_length=10000)
     payload: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def _non_blank_source_content(self) -> MarketEvidenceCreate:
+        if not self.content.strip():
+            raise ValueError("Evidence 原文内容不能为空")
+        if not self.kind.strip():
+            raise ValueError("Evidence kind 不能为空")
+        return self
+
 
 class MarketEvidenceRead(ORMModel):
     id: UUID
