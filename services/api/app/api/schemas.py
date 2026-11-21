@@ -2181,6 +2181,32 @@ class MarketQuestionAnswerRead(BaseModel):
 class MarketQuestionAnswerReview(BaseModel):
     review_note: str | None = Field(default=None, max_length=3000)
 
+class MarketSourceExtractionAccepted(BaseModel):
+    workspace_id: UUID
+    source_evidence_id: UUID
+    workflow_id: UUID
+    job_id: UUID
+    status: Literal["PENDING", "RUNNING", "COMPLETED"]
+    reused: bool
+
+
+class MarketSourceExtractionRead(BaseModel):
+    workspace_id: UUID
+    source_evidence_id: UUID
+    workflow_id: UUID
+    job_id: UUID | None
+    job_status: str | None
+    extraction_status: Literal["QUEUED", "RUNNING", "COMPLETED", "FAILED"]
+    extracted_evidence_id: UUID | None
+    agent_run_id: UUID | None
+    failure_code: str | None
+    failure_reason: str | None
+    source_url: str | None
+    extractor_version: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class MarketQuestionAnswerGenerationCreate(BaseModel):
     evidence_ids: list[UUID] | None = Field(default=None, max_length=24)
 
