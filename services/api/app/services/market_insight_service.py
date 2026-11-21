@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from hashlib import sha256
-import re
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
