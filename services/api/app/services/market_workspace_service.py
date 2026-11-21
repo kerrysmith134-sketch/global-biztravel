@@ -104,14 +104,12 @@ def create_workspace(
         payload={"name": workspace.name},
     )
 
-    if initial_context is not None:
-        raw_input = initial_context.strip()
-        if raw_input:
+    if initial_context is not None and initial_context.strip():
             snapshot = MarketContextSnapshot(
                 organization_id=organization_id,
                 workspace_id=workspace.id,
                 version=1,
-                raw_input=raw_input,
+                raw_input=initial_context,
                 extracted_context={},
                 user_overrides={},
                 unknowns=[],
@@ -197,7 +195,7 @@ def create_context_snapshot(
         organization_id=organization_id,
         workspace_id=workspace_id,
         version=version,
-        raw_input=raw_input.strip(),
+        raw_input=raw_input,
         extracted_context={},
         user_overrides={},
         unknowns=[],
