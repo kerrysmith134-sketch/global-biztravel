@@ -84,11 +84,9 @@ final class MapWorkspaceViewModel: ObservableObject {
     /// Load visit and customer context independently from the plan payload.
     /// The map remains usable if CRM enrichment is unavailable; missing customer metadata is omitted.
     private func loadMissionContext(tripId: String) async {
-        async let visitResult = try? await environment.visitRepository.listVisits(tripId: tripId)
-        let visitResponse = await visitResult
-
+        let loadedVisits = try? await environment.visitRepository.listVisits(tripId: tripId)
         guard selectedTripID == tripId else { return }
-        guard let loadedVisits = visitResponse else {
+        guard let loadedVisits else {
             visits = []
             customers = []
             customerLocations = []
@@ -99,8 +97,8 @@ final class MapWorkspaceViewModel: ObservableObject {
         visits = loadedVisits
         customerLocations = []
         customerPlacesMessage = nil
-        let referencedCustomerIDs = Array(Set(loadedVisits.compactMap(\.customerId))).sorted()
-        guard !referencedCustomerIDs.isEmpty else {
+        let customerIDs = Array(Set(loadedVisits.compactMap(\.customerId))).sorted()
+        guard !customerIDs.isEmpty else {
             customers = []
             customerPlacesMessage = loadedVisits.isEmpty
                 ? "当前 Mission 尚无拜访；新增拜访并关联 CRM 客户后，客户地址会出现在地图上。"
@@ -110,57 +108,47 @@ final class MapWorkspaceViewModel: ObservableObject {
 
         isLoadingCustomerPlaces = true
         defer { isLoadingCustomerPlaces = false }
-        let customerRepository = environment.customerRepository
-        var customerIterator = referencedCustomerIDs.makeIterator()
-        var loadedCustomers: [Customer] = []
-        var customerFailures = 0
-
-        await withTaskGroup(of: CustomerFetchResult.self) { group in
-            for _ in 0..<min(4, referencedCustomerIDs.count) {
-                guard let customerID = customerIterator.next() else { break }
-                group.addTask {
-                    do {
-                        return CustomerFetchResult(
-                            customerId: customerID,
-                            customer: try await customerRepository.customer(id: customerID),
-                            errorMessage: nil
-                        )
-                    } catch {
-                        return CustomerFetchResult(customerId: customerID, customer: nil, errorMessage: error.localizedDescription)
-                    }
-                }
-            }
-
-            while let result = await group.next() {
-                if let customer = result.customer { loadedCustomers.append(customer) }
-                if result.errorMessage != nil { customerFailures += 1 }
-                if let nextID = customerIterator.next() {
-                    group.addTask {
-                        do {
-                            return CustomerFetchResult(
-                                customerId: nextID,
-                                customer: try await customerRepository.customer(id: nextID),
-                                errorMessage: nil
-                            )
-                        } catch {
-                            return CustomerFetchResult(customerId: nextID, customer: nil, errorMessage: error.localizedDescription)
-                        }
-                    }
-                }
-            }
-        }
-
+        let batch = await fetchMissionCustomers(ids: customerIDs)
         guard selectedTripID == tripId else { return }
-        customers = loadedCustomers.sorted { $0.name < $1.name }
+        customers = batch.customers.sorted { $0.name < $1.name }
         await loadCustomerPlaces(
             for: customers,
             tripId: tripId,
-            missingCustomerCount: customerFailures
+            missingCustomerCount: batch.failures
         )
     }
 
-    /// Fetch linked addresses only for customers referenced by this Mission.
-    /// Four concurrent requests cap API pressure without serialising every customer lookup.
+    private func fetchMissionCustomers(ids: [String]) async -> (customers: [Customer], failures: Int) {
+        var iterator = ids.makeIterator()
+        var customers: [Customer] = []
+        var failures = 0
+
+        await withTaskGroup(of: CustomerFetchResult.self) { group in
+            for _ in 0..<min(4, ids.count) {
+                guard let id = iterator.next() else { break }
+                group.addTask { await self.fetchCustomer(id: id) }
+            }
+            while let result = await group.next() {
+                if let customer = result.customer { customers.append(customer) }
+                if result.errorMessage != nil { failures += 1 }
+                if let nextID = iterator.next() {
+                    group.addTask { await self.fetchCustomer(id: nextID) }
+                }
+            }
+        }
+        return (customers, failures)
+    }
+
+    private func fetchCustomer(id: String) async -> CustomerFetchResult {
+        do {
+            let customer = try await environment.customerRepository.customer(id: id)
+            return CustomerFetchResult(customerId: id, customer: customer, errorMessage: nil)
+        } catch {
+            return CustomerFetchResult(customerId: id, customer: nil, errorMessage: error.localizedDescription)
+        }
+    }
+
+    /// Customer address relations are fetched independently from visit points.
     private func loadCustomerPlaces(
         for missionCustomers: [Customer],
         tripId: String,
@@ -177,7 +165,28 @@ final class MapWorkspaceViewModel: ObservableObject {
             return
         }
 
-        let repository = environment.customerRepository
+        let batch = await fetchPlaces(for: missionCustomers)
+        guard selectedTripID == tripId else { return }
+        customerLocations = batch.locations.sorted {
+            if $0.customer.name != $1.customer.name { return $0.customer.name < $1.customer.name }
+            if $0.place.isPrimary != $1.place.isPrimary { return $0.place.isPrimary }
+            return $0.place.name < $1.place.name
+        }
+        var warnings: [String] = []
+        if batch.failures > 0 {
+            warnings.append("\(batch.failures) 个客户的地址读取失败，相关地址状态未知")
+        } else if batch.locations.isEmpty {
+            warnings.append("当前 Mission 的客户没有返回已关联地址；请在客户档案中维护总部、工厂或拜访地址")
+        }
+        if missingCustomerCount > 0 {
+            warnings.append("\(missingCustomerCount) 个被拜访客户档案读取失败")
+        }
+        customerPlacesMessage = warnings.isEmpty ? nil : warnings.joined(separator: "；")
+    }
+
+    private func fetchPlaces(
+        for missionCustomers: [Customer]
+    ) async -> (locations: [CustomerMapLocation], failures: Int) {
         var iterator = missionCustomers.makeIterator()
         var locations: [CustomerMapLocation] = []
         var failures = 0
@@ -185,23 +194,8 @@ final class MapWorkspaceViewModel: ObservableObject {
         await withTaskGroup(of: CustomerPlacesFetchResult.self) { group in
             for _ in 0..<min(4, missionCustomers.count) {
                 guard let customer = iterator.next() else { break }
-                group.addTask {
-                    do {
-                        return CustomerPlacesFetchResult(
-                            customerId: customer.id,
-                            places: try await repository.customerPlaces(customerId: customer.id),
-                            errorMessage: nil
-                        )
-                    } catch {
-                        return CustomerPlacesFetchResult(
-                            customerId: customer.id,
-                            places: [],
-                            errorMessage: error.localizedDescription
-                        )
-                    }
-                }
+                group.addTask { await self.fetchPlaces(for: customer) }
             }
-
             while let result = await group.next() {
                 if let customer = missionCustomers.first(where: { $0.id == result.customerId }) {
                     locations.append(contentsOf: result.places.map {
@@ -210,41 +204,24 @@ final class MapWorkspaceViewModel: ObservableObject {
                 }
                 if result.errorMessage != nil { failures += 1 }
                 if let nextCustomer = iterator.next() {
-                    group.addTask {
-                        do {
-                            return CustomerPlacesFetchResult(
-                                customerId: nextCustomer.id,
-                                places: try await repository.customerPlaces(customerId: nextCustomer.id),
-                                errorMessage: nil
-                            )
-                        } catch {
-                            return CustomerPlacesFetchResult(
-                                customerId: nextCustomer.id,
-                                places: [],
-                                errorMessage: error.localizedDescription
-                            )
-                        }
-                    }
+                    group.addTask { await self.fetchPlaces(for: nextCustomer) }
                 }
             }
         }
+        return (locations, failures)
+    }
 
-        guard selectedTripID == tripId else { return }
-        customerLocations = locations.sorted {
-            if $0.customer.name != $1.customer.name { return $0.customer.name < $1.customer.name }
-            if $0.place.isPrimary != $1.place.isPrimary { return $0.place.isPrimary }
-            return $0.place.name < $1.place.name
+    private func fetchPlaces(for customer: Customer) async -> CustomerPlacesFetchResult {
+        do {
+            let places = try await environment.customerRepository.customerPlaces(customerId: customer.id)
+            return CustomerPlacesFetchResult(customerId: customer.id, places: places, errorMessage: nil)
+        } catch {
+            return CustomerPlacesFetchResult(
+                customerId: customer.id,
+                places: [],
+                errorMessage: error.localizedDescription
+            )
         }
-        var warnings: [String] = []
-        if failures > 0 {
-            warnings.append("\(failures) 个客户的地址读取失败，相关地址状态未知")
-        } else if locations.isEmpty {
-            warnings.append("当前 Mission 的客户没有返回已关联地址；请在客户档案中维护总部、工厂或拜访地址")
-        }
-        if missingCustomerCount > 0 {
-            warnings.append("\(missingCustomerCount) 个被拜访客户档案读取失败")
-        }
-        customerPlacesMessage = warnings.isEmpty ? nil : warnings.joined(separator: "；")
     }
 
     /// The server is the only authority that mutates visit inputs and produces a new plan version.
