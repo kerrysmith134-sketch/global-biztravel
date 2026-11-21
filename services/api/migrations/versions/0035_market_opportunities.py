@@ -62,8 +62,6 @@ def upgrade() -> None:
                 CHECK (length(btrim(title)) > 0),
             CONSTRAINT ck_market_opportunities_assessment_confidence_allowed
                 CHECK (assessment_confidence IN ('HIGH','MEDIUM','LOW','INSUFFICIENT')),
-            CONSTRAINT ck_market_opportunities_assessment_confidence_allowed
-                CHECK (assessment_confidence IN ('HIGH','MEDIUM','LOW','INSUFFICIENT')),
             CONSTRAINT ck_market_opportunities_qualified_has_human_approval
                 CHECK (
                     status NOT IN ('QUALIFIED','ACTION_PLANNED','WON','LOST') OR
