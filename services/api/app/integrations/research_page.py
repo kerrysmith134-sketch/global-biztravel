@@ -94,7 +94,12 @@ Requester = Callable[[str, str], tuple[int, Mapping[str, str], bytes]]
 
 def _system_resolve(host: str, port: int) -> list[str]:
     rows = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    return list(dict.fromkeys(item[4][0] for item in rows))
+    addresses: list[str] = []
+    for item in rows:
+        address = item[4][0]
+        if isinstance(address, str):
+            addresses.append(address)
+    return list(dict.fromkeys(addresses))
 
 
 def _normalise_target_url(value: str) -> tuple[str, str, int]:
@@ -182,24 +187,21 @@ class _PinnedHTTPConnection(http.client.HTTPConnection):
 
     def connect(self) -> None:
         self.sock = socket.create_connection(
-            (self._pinned_address, self.port), self.timeout, self.source_address
+            (self._pinned_address, self.port), self.timeout
         )
-        if self._tunnel_host:
-            self._tunnel()
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(self, host: str, port: int, address: str, timeout: float) -> None:
-        super().__init__(host=host, port=port, timeout=timeout, context=ssl.create_default_context())
+        self._tls_context = ssl.create_default_context()
+        super().__init__(host=host, port=port, timeout=timeout, context=self._tls_context)
         self._pinned_address = address
 
     def connect(self) -> None:
         raw = socket.create_connection(
-            (self._pinned_address, self.port), self.timeout, self.source_address
+            (self._pinned_address, self.port), self.timeout
         )
-        self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
-        if self._tunnel_host:
-            self._tunnel()
+        self.sock = self._tls_context.wrap_socket(raw, server_hostname=self.host)
 
 
 def _request_pinned(url: str, address: str, timeout: float, max_bytes: int) -> tuple[int, Mapping[str, str], bytes]:
@@ -302,9 +304,9 @@ class _ArticleParser(HTMLParser):
             return
 
         if tag == "html":
-            self.language = values.get("lang")[:35] or None
+            self.language = (values.get("lang") or "")[:35] or None
         elif tag == "meta":
-            key = (values.get("property") or values.get("name") or values.get("itemprop")).lower()
+            key = (values.get("property") or values.get("name") or values.get("itemprop") or "").lower()
             value = values.get("content", "").strip()
             if key and value:
                 self.meta.setdefault(key, value[:2000])
