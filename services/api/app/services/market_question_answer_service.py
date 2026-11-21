@@ -110,7 +110,7 @@ def _validate_run(
     ).one_or_none()
     if run is None:
         raise Conflict(
-            "AI 答案的 AgentRun 必须属于当前 Workspace 关联的 ResearchPlan",
+            "AI 答案的 AgentRun 必须属于当前 Workspace 关联的 Workflow",
             details={"run_id": str(run_id)},
         )
 
