@@ -672,6 +672,27 @@ final class ModelDecodingTests: XCTestCase {
         let detail = Endpoints.researchPlan(id: "plan-1")
         XCTAssertEqual(detail.method, .get)
         XCTAssertEqual(detail.path, "/v1/research/plans/plan-1")
+
+        let execute = Endpoints.executeResearchPlan(id: "plan-1")
+        XCTAssertEqual(execute.method, .post)
+        XCTAssertEqual(execute.path, "/v1/research/plans/plan-1:execute")
+        XCTAssertNotNil(execute.idempotencyKey)
+    }
+
+    func testResearchExecutionAcceptedDecodesQueuedJob() throws {
+        let json = """
+        {
+          "plan_id": "plan-1",
+          "job_id": "job-1",
+          "status": "PENDING",
+          "reused": false
+        }
+        """
+        let accepted = try DateCoding.decode(ResearchExecutionAccepted.self, fromJSON: json)
+        XCTAssertEqual(accepted.planId, "plan-1")
+        XCTAssertEqual(accepted.jobId, "job-1")
+        XCTAssertEqual(accepted.status, "PENDING")
+        XCTAssertFalse(accepted.reused)
     }
 
     func testResearchPlanDecodesIntentAuditAndEvidenceWithoutClaimingRetrieval() throws {
@@ -685,6 +706,9 @@ final class ModelDecodingTests: XCTestCase {
           "recommended_scope": "INTERNAL_AND_EXTERNAL",
           "status": "PLANNED",
           "retrieval_status": "NOT_STARTED",
+          "job_id": null,
+          "retrieval_error": null,
+          "results_count": 0,
           "plan": {
             "intent_summary": "研究目标企业并准备拜访",
             "objective": "为下周拜访准备事实与问题",
