@@ -38,7 +38,7 @@ struct MissionHomeHeader: View {
                     .font(.caption)
                     .foregroundStyle(DS.ColorToken.textSecondary)
                 Spacer(minLength: 2)
-                Label(isLocalMode ? "设备本地" : offlineSummary,
+                Label(isLocalMode ? "本地模式" : offlineSummary,
                       systemImage: isLocalMode ? "internaldrive" : (offlineSummary == "数据来自服务端" ? "checkmark.icloud" : "wifi.slash"))
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(isLocalMode ? DS.ColorToken.info : (offlineSummary == "数据来自服务端" ? DS.ColorToken.success : DS.ColorToken.warning))
