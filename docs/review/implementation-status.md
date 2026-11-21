@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前 head `0030`）
+## 5. 迁移清单（源码 head `0032`；部署库以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -257,3 +257,13 @@
   - `EngineMapping.makePlanDays` 用**设备时区**格式化计划日键 → 跨洲行程日整体偏移一天；
     改为按出发地时区格式化，并新增回归测试（上海 11/17 00:00 = 11/16T16:00Z）。
 - 验证：83 单测全绿；`LocalModeUITests` 增加驾驶舱断言与首启通知权限中断处理，通过并附截图。
+
+## 2026-11-22 市场情报引擎 H1.2 首批后端基础切片
+
+- **分支**：`feat/market-intelligence-h12-foundation`（基于 `main`；待 Draft PR / CI 验证）。
+- **新增领域模型**：`MarketWorkspace`、`MarketContextSnapshot`、`MarketResearchQuestion`、`MarketActivityEvent`；不新建 Customer、Trip、Evidence 或 Agent Runtime 平行主对象。
+- **迁移**：`0032_market_workspace_foundation`；新表统一 ENABLE + FORCE RLS；上下文版本唯一性、研究问题父子关系同租户/同 Workspace 由 PostgreSQL 约束；活动事件对应用角色只读/追加。
+- **API**：Workspace 创建/列表/详情/基本信息更新；上下文创建、历史读取与显式采纳；研究问题创建/列表/内容更新；活动时间线。写接口复用当前角色、租户会话、Idempotency-Key 与标准错误结构。
+- **数据原则**：原始业务输入单独保存；新版本不覆写旧版本；AI 提取状态初始化为 NOT_STARTED；行业、客户群、产品与服务分类不由代码枚举限制；工作空间状态与研究问题状态不能由普通 PATCH 任意改变。
+- **测试新增**：`services/api/tests/test_market_workspaces.py`，覆盖原始输入保留、创建幂等、版本采纳、用户修订值延续、同 Workspace 父子问题、非法状态写入、活动事件及跨租户 404。
+- **未完成 / 未声称通过**：尚未执行真实 PostgreSQL migration、Alembic metadata drift、RLS 集成测试、全量 pytest、OpenAPI 导出及 iOS 契约样本更新；MarketEntity、Insight、Opportunity、Evidence 扩展与关联表、后台 Research Planner/Agent、iOS UI 仍属于后续 H1/H2 切片。部署数据库是否已升级未核实。
