@@ -21,9 +21,13 @@ from app.models.llm import LLMInvocation
 from app.models.market import (
     MarketActivityEvent,
     MarketContextSnapshot,
+    MarketEntity,
+    MarketEntityAlias,
+    MarketEntityCustomerLink,
     MarketQuestionDependency,
     MarketResearchQuestion,
     MarketWorkspace,
+    MarketWorkspaceEntity,
     MarketWorkspaceWorkflow,
 )
 from app.models.memory import PlanAttemptLog, TravelerProfile, TripMemorySummary
@@ -84,9 +88,13 @@ __all__ = [
     "LLMInvocation",
     "MarketActivityEvent",
     "MarketContextSnapshot",
+    "MarketEntity",
+    "MarketEntityAlias",
+    "MarketEntityCustomerLink",
     "MarketQuestionDependency",
     "MarketResearchQuestion",
     "MarketWorkspace",
+    "MarketWorkspaceEntity",
     "MarketWorkspaceWorkflow",
     "Membership",
     "MetricSnapshot",
