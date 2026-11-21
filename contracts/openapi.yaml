@@ -6206,6 +6206,65 @@
           }
         }
       }
+    },
+    "/v1/research/plans/{plan_id}:execute": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "启动已审阅研究计划的外部检索（异步）",
+        "operationId": "execute_plan_v1_research_plans__plan_id__execute_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "title": "Idempotency-Key"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchExecuteAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9621,7 +9680,8 @@
               "plan_trip",
               "draft_minutes",
               "crm_sync",
-              "fx_rate_sync"
+              "fx_rate_sync",
+              "research_execute"
             ],
             "title": "Job Type"
           },
@@ -15703,7 +15763,13 @@
           },
           "retrieval_status": {
             "type": "string",
-            "const": "NOT_STARTED",
+            "enum": [
+              "NOT_STARTED",
+              "QUEUED",
+              "RUNNING",
+              "COMPLETED",
+              "FAILED"
+            ],
             "title": "Retrieval Status",
             "default": "NOT_STARTED"
           },
@@ -15724,6 +15790,34 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "retrieval_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Error"
+          },
+          "results_count": {
+            "type": "integer",
+            "title": "Results Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -15737,6 +15831,44 @@
           "created_at"
         ],
         "title": "ResearchPlanRead"
+      },
+      "ResearchExecuteAccepted": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Id"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED",
+              "DEAD",
+              "CANCELLED"
+            ],
+            "title": "Status"
+          },
+          "reused": {
+            "type": "boolean",
+            "title": "Reused",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "job_id",
+          "status"
+        ],
+        "title": "ResearchExecuteAccepted"
       }
     }
   }
