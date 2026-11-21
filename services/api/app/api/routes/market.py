@@ -26,9 +26,10 @@ from app.api.schemas import (
     MarketResearchQuestionRead,
     MarketWorkspaceCreate,
     MarketWorkspaceRead,
+    ResearchPlanRead,
     Page,
 )
-from app.services import market_workspace_service
+from app.services import market_workspace_service, research_service
 
 router = APIRouter(tags=["market intelligence"])
 
@@ -259,6 +260,22 @@ def create_question(
     return guard.finish(
         status_code=status.HTTP_201_CREATED,
         body=MarketResearchQuestionRead.model_validate(item),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/research-plans",
+    response_model=list[ResearchPlanRead],
+    summary="读取工作空间关联的研究计划",
+)
+def list_workspace_research_plans(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    return research_service.list_research_plans_for_workspace(
+        session, context.organization_id, workspace_id
     )
 
 
