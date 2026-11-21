@@ -476,17 +476,50 @@ struct MapWorkspaceView: View {
                 } else if viewModel.isLoadingPlan {
                     DSLoadingState(message: "正在载入计划路线…")
                         .frame(maxHeight: .infinity)
-                } else {
-                    ContentUnavailableView(
-                        "该行程还没有计划",
-                        systemImage: DSIconCatalog.map,
-                        description: Text("地图不会用直线或虚构路线填充空白。先打开 Mission 添加客户并生成计划。")
+                } else if viewModel.isLoadingCustomerPlaces || !viewModel.customerLocations.isEmpty {
+                    PlanMapView(
+                        customerLocations: viewModel.customerLocations,
+                        customerPlacesMessage: viewModel.customerPlacesMessage,
+                        isLoadingCustomerPlaces: viewModel.isLoadingCustomerPlaces,
+                        plan: nil,
+                        origin: trip.originPlace,
+                        title: "客户地图",
+                        visits: viewModel.visits,
+                        customers: viewModel.customers
                     )
-                    .frame(maxHeight: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.Radius.card)
+                            .stroke(DS.ColorToken.border, lineWidth: 0.8)
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     NavigationLink {
                         TripDetailView(tripId: trip.id, environment: environment)
                     } label: {
-                        Label("打开行程并生成计划", systemImage: "arrow.right")
+                        Label("打开 Mission 与客户详情", systemImage: "arrow.up.right")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.brand)
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .background(DS.ColorToken.brandSubtle, in: RoundedRectangle(cornerRadius: DS.Radius.control))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    ContentUnavailableView(
+                        "当前尚无可展示的计划路线",
+                        systemImage: DSIconCatalog.map,
+                        description: Text("该 Mission 尚未生成计划；关联 CRM 客户及其地址后，也可以先查看客户地图。")
+                    )
+                    .frame(maxHeight: .infinity)
+                    if let message = viewModel.customerPlacesMessage {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    NavigationLink {
+                        TripDetailView(tripId: trip.id, environment: environment)
+                    } label: {
+                        Label("打开 Mission 与生成计划", systemImage: "arrow.right")
                             .font(.subheadline.weight(.semibold))
                     }
                 }
