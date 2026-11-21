@@ -16,10 +16,10 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     SmallInteger,
     Text,
     UniqueConstraint,
-    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -59,7 +59,7 @@ class MarketWorkspace(Base):
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
-    current_context_version: Mapped[int | None] = mapped_column(SmallInteger)
+    current_context_version: Mapped[int | None] = mapped_column(Integer)
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
@@ -104,7 +104,7 @@ class MarketContextSnapshot(Base):
         index=True,
     )
     workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
-    version: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
     raw_input: Mapped[str] = mapped_column(Text, nullable=False)
     extracted_context: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default="{}"
@@ -142,7 +142,7 @@ class MarketResearchQuestion(Base):
                 "market_research_questions.workspace_id",
                 "market_research_questions.id",
             ],
-            ondelete="RESTRICT",
+            ondelete="CASCADE",
             name="fk_market_question_parent_same_workspace",
         ),
         UniqueConstraint(
