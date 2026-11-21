@@ -32,11 +32,12 @@ final class TodayViewModel: ObservableObject {
             )
             items = feed.items
             dailyCap = feed.dailyCap
-            environment.refreshOfflineSummary()
-            await loadCockpit()
         } catch {
+            // Mission data must stay usable when the proactive suggestion service is unavailable.
             errorMessage = environment.errorMessage(error)
         }
+        await loadCockpit()
+        environment.refreshOfflineSummary()
     }
 
     /// Load one selected mission and its verified operational context.
@@ -139,8 +140,7 @@ final class TodayViewModel: ObservableObject {
 struct TodayView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: TodayViewModel
-    @State private var showsSettings = false
-    @State private var showsActionCenter = false
+        @State private var showsActionCenter = false
     @State private var showsNotifications = false
     @State private var showsAssistant = false
     @State private var showsTrips = false
@@ -339,7 +339,7 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: DS.Spacing.md) {
             DSSectionHeader(
                 title: "今日执行",
-                subtitle: cockpit.timeZone.map { zoneName($0) + " · 当地时间" } ?? "行程时区未配置"
+                subtitle: cockpit.timeZone.map { "计划基准时区 · " + zoneName($0) } ?? "计划时区未配置"
             )
             DSCard {
                 VStack(alignment: .leading, spacing: DS.Spacing.sm) {
