@@ -97,7 +97,6 @@ struct CustomerCreateRequest: Codable, Equatable {
     }
 }
 
-
 /// One address explicitly linked to a customer by the backend customer_places relation.
 /// Coordinates and geocoding provenance belong to the address, not to the customer record.
 struct CustomerPlace: Decodable, Equatable, Identifiable {
@@ -123,9 +122,14 @@ struct CustomerPlace: Decodable, Equatable, Identifiable {
     }
 
     var displayAddress: String {
-        [addressLine, city, region, countryCode]
+        let normalizedCity = city?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let distinctRegion = region?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .flatMap { value in
+                value.isEmpty || value.caseInsensitiveCompare(normalizedCity ?? "") == .orderedSame
+                    ? nil : value
+            }
+        return [addressLine, normalizedCity, distinctRegion, countryCode]
             .compactMap { $0 }
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
     }
