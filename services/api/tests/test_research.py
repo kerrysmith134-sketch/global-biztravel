@@ -12,9 +12,9 @@ from app.main import app
 from app.models.reliability import BackgroundJob
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service
+from app.workers.tasks import handle_research_execute
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
-from app.workers.tasks import handle_research_execute
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
