@@ -412,6 +412,38 @@ struct GlobalMapPlace: Decodable, Equatable, Identifiable {
         case timezone, lat, lon, geocodeStatus, geocodeSource, geocodeConfidence
     }
 
+    init(
+        id: String,
+        label: String? = nil,
+        isPrimary: Bool = false,
+        name: String,
+        addressLine: String? = nil,
+        city: String? = nil,
+        region: String? = nil,
+        countryCode: String? = nil,
+        timezone: String? = nil,
+        lat: Double? = nil,
+        lon: Double? = nil,
+        geocodeStatus: String = "MISSING",
+        geocodeSource: String? = nil,
+        geocodeConfidence: Decimal? = nil
+    ) {
+        self.id = id
+        self.label = label
+        self.isPrimary = isPrimary
+        self.name = name
+        self.addressLine = addressLine
+        self.city = city
+        self.region = region
+        self.countryCode = countryCode
+        self.timezone = timezone
+        self.lat = lat
+        self.lon = lon
+        self.geocodeStatus = geocodeStatus
+        self.geocodeSource = geocodeSource
+        self.geocodeConfidence = geocodeConfidence
+    }
+
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(String.self, forKey: .id)
