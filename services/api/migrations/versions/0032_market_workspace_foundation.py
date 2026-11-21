@@ -31,7 +31,7 @@ def upgrade() -> None:
             objective text,
             status text NOT NULL DEFAULT 'DRAFT',
             owner_user_id uuid,
-            current_context_version smallint,
+            current_context_version integer,
             settings jsonb NOT NULL DEFAULT '{}',
             created_by_user_id uuid,
             created_at timestamptz NOT NULL DEFAULT now(),
@@ -62,7 +62,7 @@ def upgrade() -> None:
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             organization_id uuid NOT NULL,
             workspace_id uuid NOT NULL,
-            version smallint NOT NULL,
+            version integer NOT NULL,
             raw_input text NOT NULL,
             extracted_context jsonb NOT NULL DEFAULT '{}',
             user_overrides jsonb NOT NULL DEFAULT '{}',
@@ -136,7 +136,7 @@ def upgrade() -> None:
             CONSTRAINT fk_market_question_parent_same_workspace
                 FOREIGN KEY (organization_id, workspace_id, parent_question_id)
                 REFERENCES market_research_questions (organization_id, workspace_id, id)
-                ON DELETE RESTRICT,
+                ON DELETE CASCADE,
             CONSTRAINT fk_market_research_questions_organization_id_organizations
                 FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE,
             CONSTRAINT fk_market_research_questions_created_by_user_id_users
