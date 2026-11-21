@@ -1,6 +1,6 @@
 # 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
-- 核对时间：2026-11-22（市场情报 H1.8 增量更新）
+- 核对时间：2026-11-22（市场情报 H1.9 增量更新）
 - 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
   规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
   后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0038`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0039`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -104,6 +104,7 @@
                            0036_market_research_plan_evidence
                            0037_market_question_answers
                             0038_market_evidence_derivations
+                           0039_market_claim_verification
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -389,3 +390,20 @@ H1.8 在 H1.7 Research Answer Agent 的基础上补齐一段严格受控的“�
 - **新增测试**：纯离线 Provider 测试覆盖 URL/DNS/重定向 SSRF、安全端口、HTTP 429 可重试、404 终态、媒体类型/响应大小、隐藏内容剔除、正文截断与全文哈希；PostgreSQL 集成测试覆盖用户触发、Evidence 原文保留、异步任务执行、派生关系及状态读取。
 
 **当前验证限制**：本次代码已提交到 `feat/sprint-h1.8-source-page-extraction`，新增数据库迁移 `0038`、API、Worker 与测试；还未在当前执行环境运行 Python/真实 PostgreSQL，也未完成本分支 GitHub Actions。不得将本切片标记为已通过 CI 或已部署。生产环境默认关闭网页抓取 Provider。
+
+
+## 17. 市场情报 H1.9 — Claim-level Verification Agent
+
+H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张核验，不把“LLM 认为有支持”当作事实认证。
+
+- **显式运行边界**：用户对某一答案版本显式触发 `POST /v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims`。任务只读取该答案版本已关联的 Evidence 快照；不会自动搜索、抓取或扩展来源范围。
+- **领域对象**：新增 `MarketClaimVerificationRun`、`MarketClaim`、`MarketClaimEvidence` 与迁移 `0039_market_claim_verification`。保存答案版本、Workflow、AgentRun、输入摘要、原子主张版本、每条主张与 Evidence 的关系、来源 host/content hash/verification status 快照。
+- **Agent 职责**：拆分 FACT / ESTIMATE / OPINION / FORECAST / INFERENCE；逐条输出 SUPPORTS / CONTRADICTS / CONTEXT；必须引用输入 Evidence ID。服务端丢弃虚构 ID、重复 ID、非法关系和空白主张。
+- **确定性重算**：程序重新计算 PROVISIONAL_SUPPORT / POTENTIAL_CONTRADICTION / CONFLICTED / INSUFFICIENT，不直接采用模型置信度。只出现支持关系也仅是待审核的暂定支持。
+- **来源独立性**：记录精确 host、内容哈希、来源核验状态；同 host / 重复 hash 会标注；不同 host 只叫 DISTINCT_HOST_UNCONFIRMED。`confirmed_independent_source_count` 数据库约束固定为 0，Agent 不得自动声明来源独立。
+- **置信上限**：不输出 HIGH。默认 Evidence 未核验时为 LOW；只有所有支持 Evidence 已 VERIFIED 且存在多个 host 时才允许 MEDIUM，但仍明确说明 host 不等于独立出版方。
+- **人工审核**：管理员可采纳/驳回单条主张；只有没有反驳且有 SUPPORTS 关系的 PROVISIONAL_SUPPORT 可进入人工采纳。采纳状态不等于 VERIFIED，也不改写原答案版本或 Evidence 状态。
+- **可靠性**：复用 BackgroundJob、WorkflowInstance、MarketWorkspaceWorkflow、AgentRun、LLMInvocation、幂等入队与 retry/DLQ；同一答案/提示版本/证据内容快照可复用完成的结果。
+- **新增验收测试**：覆盖支持与反驳冲突、不同 host 不能证明独立、UNVERIFIED 不升级、虚构 Evidence ID 排除、人工审核与原答案状态不变、无 Evidence 不可启动。
+
+**当前验证状态**：代码与迁移已提交至 `feat/sprint-h1.9-claim-verification-agent`，尚未完成最新 GitHub Actions；在 CI 全绿前不得声称 H1.9 已验收或迁移已部署。
