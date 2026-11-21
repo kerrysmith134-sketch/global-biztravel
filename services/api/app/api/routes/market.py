@@ -14,6 +14,7 @@ from app.api.deps import (
     SessionDep,
     require_role,
 )
+from app.api.errors import NotFound
 from app.api.idempotent import IdempotentWrite
 from app.api.pagination import clamp_limit, decode_cursor
 from app.api.pagination import next_cursor as page_cursor
@@ -107,8 +108,6 @@ def get_workspace(
     require_role(context, ROLE_VIEWER)
     row = market_service.get_workspace(session, context.organization_id, workspace_id)
     if row is None:
-        from app.api.errors import NotFound
-
         raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
     return MarketWorkspaceRead.model_validate(row)
 
