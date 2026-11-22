@@ -2331,6 +2331,8 @@ class MarketSourceVerificationActionRead(BaseModel):
     claim_id: UUID | None = None
     title: str
     rationale: str
+    research_question_id: UUID | None = None
+    research_question_status: MarketQuestionStatus | None = None
 
 
 class MarketSourceVerificationPlanRead(BaseModel):
@@ -2350,6 +2352,37 @@ class MarketSourceVerificationPlanRead(BaseModel):
     claims: list[MarketSourceVerificationClaimRead] = Field(default_factory=list)
     actions: list[MarketSourceVerificationActionRead] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+
+
+class MarketSourceVerificationTaskRead(BaseModel):
+    action_id: str
+    action_type: Literal[
+        "EXTRACT_SOURCE_PAGE",
+        "COMPLETE_SOURCE_METADATA",
+        "INVESTIGATE_POSSIBLE_SYNDICATION",
+        "REVIEW_SOURCE_VERSION_DRIFT",
+        "REVERIFY_CLAIM_AFTER_SOURCE_CHANGE",
+        "REVIEW_CONTRADICTORY_EVIDENCE",
+        "SEEK_SEPARATELY_ORIGINATED_CORROBORATION",
+    ]
+    question_id: UUID
+    question: str
+    question_status: MarketQuestionStatus
+    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    reused: bool
+    depends_on_question_ids: list[UUID] = Field(default_factory=list)
+
+
+class MarketSourceVerificationPlanApplicationRead(BaseModel):
+    workspace_id: UUID
+    plan_digest: str
+    applied_at: datetime
+    action_count: int
+    created_question_count: int
+    reused_question_count: int
+    dependency_count: int
+    tasks: list[MarketSourceVerificationTaskRead] = Field(default_factory=list)
+    reused_application: bool = False
 
 
 class MarketInsightEvidenceInput(BaseModel):

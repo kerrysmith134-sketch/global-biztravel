@@ -463,6 +463,8 @@ struct MarketSourceVerificationAction: Decodable, Equatable, Identifiable {
     var claimId: String?
     var title: String
     var rationale: String
+    var researchQuestionId: String?
+    var researchQuestionStatus: String?
 
     var id: String { actionId }
 
@@ -492,4 +494,35 @@ struct MarketSourceVerificationPlan: Decodable, Equatable {
     var claims: [MarketSourceVerificationClaim]
     var actions: [MarketSourceVerificationAction]
     var limitations: [String]
+
+    var actionsNeedingResearchTasks: Bool {
+        actions.contains {
+            $0.researchQuestionId == nil || $0.researchQuestionStatus == "CANCELLED"
+        }
+    }
+}
+
+struct MarketSourceVerificationTask: Decodable, Equatable, Identifiable {
+    var actionId: String
+    var actionType: String
+    var questionId: String
+    var question: String
+    var questionStatus: String
+    var priority: String
+    var reused: Bool
+    var dependsOnQuestionIds: [String]
+
+    var id: String { actionId }
+}
+
+struct MarketSourceVerificationPlanApplication: Decodable, Equatable {
+    var workspaceId: String
+    var planDigest: String
+    var appliedAt: Date
+    var actionCount: Int
+    var createdQuestionCount: Int
+    var reusedQuestionCount: Int
+    var dependencyCount: Int
+    var tasks: [MarketSourceVerificationTask]
+    var reusedApplication: Bool
 }

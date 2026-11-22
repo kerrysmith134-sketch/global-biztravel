@@ -11,6 +11,7 @@ protocol ResearchRepository {
     func extractContext(workspaceId: String, contextId: String) async throws -> MarketContextSnapshotRead
     func evidenceIntelligence(workspaceId: String) async throws -> MarketEvidenceIntelligenceReport
     func sourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlan
+    func applySourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlanApplication
     func listQuestions(workspaceId: String, page: PageRequest) async throws -> Page<MarketResearchQuestion>
     func createQuestion(
         workspaceId: String,
@@ -61,6 +62,10 @@ extension ResearchRepository {
 
     func sourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlan {
         throw RepositoryError.requiresNetwork("当前研究仓库未实现来源核验计划")
+    }
+
+    func applySourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlanApplication {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现核验任务同步")
     }
 }
 
@@ -134,6 +139,13 @@ final class RemoteResearchRepository: ResearchRepository {
         try await client.send(
             Endpoints.marketSourceVerificationPlan(workspaceId: workspaceId),
             as: MarketSourceVerificationPlan.self
+        )
+    }
+
+    func applySourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlanApplication {
+        try await client.send(
+            Endpoints.applyMarketSourceVerificationPlan(workspaceId: workspaceId),
+            as: MarketSourceVerificationPlanApplication.self
         )
     }
 

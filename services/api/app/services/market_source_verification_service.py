@@ -22,10 +22,11 @@ from app.models.market import (
     MarketClaim,
     MarketClaimEvidence,
     MarketEvidenceDerivation,
+    MarketResearchQuestion,
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
-from app.models.workflow import Evidence
+from app.models.workflow import AgentRun, Evidence
 
 MAX_ANALYZED_EVIDENCE = 500
 MAX_ANALYZED_CLAIMS = 200
@@ -561,6 +562,38 @@ def build_plan(
     total_action_count = len(actions)
     actions_truncated = total_action_count > MAX_RETURNED_ACTIONS
     actions = actions[:MAX_RETURNED_ACTIONS]
+
+    action_ids = [str(item["action_id"]) for item in actions]
+    latest_question_by_action: dict[str, MarketResearchQuestion] = {}
+    if action_ids:
+        tracked_questions = session.scalars(
+            select(MarketResearchQuestion)
+            .join(
+                AgentRun,
+                (
+                    AgentRun.organization_id == MarketResearchQuestion.organization_id
+                )
+                & (AgentRun.id == MarketResearchQuestion.generated_by_run_id),
+            )
+            .where(
+                MarketResearchQuestion.organization_id == organization_id,
+                MarketResearchQuestion.workspace_id == workspace_id,
+                MarketResearchQuestion.planner_question_key.in_(action_ids),
+                AgentRun.agent_type == "MARKET_SOURCE_VERIFICATION_PLANNER",
+            )
+            .order_by(
+                MarketResearchQuestion.updated_at.desc(),
+                MarketResearchQuestion.created_at.desc(),
+                MarketResearchQuestion.id,
+            )
+        ).all()
+        for question in tracked_questions:
+            if question.planner_question_key:
+                latest_question_by_action.setdefault(question.planner_question_key, question)
+    for action in actions:
+        question = latest_question_by_action.get(str(action["action_id"]))
+        action["research_question_id"] = question.id if question else None
+        action["research_question_status"] = question.status if question else None
 
     return {
         "workspace_id": workspace_id,

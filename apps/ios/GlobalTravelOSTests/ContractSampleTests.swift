@@ -142,6 +142,15 @@ final class ContractSampleTests: XCTestCase {
         XCTAssertEqual(value.actions.first?.priority, "HIGH")
     }
 
+    func testMarketSourceVerificationPlanApplicationContractSampleDecodes() throws {
+        let value = try decode(
+            MarketSourceVerificationPlanApplication.self,
+            ContractSamples.marketSourceVerificationPlanApplication
+        )
+        XCTAssertFalse(value.planDigest.isEmpty)
+        XCTAssertEqual(value.tasks.first?.questionStatus, "OPEN")
+    }
+
     func testJobResultContractSampleDecodes() throws {
         _ = try decode(JobResult.self, ContractSamples.jobResult)
     }

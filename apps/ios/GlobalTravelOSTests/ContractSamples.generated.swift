@@ -376,6 +376,8 @@ enum ContractSamples {
       ],
       "priority": "HIGH",
       "rationale": "1",
+      "research_question_id": "11111111-1111-1111-1111-111111111111",
+      "research_question_status": "OPEN",
       "target_id": "11111111-1111-1111-1111-111111111111",
       "target_type": "EVIDENCE",
       "title": "1"
@@ -432,6 +434,32 @@ enum ContractSamples {
   ],
   "total_claim_count": 1,
   "total_evidence_count": 1,
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let marketSourceVerificationPlanApplication = """
+{
+  "action_count": 1,
+  "applied_at": "2026-11-09T09:00:00+00:00",
+  "created_question_count": 1,
+  "dependency_count": 1,
+  "plan_digest": "1",
+  "reused_application": true,
+  "reused_question_count": 1,
+  "tasks": [
+    {
+      "action_id": "1",
+      "action_type": "EXTRACT_SOURCE_PAGE",
+      "depends_on_question_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "priority": "HIGH",
+      "question": "1",
+      "question_id": "11111111-1111-1111-1111-111111111111",
+      "question_status": "OPEN",
+      "reused": true
+    }
+  ],
   "workspace_id": "11111111-1111-1111-1111-111111111111"
 }
 """
