@@ -155,8 +155,7 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
     }
 
     var sourceURL: URL? {
-        guard let rawURL = url ?? ref,
-              let parsed = URL(string: rawURL),
+        guard let parsed = URL(string: url ?? ref),
               ["http", "https"].contains(parsed.scheme?.lowercased() ?? "") else {
             return nil
         }
