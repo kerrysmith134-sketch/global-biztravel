@@ -1059,17 +1059,37 @@ def handle_market_claim_verification(
                 excluded_claim_count += 1
                 continue
             normalized = statement.casefold()
-            claim_key = sha256(normalized.encode("utf-8")).hexdigest()
+
+            claim_type = str(candidate.get("claim_type") or "INFERENCE").upper()
+            if claim_type not in {"FACT", "ESTIMATE", "OPINION", "FORECAST", "INFERENCE"}:
+                claim_type = "INFERENCE"
+            raw_scope = candidate.get("scope")
+            scope: dict[str, Any] = raw_scope if isinstance(raw_scope, dict) else {}
+            try:
+                scope_json = json.dumps(
+                    scope, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+                )
+                if len(scope_json) > 8000:
+                    raise ValueError("scope too large")
+            except (TypeError, ValueError):
+                scope = {}
+                scope_json = "{}"
+            claim_key_material = json.dumps(
+                {
+                    "statement": normalized,
+                    "claim_type": claim_type,
+                    "scope": json.loads(scope_json),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            claim_key = sha256(claim_key_material.encode("utf-8")).hexdigest()
             if claim_key in seen_claim_keys:
                 excluded_claim_count += 1
                 continue
             seen_claim_keys.add(claim_key)
 
-            claim_type = str(candidate.get("claim_type") or "INFERENCE").upper()
-            if claim_type not in {"FACT", "ESTIMATE", "OPINION", "FORECAST", "INFERENCE"}:
-                claim_type = "INFERENCE"
-            scope = candidate.get("scope")
-            scope = scope if isinstance(scope, dict) else {}
             reasoning = candidate.get("reasoning")
             reasoning = reasoning.strip()[:2000] if isinstance(reasoning, str) and reasoning.strip() else None
 
