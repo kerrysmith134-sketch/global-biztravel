@@ -6,6 +6,7 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy import select
@@ -517,9 +518,11 @@ def get_verification_run(
     )
     status_value = row.status
     failure_reason = row.failure_reason
-    if job is not None and job.status == "DEAD" and status_value not in {"COMPLETED", "FAILED"}:
+    if job is not None and job.status in {"DEAD", "CANCELLED"} and status_value not in {"COMPLETED", "FAILED"}:
         status_value = "FAILED"
-        failure_reason = job.last_error or failure_reason
+        failure_reason = job.last_error or (
+            "核验任务在执行前被取消。" if job.status == "CANCELLED" else failure_reason
+        )
     return {
         "id": row.id,
         "workspace_id": row.workspace_id,
