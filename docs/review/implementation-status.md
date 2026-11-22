@@ -111,12 +111,12 @@
                            0043_market_opportunity_visit_links
                            0044_visit_follow_up_lifecycle
                            0045_receipt_assets
-                           0046_expense_report_receipt_snapshots
+                           0046_report_receipt_snapshot
 ```
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
 
-- **H2.13 票据资产与报销证据快照（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_expense_report_receipt_snapshots` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端。仍待完成对象存储孤儿对账、基于持久化资产的 OCR 人工确认、Trip 结账就绪度与 iOS 离线票据入口；CI/真实数据库验收以本分支最新 Actions 为准。
+- **H2.13 票据资产与报销证据快照（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端。仍待完成对象存储孤儿对账、基于持久化资产的 OCR 人工确认、Trip 结账就绪度与 iOS 离线票据入口；CI/真实数据库验收以本分支最新 Actions 为准。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
