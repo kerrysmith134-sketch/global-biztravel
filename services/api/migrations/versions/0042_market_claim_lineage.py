@@ -30,6 +30,9 @@ def upgrade() -> None:
           AND claim.claim_key = lineage_map.claim_key
         """
     )
+    op.drop_constraint(
+        "fk_market_claim_supersedes_same_answer", "market_claims", type_="foreignkey"
+    )
     op.execute(
         """
         WITH ranked AS (
@@ -74,9 +77,6 @@ def upgrade() -> None:
         "claim_lineage_id",
         nullable=False,
         server_default=sa.text("gen_random_uuid()"),
-    )
-    op.drop_constraint(
-        "fk_market_claim_supersedes_same_answer", "market_claims", type_="foreignkey"
     )
     op.create_foreign_key(
         "fk_market_claim_supersedes_same_workspace",
