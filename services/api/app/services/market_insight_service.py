@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, exists, not_, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,8 @@ from app.models.market import (
     MarketInsight,
     MarketInsightEvidence,
     MarketResearchPlanEvidence,
+    MarketResearchQuestion,
+    MarketEvidenceDerivation,
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
@@ -150,6 +152,62 @@ def record_market_evidence(
     return row
 
 
+def question_evidence_scope(
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    question_id: UUID,
+    workflow_ids: list[UUID],
+):
+    """Return Evidence visible to one question, preserving legacy/shared Workspace data.
+
+    Question-scoped Evidence is visible only through an explicit relation. Legacy
+    rows with question_id NULL and user-added Workspace Evidence remain shared.
+    """
+    links_for_evidence = exists(
+        select(1).where(
+            MarketResearchPlanEvidence.organization_id == organization_id,
+            MarketResearchPlanEvidence.workspace_id == workspace_id,
+            MarketResearchPlanEvidence.evidence_id == Evidence.id,
+            MarketResearchPlanEvidence.question_id.is_not(None),
+        )
+    )
+    target_link = exists(
+        select(1).where(
+            MarketResearchPlanEvidence.organization_id == organization_id,
+            MarketResearchPlanEvidence.workspace_id == workspace_id,
+            MarketResearchPlanEvidence.evidence_id == Evidence.id,
+            MarketResearchPlanEvidence.question_id == question_id,
+        )
+    )
+    shared_link = exists(
+        select(1).where(
+            MarketResearchPlanEvidence.organization_id == organization_id,
+            MarketResearchPlanEvidence.workspace_id == workspace_id,
+            MarketResearchPlanEvidence.evidence_id == Evidence.id,
+            MarketResearchPlanEvidence.question_id.is_(None),
+        )
+    )
+    scope_managed = Evidence.payload["question_scope_managed"].as_boolean().is_(True)
+    workspace_evidence = and_(
+        Evidence.subject_type == "market_workspace",
+        Evidence.subject_id == workspace_id,
+        or_(
+            target_link,
+            shared_link,
+            and_(not_(links_for_evidence), not_(scope_managed)),
+        ),
+    )
+    scopes = [workspace_evidence]
+    if workflow_ids:
+        scopes.append(
+            and_(
+                Evidence.subject_type == "RESEARCH_PLAN",
+                Evidence.subject_id.in_(workflow_ids),
+            )
+        )
+    return and_(Evidence.organization_id == organization_id, or_(*scopes))
+
+
 def link_research_plan_evidence(
     session: Session,
     organization_id: UUID | str,
@@ -159,6 +217,7 @@ def link_research_plan_evidence(
     *,
     search_query: str,
     collected_by_run_id: UUID,
+    question_id: UUID | None = None,
 ) -> bool:
     """Attach shared Workspace Evidence to the ResearchPlan/query that discovered it.
 
@@ -178,6 +237,16 @@ def link_research_plan_evidence(
     ).one_or_none()
     if workflow_link is None:
         raise Conflict("ResearchPlan 未关联到当前 Workspace")
+    if question_id is not None:
+        target_question = session.scalars(
+            select(MarketResearchQuestion).where(
+                MarketResearchQuestion.organization_id == organization_id,
+                MarketResearchQuestion.workspace_id == workspace_id,
+                MarketResearchQuestion.id == question_id,
+            )
+        ).one_or_none()
+        if target_question is None:
+            raise Conflict("目标研究问题不属于当前 Workspace")
 
     run = session.scalars(
         select(AgentRun).where(
@@ -208,6 +277,7 @@ def link_research_plan_evidence(
             workspace_id=str(workspace_id),
             research_plan_id=str(research_plan_id),
             evidence_id=str(evidence_id),
+            question_id=str(question_id) if question_id is not None else None,
             search_query=query_text,
             query_sha256=query_sha256,
             collected_by_run_id=str(collected_by_run_id),
@@ -230,6 +300,7 @@ def link_research_plan_evidence(
             event_type="MARKET_RESEARCH_EVIDENCE_LINKED",
             payload={
                 "evidence_id": str(evidence_id),
+                "question_id": str(question_id) if question_id is not None else None,
                 "query_sha256": query_sha256,
                 "agent_run_id": str(collected_by_run_id),
             },
@@ -237,6 +308,80 @@ def link_research_plan_evidence(
     )
     session.flush()
     return True
+
+
+def inherit_research_plan_evidence_links(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    source_evidence_id: UUID,
+    derived_evidence_id: UUID,
+    *,
+    extraction_workflow_id: UUID,
+    extraction_agent_run_id: UUID,
+) -> int:
+    """Copy query/question provenance from a selected source to its extracted page version."""
+    derivation = session.scalars(
+        select(MarketEvidenceDerivation).where(
+            MarketEvidenceDerivation.organization_id == organization_id,
+            MarketEvidenceDerivation.workspace_id == workspace_id,
+            MarketEvidenceDerivation.workflow_id == extraction_workflow_id,
+            MarketEvidenceDerivation.source_evidence_id == source_evidence_id,
+            MarketEvidenceDerivation.derived_evidence_id == derived_evidence_id,
+            MarketEvidenceDerivation.agent_run_id == extraction_agent_run_id,
+        )
+    ).one_or_none()
+    if derivation is None:
+        raise Conflict("网页正文派生关系不存在，不能继承问题级证据范围")
+
+    source_links = session.scalars(
+        select(MarketResearchPlanEvidence).where(
+            MarketResearchPlanEvidence.organization_id == organization_id,
+            MarketResearchPlanEvidence.workspace_id == workspace_id,
+            MarketResearchPlanEvidence.evidence_id == source_evidence_id,
+        )
+    ).all()
+    if not source_links:
+        return 0
+
+    inserted = 0
+    for link in source_links:
+        statement = (
+            pg_insert(MarketResearchPlanEvidence.__table__)
+            .values(
+                organization_id=str(organization_id),
+                workspace_id=str(workspace_id),
+                research_plan_id=str(link.research_plan_id),
+                question_id=str(link.question_id) if link.question_id is not None else None,
+                evidence_id=str(derived_evidence_id),
+                search_query=link.search_query,
+                query_sha256=link.query_sha256,
+                collected_by_run_id=str(extraction_agent_run_id),
+            )
+            .on_conflict_do_nothing(constraint="uq_market_research_plan_evidence_query")
+            .returning(MarketResearchPlanEvidence.__table__.c.id)
+        )
+        if session.execute(statement).scalar_one_or_none() is not None:
+            inserted += 1
+    if inserted:
+        session.add(
+            MarketActivityEvent(
+                organization_id=organization_id,
+                workspace_id=workspace_id,
+                actor_type="SYSTEM",
+                actor_user_id=None,
+                aggregate_type="market_evidence",
+                aggregate_id=derived_evidence_id,
+                event_type="MARKET_EVIDENCE_SCOPE_INHERITED",
+                payload={
+                    "source_evidence_id": str(source_evidence_id),
+                    "extraction_workflow_id": str(extraction_workflow_id),
+                    "linked_research_plan_count": inserted,
+                },
+            )
+        )
+        session.flush()
+    return inserted
 
 
 def list_research_plan_linked_evidence(
