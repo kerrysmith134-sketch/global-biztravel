@@ -385,7 +385,9 @@ def inherit_research_plan_evidence_links(
                 evidence_id=str(derived_evidence_id),
                 search_query=link.search_query,
                 query_sha256=link.query_sha256,
-                collected_by_run_id=str(extraction_agent_run_id),
+                # This column records who collected the search result. The page
+                # extraction AgentRun is already tracked by MarketEvidenceDerivation.
+                collected_by_run_id=str(link.collected_by_run_id),
             )
             .on_conflict_do_nothing(constraint="uq_market_research_plan_evidence_query")
             .returning(MarketResearchPlanEvidence.__table__.c.id)
