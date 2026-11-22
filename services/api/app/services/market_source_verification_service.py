@@ -306,7 +306,7 @@ def build_plan(
             return
         action_keys.add(key)
         stable_id = sha256(
-            f"{workspace_id}:{action_type}:{target_type}:{target_id}".encode("utf-8")
+            f"{workspace_id}:{action_type}:{target_type}:{target_id}".encode()
         ).hexdigest()[:24]
         actions.append(
             {
@@ -350,7 +350,7 @@ def build_plan(
                 rationale="来源主机、发布日期或已存储内容指纹至少有一项缺失；补齐后才能更可靠地追踪来源与版本。",
             )
 
-    for fingerprint, members in ids_by_fingerprint.items():
+    for _fingerprint, members in ids_by_fingerprint.items():
         distinct_hosts = {hosts[item] for item in members if hosts[item]}
         if len(distinct_hosts) > 1:
             add_action(
