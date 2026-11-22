@@ -32,36 +32,61 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+
+        async let workspaceRequest = repository.workspace(id: workspace.id)
+        async let contextsRequest = repository.listContexts(workspaceId: workspace.id)
+        async let questionsRequest = repository.listQuestions(
+            workspaceId: workspace.id,
+            page: PageRequest(limit: 100)
+        )
+        async let graphRequest = repository.graph(workspaceId: workspace.id)
+        async let evidenceReportRequest = repository.evidenceIntelligence(workspaceId: workspace.id)
+        async let verificationPlanRequest = repository.sourceVerificationPlan(workspaceId: workspace.id)
+        async let impactReportRequest = repository.claimImpactReport(workspaceId: workspace.id)
+
+        var loadErrors: [String] = []
         do {
-            workspace = try await repository.workspace(id: workspace.id)
-            contexts = try await repository.listContexts(workspaceId: workspace.id)
-            let questionPage = try await repository.listQuestions(
-                workspaceId: workspace.id,
-                page: PageRequest(limit: 100)
-            )
-            questions = questionPage.items
-            graph = try await repository.graph(workspaceId: workspace.id)
+            workspace = try await workspaceRequest
         } catch {
-            errorMessage = error.localizedDescription
+            loadErrors.append("工作空间：\(error.localizedDescription)")
         }
         do {
-            evidenceReport = try await repository.evidenceIntelligence(workspaceId: workspace.id)
+            contexts = try await contextsRequest
+        } catch {
+            loadErrors.append("业务上下文：\(error.localizedDescription)")
+        }
+        do {
+            questions = try await questionsRequest.items
+        } catch {
+            loadErrors.append("研究问题：\(error.localizedDescription)")
+        }
+        do {
+            graph = try await graphRequest
+        } catch {
+            loadErrors.append("研究图：\(error.localizedDescription)")
+        }
+
+        do {
+            evidenceReport = try await evidenceReportRequest
             evidenceReportError = nil
         } catch {
             evidenceReportError = error.localizedDescription
         }
         do {
-            sourceVerificationPlan = try await repository.sourceVerificationPlan(workspaceId: workspace.id)
+            sourceVerificationPlan = try await verificationPlanRequest
             sourceVerificationPlanError = nil
         } catch {
             sourceVerificationPlanError = error.localizedDescription
         }
-
         do {
-            claimImpactReport = try await repository.claimImpactReport(workspaceId: workspace.id)
+            claimImpactReport = try await impactReportRequest
             claimImpactReportError = nil
         } catch {
             claimImpactReportError = error.localizedDescription
+        }
+
+        if !loadErrors.isEmpty {
+            errorMessage = loadErrors.joined(separator: "\\n")
         }
     }
 
