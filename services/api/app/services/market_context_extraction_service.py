@@ -175,7 +175,6 @@ def extract_context_snapshot(
         raise Conflict("该上下文版本已有提取运行，暂时不能重复启动")
 
     input_digest = sha256(snapshot.raw_input.encode("utf-8")).hexdigest()
-    now = datetime.now(UTC)
     workflow = WorkflowInstance(
         organization_id=organization_id,
         workflow_type=WORKFLOW_TYPE,

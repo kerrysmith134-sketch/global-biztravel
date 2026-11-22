@@ -166,7 +166,7 @@ def build_report(
     version_ids_by_evidence: dict[UUID, list[UUID]] = {}
     multi_version_source_count = 0
     multi_version_evidence_count = 0
-    for canonical_ref, members in ids_by_canonical_ref.items():
+    for _canonical_ref, members in ids_by_canonical_ref.items():
         versioned_members = [
             evidence_id for evidence_id in members if fingerprints[evidence_id] is not None
         ]
