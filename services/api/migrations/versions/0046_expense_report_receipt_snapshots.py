@@ -6,7 +6,7 @@ from sqlalchemy.dialects import postgresql
 
 from migrations import helpers
 
-revision = "0046_expense_report_receipt_snapshots"
+revision = "0046_report_receipt_snapshot"
 down_revision = "0045_receipt_assets"
 branch_labels = None
 depends_on = None
