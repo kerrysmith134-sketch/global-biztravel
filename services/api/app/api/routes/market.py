@@ -6,7 +6,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from app.api.errors import NotFound
 from app.api.deps import (
     ROLE_ADMIN,
     ROLE_TRAVELER,
@@ -16,13 +15,14 @@ from app.api.deps import (
     SessionDep,
     require_role,
 )
+from app.api.errors import NotFound
 from app.api.idempotent import IdempotentWrite
 from app.api.pagination import clamp_limit, decode_cursor
 from app.api.pagination import next_cursor as page_cursor
 from app.api.schemas import (
     MarketActivityEventRead,
-    MarketClaimLineageRead,
     MarketClaimImpactReportRead,
+    MarketClaimLineageRead,
     MarketClaimRead,
     MarketClaimReview,
     MarketClaimVerificationAccepted,
