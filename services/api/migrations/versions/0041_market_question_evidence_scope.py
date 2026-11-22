@@ -4,7 +4,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0041_market_question_evidence_scope"
+revision = "0041_market_qscope"
 down_revision = "0040_market_research_graph"
 branch_labels = None
 depends_on = None
