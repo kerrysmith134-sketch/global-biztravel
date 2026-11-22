@@ -1434,6 +1434,11 @@ class ReceiptOcrReviewCreate(BaseModel):
             raise ValueError("确认 OCR 结果时至少需要确认一个字段")
         if self.decision == "REJECTED" and not (self.note and self.note.strip()):
             raise ValueError("驳回 OCR 结果必须填写原因")
+        if self.decision == "REJECTED" and has_fields:
+            raise ValueError("驳回 OCR 结果不能同时提交确认字段")
+        if self.note is not None:
+            note = self.note.strip()
+            object.__setattr__(self, "note", note or None)
         if self.currency is not None:
             object.__setattr__(self, "currency", self.currency.upper())
         return self
