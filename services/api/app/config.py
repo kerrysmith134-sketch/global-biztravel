@@ -133,7 +133,7 @@ class Settings(BaseSettings):
     market_research_graph_max_concurrency: int = 3
     market_research_graph_max_questions: int = 12
     market_research_graph_max_duration_minutes: int = 120
-    market_research_graph_max_cost_usd: float = 5.0
+    market_research_graph_max_cost: float = 5.0
 
     # 公网研究来源正文提取（仅用户明确选中来源后执行；默认关闭）
     research_page_provider: str = "unavailable"  # unavailable | safe_http
