@@ -144,6 +144,7 @@ struct TodayView: View {
     @State private var showsNotifications = false
     @State private var showsAssistant = false
     @State private var showsTrips = false
+    @State private var showsMarketResearch = false
 
     init(environment: AppEnvironment) {
         _viewModel = StateObject(wrappedValue: TodayViewModel(environment: environment))
@@ -252,6 +253,11 @@ struct TodayView: View {
                         } label: {
                             Label("行动中心", systemImage: DSIconCatalog.actions)
                         }
+                        Button {
+                            showsMarketResearch = true
+                        } label: {
+                            Label("研究工作区", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -271,6 +277,9 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showsTrips) {
                 TripsView(environment: environment)
+            }
+            .sheet(isPresented: $showsMarketResearch) {
+                MarketResearchWorkspaceView(environment: environment)
             }
         }
     }

@@ -33,6 +33,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
     var tripId: String?
     var customerId: String?
     var workspaceId: String?
+    var targetQuestionId: String?
     var contextText: String?
     var locale: String
 
@@ -42,6 +43,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
         tripId: String? = nil,
         customerId: String? = nil,
         workspaceId: String? = nil,
+        targetQuestionId: String? = nil,
         contextText: String? = nil,
         locale: String = Locale.current.identifier
     ) {
@@ -50,6 +52,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
         self.tripId = tripId
         self.customerId = customerId
         self.workspaceId = workspaceId
+        self.targetQuestionId = targetQuestionId
         self.contextText = contextText
         self.locale = locale
     }
@@ -117,6 +120,7 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
     var id: String
     var kind: String
     var ref: String
+    var url: String?
     var source: String?
     var title: String?
     var snippet: String?
@@ -142,6 +146,7 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
             ResearchEvidencePayload.self,
             forKey: .payload
         )
+        url = payload?.url
         title = payload?.title
         snippet = payload?.snippet
         engine = payload?.engine
@@ -150,11 +155,11 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
     }
 
     var sourceURL: URL? {
-        guard let url = URL(string: ref),
-              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+        guard let parsed = URL(string: url ?? ref),
+              ["http", "https"].contains(parsed.scheme?.lowercased() ?? "") else {
             return nil
         }
-        return url
+        return parsed
     }
 
     var isUnverifiedSearchResult: Bool {
@@ -171,6 +176,7 @@ struct ResearchPlan: Decodable, Equatable, Identifiable {
     var tripId: String?
     var customerId: String?
     var workspaceId: String?
+    var targetQuestionId: String?
     var jobId: String?
     var retrievalError: String?
     var resultsCount: Int

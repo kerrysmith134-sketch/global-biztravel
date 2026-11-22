@@ -4,6 +4,39 @@ protocol ResearchRepository {
     func createPlan(_ request: ResearchPlanCreateRequest) async throws -> ResearchPlan
     func executePlan(id: String, searchQueries: [String]) async throws -> ResearchExecutionAccepted
     func plan(id: String) async throws -> ResearchPlan
+    func listWorkspaces(page: PageRequest) async throws -> Page<MarketWorkspace>
+    func createWorkspace(_ request: MarketWorkspaceCreateRequest) async throws -> MarketWorkspace
+    func workspace(id: String) async throws -> MarketWorkspace
+    func listQuestions(workspaceId: String, page: PageRequest) async throws -> Page<MarketResearchQuestion>
+    func createQuestion(
+        workspaceId: String,
+        request: MarketResearchQuestionCreateRequest
+    ) async throws -> MarketResearchQuestion
+    func graph(workspaceId: String) async throws -> MarketResearchGraph
+    func startExecution(
+        workspaceId: String,
+        request: MarketResearchGraphExecutionCreate
+    ) async throws -> MarketResearchGraphExecutionAccepted
+    func execution(workspaceId: String, executionId: String) async throws -> MarketResearchGraphExecution
+    func cancelExecution(workspaceId: String, executionId: String) async throws
+    func listWorkspacePlans(workspaceId: String, targetQuestionId: String?) async throws -> [ResearchPlan]
+    func draftAnswer(
+        workspaceId: String,
+        questionId: String
+    ) async throws -> MarketQuestionAnswerGenerationAccepted
+    func answers(workspaceId: String, questionId: String) async throws -> [MarketQuestionAnswer]
+    func acceptAnswer(
+        workspaceId: String,
+        questionId: String,
+        answerId: String,
+        reviewNote: String?
+    ) async throws -> MarketQuestionAnswer
+    func rejectAnswer(
+        workspaceId: String,
+        questionId: String,
+        answerId: String,
+        reviewNote: String?
+    ) async throws -> MarketQuestionAnswer
 }
 
 /// Research plans are authoritative server workflows. No local fallback can claim that
@@ -31,5 +64,138 @@ final class RemoteResearchRepository: ResearchRepository {
 
     func plan(id: String) async throws -> ResearchPlan {
         try await client.send(Endpoints.researchPlan(id: id), as: ResearchPlan.self)
+    }
+
+    func listWorkspaces(page: PageRequest) async throws -> Page<MarketWorkspace> {
+        try await client.send(Endpoints.listMarketWorkspaces(page: page), as: Page<MarketWorkspace>.self)
+    }
+
+    func createWorkspace(_ request: MarketWorkspaceCreateRequest) async throws -> MarketWorkspace {
+        try await client.send(
+            try Endpoints.createMarketWorkspace(request),
+            as: MarketWorkspace.self
+        )
+    }
+
+    func workspace(id: String) async throws -> MarketWorkspace {
+        try await client.send(Endpoints.marketWorkspace(id: id), as: MarketWorkspace.self)
+    }
+
+    func listQuestions(
+        workspaceId: String,
+        page: PageRequest
+    ) async throws -> Page<MarketResearchQuestion> {
+        try await client.send(
+            Endpoints.listMarketQuestions(workspaceId: workspaceId, page: page),
+            as: Page<MarketResearchQuestion>.self
+        )
+    }
+
+    func createQuestion(
+        workspaceId: String,
+        request: MarketResearchQuestionCreateRequest
+    ) async throws -> MarketResearchQuestion {
+        try await client.send(
+            try Endpoints.createMarketQuestion(workspaceId: workspaceId, body: request),
+            as: MarketResearchQuestion.self
+        )
+    }
+
+    func graph(workspaceId: String) async throws -> MarketResearchGraph {
+        try await client.send(
+            Endpoints.marketResearchGraph(workspaceId: workspaceId),
+            as: MarketResearchGraph.self
+        )
+    }
+
+    func startExecution(
+        workspaceId: String,
+        request: MarketResearchGraphExecutionCreate
+    ) async throws -> MarketResearchGraphExecutionAccepted {
+        try await client.send(
+            try Endpoints.startMarketResearchGraphExecution(workspaceId: workspaceId, body: request),
+            as: MarketResearchGraphExecutionAccepted.self
+        )
+    }
+
+    func execution(workspaceId: String, executionId: String) async throws -> MarketResearchGraphExecution {
+        try await client.send(
+            Endpoints.marketResearchGraphExecution(workspaceId: workspaceId, executionId: executionId),
+            as: MarketResearchGraphExecution.self
+        )
+    }
+
+    func cancelExecution(workspaceId: String, executionId: String) async throws {
+        try await client.sendWithoutResponse(
+            Endpoints.cancelMarketResearchGraphExecution(workspaceId: workspaceId, executionId: executionId)
+        )
+    }
+
+    func listWorkspacePlans(
+        workspaceId: String,
+        targetQuestionId: String?
+    ) async throws -> [ResearchPlan] {
+        try await client.send(
+            Endpoints.listMarketResearchPlans(
+                workspaceId: workspaceId,
+                targetQuestionId: targetQuestionId
+            ),
+            as: [ResearchPlan].self
+        )
+    }
+
+    func draftAnswer(
+        workspaceId: String,
+        questionId: String
+    ) async throws -> MarketQuestionAnswerGenerationAccepted {
+        try await client.send(
+            try Endpoints.draftMarketQuestionAnswer(
+                workspaceId: workspaceId,
+                questionId: questionId,
+                body: MarketQuestionAnswerGenerationCreate()
+            ),
+            as: MarketQuestionAnswerGenerationAccepted.self
+        )
+    }
+
+    func answers(workspaceId: String, questionId: String) async throws -> [MarketQuestionAnswer] {
+        try await client.send(
+            Endpoints.listMarketQuestionAnswers(workspaceId: workspaceId, questionId: questionId),
+            as: [MarketQuestionAnswer].self
+        )
+    }
+
+    func acceptAnswer(
+        workspaceId: String,
+        questionId: String,
+        answerId: String,
+        reviewNote: String?
+    ) async throws -> MarketQuestionAnswer {
+        try await client.send(
+            try Endpoints.acceptMarketQuestionAnswer(
+                workspaceId: workspaceId,
+                questionId: questionId,
+                answerId: answerId,
+                body: MarketQuestionAnswerReviewRequest(reviewNote: reviewNote)
+            ),
+            as: MarketQuestionAnswer.self
+        )
+    }
+
+    func rejectAnswer(
+        workspaceId: String,
+        questionId: String,
+        answerId: String,
+        reviewNote: String?
+    ) async throws -> MarketQuestionAnswer {
+        try await client.send(
+            try Endpoints.rejectMarketQuestionAnswer(
+                workspaceId: workspaceId,
+                questionId: questionId,
+                answerId: answerId,
+                body: MarketQuestionAnswerReviewRequest(reviewNote: reviewNote)
+            ),
+            as: MarketQuestionAnswer.self
+        )
     }
 }
