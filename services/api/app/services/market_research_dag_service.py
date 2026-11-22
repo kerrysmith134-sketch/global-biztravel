@@ -1108,13 +1108,26 @@ def cancel_execution(
             continue
         if child.job_id is None:
             continue
+        # The Worker holds the child Job row while executing and later needs the
+        # Workspace lock to wake the parent DAG. Never wait on that row while holding
+        # the Workspace lock: SKIP LOCKED avoids the inverse-order deadlock.
         job = session.scalars(
             select(BackgroundJob).where(
                 BackgroundJob.organization_id == organization_id,
                 BackgroundJob.id == child.job_id,
-            ).with_for_update()
+            ).with_for_update(skip_locked=True)
         ).one_or_none()
         if job is None:
+            observed_status = session.scalar(
+                select(BackgroundJob.status).where(
+                    BackgroundJob.organization_id == organization_id,
+                    BackgroundJob.id == child.job_id,
+                )
+            )
+            if observed_status in {"PENDING", "RUNNING"}:
+                # A Worker/claim transaction owns the row. Treat it as active;
+                # its handler rechecks the parent execution before invoking the LLM.
+                running_jobs += 1
             continue
         if job.status == "PENDING":
             job_service.cancel(session, organization_id, job.id)
