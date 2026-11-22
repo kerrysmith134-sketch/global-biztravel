@@ -115,6 +115,27 @@ class MarketResearchQuestionRead(ORMModel):
     updated_at: datetime
 
 
+class MarketQuestionDependencyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    depends_on_question_id: UUID
+
+
+class MarketQuestionDependencyRead(ORMModel):
+    id: UUID
+    organization_id: UUID
+    workspace_id: UUID
+    question_id: UUID
+    depends_on_question_id: UUID
+    created_by_user_id: UUID | None
+    created_at: datetime
+
+
+class MarketQuestionDependencyDeleted(BaseModel):
+    dependency_id: UUID
+    deleted: bool
+
+
 class MarketActivityEventRead(ORMModel):
     id: UUID
     organization_id: UUID
