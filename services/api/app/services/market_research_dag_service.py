@@ -29,7 +29,12 @@ from app.models.market import (
 )
 from app.models.reliability import BackgroundJob
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
-from app.services import job_service, market_question_answer_agent_service, market_research_graph_service
+from app.services import (
+    job_service,
+    market_insight_service,
+    market_question_answer_agent_service,
+    market_research_graph_service,
+)
 
 WORKFLOW_TYPE = "market_research_graph_execution"
 ANSWER_WORKFLOW_TYPE = market_question_answer_agent_service.WORKFLOW_TYPE
@@ -122,6 +127,7 @@ def _content_evidence_ids(
     session: Session,
     organization_id: UUID | str,
     workspace_id: UUID,
+    question_id: UUID,
 ) -> list[UUID]:
     linked_ids = list(
         session.scalars(
@@ -131,19 +137,11 @@ def _content_evidence_ids(
             )
         ).all()
     )
-    workspace_scope = and_(
-        Evidence.subject_type == "market_workspace",
-        Evidence.subject_id == workspace_id,
-    )
-    scope = and_(
-        Evidence.organization_id == organization_id,
-        or_(
-            workspace_scope,
-            and_(
-                Evidence.subject_type == "RESEARCH_PLAN",
-                Evidence.subject_id.in_(linked_ids) if linked_ids else Evidence.subject_id.is_(None),
-            ),
-        ),
+    scope = market_insight_service.question_evidence_scope(
+        organization_id,
+        workspace_id,
+        question_id,
+        linked_ids,
     )
     rows = session.scalars(
         select(Evidence.id)
@@ -268,8 +266,17 @@ def _node_statuses(
         if question_id in dependency_map and depends_on_id in dependency_map:
             dependency_map[question_id].append(depends_on_id)
 
-    evidence_ids = _content_evidence_ids(session, organization_id, workspace_id)
-    evidence_available = bool(evidence_ids)
+    evidence_ids_by_question = {
+        question_id: _content_evidence_ids(
+            session, organization_id, workspace_id, question_id
+        )
+        for question_id in question_ids
+    }
+    evidence_ids = {
+        evidence_id
+        for question_evidence_ids in evidence_ids_by_question.values()
+        for evidence_id in question_evidence_ids
+    }
 
     node_states: list[dict[str, Any]] = []
     by_question: dict[UUID, str] = {}
@@ -343,7 +350,7 @@ def _node_statuses(
                 )
             elif any(by_question.get(dep_id) != "ANSWERED" for dep_id in dependency_map.get(question_id, [])):
                 state = "WAITING_FOR_DEPENDENCY"
-            elif not evidence_available:
+            elif not evidence_ids_by_question.get(question_id):
                 state = "WAITING_FOR_EVIDENCE"
             else:
                 state = "READY"
@@ -843,7 +850,7 @@ def run_scheduler(
     active_count = counts["active_count"]
     slots = max(0, int(payload["max_concurrency"]) - active_count)
     remaining_budget = max(0, int(payload["max_questions"]) - int(payload.get("dispatched_count") or 0))
-    if slots and remaining_budget and counts["ready_count"] and counts["evidence_count"]:
+    if slots and remaining_budget and counts["ready_count"]:
         node_by_id = {str(row["question_id"]): row for row in node_states}
         for question_id in payload["graph_snapshot"]["topological_order"]:
             if slots <= 0 or remaining_budget <= 0:
@@ -1026,9 +1033,9 @@ def retry_question(
     if str(question_id) not in dispatched_ids and len(dispatched_ids) >= int(payload["max_questions"]):
         raise Conflict("本次执行已达到问题数上限，请创建新的执行批次")
 
-    if not counts["evidence_count"]:
+    if not _content_evidence_ids(session, organization_id, workspace_id, question_id):
         raise Conflict(
-            "当前 Workspace 没有可分析的内容型 Evidence；补充证据后再重试",
+            "当前研究问题没有可分析的内容型 Evidence；补充与该问题关联的证据后再重试",
             code="MARKET_RESEARCH_EVIDENCE_REQUIRED",
         )
 
