@@ -511,7 +511,7 @@ struct MarketClaimImpact: Decodable, Equatable, Identifiable {
     var severity: String
     var reasonCode: String
 
-    var id: String { "\\(consumerType):\\(consumerId):\\(claimLineageId)" }
+    var id: String { "\(consumerType):\(consumerId):\(claimLineageId)" }
 
     var consumerTypeLabel: String {
         consumerType == "INSIGHT" ? "市场判断" : "商业机会"
