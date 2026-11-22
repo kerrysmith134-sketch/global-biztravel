@@ -341,6 +341,13 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/market/workspaces/\(id)")
     }
 
+    static func marketEvidenceIntelligence(workspaceId: String) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/evidence-intelligence"
+        )
+    }
+
     static func listMarketContexts(workspaceId: String) -> APIRequest {
         APIRequest(
             method: .get,

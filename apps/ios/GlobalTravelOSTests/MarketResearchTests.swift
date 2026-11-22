@@ -34,6 +34,17 @@ final class MarketResearchTests: XCTestCase {
         XCTAssertEqual(payload["initial_context"] as? String, "User supplied background")
     }
 
+    func testEvidenceIntelligenceEndpointUsesReadOnlyWorkspaceRoute() {
+        let request = Endpoints.marketEvidenceIntelligence(workspaceId: "workspace-1")
+        XCTAssertEqual(request.method, .get)
+        XCTAssertEqual(
+            request.path,
+            "/v1/market/workspaces/workspace-1/evidence-intelligence"
+        )
+        XCTAssertNil(request.idempotencyKey)
+        XCTAssertNil(request.body)
+    }
+
     func testMarketContextEndpointsUseVersionedWorkspaceRoutes() {
         let list = Endpoints.listMarketContexts(workspaceId: "workspace-1")
         XCTAssertEqual(list.method, .get)

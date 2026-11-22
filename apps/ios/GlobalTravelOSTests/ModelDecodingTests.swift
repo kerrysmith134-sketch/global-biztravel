@@ -843,4 +843,60 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(context.isCurrent)
     }
 
+
+    func testMarketEvidenceIntelligenceReportDecodesDuplicateAndVersionSignals() throws {
+        let json = """
+        {
+          "workspace_id": "workspace-1",
+          "generated_at": "2026-11-22T12:00:00+00:00",
+          "total_evidence_count": 2,
+          "analyzed_evidence_count": 2,
+          "is_truncated": false,
+          "distinct_host_count": 2,
+          "duplicate_content_group_count": 1,
+          "duplicate_content_evidence_count": 2,
+          "multi_version_source_count": 0,
+          "multi_version_evidence_count": 0,
+          "unverified_count": 2,
+          "partially_verified_count": 0,
+          "verified_count": 0,
+          "disputed_count": 0,
+          "rejected_count": 0,
+          "missing_publication_date_count": 1,
+          "missing_content_hash_count": 0,
+          "unextracted_search_result_count": 1,
+          "items": [{
+            "evidence_id": "evidence-1",
+            "kind": "WEB_SEARCH_RESULT",
+            "source": "Publisher",
+            "canonical_ref": "https://example.com/report",
+            "source_host": "example.com",
+            "content_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "fingerprint_source": "STORED_HASH",
+            "verification_status": "UNVERIFIED",
+            "published_at": null,
+            "retrieved_at": "2026-11-22T11:00:00+00:00",
+            "age_days": null,
+            "origin_assessment": "DUPLICATE_CONTENT",
+            "duplicate_content_evidence_ids": ["evidence-2"],
+            "same_host_evidence_ids": [],
+            "same_source_version_evidence_ids": [],
+            "derived_page_evidence_ids": [],
+            "issues": ["UNVERIFIED_SOURCE", "MISSING_PUBLICATION_DATE", "DUPLICATE_CONTENT"]
+          }],
+          "caveats": ["不同 host 不能证明独立来源。"]
+        }
+        """
+        let report = try DateCoding.decode(
+            MarketEvidenceIntelligenceReport.self,
+            fromJSON: json
+        )
+
+        XCTAssertEqual(report.totalEvidenceCount, 2)
+        XCTAssertEqual(report.duplicateContentGroupCount, 1)
+        XCTAssertEqual(report.items.first?.originLabel, "内容重复")
+        XCTAssertEqual(report.items.first?.issueLabels.count, 3)
+        XCTAssertEqual(report.caveats.count, 1)
+    }
+
 }

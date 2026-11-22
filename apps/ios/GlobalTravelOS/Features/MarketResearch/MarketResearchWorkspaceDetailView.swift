@@ -6,6 +6,8 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
     @Published private(set) var questions: [MarketResearchQuestion] = []
     @Published private(set) var contexts: [MarketContextSnapshotRead] = []
     @Published private(set) var isExtractingContext = false
+    @Published private(set) var evidenceReport: MarketEvidenceIntelligenceReport?
+    @Published private(set) var evidenceReportError: String?
     @Published private(set) var graph: MarketResearchGraph?
     @Published private(set) var execution: MarketResearchGraphExecution?
     @Published private(set) var isLoading = false
@@ -35,6 +37,12 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
             graph = try await repository.graph(workspaceId: workspace.id)
         } catch {
             errorMessage = error.localizedDescription
+        }
+        do {
+            evidenceReport = try await repository.evidenceIntelligence(workspaceId: workspace.id)
+            evidenceReportError = nil
+        } catch {
+            evidenceReportError = error.localizedDescription
         }
     }
 
@@ -156,6 +164,7 @@ struct MarketResearchWorkspaceDetailView: View {
             LazyVStack(alignment: .leading, spacing: DS.Spacing.lg) {
                 workspaceHeader
                 contextSection
+                evidenceIntelligenceSection
                 if let error = viewModel.errorMessage {
                     DSErrorState(message: error)
                 }
@@ -342,6 +351,128 @@ struct MarketResearchWorkspaceDetailView: View {
                 }
             }
         }
+    }
+
+    private var evidenceIntelligenceSection: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            DSSectionHeader(
+                title: "证据质量",
+                subtitle: "内容重复、来源版本和证据完整性"
+            )
+            if let report = viewModel.evidenceReport {
+                DSCard {
+                    VStack(alignment: .leading, spacing: DS.Spacing.md) {
+                        HStack(spacing: DS.Spacing.md) {
+                            evidenceMetric("证据", value: report.totalEvidenceCount)
+                            evidenceMetric("不同主机", value: report.distinctHostCount)
+                            evidenceMetric("重复内容组", value: report.duplicateContentGroupCount)
+                            evidenceMetric("多版本来源", value: report.multiVersionSourceCount)
+                        }
+                        HStack(spacing: DS.Spacing.sm) {
+                            DSDataQualityTag(kind: .estimate, text: "不同主机不等于独立来源")
+                            DSDataQualityTag(kind: .live, text: "核验状态独立统计")
+                        }
+                        if report.unextractedSearchResultCount > 0 {
+                            Label(
+                                "\(report.unextractedSearchResultCount) 条搜索结果尚未提取网页正文",
+                                systemImage: "doc.text.magnifyingglass"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        }
+                        if report.missingPublicationDateCount > 0 {
+                            Label(
+                                "\(report.missingPublicationDateCount) 条证据缺少发布日期",
+                                systemImage: "calendar.badge.exclamationmark"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        }
+                        if report.isTruncated {
+                            Text("当前报告只分析最近 \(report.analyzedEvidenceCount) 条证据，共 \(report.totalEvidenceCount) 条。")
+                                .font(.caption)
+                                .foregroundStyle(DS.ColorToken.status("WARNING"))
+                        }
+                        if !report.items.isEmpty {
+                            Divider()
+                            Text("需要关注的来源")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                            ForEach(report.items.filter { !$0.issues.isEmpty }.prefix(8)) { item in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text(item.sourceHost ?? item.source ?? item.kind)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(DS.ColorToken.textPrimary)
+                                            .lineLimit(1)
+                                        Spacer(minLength: 4)
+                                        DSBadge(
+                                            text: item.originLabel,
+                                            color: item.originAssessment == "DUPLICATE_CONTENT"
+                                                ? DS.ColorToken.status("WARNING")
+                                                : DS.ColorToken.textSecondary
+                                        )
+                                    }
+                                    if let canonicalRef = item.canonicalRef {
+                                        Text(canonicalRef)
+                                            .font(.caption2)
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                            .lineLimit(1)
+                                    }
+                                    Text(item.issueLabels.joined(separator: " · "))
+                                        .font(.caption)
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                        ForEach(report.caveats.prefix(3), id: \.self) { caveat in
+                            Text("• \(caveat)")
+                                .font(.caption2)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Text("报告生成于 \(report.generatedAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                }
+            } else if let error = viewModel.evidenceReportError {
+                DSCard {
+                    VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                        Text("暂时无法读取证据分析")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textPrimary)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        Button("重试") {
+                            Task { await viewModel.load() }
+                        }
+                        .font(.caption.weight(.medium))
+                    }
+                }
+            } else {
+                DSCard {
+                    Text("工作区尚无可分析的证据。完成搜索或添加来源后，这里会展示重复内容、版本差异和元数据缺口。")
+                        .font(.caption)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+            }
+        }
+    }
+
+    private func evidenceMetric(_ title: String, value: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)")
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(DS.ColorToken.textPrimary)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(DS.ColorToken.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var executionSection: some View {

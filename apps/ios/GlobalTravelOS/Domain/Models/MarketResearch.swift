@@ -330,3 +330,76 @@ struct MarketContextSnapshotRead: Decodable, Equatable, Identifiable {
     }
 }
 
+struct MarketEvidenceIntelligenceItem: Decodable, Equatable, Identifiable {
+    var evidenceId: String
+    var kind: String
+    var source: String?
+    var canonicalRef: String?
+    var sourceHost: String?
+    var contentFingerprint: String?
+    var fingerprintSource: String
+    var verificationStatus: String
+    var publishedAt: Date?
+    var retrievedAt: Date?
+    var ageDays: Int?
+    var originAssessment: String
+    var duplicateContentEvidenceIds: [String]
+    var sameHostEvidenceIds: [String]
+    var sameSourceVersionEvidenceIds: [String]
+    var derivedPageEvidenceIds: [String]
+    var issues: [String]
+
+    var id: String { evidenceId }
+
+    var originLabel: String {
+        switch originAssessment {
+        case "DUPLICATE_CONTENT": return "内容重复"
+        case "SAME_HOST": return "同一主机"
+        case "HOST_IDENTIFIED": return "主机已识别"
+        default: return "主机未识别"
+        }
+    }
+
+    var issueLabels: [String] {
+        issues.map { issue in
+            switch issue {
+            case "UNVERIFIED_SOURCE": return "尚未核验"
+            case "PARTIALLY_VERIFIED_SOURCE": return "部分核验"
+            case "DISPUTED_SOURCE": return "存在争议"
+            case "REJECTED_SOURCE": return "已驳回"
+            case "MISSING_PUBLICATION_DATE": return "缺少发布日期"
+            case "MISSING_STORED_CONTENT_HASH": return "缺少存储内容哈希"
+            case "SOURCE_HOST_UNRESOLVED": return "无法识别来源主机"
+            case "DUPLICATE_CONTENT": return "与其他来源内容重复"
+            case "SAME_SOURCE_MULTIPLE_CONTENT_VERSIONS": return "同一地址存在不同内容版本"
+            case "SEARCH_RESULT_NOT_PAGE_EXTRACTED": return "搜索摘要尚未提取网页正文"
+            case "PUBLICATION_DATE_IN_FUTURE": return "发布日期晚于当前时间"
+            default: return issue
+            }
+        }
+    }
+}
+
+struct MarketEvidenceIntelligenceReport: Decodable, Equatable {
+    var workspaceId: String
+    var generatedAt: Date
+    var totalEvidenceCount: Int
+    var analyzedEvidenceCount: Int
+    var isTruncated: Bool
+    var distinctHostCount: Int
+    var duplicateContentGroupCount: Int
+    var duplicateContentEvidenceCount: Int
+    var multiVersionSourceCount: Int
+    var multiVersionEvidenceCount: Int
+    var unverifiedCount: Int
+    var partiallyVerifiedCount: Int
+    var verifiedCount: Int
+    var disputedCount: Int
+    var rejectedCount: Int
+    var missingPublicationDateCount: Int
+    var missingContentHashCount: Int
+    var unextractedSearchResultCount: Int
+    var items: [MarketEvidenceIntelligenceItem]
+    var caveats: [String]
+}
+
