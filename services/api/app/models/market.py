@@ -1303,7 +1303,7 @@ class MarketOpportunityVisitLink(Base):
                 "market_workspace_trip_links.workspace_id",
                 "market_workspace_trip_links.trip_id",
             ],
-            ondelete="RESTRICT",
+            ondelete="CASCADE",
             name="fk_market_opp_visit_link_workspace_trip",
         ),
         ForeignKeyConstraint(
