@@ -13,6 +13,7 @@ from app.models.market import (
     MarketClaim,
     MarketClaimEvidence,
     MarketClaimVerificationRun,
+    MarketResearchQuestionAnswerEvidence,
     MarketWorkspace,
 )
 from app.models.reliability import BackgroundJob
@@ -523,5 +524,59 @@ def test_answer_without_linked_evidence_cannot_start_claim_verification(
             headers=headers(),
         )
         assert rejected.status_code == 409, rejected.text
+    finally:
+        cleanup(workspace_ids, [], [])
+
+
+def test_answer_evidence_from_another_workspace_cannot_be_verified(
+    client: TestClient,
+) -> None:
+    workspace_ids: list[str] = []
+    try:
+        workspace_a = create_workspace(client)
+        workspace_ids.append(workspace_a)
+        workspace_b = create_workspace(client)
+        workspace_ids.append(workspace_b)
+        question_id = create_question(client, workspace_a)
+        evidence_b = create_evidence(
+            client,
+            workspace_b,
+            "https://other-workspace.example.test/source",
+            "This evidence belongs only to another Workspace.",
+        )
+        answer = client.post(
+            f"/v1/market/workspaces/{workspace_a}/questions/{question_id}/answers",
+            headers=headers(),
+            json={
+                "answer_summary": "There is not yet any evidence in this Workspace.",
+                "assumptions": [],
+                "unknowns": ["A source from this Workspace is required."],
+                "confidence_level": "INSUFFICIENT",
+                "evidence": [],
+                "evidence_gap": "No linked local source exists.",
+            },
+        )
+        assert answer.status_code == 201, answer.text
+        answer_id = answer.json()["id"]
+
+        # Simulate a legacy/corrupt same-organization link. The service must not
+        # trust the answer-evidence join as proof of Workspace ownership.
+        with org_session(UUID(ORG_A)) as session:
+            session.add(
+                MarketResearchQuestionAnswerEvidence(
+                    organization_id=UUID(ORG_A),
+                    workspace_id=UUID(workspace_a),
+                    answer_id=UUID(answer_id),
+                    evidence_id=UUID(evidence_b),
+                    relation_type="CONTEXT",
+                )
+            )
+
+        rejected = client.post(
+            f"/v1/market/workspaces/{workspace_a}/answers/{answer_id}:verify-claims",
+            headers=headers(),
+        )
+        assert rejected.status_code == 409, rejected.text
+        assert "不属于当前 Workspace" in rejected.json()["error"]["message"]
     finally:
         cleanup(workspace_ids, [], [])
