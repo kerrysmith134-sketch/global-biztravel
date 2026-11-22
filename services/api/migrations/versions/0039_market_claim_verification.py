@@ -148,8 +148,22 @@ def upgrade() -> None:
             CONSTRAINT ck_market_claims_distinct_host_count_nonnegative CHECK (distinct_host_count >= 0),
             CONSTRAINT ck_market_claims_no_automated_independence_confirmation
                 CHECK (confirmed_independent_source_count = 0),
-            CONSTRAINT ck_market_claims_accepted_has_reviewer
-                CHECK (status <> 'ACCEPTED' OR (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL)),
+            CONSTRAINT ck_market_claims_terminal_review_has_audit_reason
+                CHECK (
+                    status NOT IN ('ACCEPTED','REJECTED') OR
+                    (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL
+                     AND length(btrim(coalesce(review_note, ''))) > 0)
+                ),
+            CONSTRAINT ck_market_claims_accepted_requires_supported_claim
+                CHECK (
+                    status <> 'ACCEPTED' OR
+                    (verification_verdict = 'PROVISIONAL_SUPPORT'
+                     AND supporting_evidence_count >= 1
+                     AND contradicting_evidence_count = 0
+                     AND reviewed_by_user_id IS NOT NULL
+                     AND reviewed_at IS NOT NULL
+                     AND length(btrim(coalesce(review_note, ''))) > 0)
+                ),
             CONSTRAINT ck_market_claims_supersedes_not_self
                 CHECK (supersedes_id IS NULL OR supersedes_id <> id)
         )
@@ -224,6 +238,13 @@ def upgrade() -> None:
         helpers.enable_org_rls(table, force=True)
 
     if helpers.role_exists("gbt_app"):
+        # Assertion content and its evidence mapping are immutable for the application role.
+        # Only the human-review state/audit columns may change after a claim is created.
+        op.execute("REVOKE UPDATE ON market_claims FROM gbt_app")
+        op.execute(
+            "GRANT UPDATE (status, reviewed_by_user_id, reviewed_at, review_note) "
+            "ON market_claims TO gbt_app"
+        )
         # Claim/evidence links are provenance snapshots: application writes append-only.
         op.execute("REVOKE UPDATE, DELETE, TRUNCATE ON market_claim_evidence FROM gbt_app")
 
