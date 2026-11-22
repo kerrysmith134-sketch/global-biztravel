@@ -50,6 +50,7 @@ from app.models.metrics import MetricSnapshot
 from app.models.notification_preferences import NotificationPreference
 from app.models.notifications import Notification
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
+from app.models.receipts import ReceiptAsset
 from app.models.policies import TravelPolicy
 from app.models.proactive import (
     Approval,
@@ -140,6 +141,7 @@ __all__ = [
     "PlanVersion",
     "ProactiveSuggestion",
     "ProactiveTrigger",
+    "ReceiptAsset",
     "SuggestionAudit",
     "SyncOperation",
     "TravelPolicy",
