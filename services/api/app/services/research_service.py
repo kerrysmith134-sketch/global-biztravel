@@ -757,6 +757,25 @@ def enqueue_research_execution(
         raise NotFound("研究计划不存在", details={"plan_id": str(plan_id)})
 
     payload = dict(workflow.payload or {})
+    target_question_id = payload.get("target_question_id")
+    if target_question_id:
+        raw_workspace_id = payload.get("workspace_id")
+        if not raw_workspace_id:
+            raise Conflict("问题级 ResearchPlan 缺少 Workspace 归属")
+        target_question = session.scalars(
+            select(MarketResearchQuestion)
+            .where(
+                MarketResearchQuestion.organization_id == str(organization_id),
+                MarketResearchQuestion.workspace_id == str(raw_workspace_id),
+                MarketResearchQuestion.id == str(target_question_id),
+            )
+            .with_for_update()
+        ).one_or_none()
+        if target_question is None:
+            raise NotFound("目标研究问题不存在或已不属于当前 Workspace")
+        if target_question.status in {"BLOCKED", "CANCELLED"}:
+            raise Conflict("目标研究问题已阻塞或取消，不能启动外部检索")
+
     plan = payload.get("plan") or {}
     if not bool(plan.get("external_research_needed")):
         raise Unprocessable(
