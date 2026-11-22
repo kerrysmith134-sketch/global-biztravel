@@ -337,7 +337,7 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
                 MarketResearchQuestion.organization_id == str(job.organization_id),
                 MarketResearchQuestion.workspace_id == target_workspace_id,
                 MarketResearchQuestion.id == target_question_id,
-            ).with_for_update()
+            )
         ).one_or_none()
         if target_question is None or target_question.status in {"BLOCKED", "CANCELLED"}:
             reason = "目标研究问题已不存在、阻塞或取消，检索未启动"
