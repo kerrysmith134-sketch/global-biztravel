@@ -7,6 +7,8 @@ protocol ResearchRepository {
     func listWorkspaces(page: PageRequest) async throws -> Page<MarketWorkspace>
     func createWorkspace(_ request: MarketWorkspaceCreateRequest) async throws -> MarketWorkspace
     func workspace(id: String) async throws -> MarketWorkspace
+    func listContexts(workspaceId: String) async throws -> [MarketContextSnapshotRead]
+    func extractContext(workspaceId: String, contextId: String) async throws -> MarketContextSnapshotRead
     func listQuestions(workspaceId: String, page: PageRequest) async throws -> Page<MarketResearchQuestion>
     func createQuestion(
         workspaceId: String,
@@ -37,6 +39,19 @@ protocol ResearchRepository {
         answerId: String,
         reviewNote: String?
     ) async throws -> MarketQuestionAnswer
+}
+
+extension ResearchRepository {
+    func listContexts(workspaceId: String) async throws -> [MarketContextSnapshotRead] {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现上下文版本读取")
+    }
+
+    func extractContext(
+        workspaceId: String,
+        contextId: String
+    ) async throws -> MarketContextSnapshotRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现上下文提取")
+    }
 }
 
 /// Research plans are authoritative server workflows. No local fallback can claim that
@@ -79,6 +94,23 @@ final class RemoteResearchRepository: ResearchRepository {
 
     func workspace(id: String) async throws -> MarketWorkspace {
         try await client.send(Endpoints.marketWorkspace(id: id), as: MarketWorkspace.self)
+    }
+
+    func listContexts(workspaceId: String) async throws -> [MarketContextSnapshotRead] {
+        try await client.send(
+            Endpoints.listMarketContexts(workspaceId: workspaceId),
+            as: [MarketContextSnapshotRead].self
+        )
+    }
+
+    func extractContext(
+        workspaceId: String,
+        contextId: String
+    ) async throws -> MarketContextSnapshotRead {
+        try await client.send(
+            Endpoints.extractMarketContext(workspaceId: workspaceId, contextId: contextId),
+            as: MarketContextSnapshotRead.self
+        )
     }
 
     func listQuestions(

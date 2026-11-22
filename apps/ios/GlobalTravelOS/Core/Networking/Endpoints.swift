@@ -341,6 +341,22 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/market/workspaces/\(id)")
     }
 
+    static func listMarketContexts(workspaceId: String) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/contexts"
+        )
+    }
+
+    static func extractMarketContext(workspaceId: String, contextId: String) -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/contexts/\(contextId):extract",
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+
     static func listMarketQuestions(workspaceId: String, page: PageRequest) -> APIRequest {
         APIRequest(
             method: .get,

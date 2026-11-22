@@ -34,6 +34,24 @@ final class MarketResearchTests: XCTestCase {
         XCTAssertEqual(payload["initial_context"] as? String, "User supplied background")
     }
 
+    func testMarketContextEndpointsUseVersionedWorkspaceRoutes() {
+        let list = Endpoints.listMarketContexts(workspaceId: "workspace-1")
+        XCTAssertEqual(list.method, .get)
+        XCTAssertEqual(list.path, "/v1/market/workspaces/workspace-1/contexts")
+
+        let extract = Endpoints.extractMarketContext(
+            workspaceId: "workspace-1",
+            contextId: "context-1"
+        )
+        XCTAssertEqual(extract.method, .post)
+        XCTAssertEqual(
+            extract.path,
+            "/v1/market/workspaces/workspace-1/contexts/context-1:extract"
+        )
+        XCTAssertNotNil(extract.idempotencyKey)
+        XCTAssertNil(extract.body)
+    }
+
     func testResearchWorkspaceAndQuestionEndpointsUseServerRoutes() throws {
         let list = Endpoints.listMarketWorkspaces(page: PageRequest(limit: 25, cursor: "next"))
         XCTAssertEqual(list.method, .get)

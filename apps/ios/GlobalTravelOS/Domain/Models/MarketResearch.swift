@@ -273,3 +273,60 @@ struct MarketQuestionAnswerGenerationCreate: Codable, Equatable {
         self.evidenceIds = evidenceIds
     }
 }
+
+struct MarketContextFieldSummary: Equatable, Identifiable {
+    var key: String
+    var title: String
+    var value: String
+
+    var id: String { key }
+}
+
+struct MarketContextSnapshotRead: Decodable, Equatable, Identifiable {
+    var id: String
+    var workspaceId: String
+    var version: Int
+    var rawInput: String
+    var extractedContext: [String: JSONValue]
+    var userOverrides: [String: JSONValue]
+    var unknowns: [String]
+    var provenance: [String: JSONValue]
+    var extractionStatus: String
+    var extractionPromptId: String?
+    var extractionPromptVersion: String?
+    var isCurrent: Bool
+    var createdByUserId: String?
+    var createdAt: Date
+
+    var statusLabel: String {
+        switch extractionStatus.uppercased() {
+        case "NOT_STARTED": return "待提取"
+        case "PENDING": return "提取中"
+        case "COMPLETED": return "已提取"
+        case "FAILED": return "提取失败"
+        default: return extractionStatus
+        }
+    }
+
+    var extractionError: String? {
+        provenance["extraction"]?.objectValue?["error"]?.stringValue
+    }
+
+    var fieldSummaries: [MarketContextFieldSummary] {
+        extractedContext.keys.sorted().compactMap { key in
+            guard let value = extractedContext[key] else { return nil }
+            let entries = value.arrayValue?.compactMap { item -> String? in
+                if let label = item.objectValue?["label"]?.stringValue { return label }
+                return item.stringValue
+            } ?? []
+            let rendered = entries.isEmpty ? value.displayDescription : entries.joined(separator: " · ")
+            guard !rendered.isEmpty, rendered != "[]" else { return nil }
+            return MarketContextFieldSummary(
+                key: key,
+                title: key.replacingOccurrences(of: "_", with: " ").capitalized,
+                value: rendered
+            )
+        }
+    }
+}
+

@@ -4,6 +4,8 @@ import SwiftUI
 final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
     @Published private(set) var workspace: MarketWorkspace
     @Published private(set) var questions: [MarketResearchQuestion] = []
+    @Published private(set) var contexts: [MarketContextSnapshotRead] = []
+    @Published private(set) var isExtractingContext = false
     @Published private(set) var graph: MarketResearchGraph?
     @Published private(set) var execution: MarketResearchGraphExecution?
     @Published private(set) var isLoading = false
@@ -24,12 +26,34 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             workspace = try await repository.workspace(id: workspace.id)
+            contexts = try await repository.listContexts(workspaceId: workspace.id)
             let questionPage = try await repository.listQuestions(
                 workspaceId: workspace.id,
                 page: PageRequest(limit: 100)
             )
             questions = questionPage.items
             graph = try await repository.graph(workspaceId: workspace.id)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func extractContext(contextId: String) async {
+        guard !isExtractingContext else { return }
+        isExtractingContext = true
+        defer { isExtractingContext = false }
+        errorMessage = nil
+        do {
+            let updated = try await repository.extractContext(
+                workspaceId: workspace.id,
+                contextId: contextId
+            )
+            if let index = contexts.firstIndex(where: { $0.id == updated.id }) {
+                contexts[index] = updated
+            } else {
+                contexts.insert(updated, at: 0)
+            }
+            workspace = try await repository.workspace(id: workspace.id)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -131,6 +155,7 @@ struct MarketResearchWorkspaceDetailView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: DS.Spacing.lg) {
                 workspaceHeader
+                contextSection
                 if let error = viewModel.errorMessage {
                     DSErrorState(message: error)
                 }
@@ -228,6 +253,95 @@ struct MarketResearchWorkspaceDetailView: View {
                 .foregroundStyle(DS.ColorToken.textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var contextSection: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            DSSectionHeader(
+                title: "业务上下文",
+                subtitle: "只整理本工作区的用户输入，不预设行业或市场"
+            )
+            if let context = viewModel.contexts.first(where: \.isCurrent) ?? viewModel.contexts.first {
+                DSCard {
+                    VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                        HStack {
+                            DSBadge(
+                                text: "版本 v\(context.version)",
+                                color: context.isCurrent ? DS.ColorToken.info : DS.ColorToken.textSecondary
+                            )
+                            DSBadge(
+                                text: context.statusLabel,
+                                color: DS.ColorToken.status(context.extractionStatus)
+                            )
+                            Spacer()
+                        }
+                        Text(context.rawInput)
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                            .lineLimit(5)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if context.extractionStatus == "COMPLETED" {
+                            if context.fieldSummaries.isEmpty {
+                                Text("未从原文中提取到可引用的结构化条目。")
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                            } else {
+                                ForEach(context.fieldSummaries) { field in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(field.title)
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                        Text(field.value)
+                                            .font(.caption)
+                                            .foregroundStyle(DS.ColorToken.textPrimary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        }
+
+                        if !context.unknowns.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("待确认 / 信息缺口")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                ForEach(Array(context.unknowns.enumerated()), id: \.offset) { _, item in
+                                    Text("• \(item)")
+                                        .font(.caption)
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                }
+                            }
+                        }
+                        if let error = context.extractionError, !error.isEmpty {
+                            Text("提取记录：\(error)")
+                                .font(.caption2)
+                                .foregroundStyle(DS.ColorToken.status("FAILED"))
+                        }
+                        if context.extractionStatus != "COMPLETED" {
+                            DSButton(
+                                title: viewModel.isExtractingContext
+                                    ? "正在提取…"
+                                    : context.extractionStatus == "FAILED"
+                                        ? "重试结构化提取"
+                                        : "提取结构化上下文",
+                                systemImage: "sparkles",
+                                isLoading: viewModel.isExtractingContext,
+                                isDisabled: viewModel.isExtractingContext || context.extractionStatus == "PENDING"
+                            ) {
+                                Task { await viewModel.extractContext(contextId: context.id) }
+                            }
+                        }
+                    }
+                }
+            } else {
+                DSCard {
+                    Text("当前工作区尚未添加原始业务背景。创建工作区时可以填写背景，再进行结构化提取。")
+                        .font(.caption)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+            }
+        }
     }
 
     private var executionSection: some View {

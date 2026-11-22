@@ -796,4 +796,51 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(plan.retrievalStatus, "NOT_STARTED")
         XCTAssertEqual(plan.retrievalStatusLabel, "尚未采集外部证据")
     }
+
+    func testMarketContextSnapshotDecodesProvenanceAndStructuredFields() throws {
+        let json = """
+        {
+          "id": "context-1",
+          "workspace_id": "workspace-1",
+          "version": 3,
+          "raw_input": "We provide design services to clinics in Kenya.",
+          "extracted_context": {
+            "offerings": [{
+              "label": "Design services",
+              "normalized_label": "design",
+              "description": "User-provided service",
+              "source_quote": "We provide design services",
+              "confidence": 0.95
+            }]
+          },
+          "user_overrides": {},
+          "unknowns": ["Customer size is not specified."],
+          "provenance": {
+            "offerings": {
+              "source": "MODEL",
+              "prompt_id": "market_context_extract",
+              "prompt_version": "v1"
+            }
+          },
+          "extraction_status": "COMPLETED",
+          "extraction_prompt_id": "market_context_extract",
+          "extraction_prompt_version": "v1",
+          "is_current": true,
+          "created_by_user_id": "user-1",
+          "created_at": "2026-11-22T08:00:00+00:00"
+        }
+        """
+        let context = try DateCoding.decode(
+            MarketContextSnapshotRead.self,
+            fromJSON: json
+        )
+
+        XCTAssertEqual(context.id, "context-1")
+        XCTAssertEqual(context.version, 3)
+        XCTAssertEqual(context.statusLabel, "已提取")
+        XCTAssertEqual(context.fieldSummaries.first?.value, "Design services")
+        XCTAssertEqual(context.unknowns, ["Customer size is not specified."])
+        XCTAssertTrue(context.isCurrent)
+    }
+
 }
