@@ -633,7 +633,7 @@ final class LocalStoreTests: XCTestCase {
     ) async throws -> VisitFollowUp {
         let initial = try await repository.followUps(visitId: visit.id)
         XCTAssertTrue(initial.items.isEmpty)
-        XCTAssertEqual(Set(initial.suggestions.map(\\.title)), [
+        XCTAssertEqual(Set(initial.suggestions.map(\.title)), [
             "发送工厂产能证明", "确认延长质保条件"
         ])
         let acceptSuggestion = try XCTUnwrap(
@@ -650,8 +650,8 @@ final class LocalStoreTests: XCTestCase {
         )
         XCTAssertEqual(accepted.status, "OPEN")
         XCTAssertEqual(dismissed.status, "DISMISSED")
-        XCTAssertEqual(accepted.events.map(\\.eventType), ["ACCEPTED"])
-        XCTAssertEqual(dismissed.events.map(\\.eventType), ["DISMISSED"])
+        XCTAssertEqual(accepted.events.map(\.eventType), ["ACCEPTED"])
+        XCTAssertEqual(dismissed.events.map(\.eventType), ["DISMISSED"])
 
         let afterDecision = try await repository.followUps(visitId: visit.id)
         XCTAssertTrue(afterDecision.suggestions.isEmpty)
@@ -687,7 +687,7 @@ final class LocalStoreTests: XCTestCase {
             )
         )
         XCTAssertEqual(reopened.status, "OPEN")
-        XCTAssertEqual(reopened.events.map(\\.eventType), [
+        XCTAssertEqual(reopened.events.map(\.eventType), [
             "ACCEPTED", "STARTED", "COMPLETED", "REOPENED"
         ])
         XCTAssertEqual(reopened.events.last?.note, "客户要求调整报价后再确认交付计划。")
