@@ -628,7 +628,7 @@ private extension LocalVisitRepository {
               let visit = try? DateCoding.decoder().decode(TripVisit.self, from: payload) else {
             return ""
         }
-        return visit.tripId
+        return visit.tripId ?? ""
     }
 
     func localTaskList(_ raw: Any?) -> [FollowUpTask] {
@@ -854,7 +854,7 @@ extension LocalVisitRepository {
                 throw APIError.serverError(
                     code: "CONFLICT", message: "不允许该跟进状态转换",
                     traceId: nil,
-                    details: ["from_status": oldStatus, "to_status": newStatus]
+                    details: ["from_status": .string(oldStatus), "to_status": .string(newStatus)]
                 )
             }
             if (oldStatus == "COMPLETED" || oldStatus == "DISMISSED")
