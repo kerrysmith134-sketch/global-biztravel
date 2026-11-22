@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import PurePath
+from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
 
@@ -75,7 +76,7 @@ async def upload_receipt_asset(
     context: ContextDep,
     session: SessionDep,
     idempotency_key: IdempotencyKeyDep,
-    file: UploadFile = File(...),
+    file: Annotated[UploadFile, File(...)],
 ):
     require_role(context, ROLE_TRAVELER)
     trip_service.require_trip(session, context.organization_id, trip_id)
