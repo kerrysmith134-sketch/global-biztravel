@@ -1569,6 +1569,8 @@ def handle_market_source_page_extraction(
             "excerpt_truncated": page.content_chars > len(page.excerpt),
             "extractor_version": page.extractor_version,
             "derived_from_evidence_id": str(source.id),
+            "question_scope_managed": bool((source.payload or {}).get("question_scope_managed")),
+            "target_question_id": (source.payload or {}).get("target_question_id"),
             "extraction_workflow_id": str(workflow.id),
             "extraction_agent_run_id": str(run.id),
             "retrieved_at": page.retrieved_at.isoformat(),
@@ -1593,6 +1595,15 @@ def handle_market_source_page_extraction(
             content_hash=page.content_hash,
         )
         .on_conflict_do_nothing(constraint="uq_market_evidence_derivation")
+    )
+    market_insight_service.inherit_research_plan_evidence_links(
+        session,
+        job.organization_id,
+        workspace_id,
+        source.id,
+        extracted.id,
+        extraction_workflow_id=workflow.id,
+        extraction_agent_run_id=run.id,
     )
 
     now = datetime.now(UTC)
