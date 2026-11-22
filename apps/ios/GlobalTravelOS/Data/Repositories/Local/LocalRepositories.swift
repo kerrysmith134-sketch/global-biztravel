@@ -621,10 +621,10 @@ private extension LocalVisitRepository {
     }
 
     func localTripId(visitId: String) -> String {
-        guard let payload = try? database.loadPayloads(
+        let rows = try? database.loadPayloads(
             table: "visits", where: "id = ?", bindings: [visitId]
-        ).first,
-              let payload,
+        )
+        guard let payload = rows?.first,
               let visit = try? DateCoding.decoder().decode(TripVisit.self, from: payload) else {
             return ""
         }
