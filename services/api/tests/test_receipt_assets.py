@@ -11,7 +11,7 @@ from app.db import org_session
 from app.main import app
 from app.models.receipts import ReceiptAsset
 from app.models.trip import Trip
-from app.services import receipt_storage_service
+from app.services import receipt_asset_service
 from app.services.receipt_storage_service import FilesystemReceiptStorage
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
@@ -39,7 +39,7 @@ def client() -> TestClient:
 @pytest.fixture
 def private_storage(tmp_path, monkeypatch):
     storage = FilesystemReceiptStorage(tmp_path / "private-receipts")
-    monkeypatch.setattr(receipt_storage_service, "get_receipt_storage", lambda provider=None: storage)
+    monkeypatch.setattr(receipt_asset_service, "get_receipt_storage", lambda provider=None: storage)
     return storage
 
 
@@ -117,10 +117,10 @@ def test_receipt_asset_upload_download_and_idempotency(
             assert asset.storage_key.startswith("receipts/")
             assert asset.sha256
             receipt_id = asset.id
+            storage_key = asset.storage_key
             session.execute(delete(ReceiptAsset).where(ReceiptAsset.id == receipt_id))
-        assert private_storage.get(
-            f"receipts/{ORG_A}/{trip_id}/{body['id']}"
-        ) == _PNG_1PX
+        assert private_storage.get(storage_key) == _PNG_1PX
+        private_storage.delete(storage_key)
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
@@ -138,3 +138,43 @@ def test_receipt_asset_rejects_mime_spoofing(client: TestClient, private_storage
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+
+
+
+def test_expense_can_only_reference_receipt_from_same_trip(
+    client: TestClient, private_storage
+) -> None:
+    trip_id = create_trip(client)
+    other_trip_id = create_trip(client)
+    try:
+        uploaded = client.post(
+            f"/v1/trips/{trip_id}/receipt-assets",
+            headers=headers(key=str(uuid.uuid4())),
+            files={"file": ("receipt.png", _PNG_1PX, "image/png")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        asset_id = uploaded.json()["id"]
+        expense_payload = {
+            "category": "MEALS",
+            "amount": "18.50",
+            "currency": "EUR",
+            "occurred_on": datetime.now(UTC).date().isoformat(),
+            "receipt_asset_id": asset_id,
+        }
+        same_trip = client.post(
+            f"/v1/trips/{trip_id}/expenses",
+            headers=headers(key=str(uuid.uuid4())),
+            json=expense_payload,
+        )
+        assert same_trip.status_code == 201, same_trip.text
+        assert same_trip.json()["receipt_asset_id"] == asset_id
+
+        cross_trip = client.post(
+            f"/v1/trips/{other_trip_id}/expenses",
+            headers=headers(key=str(uuid.uuid4())),
+            json=expense_payload,
+        )
+        assert cross_trip.status_code == 422, cross_trip.text
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Trip).where(Trip.id.in_([UUID(trip_id), UUID(other_trip_id)])))
