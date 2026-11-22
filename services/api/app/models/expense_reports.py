@@ -81,6 +81,18 @@ class ExpenseReportItem(Base):
         CheckConstraint(
             "category IN ('TRANSPORT','LODGING','MEALS','OTHER')", name="category_allowed"
         ),
+        CheckConstraint(
+            "("
+            "receipt_asset_id IS NULL AND receipt_sha256 IS NULL "
+            "AND receipt_original_filename IS NULL AND receipt_mime_type IS NULL "
+            "AND receipt_byte_length IS NULL"
+            ") OR ("
+            "receipt_asset_id IS NOT NULL AND length(receipt_sha256) = 64 "
+            "AND length(btrim(receipt_original_filename)) > 0 "
+            "AND length(btrim(receipt_mime_type)) > 0 AND receipt_byte_length > 0"
+            ")",
+            name="receipt_snapshot_metadata_consistent",
+        ),
         ForeignKeyConstraint(
             ["organization_id", "trip_id", "report_id"],
             ["expense_reports.organization_id", "expense_reports.trip_id", "expense_reports.id"],
