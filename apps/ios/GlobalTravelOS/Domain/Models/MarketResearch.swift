@@ -493,6 +493,57 @@ struct MarketClaimLineageHistory: Decodable, Equatable {
     var versions: [MarketClaimLineageVersion]
 }
 
+struct MarketClaimImpact: Decodable, Equatable, Identifiable {
+    var claimLineageId: String
+    var latestClaimId: String
+    var latestClaimVersion: Int
+    var latestClaimStatus: String
+    var latestVerificationVerdict: String
+    var currentAcceptedClaimId: String?
+    var consumerType: String
+    var consumerId: String
+    var consumerTitle: String
+    var consumerStatus: String
+    var relationTypes: [String]
+    var matchedEvidenceCount: Int
+    var staleEvidenceCount: Int
+    var referencedClaimVersions: [Int]
+    var severity: String
+    var reasonCode: String
+
+    var id: String { "\(consumerType):\(consumerId):\(claimLineageId)" }
+
+    var consumerTypeLabel: String {
+        consumerType == "INSIGHT" ? "市场判断" : "商业机会"
+    }
+
+    var severityLabel: String {
+        severity == "HIGH" ? "高优先级" : "需要复核"
+    }
+
+    var reasonLabel: String {
+        switch reasonCode {
+        case "LATEST_VERSION_CONTRADICTORY": return "最新主张出现反驳或冲突"
+        case "LATEST_VERSION_INSUFFICIENT": return "最新版本证据不足"
+        case "LATEST_VERSION_PENDING_REVIEW": return "最新主张版本等待人工审核"
+        case "CONSUMER_USES_OLDER_EVIDENCE_SNAPSHOT": return "仍引用旧版本的来源证据"
+        case "NO_ACCEPTED_CLAIM_VERSION": return "当前没有已采纳的主张版本"
+        default: return reasonCode
+        }
+    }
+}
+
+struct MarketClaimImpactReport: Decodable, Equatable {
+    var workspaceId: String
+    var generatedAt: Date
+    var analyzedLineageCount: Int
+    var totalLineageCount: Int
+    var affectedConsumerCount: Int
+    var impactCount: Int
+    var truncated: Bool
+    var impacts: [MarketClaimImpact]
+}
+
 struct MarketSourceVerificationAction: Decodable, Equatable, Identifiable {
     var actionId: String
     var actionType: String

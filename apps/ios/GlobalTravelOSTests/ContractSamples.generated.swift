@@ -307,6 +307,41 @@ enum ContractSamples {
   ]
 }
 """
+    static let marketClaimImpactReport = """
+{
+  "affected_consumer_count": 1,
+  "analyzed_lineage_count": 1,
+  "generated_at": "2026-11-09T09:00:00+00:00",
+  "impact_count": 1,
+  "impacts": [
+    {
+      "claim_lineage_id": "11111111-1111-1111-1111-111111111111",
+      "consumer_id": "11111111-1111-1111-1111-111111111111",
+      "consumer_status": "1",
+      "consumer_title": "1",
+      "consumer_type": "INSIGHT",
+      "current_accepted_claim_id": "11111111-1111-1111-1111-111111111111",
+      "latest_claim_id": "11111111-1111-1111-1111-111111111111",
+      "latest_claim_status": "NEEDS_REVIEW",
+      "latest_claim_version": 1,
+      "latest_verification_verdict": "PROVISIONAL_SUPPORT",
+      "matched_evidence_count": 1,
+      "reason_code": "LATEST_VERSION_CONTRADICTORY",
+      "referenced_claim_versions": [
+        1
+      ],
+      "relation_types": [
+        "SUPPORTS"
+      ],
+      "severity": "HIGH",
+      "stale_evidence_count": 1
+    }
+  ],
+  "total_lineage_count": 1,
+  "truncated": true,
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
     static let marketClaimLineageHistory = """
 {
   "claim_key": "1",
