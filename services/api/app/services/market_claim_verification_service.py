@@ -501,7 +501,12 @@ def get_verification_run(
         )
     ).one_or_none()
     job = (
-        job_service.get_job(session, organization_id, workflow.job_id)
+        session.scalars(
+            select(BackgroundJob).where(
+                BackgroundJob.organization_id == organization_id,
+                BackgroundJob.id == workflow.job_id,
+            )
+        ).one_or_none()
         if workflow is not None and workflow.job_id is not None
         else None
     )
