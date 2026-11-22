@@ -568,8 +568,11 @@ def start_execution(
                 details={"max_cost": str(configured_cap)},
             )
         max_cost_value = max_cost
-        # To enforce a strict cumulative budget without reserving speculative cost for
-        # concurrent calls, a user-specified monetary cap serializes this execution.
+
+    # A cumulative hard cap cannot be respected with parallel unreserved calls.
+    # Any active monetary budget therefore serializes the execution, whether it came
+    # from the deployment hard cap or a tighter user-supplied cap.
+    if max_cost_value is not None:
         max_concurrency_value = 1
 
     now = datetime.now(UTC)
