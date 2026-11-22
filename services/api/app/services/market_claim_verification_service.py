@@ -52,6 +52,10 @@ def compute_input_digest(
                 "published_at": row.published_at.isoformat() if row.published_at else None,
                 "content_hash": row.content_hash,
                 "verification_status": row.verification_status or "UNVERIFIED",
+                "source_ref": row.canonical_ref or row.ref,
+                "source": row.source,
+                "kind": row.kind,
+                "published_at": row.published_at.isoformat() if row.published_at else None,
                 "content_sha256": sha256(
                     str((row.payload or {}).get("content", "")).encode("utf-8")
                 ).hexdigest(),
@@ -556,6 +560,15 @@ def review_claim(
         raise NotFound("研究主张不存在或不属于当前 Workspace")
     if row.status in {"ACCEPTED", "REJECTED", "SUPERSEDED"}:
         raise Conflict("该主张版本已完成审核；如需重新核验，请启动新的核验运行")
+    session.scalars(
+        select(MarketResearchQuestionAnswer)
+        .where(
+            MarketResearchQuestionAnswer.organization_id == organization_id,
+            MarketResearchQuestionAnswer.workspace_id == workspace_id,
+            MarketResearchQuestionAnswer.id == row.answer_id,
+        )
+        .with_for_update()
+    ).one()
     note = review_note.strip() if review_note and review_note.strip() else None
     if not note:
         raise Unprocessable("人工审核主张必须填写审核说明")
