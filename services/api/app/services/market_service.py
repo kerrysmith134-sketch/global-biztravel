@@ -13,6 +13,7 @@ from app.api.errors import NotFound, Unprocessable
 from app.models.market import (
     MarketActivityEvent,
     MarketContextSnapshot,
+    MarketQuestionDependency,
     MarketResearchQuestion,
     MarketWorkspace,
 )
@@ -405,6 +406,189 @@ def get_question(
             MarketResearchQuestion.id == question_id,
         )
     ).one_or_none()
+
+
+def list_question_dependencies(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    question_id: UUID,
+) -> list[MarketQuestionDependency]:
+    workspace = get_workspace(session, organization_id, workspace_id)
+    if workspace is None:
+        raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
+    question = session.scalars(
+        select(MarketResearchQuestion).where(
+            MarketResearchQuestion.organization_id == organization_id,
+            MarketResearchQuestion.workspace_id == workspace_id,
+            MarketResearchQuestion.id == question_id,
+        )
+    ).one_or_none()
+    if question is None:
+        raise NotFound("研究问题不存在或不属于此工作空间")
+    return list(
+        session.scalars(
+            select(MarketQuestionDependency)
+            .where(
+                MarketQuestionDependency.organization_id == organization_id,
+                MarketQuestionDependency.workspace_id == workspace_id,
+                MarketQuestionDependency.question_id == question_id,
+            )
+            .order_by(MarketQuestionDependency.created_at, MarketQuestionDependency.id)
+        )
+    )
+
+
+def create_question_dependency(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    question_id: UUID,
+    depends_on_question_id: UUID,
+    *,
+    actor_user_id: UUID,
+) -> tuple[MarketQuestionDependency, bool]:
+    """Create a prerequisite edge while serializing graph mutations per workspace.
+
+    An edge A -> B means question A depends on question B. Before inserting it,
+    the service verifies that B cannot already reach A. Locking the workspace
+    prevents concurrent requests from independently passing the cycle check.
+    """
+    workspace = session.scalars(
+        select(MarketWorkspace)
+        .where(
+            MarketWorkspace.organization_id == organization_id,
+            MarketWorkspace.id == workspace_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if workspace is None:
+        raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
+    if question_id == depends_on_question_id:
+        raise Unprocessable("研究问题不能依赖自身")
+
+    question_ids = set(
+        session.scalars(
+            select(MarketResearchQuestion.id).where(
+                MarketResearchQuestion.organization_id == organization_id,
+                MarketResearchQuestion.workspace_id == workspace_id,
+                MarketResearchQuestion.id.in_([question_id, depends_on_question_id]),
+            )
+        ).all()
+    )
+    if question_ids != {question_id, depends_on_question_id}:
+        raise NotFound("研究问题或前置问题不存在，或不属于此工作空间")
+
+    existing = session.scalars(
+        select(MarketQuestionDependency).where(
+            MarketQuestionDependency.organization_id == organization_id,
+            MarketQuestionDependency.workspace_id == workspace_id,
+            MarketQuestionDependency.question_id == question_id,
+            MarketQuestionDependency.depends_on_question_id == depends_on_question_id,
+        )
+    ).one_or_none()
+    if existing is not None:
+        return existing, False
+
+    edges = session.scalars(
+        select(MarketQuestionDependency).where(
+            MarketQuestionDependency.organization_id == organization_id,
+            MarketQuestionDependency.workspace_id == workspace_id,
+        )
+    ).all()
+    adjacency: dict[UUID, list[UUID]] = {}
+    for edge in edges:
+        adjacency.setdefault(edge.question_id, []).append(edge.depends_on_question_id)
+
+    # Adding A -> B is invalid if a path B -> ... -> A already exists.
+    pending = [depends_on_question_id]
+    visited: set[UUID] = set()
+    while pending:
+        node = pending.pop()
+        if node == question_id:
+            raise Unprocessable(
+                "该依赖关系会形成循环",
+                details={
+                    "question_id": str(question_id),
+                    "depends_on_question_id": str(depends_on_question_id),
+                },
+            )
+        if node in visited:
+            continue
+        visited.add(node)
+        pending.extend(adjacency.get(node, []))
+
+    edge = MarketQuestionDependency(
+        organization_id=organization_id,
+        workspace_id=workspace_id,
+        question_id=question_id,
+        depends_on_question_id=depends_on_question_id,
+        created_by_user_id=actor_user_id,
+    )
+    session.add(edge)
+    session.flush()
+    _record_activity(
+        session,
+        organization_id,
+        workspace.id,
+        actor_user_id=actor_user_id,
+        aggregate_type="MARKET_QUESTION_DEPENDENCY",
+        aggregate_id=edge.id,
+        event_type="RESEARCH_QUESTION_DEPENDENCY_CREATED",
+        payload={
+            "question_id": str(question_id),
+            "depends_on_question_id": str(depends_on_question_id),
+        },
+    )
+    return edge, True
+
+
+def delete_question_dependency(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    question_id: UUID,
+    dependency_id: UUID,
+    *,
+    actor_user_id: UUID,
+) -> UUID:
+    workspace = session.scalars(
+        select(MarketWorkspace)
+        .where(
+            MarketWorkspace.organization_id == organization_id,
+            MarketWorkspace.id == workspace_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if workspace is None:
+        raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
+    edge = session.scalars(
+        select(MarketQuestionDependency).where(
+            MarketQuestionDependency.organization_id == organization_id,
+            MarketQuestionDependency.workspace_id == workspace_id,
+            MarketQuestionDependency.question_id == question_id,
+            MarketQuestionDependency.id == dependency_id,
+        )
+    ).one_or_none()
+    if edge is None:
+        raise NotFound("研究问题依赖关系不存在", details={"dependency_id": str(dependency_id)})
+    depends_on_question_id = edge.depends_on_question_id
+    session.delete(edge)
+    session.flush()
+    _record_activity(
+        session,
+        organization_id,
+        workspace.id,
+        actor_user_id=actor_user_id,
+        aggregate_type="MARKET_QUESTION_DEPENDENCY",
+        aggregate_id=dependency_id,
+        event_type="RESEARCH_QUESTION_DEPENDENCY_REMOVED",
+        payload={
+            "question_id": str(question_id),
+            "depends_on_question_id": str(depends_on_question_id),
+        },
+    )
+    return dependency_id
 
 
 def update_question(
