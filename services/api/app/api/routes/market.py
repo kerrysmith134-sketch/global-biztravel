@@ -32,6 +32,7 @@ from app.api.schemas import (
     MarketEntityRead,
     MarketEvidenceCreate,
     MarketEvidenceIntelligenceRead,
+    MarketSourceVerificationPlanRead,
     MarketEvidenceRead,
     MarketInsightCreate,
     MarketInsightRead,
@@ -80,6 +81,7 @@ from app.services import (
     market_context_extraction_service,
     market_entity_service,
     market_evidence_intelligence_service,
+    market_source_verification_service,
     market_insight_service,
     market_opportunity_service,
     market_question_answer_agent_service,
@@ -1258,6 +1260,23 @@ def get_market_evidence_intelligence(
         session, context.organization_id, workspace_id
     )
     return MarketEvidenceIntelligenceRead.model_validate(report)
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/source-verification-plan",
+    response_model=MarketSourceVerificationPlanRead,
+    summary="读取主张级来源核验计划",
+)
+def get_market_source_verification_plan(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    plan = market_source_verification_service.build_plan(
+        session, context.organization_id, workspace_id
+    )
+    return MarketSourceVerificationPlanRead.model_validate(plan)
 
 
 @router.post(

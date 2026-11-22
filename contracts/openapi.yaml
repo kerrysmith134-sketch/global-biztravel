@@ -10034,6 +10034,49 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/source-verification-plan": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取主张级来源核验计划",
+        "operationId": "get_market_source_verification_plan_v1_market_workspaces__workspace_id__source_verification_plan_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketSourceVerificationPlanRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -24550,6 +24593,398 @@
           "unextracted_search_result_count"
         ],
         "title": "MarketEvidenceIntelligenceRead"
+      },
+      "MarketSourceVerificationEvidenceRead": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Id"
+          },
+          "relation_type": {
+            "type": "string",
+            "enum": [
+              "SUPPORTS",
+              "CONTRADICTS",
+              "CONTEXT"
+            ],
+            "title": "Relation Type"
+          },
+          "source_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Host"
+          },
+          "content_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Fingerprint"
+          },
+          "fingerprint_source": {
+            "type": "string",
+            "enum": [
+              "STORED_HASH",
+              "BODY_SHA256",
+              "UNAVAILABLE"
+            ],
+            "title": "Fingerprint Source"
+          },
+          "content_changed_since_assessment": {
+            "type": "boolean",
+            "title": "Content Changed Since Assessment"
+          },
+          "status_changed_since_assessment": {
+            "type": "boolean",
+            "title": "Status Changed Since Assessment"
+          },
+          "source_version_changed": {
+            "type": "boolean",
+            "title": "Source Version Changed"
+          },
+          "latest_source_evidence_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Source Evidence Id"
+          },
+          "unextracted": {
+            "type": "boolean",
+            "title": "Unextracted"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "relation_type",
+          "source_host",
+          "content_fingerprint",
+          "fingerprint_source",
+          "content_changed_since_assessment",
+          "status_changed_since_assessment",
+          "source_version_changed",
+          "latest_source_evidence_id",
+          "unextracted"
+        ],
+        "title": "MarketSourceVerificationEvidenceRead"
+      },
+      "MarketSourceVerificationClaimRead": {
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Claim Id"
+          },
+          "statement": {
+            "type": "string",
+            "title": "Statement"
+          },
+          "claim_type": {
+            "type": "string",
+            "enum": [
+              "FACT",
+              "ESTIMATE",
+              "OPINION",
+              "FORECAST",
+              "INFERENCE"
+            ],
+            "title": "Claim Type"
+          },
+          "claim_status": {
+            "type": "string",
+            "enum": [
+              "NEEDS_REVIEW",
+              "CONFLICTED",
+              "INSUFFICIENT",
+              "ACCEPTED",
+              "REJECTED"
+            ],
+            "title": "Claim Status"
+          },
+          "verification_verdict": {
+            "type": "string",
+            "enum": [
+              "PROVISIONAL_SUPPORT",
+              "POTENTIAL_CONTRADICTION",
+              "CONFLICTED",
+              "INSUFFICIENT"
+            ],
+            "title": "Verification Verdict"
+          },
+          "supporting_evidence_count": {
+            "type": "integer",
+            "title": "Supporting Evidence Count"
+          },
+          "contradicting_evidence_count": {
+            "type": "integer",
+            "title": "Contradicting Evidence Count"
+          },
+          "distinct_host_count": {
+            "type": "integer",
+            "title": "Distinct Host Count"
+          },
+          "distinct_content_count": {
+            "type": "integer",
+            "title": "Distinct Content Count"
+          },
+          "source_origin_state": {
+            "type": "string",
+            "enum": [
+              "NO_SUPPORTING_EVIDENCE",
+              "SINGLE_SOURCE_ONLY",
+              "SAME_HOST_ONLY",
+              "POSSIBLE_SYNDICATION",
+              "MULTIPLE_HOSTS_UNCONFIRMED",
+              "CONFLICTING_SIGNALS"
+            ],
+            "title": "Source Origin State"
+          },
+          "changed_source_count": {
+            "type": "integer",
+            "title": "Changed Source Count"
+          },
+          "status_changed_source_count": {
+            "type": "integer",
+            "title": "Status Changed Source Count"
+          },
+          "unextracted_source_count": {
+            "type": "integer",
+            "title": "Unextracted Source Count"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MarketSourceVerificationEvidenceRead"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "claim_id",
+          "statement",
+          "claim_type",
+          "claim_status",
+          "verification_verdict",
+          "supporting_evidence_count",
+          "contradicting_evidence_count",
+          "distinct_host_count",
+          "distinct_content_count",
+          "source_origin_state",
+          "changed_source_count",
+          "status_changed_source_count",
+          "unextracted_source_count"
+        ],
+        "title": "MarketSourceVerificationClaimRead"
+      },
+      "MarketSourceVerificationActionRead": {
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "title": "Action Id"
+          },
+          "action_type": {
+            "type": "string",
+            "enum": [
+              "EXTRACT_SOURCE_PAGE",
+              "COMPLETE_SOURCE_METADATA",
+              "INVESTIGATE_POSSIBLE_SYNDICATION",
+              "REVIEW_SOURCE_VERSION_DRIFT",
+              "REVERIFY_CLAIM_AFTER_SOURCE_CHANGE",
+              "REVIEW_CONTRADICTORY_EVIDENCE",
+              "SEEK_SEPARATELY_ORIGINATED_CORROBORATION"
+            ],
+            "title": "Action Type"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ],
+            "title": "Priority"
+          },
+          "target_type": {
+            "type": "string",
+            "enum": [
+              "EVIDENCE",
+              "CLAIM"
+            ],
+            "title": "Target Type"
+          },
+          "target_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Id"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Evidence Ids"
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action_id",
+          "action_type",
+          "priority",
+          "target_type",
+          "target_id",
+          "title",
+          "rationale"
+        ],
+        "title": "MarketSourceVerificationActionRead"
+      },
+      "MarketSourceVerificationPlanRead": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "total_evidence_count": {
+            "type": "integer",
+            "title": "Total Evidence Count"
+          },
+          "analyzed_evidence_count": {
+            "type": "integer",
+            "title": "Analyzed Evidence Count"
+          },
+          "evidence_truncated": {
+            "type": "boolean",
+            "title": "Evidence Truncated"
+          },
+          "total_claim_count": {
+            "type": "integer",
+            "title": "Total Claim Count"
+          },
+          "analyzed_claim_count": {
+            "type": "integer",
+            "title": "Analyzed Claim Count"
+          },
+          "claims_truncated": {
+            "type": "boolean",
+            "title": "Claims Truncated"
+          },
+          "claims_needing_corroboration_count": {
+            "type": "integer",
+            "title": "Claims Needing Corroboration Count"
+          },
+          "claims_with_contradictions_count": {
+            "type": "integer",
+            "title": "Claims With Contradictions Count"
+          },
+          "claims_with_changed_sources_count": {
+            "type": "integer",
+            "title": "Claims With Changed Sources Count"
+          },
+          "action_count": {
+            "type": "integer",
+            "title": "Action Count"
+          },
+          "actions_truncated": {
+            "type": "boolean",
+            "title": "Actions Truncated"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/MarketSourceVerificationClaimRead"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/MarketSourceVerificationActionRead"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Limitations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "generated_at",
+          "total_evidence_count",
+          "analyzed_evidence_count",
+          "evidence_truncated",
+          "total_claim_count",
+          "analyzed_claim_count",
+          "claims_truncated",
+          "claims_needing_corroboration_count",
+          "claims_with_contradictions_count",
+          "claims_with_changed_sources_count",
+          "action_count",
+          "actions_truncated"
+        ],
+        "title": "MarketSourceVerificationPlanRead"
       }
     }
   }

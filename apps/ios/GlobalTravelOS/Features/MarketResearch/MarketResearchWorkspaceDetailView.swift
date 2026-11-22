@@ -8,6 +8,8 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
     @Published private(set) var isExtractingContext = false
     @Published private(set) var evidenceReport: MarketEvidenceIntelligenceReport?
     @Published private(set) var evidenceReportError: String?
+    @Published private(set) var sourceVerificationPlan: MarketSourceVerificationPlan?
+    @Published private(set) var sourceVerificationPlanError: String?
     @Published private(set) var graph: MarketResearchGraph?
     @Published private(set) var execution: MarketResearchGraphExecution?
     @Published private(set) var isLoading = false
@@ -43,6 +45,12 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
             evidenceReportError = nil
         } catch {
             evidenceReportError = error.localizedDescription
+        }
+        do {
+            sourceVerificationPlan = try await repository.sourceVerificationPlan(workspaceId: workspace.id)
+            sourceVerificationPlanError = nil
+        } catch {
+            sourceVerificationPlanError = error.localizedDescription
         }
     }
 
@@ -165,6 +173,7 @@ struct MarketResearchWorkspaceDetailView: View {
                 workspaceHeader
                 contextSection
                 evidenceIntelligenceSection
+                sourceVerificationPlanSection
                 if let error = viewModel.errorMessage {
                     DSErrorState(message: error)
                 }
@@ -348,6 +357,97 @@ struct MarketResearchWorkspaceDetailView: View {
                     Text("当前工作区尚未添加原始业务背景。创建工作区时可以填写背景，再进行结构化提取。")
                         .font(.caption)
                         .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+            }
+        }
+    }
+
+
+    private var sourceVerificationPlanSection: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            DSSectionHeader(
+                title: "来源核验计划",
+                subtitle: "根据主张快照、来源版本变化和冲突自动整理下一步研究任务"
+            )
+            if let plan = viewModel.sourceVerificationPlan {
+                DSCard {
+                    VStack(alignment: .leading, spacing: DS.Spacing.md) {
+                        HStack(spacing: DS.Spacing.md) {
+                            evidenceMetric("待处理任务", value: plan.actionCount)
+                            evidenceMetric("来源变更主张", value: plan.claimsWithChangedSourcesCount)
+                            evidenceMetric("待交叉验证", value: plan.claimsNeedingCorroborationCount)
+                        }
+                        if plan.claimsWithContradictionsCount > 0 {
+                            Label(
+                                "\(plan.claimsWithContradictionsCount) 条主张存在支持与反驳信号",
+                                systemImage: "exclamationmark.triangle"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.status("WARNING"))
+                        }
+                        if plan.actions.isEmpty {
+                            Text("当前没有发现需要优先处理的来源核验任务。新证据加入或来源版本变化后，计划会重新计算。")
+                                .font(.caption)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                        } else {
+                            ForEach(plan.actions.prefix(8)) { action in
+                                HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(action.title)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(DS.ColorToken.textPrimary)
+                                        Text(action.rationale)
+                                            .font(.caption)
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    Spacer(minLength: 4)
+                                    Text(action.priorityLabel)
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(action.priority == "HIGH"
+                                            ? DS.ColorToken.status("WARNING")
+                                            : DS.ColorToken.textSecondary)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                        if plan.actionsTruncated || plan.evidenceTruncated || plan.claimsTruncated {
+                            Text("结果已按安全上限截断；来源 \(plan.analyzedEvidenceCount)/\(plan.totalEvidenceCount)，主张 \(plan.analyzedClaimCount)/\(plan.totalClaimCount)。")
+                                .font(.caption2)
+                                .foregroundStyle(DS.ColorToken.status("WARNING"))
+                        }
+                        if let claim = plan.claims.first(where: { !$0.issues.isEmpty }) {
+                            Divider()
+                            Text("需要重点复核的主张")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                            Text(claim.statement)
+                                .font(.subheadline)
+                                .foregroundStyle(DS.ColorToken.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("\(claim.originLabel) · 支持 \(claim.supportingEvidenceCount) · 反驳 \(claim.contradictingEvidenceCount)")
+                                .font(.caption)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                        }
+                        Text("此计划仅生成待办建议，不会自动抓取网页、修改证据或批准主张；不同域名不代表来源独立。")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                }
+            } else if let error = viewModel.sourceVerificationPlanError {
+                DSCard {
+                    VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                        Text("暂时无法读取来源核验计划")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textPrimary)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        Button("重试") {
+                            Task { await viewModel.load() }
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
                 }
             }
         }
