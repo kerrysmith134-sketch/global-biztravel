@@ -33,6 +33,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
     var tripId: String?
     var customerId: String?
     var workspaceId: String?
+    var targetQuestionId: String?
     var contextText: String?
     var locale: String
 
@@ -42,6 +43,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
         tripId: String? = nil,
         customerId: String? = nil,
         workspaceId: String? = nil,
+        targetQuestionId: String? = nil,
         contextText: String? = nil,
         locale: String = Locale.current.identifier
     ) {
@@ -50,6 +52,7 @@ struct ResearchPlanCreateRequest: Codable, Equatable {
         self.tripId = tripId
         self.customerId = customerId
         self.workspaceId = workspaceId
+        self.targetQuestionId = targetQuestionId
         self.contextText = contextText
         self.locale = locale
     }
@@ -171,6 +174,7 @@ struct ResearchPlan: Decodable, Equatable, Identifiable {
     var tripId: String?
     var customerId: String?
     var workspaceId: String?
+    var targetQuestionId: String?
     var jobId: String?
     var retrievalError: String?
     var resultsCount: Int
