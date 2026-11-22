@@ -356,6 +356,19 @@ def test_question_scoped_evidence_does_not_leak_between_research_questions(
                         "workspace_id": workspace_id,
                         "target_question_id": str(question_id),
                         "retrieval_status": "COMPLETED",
+                        "request": f"question scoped plan for {question_id}",
+                        "requested_scope": "EXTERNAL_ONLY",
+                        "recommended_scope": "EXTERNAL_ONLY",
+                        "plan": {
+                            "intent_summary": "Question scoped evidence test",
+                            "objective": "Verify evidence visibility for one question",
+                            "subject": "A single Workspace research question",
+                            "external_research_needed": True,
+                        },
+                        "planner": {
+                            "agent_run_id": "00000000-0000-0000-0000-000000000001",
+                            "model": "test-planner",
+                        },
                     },
                     created_by_user_id=UUID(USER_A),
                 )
