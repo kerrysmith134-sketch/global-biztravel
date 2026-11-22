@@ -76,6 +76,7 @@ from app.api.schemas import (
 )
 from app.services import (
     market_claim_verification_service,
+    market_context_extraction_service,
     market_entity_service,
     market_insight_service,
     market_opportunity_service,
@@ -256,6 +257,42 @@ def adopt_context(
         actor_user_id=context.user_id,
     )
     return guard.finish(status_code=status.HTTP_200_OK, body=MarketContextRead.model_validate(snapshot))
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/contexts/{context_id}:extract",
+    response_model=MarketContextRead,
+    summary="从用户原始业务背景提取结构化上下文",
+)
+def extract_context(
+    workspace_id: UUID,
+    context_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"POST /v1/market/workspaces/{workspace_id}/contexts/{context_id}:extract"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), "context_id": str(context_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    snapshot = market_context_extraction_service.extract_context_snapshot(
+        session,
+        context.organization_id,
+        workspace_id,
+        context_id,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketContextRead.model_validate(snapshot),
+    )
 
 
 @router.get(
