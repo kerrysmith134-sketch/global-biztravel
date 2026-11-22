@@ -676,6 +676,17 @@ def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
         assert workspace_response.status_code == 201, workspace_response.text
         workspace_id = workspace_response.json()["id"]
 
+        newer_context = client.post(
+            f"/v1/market/workspaces/{workspace_id}/contexts",
+            headers=headers(),
+            json={
+                "raw_input": "用户后续修订的业务背景：优先核验目标市场准入条件与渠道可达性。",
+                "adopt": True,
+            },
+        )
+        assert newer_context.status_code == 201, newer_context.text
+        assert newer_context.json()["version"] == 2
+
         created = client.post(
             "/v1/research/plans",
             headers=headers(),
@@ -694,8 +705,8 @@ def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
         workspace_context = captured["workspace_context"]
         assert isinstance(workspace_context, dict)
         snapshot = workspace_context["context_snapshot"]
-        assert snapshot["raw_input"].startswith("用户提供的业务背景")
-        assert snapshot["version"] == 1
+        assert snapshot["raw_input"].startswith("用户后续修订的业务背景")
+        assert snapshot["version"] == 2
         assert captured["prompt_version"] == "v2"
 
         generated_ids = body["generated_question_ids"]
@@ -715,7 +726,7 @@ def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
                     AgentRun.agent_type == "research_planner",
                 )
             ).one()
-            assert run.input["workspace_context_ref"]["context_version"] == 1
+            assert run.input["workspace_context_ref"]["context_version"] == 2
             assert run.input["workspace_context_ref"]["sha256"]
             assert "workspace_context" not in run.input
             assert "raw_input" not in run.input["workspace_context_ref"]
