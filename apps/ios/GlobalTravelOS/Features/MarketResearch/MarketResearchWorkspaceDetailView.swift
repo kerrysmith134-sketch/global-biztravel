@@ -156,7 +156,11 @@ struct MarketResearchWorkspaceDetailView: View {
             await viewModel.load()
             await viewModel.refreshExecution()
         }
-        .task { await viewModel.load() }
+        .onAppear {
+            // Returning from a question after accepting/rejecting an answer must refresh
+            // the server-owned DAG readiness and release state.
+            Task { await viewModel.load() }
+        }
         .sheet(isPresented: $showsCreateQuestion) {
             MarketResearchQuestionCreateSheet { question, rationale, priority, criteria in
                 await viewModel.createQuestion(
