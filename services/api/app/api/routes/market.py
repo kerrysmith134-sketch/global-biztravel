@@ -372,7 +372,7 @@ def start_market_research_graph_execution(
         max_concurrency=payload.max_concurrency,
         max_questions=payload.max_questions,
         max_duration_minutes=payload.max_duration_minutes,
-        max_cost_usd=payload.max_cost_usd,
+        max_cost=payload.max_cost,
     )
     return guard.finish(
         status_code=status.HTTP_202_ACCEPTED,
