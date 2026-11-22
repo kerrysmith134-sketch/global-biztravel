@@ -56,6 +56,7 @@ from app.models.market import (
     MarketClaimEvidence,
     MarketClaimVerificationRun,
     MarketEvidenceDerivation,
+    MarketResearchQuestion,
     MarketResearchQuestionAnswer,
     MarketResearchQuestionAnswerEvidence,
     MarketWorkspaceWorkflow,
@@ -324,6 +325,22 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
 
     payload = dict(workflow.payload or {})
     plan = payload.get("plan") or {}
+    target_question_id: UUID | None = None
+    if payload.get("target_question_id"):
+        try:
+            target_question_id = UUID(str(payload["target_question_id"]))
+            target_workspace_id = UUID(str(payload["workspace_id"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise TaskFailed("问题级 ResearchPlan 的目标引用无效", retryable=False) from exc
+        target_question = session.scalars(
+            select(MarketResearchQuestion).where(
+                MarketResearchQuestion.organization_id == str(job.organization_id),
+                MarketResearchQuestion.workspace_id == target_workspace_id,
+                MarketResearchQuestion.id == target_question_id,
+            ).with_for_update()
+        ).one_or_none()
+        if target_question is None or target_question.status in {"BLOCKED", "CANCELLED"}:
+            raise TaskFailed("目标研究问题已不存在、阻塞或取消", retryable=False)
     if not bool(plan.get("external_research_needed")):
         raise TaskFailed("研究计划没有外部检索意图", retryable=False)
     queries = payload.get("reviewed_search_queries")
@@ -385,6 +402,20 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
         run.finished_at = datetime.now(UTC)
         # Temporary network/provider failures should use the existing queue retry policy.
         raise TaskFailed(str(exc), retryable=True) from exc
+
+    if target_question_id is not None:
+        target_workspace_id = UUID(str(payload["workspace_id"]))
+        target_question = session.scalars(
+            select(MarketResearchQuestion).where(
+                MarketResearchQuestion.organization_id == str(job.organization_id),
+                MarketResearchQuestion.workspace_id == target_workspace_id,
+                MarketResearchQuestion.id == target_question_id,
+            ).with_for_update()
+        ).one_or_none()
+        if target_question is None or target_question.status in {"BLOCKED", "CANCELLED"}:
+            # Provider work may already have completed, but a cancelled node must
+            # not receive new Evidence after the user stopped that research target.
+            raise TaskFailed("目标研究问题在检索期间已阻塞或取消", retryable=False)
 
     collected_at = datetime.now(UTC)
     workspace_ids = list(
