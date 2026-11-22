@@ -17,6 +17,9 @@ struct VisitRecordSheet: View {
     @State private var isLoadingMinutes = false
     @State private var crmJob: CrmSyncJob?
     @State private var isSyncingCRM = false
+    @State private var followUpFeed: VisitFollowUpFeed?
+    @State private var isLoadingFollowUps = false
+    @State private var busyFollowUpIds: Set<String> = []
     @State private var errorMessage: String?
 
     var body: some View {
@@ -141,6 +144,143 @@ struct VisitRecordSheet: View {
                     }
                 }
 
+
+                Section {
+                    if isLoadingFollowUps && followUpFeed == nil {
+                        ProgressView("读取跟进事项…")
+                    } else if let followUpFeed {
+                        if !followUpFeed.suggestions.isEmpty {
+                            Text("以下事项来自现场记录或 AI 会议纪要，必须逐条确认后才会进入行动中心。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            ForEach(followUpFeed.suggestions) { suggestion in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(suggestion.title)
+                                        .font(.subheadline.weight(.medium))
+                                    HStack {
+                                        Text(suggestion.sourceLabel)
+                                        if let dueDate = suggestion.dueDate, !dueDate.isEmpty {
+                                            Text("· 截止 \(dueDate)")
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    HStack(spacing: 10) {
+                                        Button {
+                                            Task { await decideFollowUp(suggestion, decision: "ACCEPT") }
+                                        } label: {
+                                            Label("确认纳入", systemImage: "checkmark.circle")
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .disabled(busyFollowUpIds.contains(suggestion.id))
+                                        Button(role: .destructive) {
+                                            Task { await decideFollowUp(suggestion, decision: "DISMISS") }
+                                        } label: {
+                                            Label("不采纳", systemImage: "xmark.circle")
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .disabled(busyFollowUpIds.contains(suggestion.id))
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+
+                        if !followUpFeed.items.isEmpty {
+                            if !followUpFeed.suggestions.isEmpty {
+                                Divider()
+                            }
+                            ForEach(followUpFeed.items) { item in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(alignment: .firstTextBaseline) {
+                                        Text(item.title)
+                                            .font(.subheadline.weight(.medium))
+                                        Spacer()
+                                        Text(item.statusLabel)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(item.status == "COMPLETED" ? .green : .secondary)
+                                    }
+                                    HStack {
+                                        Text(item.sourceLabel)
+                                        if let dueDate = item.dueDate, !dueDate.isEmpty {
+                                            Text("· 截止 \(dueDate)")
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    HStack(spacing: 10) {
+                                        if item.status == "OPEN" {
+                                            followUpActionButton(
+                                                "开始处理",
+                                                icon: "play.circle",
+                                                item: item,
+                                                status: "IN_PROGRESS"
+                                            )
+                                        }
+                                        if item.status == "OPEN" || item.status == "IN_PROGRESS" {
+                                            followUpActionButton(
+                                                "标记完成",
+                                                icon: "checkmark.circle",
+                                                item: item,
+                                                status: "COMPLETED"
+                                            )
+                                        }
+                                        if item.status == "COMPLETED" || item.status == "DISMISSED" {
+                                            followUpActionButton(
+                                                "重新打开",
+                                                icon: "arrow.uturn.backward.circle",
+                                                item: item,
+                                                status: "OPEN"
+                                            )
+                                        }
+                                    }
+                                    if !item.events.isEmpty {
+                                        DisclosureGroup("操作记录（\(item.events.count)）") {
+                                            ForEach(item.events) { event in
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(event.label)
+                                                        .font(.caption.weight(.medium))
+                                                    if let note = event.note, !note.isEmpty {
+                                                        Text(note)
+                                                            .font(.caption)
+                                                            .foregroundStyle(.secondary)
+                                                    }
+                                                    Text(event.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.tertiary)
+                                                }
+                                                .padding(.vertical, 2)
+                                            }
+                                        }
+                                        .font(.caption)
+                                    }
+                                }
+                                .padding(.vertical, 5)
+                            }
+                        }
+
+                        if followUpFeed.suggestions.isEmpty && followUpFeed.items.isEmpty {
+                            ContentUnavailableView(
+                                "暂无跟进事项",
+                                systemImage: "checklist",
+                                description: Text("现场记录或会议纪要中的后续事项会显示在这里，确认后才进入行动中心。")
+                            )
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("跟进闭环")
+                        Spacer()
+                        if let followUpFeed {
+                            Text("\(followUpFeed.items.filter { $0.status == "OPEN" || $0.status == "IN_PROGRESS" }.count) 项待处理")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } footer: {
+                    Text("确认只创建内部跟进记录，不会自动更改行程计划、拜访状态、客户档案或发送客户消息。")
+                }
+
                 if let errorMessage {
                     Section { ErrorBanner(message: errorMessage) }
                 }
@@ -176,6 +316,23 @@ struct VisitRecordSheet: View {
                 }
             }
         }
+        .task { await loadFollowUps() }
+    }
+
+    @ViewBuilder
+    private func followUpActionButton(
+        _ title: String,
+        icon: String,
+        item: VisitFollowUp,
+        status: String
+    ) -> some View {
+        Button {
+            Task { await updateFollowUp(item, status: status) }
+        } label: {
+            Label(title, systemImage: icon)
+        }
+        .buttonStyle(.bordered)
+        .disabled(busyFollowUpIds.contains(item.id))
     }
 
     private var isReady: Bool {
@@ -208,6 +365,7 @@ struct VisitRecordSheet: View {
                 draft,
                 networkAvailable: true
             )
+            await loadFollowUps()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -224,6 +382,59 @@ struct VisitRecordSheet: View {
         defer { isSyncingCRM = false }
         do {
             crmJob = try await environment.visitRepository.syncToCRM(recordId: recordId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+
+    private func loadFollowUps() async {
+        isLoadingFollowUps = true
+        defer { isLoadingFollowUps = false }
+        do {
+            followUpFeed = try await environment.visitRepository.followUps(visitId: visit.id)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    private func decideFollowUp(
+        _ suggestion: VisitFollowUpSuggestion,
+        decision: String
+    ) async {
+        busyFollowUpIds.insert(suggestion.id)
+        defer { busyFollowUpIds.remove(suggestion.id) }
+        errorMessage = nil
+        do {
+            let request = decision == "ACCEPT"
+                ? VisitFollowUpDecisionRequest.accept(suggestion)
+                : VisitFollowUpDecisionRequest.dismiss(suggestion)
+            _ = try await environment.visitRepository.decideFollowUp(
+                visitId: visit.id,
+                request: request
+            )
+            await loadFollowUps()
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    private func updateFollowUp(_ item: VisitFollowUp, status: String) async {
+        busyFollowUpIds.insert(item.id)
+        defer { busyFollowUpIds.remove(item.id) }
+        errorMessage = nil
+        do {
+            let note = status == "OPEN" ? "在拜访工作台重新打开此事项。" : nil
+            _ = try await environment.visitRepository.updateFollowUp(
+                id: item.id,
+                request: VisitFollowUpUpdateRequest(
+                    status: status,
+                    title: nil,
+                    dueDate: nil,
+                    note: note
+                )
+            )
+            await loadFollowUps()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -246,6 +457,7 @@ struct VisitRecordSheet: View {
         defer { isLoadingMinutes = false }
         do {
             minutes = try await environment.visitRepository.draftMinutes(visitId: visit.id)
+            await loadFollowUps()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
