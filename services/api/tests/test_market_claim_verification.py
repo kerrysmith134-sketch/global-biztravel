@@ -6,7 +6,7 @@ import uuid
 from uuid import UUID
 
 import pytest
-from app.db import org_session, owner_session
+from app.db import owner_session, org_session
 from app.llm.contracts import LLMResponse
 from app.main import app
 from app.models.market import (
