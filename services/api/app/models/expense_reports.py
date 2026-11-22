@@ -22,9 +22,11 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Numeric,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -39,6 +41,9 @@ class ExpenseReport(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('DRAFT','SUBMITTED','APPROVED','REJECTED')", name="status_allowed"
+        ),
+        UniqueConstraint(
+            "organization_id", "trip_id", "id", name="uq_expense_reports_org_trip_id"
         ),
         Index("ix_expense_reports_org_trip", "organization_id", "trip_id"),
         Index("ix_expense_reports_org_status", "organization_id", "status"),
@@ -75,6 +80,21 @@ class ExpenseReportItem(Base):
         CheckConstraint(
             "category IN ('TRANSPORT','LODGING','MEALS','OTHER')", name="category_allowed"
         ),
+        ForeignKeyConstraint(
+            ["organization_id", "trip_id", "report_id"],
+            ["expense_reports.organization_id", "expense_reports.trip_id", "expense_reports.id"],
+            ondelete="CASCADE",
+            name="fk_expense_report_items_report_same_trip",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "trip_id", "receipt_asset_id"],
+            ["receipt_assets.organization_id", "receipt_assets.trip_id", "receipt_assets.id"],
+            ondelete="NO ACTION",
+            deferrable=True,
+            initially="DEFERRED",
+            name="fk_expense_report_items_receipt_asset_same_trip",
+        ),
+        Index("ix_expense_report_items_receipt_asset_id", "receipt_asset_id"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -84,9 +104,8 @@ class ExpenseReportItem(Base):
         nullable=False,
         index=True,
     )
-    report_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("expense_reports.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    trip_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    report_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
     expense_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("trip_expenses.id", ondelete="SET NULL")
     )
@@ -96,6 +115,11 @@ class ExpenseReportItem(Base):
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
     receipt_ref: Mapped[str | None] = mapped_column(Text)
+    receipt_asset_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    receipt_sha256: Mapped[str | None] = mapped_column(Text)
+    receipt_original_filename: Mapped[str | None] = mapped_column(Text)
+    receipt_mime_type: Mapped[str | None] = mapped_column(Text)
+    receipt_byte_length: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_at()
 
 
