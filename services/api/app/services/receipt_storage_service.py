@@ -159,16 +159,17 @@ def get_receipt_storage(provider: str | None = None) -> ReceiptStorage:
     if selected == "filesystem":
         return FilesystemReceiptStorage(settings.receipt_storage_root)
     if selected == "s3":
-        if not all(
-            (settings.receipt_s3_bucket, settings.receipt_s3_access_key, settings.receipt_s3_secret_key)
-        ):
+        bucket = settings.receipt_s3_bucket
+        access_key = settings.receipt_s3_access_key
+        secret_key = settings.receipt_s3_secret_key
+        if bucket is None or access_key is None or secret_key is None:
             raise ReceiptStorageUnavailable("S3 票据存储未配置完整")
         return S3ReceiptStorage(
-            bucket=settings.receipt_s3_bucket,
+            bucket=bucket,
             region=settings.receipt_s3_region,
             endpoint_url=settings.receipt_s3_endpoint_url,
-            access_key=settings.receipt_s3_access_key,
-            secret_key=settings.receipt_s3_secret_key,
+            access_key=access_key,
+            secret_key=secret_key,
         )
     raise ReceiptStorageUnavailable(f"不支持的票据存储 Provider：{selected}")
 
