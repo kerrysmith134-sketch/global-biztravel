@@ -343,9 +343,9 @@ H1 主要验收上下文提取和领域持久化结构；真正的证据发现�
 
 H1.0 审计和 H1.1 领域契约已提交。H1.2 当前分支已实施首个可独立验收的后端纵向切片：
 
-- 新增 `MarketWorkspace`、`MarketContextSnapshot`、`MarketResearchQuestion`、`MarketActivityEvent` ORM 与迁移 `0032_market_workspace_foundation`；
-- 新增 Workspace、上下文版本、研究问题和活动时间线 API；
-- 新增真实 PostgreSQL 集成测试文件，覆盖租户隔离、原始输入、上下文采纳、幂等和问题关系；
+- 新增 `MarketWorkspace`、`MarketContextSnapshot`、`MarketResearchQuestion`、`MarketQuestionDependency`、`MarketActivityEvent` ORM；迁移 `0032_market_workspace_foundation` 与 `0033_market_question_dependencies`；
+- 新增 Workspace、上下文版本、研究问题、独立依赖图和活动时间线 API；依赖边具备同 Workspace 外键约束、自依赖/重复边约束及服务端循环检测；
+- 新增真实 PostgreSQL 集成测试，覆盖租户隔离、原始输入、上下文采纳、幂等、当前上下文指针外键、父子问题与依赖图；OpenAPI JSON/YAML 已同步新端点，但仍待生成器实测校验；
 - 复用现有会员权限、RLS、幂等、错误 envelope，不增加第二套 Agent Runtime / CRM。
 
 **这不是 H1.2 或 H1 完成声明。** 本分支尚待 GitHub Actions 执行 lint、typecheck、OpenAPI / iOS 契约检查、Alembic migration / metadata check 和真实 PostgreSQL 集成测试；当前不能声称迁移已在任何部署数据库执行或测试已通过。MarketEntity、Insight、Opportunity、Evidence 扩展/关联、完整研究 Worker 与 iOS 工作区仍待实施。
