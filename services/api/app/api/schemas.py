@@ -1966,7 +1966,20 @@ class MarketResearchGraphNodeRead(BaseModel):
     expected_evidence: list[Any]
     depends_on_question_ids: list[UUID]
     waiting_on_question_ids: list[UUID]
-    readiness: Literal["READY", "WAITING", "BLOCKED", "ANSWERED", "CANCELLED"]
+    readiness: Literal[
+        "READY",
+        "WAITING",
+        "BLOCKED",
+        "ANSWERED",
+        "CANCELLED",
+        "QUEUED",
+        "RUNNING",
+        "WAITING_FOR_REVIEW",
+        "WAITING_FOR_EVIDENCE",
+        "WAITING_FOR_DEPENDENCY",
+        "FAILED",
+        "REJECTED",
+    ]
 
 
 class MarketResearchGraphEdgeRead(BaseModel):
@@ -1981,6 +1994,87 @@ class MarketResearchGraphRead(BaseModel):
     topological_order: list[UUID]
     ready_question_ids: list[UUID]
     cycle_detected: bool
+
+
+class MarketResearchGraphExecutionCreate(BaseModel):
+    max_concurrency: int | None = Field(default=None, ge=1, le=4)
+    max_questions: int | None = Field(default=None, ge=1, le=12)
+    max_duration_minutes: int | None = Field(default=None, ge=1, le=180)
+    max_cost_usd: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=4)
+
+
+class MarketResearchGraphExecutionNodeRead(BaseModel):
+    question_id: UUID
+    state: Literal[
+        "READY",
+        "QUEUED",
+        "RUNNING",
+        "WAITING_FOR_REVIEW",
+        "WAITING_FOR_EVIDENCE",
+        "WAITING_FOR_DEPENDENCY",
+        "ANSWERED",
+        "FAILED",
+        "REJECTED",
+        "BLOCKED",
+        "CANCELLED",
+    ]
+    latest_answer_id: UUID | None = None
+    latest_answer_status: str | None = None
+    job_id: UUID | None = None
+    error: str | None = None
+
+
+class MarketResearchGraphExecutionRead(BaseModel):
+    execution_id: UUID
+    workspace_id: UUID
+    workflow_status: Literal["RUNNING", "COMPLETED", "FAILED", "REJECTED"]
+    execution_state: Literal[
+        "QUEUED",
+        "RUNNING",
+        "WAITING_FOR_REVIEW",
+        "WAITING_FOR_EVIDENCE",
+        "WAITING_FOR_DEPENDENCY",
+        "COMPLETED",
+        "PARTIAL",
+        "FAILED",
+        "CANCELLED",
+        "BUDGET_EXHAUSTED",
+        "TIMED_OUT",
+    ]
+    graph_digest: str
+    max_concurrency: int
+    max_questions: int
+    max_duration_minutes: int
+    max_cost_usd: Decimal | None
+    cost_estimate_usd: Decimal | None
+    cost_metering_available: bool
+    dispatched_count: int
+    completed_count: int
+    active_count: int
+    ready_count: int
+    waiting_review_count: int
+    waiting_evidence_count: int
+    failed_count: int
+    node_states: list[MarketResearchGraphExecutionNodeRead]
+    stop_reason: str | None
+    created_at: datetime
+    started_at: datetime | None
+    deadline_at: datetime
+    finished_at: datetime | None
+
+
+class MarketResearchGraphExecutionAccepted(BaseModel):
+    execution_id: UUID
+    job_id: UUID
+    workflow_status: str
+    reused: bool
+
+
+class MarketResearchGraphExecutionCancelled(BaseModel):
+    execution_id: UUID
+    cancelled: bool
+    cancelled_jobs: int
+    running_jobs: int
 
 
 class MarketActivityEventRead(ORMModel):
