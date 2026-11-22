@@ -396,7 +396,7 @@ def _node_statuses(
     return node_states, {
         **counts,
         "evidence_count": len(evidence_ids),
-        "cost_estimate_usd": total_cost,
+        "cost_estimate": total_cost,
         "cost_metering_available": get_settings().llm_cost_per_1k_tokens > 0,
         "question_ids": question_ids,
         "all_answered": bool(node_states) and all(row["state"] == "ANSWERED" for row in node_states),
@@ -438,12 +438,12 @@ def _serialize_execution(
         "max_concurrency": int(payload.get("max_concurrency") or 1),
         "max_questions": int(payload.get("max_questions") or 1),
         "max_duration_minutes": int(payload.get("max_duration_minutes") or 1),
-        "max_cost_usd": (
-            Decimal(str(payload["max_cost_usd"]))
-            if payload.get("max_cost_usd") is not None
+        "max_cost": (
+            Decimal(str(payload["max_cost"]))
+            if payload.get("max_cost") is not None
             else None
         ),
-        "cost_estimate_usd": counts["cost_estimate_usd"],
+        "cost_estimate": counts["cost_estimate"],
         "cost_metering_available": counts["cost_metering_available"],
         "dispatched_count": counts["dispatched_count"],
         "completed_count": counts["completed_count"],
@@ -470,7 +470,7 @@ def start_execution(
     max_concurrency: int | None = None,
     max_questions: int | None = None,
     max_duration_minutes: int | None = None,
-    max_cost_usd: Decimal | None = None,
+    max_cost: Decimal | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
     _workspace(session, organization_id, workspace_id, lock=True)
@@ -550,22 +550,22 @@ def start_execution(
     ))
     cost_metering_available = settings.llm_cost_per_1k_tokens > 0
     max_cost_value: Decimal | None = None
-    configured_cap = Decimal(str(settings.market_research_graph_max_cost_usd))
+    configured_cap = Decimal(str(settings.market_research_graph_max_cost))
     if cost_metering_available and configured_cap > 0:
         max_cost_value = configured_cap
-    if max_cost_usd is not None:
+    if max_cost is not None:
         if not cost_metering_available or configured_cap <= 0:
             raise Unprocessable(
                 "当前部署未配置 LLM 成本估算单价或金额 hard cap，无法执行金额预算限制",
                 code="MARKET_RESEARCH_COST_METERING_UNAVAILABLE",
             )
-        if max_cost_usd <= 0 or max_cost_usd > configured_cap:
+        if max_cost <= 0 or max_cost > configured_cap:
             raise Unprocessable(
                 "金额预算必须大于 0，且不能高于部署级 hard cap",
                 code="MARKET_RESEARCH_COST_BUDGET_INVALID",
-                details={"max_cost_usd": str(configured_cap)},
+                details={"max_cost": str(configured_cap)},
             )
-        max_cost_value = max_cost_usd
+        max_cost_value = max_cost
         # To enforce a strict cumulative budget without reserving speculative cost for
         # concurrent calls, a user-specified monetary cap serializes this execution.
         max_concurrency_value = 1
@@ -583,7 +583,7 @@ def start_execution(
             "max_concurrency": max_concurrency_value,
             "max_questions": max_questions_value,
             "max_duration_minutes": max_duration_value,
-            "max_cost_usd": str(max_cost_value) if max_cost_value is not None else None,
+            "max_cost": str(max_cost_value) if max_cost_value is not None else None,
             "dispatched_count": 0,
             "dispatched_question_ids": [],
             "execution_state": "QUEUED",
@@ -621,7 +621,7 @@ def start_execution(
                 "max_concurrency": max_concurrency_value,
                 "max_questions": max_questions_value,
                 "max_duration_minutes": max_duration_value,
-                "max_cost_usd": str(max_cost_value) if max_cost_value is not None else None,
+                "max_cost": str(max_cost_value) if max_cost_value is not None else None,
             },
         )
     )
@@ -733,8 +733,8 @@ def run_scheduler(
 
     if now >= deadline:
         return stop("TIMED_OUT", "执行时间预算已耗尽")
-    max_cost = Decimal(str(payload["max_cost_usd"])) if payload.get("max_cost_usd") is not None else None
-    if max_cost is not None and counts["cost_estimate_usd"] >= max_cost:
+    max_cost = Decimal(str(payload["max_cost"])) if payload.get("max_cost") is not None else None
+    if max_cost is not None and counts["cost_estimate"] >= max_cost:
         return stop("BUDGET_EXHAUSTED", "LLM 成本估算已达到金额预算")
 
     if counts["all_answered"]:
@@ -916,8 +916,8 @@ def retry_question(
         deadline = deadline.replace(tzinfo=UTC)
     if now >= deadline:
         raise Conflict("本次执行已超过时间预算，请创建新的执行批次")
-    max_cost = Decimal(str(payload["max_cost_usd"])) if payload.get("max_cost_usd") is not None else None
-    if max_cost is not None and counts["cost_estimate_usd"] >= max_cost:
+    max_cost = Decimal(str(payload["max_cost"])) if payload.get("max_cost") is not None else None
+    if max_cost is not None and counts["cost_estimate"] >= max_cost:
         raise Conflict("本次执行已达到成本预算，请创建新的执行批次")
 
     dispatched_ids = set(
