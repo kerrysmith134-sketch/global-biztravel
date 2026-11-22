@@ -2225,6 +2225,51 @@ class MarketEvidenceRead(ORMModel):
     created_at: datetime
 
 
+class MarketEvidenceIntelligenceItem(BaseModel):
+    evidence_id: UUID
+    kind: str
+    source: str | None
+    canonical_ref: str | None
+    source_host: str | None
+    content_fingerprint: str | None
+    fingerprint_source: Literal["STORED_HASH", "BODY_SHA256", "UNAVAILABLE"]
+    verification_status: MarketEvidenceVerification
+    published_at: datetime | None
+    retrieved_at: datetime | None
+    age_days: int | None
+    origin_assessment: Literal[
+        "DUPLICATE_CONTENT", "SAME_HOST", "HOST_IDENTIFIED", "HOST_UNKNOWN"
+    ]
+    duplicate_content_evidence_ids: list[UUID] = Field(default_factory=list)
+    same_host_evidence_ids: list[UUID] = Field(default_factory=list)
+    same_source_version_evidence_ids: list[UUID] = Field(default_factory=list)
+    derived_page_evidence_ids: list[UUID] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+
+
+class MarketEvidenceIntelligenceRead(BaseModel):
+    workspace_id: UUID
+    generated_at: datetime
+    total_evidence_count: int
+    analyzed_evidence_count: int
+    is_truncated: bool
+    distinct_host_count: int
+    duplicate_content_group_count: int
+    duplicate_content_evidence_count: int
+    multi_version_source_count: int
+    multi_version_evidence_count: int
+    unverified_count: int
+    partially_verified_count: int
+    verified_count: int
+    disputed_count: int
+    rejected_count: int
+    missing_publication_date_count: int
+    missing_content_hash_count: int
+    unextracted_search_result_count: int
+    items: list[MarketEvidenceIntelligenceItem] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+
+
 class MarketInsightEvidenceInput(BaseModel):
     evidence_id: UUID
     relation_type: MarketEvidenceRelation

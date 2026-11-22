@@ -369,6 +369,83 @@ def test_insight_cannot_reference_another_workspaces_evidence(client: TestClient
         cleanup_workspace(workspace_two)
 
 
+def test_evidence_intelligence_report_detects_duplicate_and_source_versions(
+    client: TestClient,
+) -> None:
+    workspace_id: str | None = None
+    evidence_ids: list[str] = []
+    try:
+        workspace_id = create_workspace(client, "Evidence intelligence report")
+        original_body = "A named institution published an identical procurement notice in 2026."
+        records = [
+            {
+                "canonical_ref": "https://example.com/reports/procurement",
+                "content": original_body,
+                "kind": "WEB_SEARCH_RESULT",
+                "source": "Example Publisher",
+            },
+            {
+                "canonical_ref": "https://example.com/reports/procurement",
+                "content": "A revised version of the procurement notice was published later in 2026.",
+                "kind": "WEB_SEARCH_RESULT",
+                "source": "Example Publisher",
+            },
+            {
+                "canonical_ref": "https://other.example.org/republication",
+                "content": original_body,
+                "kind": "WEB_SEARCH_RESULT",
+                "source": "Other Publisher",
+            },
+        ]
+        for payload in records:
+            created = client.post(
+                f"/v1/market/workspaces/{workspace_id}/evidence",
+                headers=headers(),
+                json=payload,
+            )
+            assert created.status_code == 201, created.text
+            evidence_ids.append(created.json()["id"])
+
+        response = client.get(
+            f"/v1/market/workspaces/{workspace_id}/evidence-intelligence",
+            headers=headers(),
+        )
+        assert response.status_code == 200, response.text
+        report = response.json()
+        assert report["workspace_id"] == workspace_id
+        assert report["total_evidence_count"] == 3
+        assert report["analyzed_evidence_count"] == 3
+        assert report["is_truncated"] is False
+        assert report["distinct_host_count"] == 2
+        assert report["duplicate_content_group_count"] == 1
+        assert report["duplicate_content_evidence_count"] == 2
+        assert report["multi_version_source_count"] == 1
+        assert report["multi_version_evidence_count"] == 2
+        assert report["unverified_count"] == 3
+        assert report["missing_publication_date_count"] == 3
+        assert report["unextracted_search_result_count"] == 3
+
+        by_id = {item["evidence_id"]: item for item in report["items"]}
+        first, revised, copied = (by_id[item] for item in evidence_ids)
+        assert first["origin_assessment"] == "DUPLICATE_CONTENT"
+        assert copied["origin_assessment"] == "DUPLICATE_CONTENT"
+        assert set(first["duplicate_content_evidence_ids"]) == {evidence_ids[2]}
+        assert set(copied["duplicate_content_evidence_ids"]) == {evidence_ids[0]}
+        assert revised["same_source_version_evidence_ids"] == [evidence_ids[0]]
+        assert set(first["same_host_evidence_ids"]) == {evidence_ids[1]}
+        assert "SEARCH_RESULT_NOT_PAGE_EXTRACTED" in first["issues"]
+        assert any("不证明出版方相互独立" in item for item in report["caveats"])
+
+        # The same report cannot be used to enumerate another tenant's workspace.
+        denied = client.get(
+            f"/v1/market/workspaces/{workspace_id}/evidence-intelligence",
+            headers=headers(org=ORG_B),
+        )
+        assert denied.status_code == 404, denied.text
+    finally:
+        cleanup_workspace(workspace_id)
+
+
 def test_legacy_evidence_record_many_contract_is_unchanged() -> None:
     workspace_id: str | None = None
     try:
