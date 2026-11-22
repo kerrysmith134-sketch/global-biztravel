@@ -246,6 +246,9 @@ def enqueue_claim_verification(
         linked_by_user_id=created_by_user_id,
     )
     session.add(workflow_link)
+    # The composite FK on the run points at this association's unique key.
+    # Flush explicitly because no ORM relationship connects these two new objects.
+    session.flush()
 
     verification_run = MarketClaimVerificationRun(
         organization_id=organization_id,
