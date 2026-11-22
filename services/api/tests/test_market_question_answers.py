@@ -121,7 +121,7 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
             assert response.status_code == 201, response.text
             return response.json()
 
-        # One supporting domain does not meet the question's independent-source criterion.
+        # One candidate source group does not meet the configured source-group threshold.
         version_one = create_answer(
             "There is one specific buyer intent signal, but corroboration is insufficient.",
             [(evidence_one, "SUPPORTS", "A concrete procurement plan is published.")],
@@ -137,6 +137,8 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
         assert not_enough.json()["error"]["details"] == {
             "required_sources": 2,
             "actual_sources": 1,
+            "source_count_basis": "distinct_host_and_content_groups",
+            "independence_confirmed_by_system": False,
         }
 
         # Contradictory evidence puts the answer into CONFLICTED, regardless of support count.
@@ -157,7 +159,7 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
         )
         assert blocked.status_code == 409, blocked.text
 
-        # A clean evidence-backed answer can be accepted by an Admin after review.
+        # A clean evidence-backed answer can be accepted only after explicit human source-independence review.
         version_three = create_answer(
             "Two independent sources support a current purchasing demand signal; budget remains unknown.",
             [
@@ -167,10 +169,19 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
         )
         assert version_three["version"] == 3
         assert version_three["supersedes_id"] == version_two["id"]
+        # Multiple host/content groups are candidates only; a blank review cannot certify independence.
+        no_independence_review = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{version_three['id']}:accept",
+            headers=headers(),
+            json={},
+        )
+        assert no_independence_review.status_code == 409, no_independence_review.text
+        assert no_independence_review.json()["error"]["details"]["manual_independence_review_required"] is True
+
         accepted = client.post(
             f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{version_three['id']}:accept",
             headers=headers(),
-            json={"review_note": "Both sources and the two-source acceptance criterion were reviewed."},
+            json={"review_note": "I manually checked the publishers and their ownership; the sources are independently produced and are not syndicated copies."},
         )
         assert accepted.status_code == 200, accepted.text
         assert accepted.json()["status"] == "ACCEPTED"
@@ -200,7 +211,7 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
         accepted_four = client.post(
             f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{version_four['id']}:accept",
             headers=headers(),
-            json={"review_note": "Updated answer reviewed against the same two independent sources."},
+            json={"review_note": "I rechecked the publisher ownership and confirmed these two sources are independent rather than syndicated copies."},
         )
         assert accepted_four.status_code == 200, accepted_four.text
         assert accepted_four.json()["status"] == "ACCEPTED"
