@@ -8,10 +8,18 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
-from app.models.market import MarketWorkspace, MarketWorkspaceWorkflow
+from app.models.market import (
+    MarketEvidenceDerivation,
+    MarketWorkspace,
+    MarketWorkspaceWorkflow,
+)
 from app.models.reliability import BackgroundJob
-from app.models.workflow import Evidence, WorkflowInstance
-from app.services import job_service, market_research_dag_service
+from app.models.workflow import AgentRun, Evidence, WorkflowInstance
+from app.services import (
+    job_service,
+    market_insight_service,
+    market_research_dag_service,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
@@ -293,5 +301,362 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
                         delete(WorkflowInstance).where(
                             WorkflowInstance.organization_id == UUID(ORG_A),
                             WorkflowInstance.id.in_(all_workflow_ids),
+                        )
+                    )
+
+
+
+def test_question_scoped_evidence_does_not_leak_between_research_questions(
+    client: TestClient,
+) -> None:
+    workspace_id: str | None = None
+    workflow_ids: list[UUID] = []
+    evidence_ids: list[UUID] = []
+    try:
+        workspace_response = client.post(
+            "/v1/market/workspaces",
+            headers=headers(),
+            json={
+                "name": f"Question evidence scope {uuid.uuid4().hex[:8]}",
+                "objective": "验证问题级证据隔离和网页正文血缘",
+                "initial_context": "两个研究问题分别需要不同的来源证据。",
+            },
+        )
+        assert workspace_response.status_code == 201, workspace_response.text
+        workspace_id = workspace_response.json()["id"]
+
+        question_ids: list[str] = []
+        for question_text in (
+            "核验目标市场的法规要求",
+            "核验目标市场的渠道结构",
+        ):
+            created = client.post(
+                f"/v1/market/workspaces/{workspace_id}/questions",
+                headers=headers(),
+                json={
+                    "question": question_text,
+                    "rationale": "问题级来源不得跨节点污染",
+                    "priority": 1,
+                    "acceptance_criteria": [],
+                },
+            )
+            assert created.status_code == 201, created.text
+            question_ids.append(created.json()["id"])
+        q1, q2 = (UUID(item) for item in question_ids)
+
+        with org_session(UUID(ORG_A)) as session:
+            plan_workflows: dict[UUID, WorkflowInstance] = {}
+            plan_runs: dict[UUID, AgentRun] = {}
+            for question_id in (q1, q2):
+                plan = WorkflowInstance(
+                    organization_id=UUID(ORG_A),
+                    workflow_type="research_plan",
+                    status="COMPLETED",
+                    payload={
+                        "workspace_id": workspace_id,
+                        "target_question_id": str(question_id),
+                        "retrieval_status": "COMPLETED",
+                    },
+                    created_by_user_id=UUID(USER_A),
+                )
+                session.add(plan)
+                session.flush()
+                plan_workflows[question_id] = plan
+                session.add(
+                    MarketWorkspaceWorkflow(
+                        organization_id=UUID(ORG_A),
+                        workspace_id=UUID(workspace_id),
+                        workflow_id=plan.id,
+                        linked_by_user_id=UUID(USER_A),
+                    )
+                )
+                run = AgentRun(
+                    organization_id=UUID(ORG_A),
+                    workflow_id=plan.id,
+                    agent_type="research_executor_test",
+                    status="SUCCEEDED",
+                    input={"target_question_id": str(question_id)},
+                    output={"provider": "test"},
+                    finished_at=None,
+                )
+                session.add(run)
+                session.flush()
+                plan_runs[question_id] = run
+                workflow_ids.append(plan.id)
+
+            def record(
+                canonical_ref: str,
+                body: str,
+                *,
+                managed: bool,
+                target_question_id: UUID | None = None,
+            ) -> Evidence:
+                payload = {"content": body, "question_scope_managed": managed}
+                if target_question_id is not None:
+                    payload["target_question_id"] = str(target_question_id)
+                row = market_insight_service.record_market_evidence(
+                    session,
+                    UUID(ORG_A),
+                    UUID(workspace_id),
+                    canonical_ref=canonical_ref,
+                    content=body,
+                    kind="WEB_SEARCH_RESULT",
+                    source="question-scope-test",
+                    published_at=None,
+                    observation=body,
+                    verification_status="UNVERIFIED",
+                    quality=None,
+                    payload=payload,
+                    actor_user_id=None,
+                )
+                evidence_ids.append(row.id)
+                return row
+
+            q1_source = record(
+                "https://scope.example.test/q1",
+                "Q1 专属法规来源摘要。",
+                managed=True,
+                target_question_id=q1,
+            )
+            q2_source = record(
+                "https://scope.example.test/q2",
+                "Q2 专属渠道来源摘要。",
+                managed=True,
+                target_question_id=q2,
+            )
+            shared_source = record(
+                "https://scope.example.test/shared",
+                "用户主动添加的 Workspace 共享背景资料。",
+                managed=False,
+            )
+
+            market_insight_service.link_research_plan_evidence(
+                session,
+                UUID(ORG_A),
+                UUID(workspace_id),
+                plan_workflows[q1].id,
+                q1_source.id,
+                search_query="Q1 regulations",
+                collected_by_run_id=plan_runs[q1].id,
+                question_id=q1,
+            )
+            market_insight_service.link_research_plan_evidence(
+                session,
+                UUID(ORG_A),
+                UUID(workspace_id),
+                plan_workflows[q2].id,
+                q2_source.id,
+                search_query="Q2 channels",
+                collected_by_run_id=plan_runs[q2].id,
+                question_id=q2,
+            )
+
+            # Legacy ResearchPlan-subject Evidence remains available only to its
+            # own target question (or all questions for an old untargeted plan).
+            q1_legacy = Evidence(
+                organization_id=UUID(ORG_A),
+                subject_type="RESEARCH_PLAN",
+                subject_id=plan_workflows[q1].id,
+                kind="LEGACY_RESEARCH_BODY",
+                ref=f"legacy:{uuid.uuid4()}",
+                source="legacy-test",
+                payload={"content": "旧版 Q1 研究计划来源正文。"},
+            )
+            q2_legacy = Evidence(
+                organization_id=UUID(ORG_A),
+                subject_type="RESEARCH_PLAN",
+                subject_id=plan_workflows[q2].id,
+                kind="LEGACY_RESEARCH_BODY",
+                ref=f"legacy:{uuid.uuid4()}",
+                source="legacy-test",
+                payload={"content": "旧版 Q2 研究计划来源正文。"},
+            )
+            session.add_all([q1_legacy, q2_legacy])
+            session.flush()
+            evidence_ids.extend([q1_legacy.id, q2_legacy.id])
+
+            q1_visible = set(
+                session.scalars(
+                    select(Evidence.id).where(
+                        market_insight_service.question_evidence_scope(
+                            UUID(ORG_A),
+                            UUID(workspace_id),
+                            q1,
+                            [plan_workflows[q1].id, plan_workflows[q2].id],
+                        )
+                    )
+                ).all()
+            )
+            q2_visible = set(
+                session.scalars(
+                    select(Evidence.id).where(
+                        market_insight_service.question_evidence_scope(
+                            UUID(ORG_A),
+                            UUID(workspace_id),
+                            q2,
+                            [plan_workflows[q1].id, plan_workflows[q2].id],
+                        )
+                    )
+                ).all()
+            )
+            assert q1_visible == {q1_source.id, shared_source.id, q1_legacy.id}
+            assert q2_visible == {q2_source.id, shared_source.id, q2_legacy.id}
+            assert q2_source.id not in q1_visible
+            assert q1_source.id not in q2_visible
+
+            # A user-selected page extraction creates a new immutable Evidence
+            # version and inherits the exact question/query provenance.
+            extraction_workflow = WorkflowInstance(
+                organization_id=UUID(ORG_A),
+                workflow_type="market_source_extraction",
+                status="COMPLETED",
+                payload={"workspace_id": workspace_id, "source_evidence_id": str(q1_source.id)},
+                created_by_user_id=UUID(USER_A),
+            )
+            session.add(extraction_workflow)
+            session.flush()
+            workflow_ids.append(extraction_workflow.id)
+            session.add(
+                MarketWorkspaceWorkflow(
+                    organization_id=UUID(ORG_A),
+                    workspace_id=UUID(workspace_id),
+                    workflow_id=extraction_workflow.id,
+                    linked_by_user_id=UUID(USER_A),
+                )
+            )
+            extraction_run = AgentRun(
+                organization_id=UUID(ORG_A),
+                workflow_id=extraction_workflow.id,
+                agent_type="market_source_page_extractor",
+                status="SUCCEEDED",
+                input={"source_evidence_id": str(q1_source.id)},
+                output={"verification_status": "UNVERIFIED"},
+            )
+            session.add(extraction_run)
+            session.flush()
+
+            derived = market_insight_service.record_market_evidence(
+                session,
+                UUID(ORG_A),
+                UUID(workspace_id),
+                canonical_ref="https://scope.example.test/q1/full-page",
+                content="Q1 网页正文中可复核的法规段落。",
+                kind="WEB_PAGE_EXTRACT",
+                source="safe-http-test",
+                published_at=None,
+                observation="Q1 网页正文",
+                verification_status="UNVERIFIED",
+                quality=None,
+                payload={
+                    "content": "Q1 网页正文中可复核的法规段落。",
+                    "question_scope_managed": True,
+                    "target_question_id": str(q1),
+                    "derived_from_evidence_id": str(q1_source.id),
+                },
+                actor_user_id=None,
+            )
+            evidence_ids.append(derived.id)
+            session.add(
+                MarketEvidenceDerivation(
+                    organization_id=UUID(ORG_A),
+                    workspace_id=UUID(workspace_id),
+                    source_evidence_id=q1_source.id,
+                    derived_evidence_id=derived.id,
+                    workflow_id=extraction_workflow.id,
+                    agent_run_id=extraction_run.id,
+                    derivation_type="WEB_PAGE_TEXT_EXTRACTION",
+                    extractor_version="scope-test-v1",
+                    source_url="https://scope.example.test/q1/full-page",
+                    content_hash=derived.content_hash,
+                )
+            )
+            session.flush()
+            copied = market_insight_service.inherit_research_plan_evidence_links(
+                session,
+                UUID(ORG_A),
+                UUID(workspace_id),
+                q1_source.id,
+                derived.id,
+                extraction_workflow_id=extraction_workflow.id,
+                extraction_agent_run_id=extraction_run.id,
+            )
+            assert copied == 1
+
+            q1_after_extract = set(
+                session.scalars(
+                    select(Evidence.id).where(
+                        market_insight_service.question_evidence_scope(
+                            UUID(ORG_A),
+                            UUID(workspace_id),
+                            q1,
+                            [plan_workflows[q1].id, plan_workflows[q2].id, extraction_workflow.id],
+                        )
+                    )
+                ).all()
+            )
+            q2_after_extract = set(
+                session.scalars(
+                    select(Evidence.id).where(
+                        market_insight_service.question_evidence_scope(
+                            UUID(ORG_A),
+                            UUID(workspace_id),
+                            q2,
+                            [plan_workflows[q1].id, plan_workflows[q2].id, extraction_workflow.id],
+                        )
+                    )
+                ).all()
+            )
+            assert derived.id in q1_after_extract
+            assert derived.id not in q2_after_extract
+
+        # A question-targeted ResearchPlan must not recursively create more DAG nodes.
+        for question_id in question_ids:
+            planned = client.post(
+                "/v1/research/plans",
+                headers=headers(),
+                json={
+                    "request": f"研究该问题并寻找可核验来源：{question_id}",
+                    "source_scope": "EXTERNAL_ONLY",
+                    "workspace_id": workspace_id,
+                    "target_question_id": question_id,
+                },
+            )
+            assert planned.status_code == 201, planned.text
+            assert planned.json()["target_question_id"] == question_id
+            assert planned.json()["generated_question_ids"] == []
+            workflow_ids.append(UUID(planned.json()["id"]))
+
+        listed = client.get(
+            f"/v1/market/workspaces/{workspace_id}/research-plans",
+            headers=headers(),
+            params={"target_question_id": question_ids[0]},
+        )
+        assert listed.status_code == 200, listed.text
+        assert all(
+            item["target_question_id"] == question_ids[0]
+            for item in listed.json()
+        )
+
+    finally:
+        if workspace_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == UUID(workspace_id),
+                    )
+                )
+                if workflow_ids:
+                    session.execute(
+                        delete(WorkflowInstance).where(
+                            WorkflowInstance.organization_id == UUID(ORG_A),
+                            WorkflowInstance.id.in_(set(workflow_ids)),
+                        )
+                    )
+                if evidence_ids:
+                    session.execute(
+                        delete(Evidence).where(
+                            Evidence.organization_id == UUID(ORG_A),
+                            Evidence.id.in_(set(evidence_ids)),
                         )
                     )
