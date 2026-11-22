@@ -4,6 +4,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from migrations import helpers
+
 revision = "0046_expense_report_receipt_snapshots"
 down_revision = "0045_receipt_assets"
 branch_labels = None
@@ -11,6 +13,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # gbt_owner is also subject to FORCE RLS. Temporarily permit the table owner
+    # to perform this cross-tenant backfill inside the migration transaction;
+    # ACCESS EXCLUSIVE DDL locks prevent concurrent application access. Restore
+    # the exact tenant policy and FORCE flag before the migration commits.
+    op.execute("ALTER TABLE expense_reports NO FORCE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE expense_report_items NO FORCE ROW LEVEL SECURITY")
+
     op.create_unique_constraint(
         "uq_expense_reports_org_trip_id",
         "expense_reports",
@@ -106,6 +115,9 @@ def upgrade() -> None:
         "expense_report_items",
         ["receipt_asset_id"],
     )
+
+    helpers.enable_org_rls("expense_reports", force=True)
+    helpers.enable_org_rls("expense_report_items", force=True)
 
 
 def downgrade() -> None:
