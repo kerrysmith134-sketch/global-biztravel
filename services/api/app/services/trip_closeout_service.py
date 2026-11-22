@@ -226,7 +226,7 @@ def build_trip_closeout_readiness(
             )
         )
     assets_by_id = {row.id: row for row in assets}
-    for asset_id in sorted(receipt_asset_ids - set(assets_by_id), key=str):
+    for _asset_id in sorted(receipt_asset_ids - set(assets_by_id), key=str):
         warnings.append(
             _issue(
                 "RECEIPT_ASSET_MISSING",
