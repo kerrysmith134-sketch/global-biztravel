@@ -14286,7 +14286,6 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
           type: array
           items:
             type: string
-            title: Limitation Item
           title: Limitations
         supersedes_id:
           anyOf:
@@ -14445,7 +14444,6 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
           type: array
           items:
             type: string
-            title: Limitation Item
           title: Limitations
         failure_reason:
           anyOf:
@@ -14519,4 +14517,4 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
       type: object
       required:
       - items
-      title: Page_MarketClaimRead_
+      title: Page[MarketClaimRead]
