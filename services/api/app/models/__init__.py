@@ -21,6 +21,7 @@ from app.models.llm import LLMInvocation
 from app.models.market import (
     MarketActivityEvent,
     MarketContextSnapshot,
+    MarketQuestionDependency,
     MarketResearchQuestion,
     MarketWorkspace,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "LLMInvocation",
     "MarketActivityEvent",
     "MarketContextSnapshot",
+    "MarketQuestionDependency",
     "MarketResearchQuestion",
     "MarketWorkspace",
     "Membership",
