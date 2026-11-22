@@ -579,10 +579,30 @@ final class LocalStoreTests: XCTestCase {
 
     // MARK: - H2.12：本地拜访跟进闭环
 
+
     func testLocalVisitFollowUpsRequireDecisionAndAppearInActionCenter() async throws {
+        let (visit, repository) = try await makeLocalFollowUpFixture()
+        let reopened = try await exerciseLocalFollowUpLifecycle(
+            repository: repository,
+            visit: visit
+        )
+        let center = try await LocalActionCenterRepository(database: database)
+            .actionCenter(tripId: visit.tripId)
+        let preparation = try XCTUnwrap(
+            center.sections.first { $0.key == "PREPARATION" }
+        )
+        XCTAssertTrue(preparation.items.contains {
+            $0.kind == "VISIT_FOLLOW_UP" && $0.entityId == reopened.id && $0.status == "OPEN"
+        })
+    }
+
+    private func makeLocalFollowUpFixture() async throws -> (
+        visit: TripVisit,
+        repository: LocalVisitRepository
+    ) {
         let trip = try await makeRepository().createTrip(makeRequest(name: "本地跟进闭环"))
-        let visitRepository = LocalVisitRepository(database: database)
-        let visit = try await visitRepository.createVisit(
+        let repository = LocalVisitRepository(database: database)
+        let visit = try await repository.createVisit(
             tripId: trip.id,
             request: VisitCreateRequest(
                 placeName: "Berlin Buyer",
@@ -592,8 +612,7 @@ final class LocalStoreTests: XCTestCase {
                 serviceMinutes: 60
             )
         )
-
-        _ = try await visitRepository.submitRecord(
+        _ = try await repository.submitRecord(
             visitId: visit.id,
             request: VisitRecordRequest(
                 clientRecordId: VisitRecordRequest.newClientRecordId(),
@@ -605,42 +624,45 @@ final class LocalStoreTests: XCTestCase {
                 ]
             )
         )
+        return (visit, repository)
+    }
 
-        let initial = try await visitRepository.followUps(visitId: visit.id)
+    private func exerciseLocalFollowUpLifecycle(
+        repository: LocalVisitRepository,
+        visit: TripVisit
+    ) async throws -> VisitFollowUp {
+        let initial = try await repository.followUps(visitId: visit.id)
         XCTAssertTrue(initial.items.isEmpty)
-        XCTAssertEqual(Set(initial.suggestions.map(\.title)), [
+        XCTAssertEqual(Set(initial.suggestions.map(\\.title)), [
             "发送工厂产能证明", "确认延长质保条件"
         ])
-
         let acceptSuggestion = try XCTUnwrap(
             initial.suggestions.first { $0.title == "发送工厂产能证明" }
         )
         let dismissSuggestion = try XCTUnwrap(
             initial.suggestions.first { $0.title == "确认延长质保条件" }
         )
-        let accepted = try await visitRepository.decideFollowUp(
-            visitId: visit.id,
-            request: .accept(acceptSuggestion)
+        let accepted = try await repository.decideFollowUp(
+            visitId: visit.id, request: .accept(acceptSuggestion)
         )
-        let dismissed = try await visitRepository.decideFollowUp(
-            visitId: visit.id,
-            request: .dismiss(dismissSuggestion)
+        let dismissed = try await repository.decideFollowUp(
+            visitId: visit.id, request: .dismiss(dismissSuggestion)
         )
         XCTAssertEqual(accepted.status, "OPEN")
         XCTAssertEqual(dismissed.status, "DISMISSED")
-        XCTAssertEqual(accepted.events.map(\.eventType), ["ACCEPTED"])
-        XCTAssertEqual(dismissed.events.map(\.eventType), ["DISMISSED"])
+        XCTAssertEqual(accepted.events.map(\\.eventType), ["ACCEPTED"])
+        XCTAssertEqual(dismissed.events.map(\\.eventType), ["DISMISSED"])
 
-        let afterDecision = try await visitRepository.followUps(visitId: visit.id)
+        let afterDecision = try await repository.followUps(visitId: visit.id)
         XCTAssertTrue(afterDecision.suggestions.isEmpty)
         XCTAssertEqual(afterDecision.items.count, 2)
 
-        let started = try await visitRepository.updateFollowUp(
+        let started = try await repository.updateFollowUp(
             id: accepted.id,
             request: VisitFollowUpUpdateRequest(status: "IN_PROGRESS")
         )
         XCTAssertEqual(started.status, "IN_PROGRESS")
-        let completed = try await visitRepository.updateFollowUp(
+        let completed = try await repository.updateFollowUp(
             id: accepted.id,
             request: VisitFollowUpUpdateRequest(status: "COMPLETED")
         )
@@ -648,7 +670,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertNotNil(completed.completedAt)
 
         do {
-            _ = try await visitRepository.updateFollowUp(
+            _ = try await repository.updateFollowUp(
                 id: accepted.id,
                 request: VisitFollowUpUpdateRequest(status: "OPEN")
             )
@@ -657,7 +679,7 @@ final class LocalStoreTests: XCTestCase {
             XCTAssertEqual(error.errorCode, "VALIDATION_ERROR")
         }
 
-        let reopened = try await visitRepository.updateFollowUp(
+        let reopened = try await repository.updateFollowUp(
             id: accepted.id,
             request: VisitFollowUpUpdateRequest(
                 status: "OPEN",
@@ -665,22 +687,11 @@ final class LocalStoreTests: XCTestCase {
             )
         )
         XCTAssertEqual(reopened.status, "OPEN")
-        XCTAssertEqual(reopened.events.map(\.eventType), [
+        XCTAssertEqual(reopened.events.map(\\.eventType), [
             "ACCEPTED", "STARTED", "COMPLETED", "REOPENED"
         ])
-        XCTAssertEqual(
-            reopened.events.last?.note,
-            "客户要求调整报价后再确认交付计划。"
-        )
-
-        let center = try await LocalActionCenterRepository(database: database)
-            .actionCenter(tripId: trip.id)
-        let preparation = try XCTUnwrap(
-            center.sections.first { $0.key == "PREPARATION" }
-        )
-        XCTAssertTrue(preparation.items.contains {
-            $0.kind == "VISIT_FOLLOW_UP" && $0.entityId == accepted.id && $0.status == "OPEN"
-        })
+        XCTAssertEqual(reopened.events.last?.note, "客户要求调整报价后再确认交付计划。")
+        return reopened
     }
 
 }
