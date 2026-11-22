@@ -771,13 +771,27 @@ def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
         assert graph_body["cycle_detected"] is False
         assert len(graph_body["edges"]) == 4
         order = graph_body["topological_order"]
-        assert order[0] == next(
-            node["id"] for node in graph_body["nodes"] if node["planner_question_key"] == "scope"
+        regulation_id = next(
+            node["id"] for node in graph_body["nodes"]
+            if node["planner_question_key"] == "regulation"
         )
-        assert order[-1] == next(
-            node["id"] for node in graph_body["nodes"] if node["planner_question_key"] == "entry"
+        channels_id = next(
+            node["id"] for node in graph_body["nodes"]
+            if node["planner_question_key"] == "channels"
         )
-        assert order.index(regulation_id if False else order[1]) >= 1
+        entry_id = next(
+            node["id"] for node in graph_body["nodes"]
+            if node["planner_question_key"] == "entry"
+        )
+        scope_id = next(
+            node["id"] for node in graph_body["nodes"]
+            if node["planner_question_key"] == "scope"
+        )
+        order_index = {question_id: index for index, question_id in enumerate(order)}
+        assert order_index[scope_id] < order_index[regulation_id]
+        assert order_index[scope_id] < order_index[channels_id]
+        assert order_index[regulation_id] < order_index[entry_id]
+        assert order_index[channels_id] < order_index[entry_id]
         readiness = {node["planner_question_key"]: node["readiness"] for node in graph_body["nodes"]}
         assert readiness == {
             "scope": "READY",
@@ -788,14 +802,6 @@ def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
 
         # Reposting a previously generated edge under a new idempotency key is
         # semantically idempotent; the inverse edge must be rejected as a cycle.
-        regulation_id = next(
-            node["id"] for node in graph_body["nodes"]
-            if node["planner_question_key"] == "regulation"
-        )
-        scope_id = next(
-            node["id"] for node in graph_body["nodes"]
-            if node["planner_question_key"] == "scope"
-        )
         duplicate = client.post(
             f"/v1/market/workspaces/{workspace_id}/questions/{regulation_id}/dependencies",
             headers=headers(),
