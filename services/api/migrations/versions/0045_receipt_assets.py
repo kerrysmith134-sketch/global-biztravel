@@ -53,6 +53,9 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("organization_id", "id", name="uq_receipt_assets_org_id"),
         sa.UniqueConstraint(
+            "storage_provider", "storage_key", name="uq_receipt_assets_storage_object"
+        ),
+        sa.UniqueConstraint(
             "organization_id", "trip_id", "id", name="uq_receipt_assets_org_trip_id"
         ),
         sa.CheckConstraint("byte_length > 0", name="ck_receipt_assets_byte_length_positive"),
