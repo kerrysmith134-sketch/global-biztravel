@@ -22,7 +22,7 @@ from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service
 from app.workers.tasks import handle_market_claim_verification
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
@@ -818,3 +818,52 @@ def test_degraded_verification_run_can_be_retried_with_same_input(
         assert retry.json()["job_id"] != first.json()["job_id"]
     finally:
         cleanup(workspace_ids, workflow_ids, job_ids)
+
+
+def test_claim_content_is_append_only_but_review_lifecycle_is_writable() -> None:
+    with org_session(UUID(ORG_A)) as session:
+        principal = session.scalar(text("SELECT current_user"))
+        assert principal == "gbt_app"
+
+        assert session.scalar(
+            text(
+                "SELECT has_column_privilege(current_user, "
+                "'market_claims', 'statement', 'UPDATE')"
+            )
+        ) is False
+        assert session.scalar(
+            text(
+                "SELECT has_column_privilege(current_user, "
+                "'market_claims', 'status', 'UPDATE')"
+            )
+        ) is True
+        assert session.scalar(
+            text(
+                "SELECT has_column_privilege(current_user, "
+                "'market_claims', 'review_note', 'UPDATE')"
+            )
+        ) is True
+        assert session.scalar(
+            text(
+                "SELECT has_column_privilege(current_user, "
+                "'market_claim_verification_runs', 'status', 'UPDATE')"
+            )
+        ) is True
+        assert session.scalar(
+            text(
+                "SELECT has_column_privilege(current_user, "
+                "'market_claim_verification_runs', 'input_digest', 'UPDATE')"
+            )
+        ) is False
+        assert session.scalar(
+            text(
+                "SELECT has_table_privilege(current_user, "
+                "'market_claim_evidence', 'UPDATE')"
+            )
+        ) is False
+        assert session.scalar(
+            text(
+                "SELECT has_table_privilege(current_user, "
+                "'market_claim_evidence', 'DELETE')"
+            )
+        ) is False
