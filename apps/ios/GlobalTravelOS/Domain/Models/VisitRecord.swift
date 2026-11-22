@@ -182,3 +182,140 @@ struct VisitDraft: Codable, Equatable, Identifiable {
         outcome.requiresFollowUp ? !followUpTasks.isEmpty : true
     }
 }
+
+
+// MARK: - Human-confirmed visit follow-ups
+
+struct VisitFollowUpEvent: Decodable, Equatable, Identifiable {
+    var id: String
+    var eventType: String
+    var fromStatus: String?
+    var toStatus: String
+    var actorUserId: String?
+    var note: String?
+    var createdAt: Date
+
+    var label: String {
+        switch eventType {
+        case "ACCEPTED": return "已确认"
+        case "DISMISSED": return "已驳回"
+        case "CREATED_MANUAL": return "手工创建"
+        case "STARTED": return "开始处理"
+        case "COMPLETED": return "已完成"
+        case "REOPENED": return "重新打开"
+        case "UPDATED": return "已修改"
+        default: return eventType
+        }
+    }
+}
+
+struct VisitFollowUp: Decodable, Equatable, Identifiable {
+    var id: String
+    var visitId: String
+    var tripId: String
+    var sourceType: String
+    var sourceRecordId: String?
+    var sourceAgentRunId: String?
+    var sourceIndex: Int?
+    var sourceTitle: String?
+    var sourceDueDate: String?
+    var title: String
+    var dueDate: String?
+    var status: String
+    var createdByUserId: String?
+    var confirmedByUserId: String?
+    var confirmedAt: Date?
+    var completedByUserId: String?
+    var completedAt: Date?
+    var createdAt: Date
+    var updatedAt: Date
+    var events: [VisitFollowUpEvent]
+
+    var statusLabel: String {
+        switch status {
+        case "OPEN": return "待开始"
+        case "IN_PROGRESS": return "进行中"
+        case "COMPLETED": return "已完成"
+        case "DISMISSED": return "已驳回"
+        default: return status
+        }
+    }
+
+    var sourceLabel: String {
+        switch sourceType {
+        case "RECORD": return "现场记录"
+        case "MINUTES_DRAFT": return "AI 会议纪要"
+        case "MANUAL": return "手工创建"
+        default: return sourceType
+        }
+    }
+}
+
+struct VisitFollowUpSuggestion: Decodable, Equatable, Identifiable {
+    var sourceType: String
+    var sourceRecordId: String?
+    var sourceAgentRunId: String?
+    var sourceIndex: Int
+    var title: String
+    var dueDate: String?
+    var sourceCreatedAt: Date
+
+    var id: String {
+        "\(sourceType):\(sourceRecordId ?? sourceAgentRunId ?? "unknown"):\(sourceIndex)"
+    }
+
+    var sourceLabel: String {
+        sourceType == "RECORD" ? "来自现场记录" : "来自 AI 会议纪要"
+    }
+}
+
+struct VisitFollowUpFeed: Decodable, Equatable {
+    var visitId: String
+    var tripId: String
+    var items: [VisitFollowUp]
+    var suggestions: [VisitFollowUpSuggestion]
+}
+
+struct VisitFollowUpDecisionRequest: Encodable, Equatable {
+    var sourceType: String
+    var decision: String
+    var sourceRecordId: String?
+    var sourceAgentRunId: String?
+    var sourceIndex: Int?
+    var title: String?
+    var dueDate: String?
+    var note: String?
+
+    static func accept(_ item: VisitFollowUpSuggestion) -> VisitFollowUpDecisionRequest {
+        VisitFollowUpDecisionRequest(
+            sourceType: item.sourceType,
+            decision: "ACCEPT",
+            sourceRecordId: item.sourceRecordId,
+            sourceAgentRunId: item.sourceAgentRunId,
+            sourceIndex: item.sourceIndex,
+            title: nil,
+            dueDate: nil,
+            note: nil
+        )
+    }
+
+    static func dismiss(_ item: VisitFollowUpSuggestion) -> VisitFollowUpDecisionRequest {
+        VisitFollowUpDecisionRequest(
+            sourceType: item.sourceType,
+            decision: "DISMISS",
+            sourceRecordId: item.sourceRecordId,
+            sourceAgentRunId: item.sourceAgentRunId,
+            sourceIndex: item.sourceIndex,
+            title: nil,
+            dueDate: nil,
+            note: nil
+        )
+    }
+}
+
+struct VisitFollowUpUpdateRequest: Encodable, Equatable {
+    var status: String?
+    var title: String?
+    var dueDate: String?
+    var note: String?
+}
