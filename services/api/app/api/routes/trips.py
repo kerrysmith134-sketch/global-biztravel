@@ -29,12 +29,13 @@ from app.api.schemas import (
     TripCreate,
     TripOutcomeRead,
     TripRead,
+    TripCloseoutReadinessRead,
     TripUpdate,
     VisitCreate,
     VisitRead,
 )
 from app.models.trip import Trip
-from app.services import trip_outcome_service, trip_service, visit_service
+from app.services import trip_closeout_service, trip_outcome_service, trip_service, visit_service
 
 router = APIRouter(tags=["trips"])
 
@@ -287,6 +288,24 @@ def complete_trip(
         if_match,
         endpoint=TRIP_COMPLETE_ENDPOINT,
         action=trip_service.complete_trip,
+    )
+
+
+
+
+@router.get(
+    "/trips/{trip_id}/closeout-readiness",
+    response_model=TripCloseoutReadinessRead,
+    summary="评估出差是否具备报销与财务结账条件（只读）",
+)
+def get_trip_closeout_readiness(
+    trip_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    return trip_closeout_service.build_trip_closeout_readiness(
+        session, context.organization_id, trip_id
     )
 
 
