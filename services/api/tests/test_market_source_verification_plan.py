@@ -54,13 +54,35 @@ def create_workspace(client: TestClient) -> str:
 def cleanup_workspace(workspace_id: str | None) -> None:
     if workspace_id is None:
         return
-    with org_session(UUID(ORG_A)) as session:
+    with owner_session(UUID(ORG_A)) as session:
+        application_workflow_ids = list(
+            session.scalars(
+                select(WorkflowInstance.id).where(
+                    WorkflowInstance.organization_id == UUID(ORG_A),
+                    WorkflowInstance.workflow_type == "market_source_verification_plan_application",
+                    WorkflowInstance.payload["workspace_id"].as_string() == workspace_id,
+                )
+            ).all()
+        )
         session.execute(
             delete(MarketWorkspace).where(
                 MarketWorkspace.organization_id == UUID(ORG_A),
                 MarketWorkspace.id == UUID(workspace_id),
             )
         )
+        if application_workflow_ids:
+            session.execute(
+                delete(AgentRun).where(
+                    AgentRun.organization_id == UUID(ORG_A),
+                    AgentRun.workflow_id.in_(application_workflow_ids),
+                )
+            )
+            session.execute(
+                delete(WorkflowInstance).where(
+                    WorkflowInstance.organization_id == UUID(ORG_A),
+                    WorkflowInstance.id.in_(application_workflow_ids),
+                )
+            )
         session.execute(
             delete(Evidence).where(
                 Evidence.organization_id == UUID(ORG_A),
@@ -68,7 +90,6 @@ def cleanup_workspace(workspace_id: str | None) -> None:
                 Evidence.subject_id == UUID(workspace_id),
             )
         )
-
 
 def test_claim_source_origin_policy_never_promotes_domain_count_to_independence() -> None:
     one_source = [
@@ -350,8 +371,45 @@ def test_plan_flags_claim_when_new_source_version_appears(
         assert action["priority"] == "HIGH"
         assert action["target_type"] == "CLAIM"
 
+        applied = client.post(
+            f"/v1/market/workspaces/{workspace_id}/source-verification-plan:apply",
+            headers=headers(),
+        )
+        assert applied.status_code == 201, applied.text
+        application = applied.json()
+        tasks_by_type = {
+            item["action_type"]: item for item in application["tasks"]
+        }
+        claim_task = tasks_by_type["REVERIFY_CLAIM_AFTER_SOURCE_CHANGE"]
+        source_task = tasks_by_type["REVIEW_SOURCE_VERSION_DRIFT"]
+        assert source_task["question_id"] in claim_task["depends_on_question_ids"]
+
+        graph = client.get(
+            f"/v1/market/workspaces/{workspace_id}/research-graph",
+            headers=headers(),
+        )
+        assert graph.status_code == 200, graph.text
+        assert any(
+            edge["question_id"] == claim_task["question_id"]
+            and edge["depends_on_question_id"] == source_task["question_id"]
+            for edge in graph.json()["edges"]
+        )
+
     finally:
         with owner_session(UUID(ORG_A)) as session:
+            application_workflow_ids = (
+                list(
+                    session.scalars(
+                        select(WorkflowInstance.id).where(
+                            WorkflowInstance.organization_id == UUID(ORG_A),
+                            WorkflowInstance.workflow_type == "market_source_verification_plan_application",
+                            WorkflowInstance.payload["workspace_id"].as_string() == workspace_id,
+                        )
+                    ).all()
+                )
+                if workspace_id
+                else []
+            )
             if workspace_id:
                 workspace_uuid = UUID(workspace_id)
                 session.execute(
@@ -372,26 +430,27 @@ def test_plan_flags_claim_when_new_source_version_appears(
                         MarketClaimVerificationRun.workspace_id == workspace_uuid,
                     )
                 )
-            if workflow_ids:
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == workspace_uuid,
+                    )
+                )
+            all_workflow_ids = [*workflow_ids, *application_workflow_ids]
+            if all_workflow_ids:
                 session.execute(
                     delete(AgentRun).where(
                         AgentRun.organization_id == UUID(ORG_A),
-                        AgentRun.workflow_id.in_(workflow_ids),
+                        AgentRun.workflow_id.in_(all_workflow_ids),
                     )
                 )
                 session.execute(
                     delete(WorkflowInstance).where(
                         WorkflowInstance.organization_id == UUID(ORG_A),
-                        WorkflowInstance.id.in_(workflow_ids),
+                        WorkflowInstance.id.in_(all_workflow_ids),
                     )
                 )
             if workspace_id:
-                session.execute(
-                    delete(MarketWorkspace).where(
-                        MarketWorkspace.organization_id == UUID(ORG_A),
-                        MarketWorkspace.id == UUID(workspace_id),
-                    )
-                )
                 session.execute(
                     delete(Evidence).where(
                         Evidence.organization_id == UUID(ORG_A),
@@ -400,3 +459,82 @@ def test_plan_flags_claim_when_new_source_version_appears(
                     )
                 )
 
+
+def test_source_verification_actions_apply_to_research_graph_idempotently(
+    client: TestClient,
+) -> None:
+    workspace_id: str | None = None
+    try:
+        workspace_id = create_workspace(client)
+        original_body = "The agency published a notice about the proposed policy."
+        records = [
+            {
+                "canonical_ref": "https://agency.example/policy",
+                "content": original_body,
+                "kind": "WEB_PAGE_EXTRACT",
+                "source": "Public agency",
+                "payload": {"content": original_body},
+            },
+            {
+                "canonical_ref": "https://agency.example/policy",
+                "content": "The agency revised the notice and changed the effective date.",
+                "kind": "WEB_PAGE_EXTRACT",
+                "source": "Public agency",
+                "payload": {"content": "The agency revised the notice and changed the effective date."},
+            },
+        ]
+        for record in records:
+            created = client.post(
+                f"/v1/market/workspaces/{workspace_id}/evidence",
+                headers=headers(),
+                json=record,
+            )
+            assert created.status_code == 201, created.text
+
+        planned = client.get(
+            f"/v1/market/workspaces/{workspace_id}/source-verification-plan",
+            headers=headers(),
+        )
+        assert planned.status_code == 200, planned.text
+        actions = planned.json()["actions"]
+        assert any(item["action_type"] == "REVIEW_SOURCE_VERSION_DRIFT" for item in actions)
+
+        applied = client.post(
+            f"/v1/market/workspaces/{workspace_id}/source-verification-plan:apply",
+            headers=headers(),
+        )
+        assert applied.status_code == 201, applied.text
+        body = applied.json()
+        assert body["action_count"] == len(actions)
+        assert body["created_question_count"] == len(actions)
+        assert body["reused_question_count"] == 0
+
+        graph = client.get(
+            f"/v1/market/workspaces/{workspace_id}/research-graph",
+            headers=headers(),
+        )
+        assert graph.status_code == 200, graph.text
+        assert len(graph.json()["nodes"]) == len(actions)
+        assert not graph.json()["cycle_detected"]
+
+        repeated = client.post(
+            f"/v1/market/workspaces/{workspace_id}/source-verification-plan:apply",
+            headers=headers(),
+        )
+        assert repeated.status_code == 200, repeated.text
+        assert repeated.json()["reused_application"] is True
+        assert repeated.json()["created_question_count"] == 0
+        assert repeated.json()["reused_question_count"] == len(actions)
+
+        refreshed = client.get(
+            f"/v1/market/workspaces/{workspace_id}/source-verification-plan",
+            headers=headers(),
+        )
+        assert refreshed.status_code == 200, refreshed.text
+        assert all(
+            item["research_question_id"] is not None
+            for item in refreshed.json()["actions"]
+        )
+
+    finally:
+        cleanup_workspace(workspace_id)

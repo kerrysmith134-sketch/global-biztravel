@@ -10,6 +10,8 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
     @Published private(set) var evidenceReportError: String?
     @Published private(set) var sourceVerificationPlan: MarketSourceVerificationPlan?
     @Published private(set) var sourceVerificationPlanError: String?
+    @Published private(set) var isApplyingSourceVerificationPlan = false
+    @Published private(set) var sourceVerificationApplication: MarketSourceVerificationPlanApplication?
     @Published private(set) var graph: MarketResearchGraph?
     @Published private(set) var execution: MarketResearchGraphExecution?
     @Published private(set) var isLoading = false
@@ -51,6 +53,20 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
             sourceVerificationPlanError = nil
         } catch {
             sourceVerificationPlanError = error.localizedDescription
+        }
+    }
+
+    func applySourceVerificationPlan() async {
+        guard !isApplyingSourceVerificationPlan else { return }
+        isApplyingSourceVerificationPlan = true
+        defer { isApplyingSourceVerificationPlan = false }
+        do {
+            sourceVerificationApplication = try await repository.applySourceVerificationPlan(
+                workspaceId: workspace.id
+            )
+            await load()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -385,6 +401,29 @@ struct MarketResearchWorkspaceDetailView: View {
                             .font(.caption)
                             .foregroundStyle(DS.ColorToken.status("WARNING"))
                         }
+                        if plan.actionsNeedingResearchTasks {
+                            DSButton(
+                                title: viewModel.isApplyingSourceVerificationPlan
+                                    ? "正在生成研究任务…" : "将核验动作加入研究图",
+                                systemImage: "point.3.connected.trianglepath.dotted",
+                                isLoading: viewModel.isApplyingSourceVerificationPlan,
+                                isDisabled: viewModel.isApplyingSourceVerificationPlan
+                            ) {
+                                Task { await viewModel.applySourceVerificationPlan() }
+                            }
+                            Text("只创建有审计记录的研究问题与依赖，不会立即调用模型。确认后可在下方研究图中手动启动。")
+                                .font(.caption2)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                        } else if !plan.actions.isEmpty {
+                            Label("当前核验动作均已关联研究问题", systemImage: "checkmark.circle")
+                                .font(.caption)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                        }
+                        if let application = viewModel.sourceVerificationApplication {
+                            Text("已同步 \(application.actionCount) 项核验动作：新建 \(application.createdQuestionCount)，复用 \(application.reusedQuestionCount)，建立依赖 \(application.dependencyCount)。")
+                                .font(.caption)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                        }
                         if plan.actions.isEmpty {
                             Text("当前没有发现需要优先处理的来源核验任务。新证据加入或来源版本变化后，计划会重新计算。")
                                 .font(.caption)
@@ -400,6 +439,11 @@ struct MarketResearchWorkspaceDetailView: View {
                                             .font(.caption)
                                             .foregroundStyle(DS.ColorToken.textSecondary)
                                             .fixedSize(horizontal: false, vertical: true)
+                                        if let status = action.researchQuestionStatus {
+                                            Text(sourceQuestionStatusLabel(status))
+                                                .font(.caption2.weight(.medium))
+                                                .foregroundStyle(DS.ColorToken.info)
+                                        }
                                     }
                                     Spacer(minLength: 4)
                                     Text(action.priorityLabel)
@@ -450,6 +494,17 @@ struct MarketResearchWorkspaceDetailView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func sourceQuestionStatusLabel(_ status: String) -> String {
+        switch status {
+        case "OPEN": return "已加入研究图 · 待执行"
+        case "IN_PROGRESS": return "研究执行中"
+        case "ANSWERED": return "研究答案已采纳 · 待重新核验"
+        case "BLOCKED": return "研究任务受阻"
+        case "CANCELLED": return "任务已取消"
+        default: return "已关联研究任务"
         }
     }
 

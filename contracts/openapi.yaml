@@ -10077,6 +10077,65 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/source-verification-plan:apply": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "将来源核验动作转换为研究图任务",
+        "operationId": "apply_market_source_verification_plan_v1_market_workspaces__workspace_id__source_verification_plan_apply_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketSourceVerificationPlanApplicationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -24876,6 +24935,36 @@
           "rationale": {
             "type": "string",
             "title": "Rationale"
+          },
+          "research_question_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Question Id"
+          },
+          "research_question_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "OPEN",
+                  "IN_PROGRESS",
+                  "ANSWERED",
+                  "BLOCKED",
+                  "CANCELLED"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Question Status"
           }
         },
         "type": "object",
@@ -24985,6 +25074,135 @@
           "actions_truncated"
         ],
         "title": "MarketSourceVerificationPlanRead"
+      },
+      "MarketSourceVerificationTaskRead": {
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "title": "Action Id"
+          },
+          "action_type": {
+            "type": "string",
+            "enum": [
+              "EXTRACT_SOURCE_PAGE",
+              "COMPLETE_SOURCE_METADATA",
+              "INVESTIGATE_POSSIBLE_SYNDICATION",
+              "REVIEW_SOURCE_VERSION_DRIFT",
+              "REVERIFY_CLAIM_AFTER_SOURCE_CHANGE",
+              "REVIEW_CONTRADICTORY_EVIDENCE",
+              "SEEK_SEPARATELY_ORIGINATED_CORROBORATION"
+            ],
+            "title": "Action Type"
+          },
+          "question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Question Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "question_status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "IN_PROGRESS",
+              "ANSWERED",
+              "BLOCKED",
+              "CANCELLED"
+            ],
+            "title": "Question Status"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ],
+            "title": "Priority"
+          },
+          "reused": {
+            "type": "boolean",
+            "title": "Reused"
+          },
+          "depends_on_question_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Depends On Question Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action_id",
+          "action_type",
+          "question_id",
+          "question",
+          "question_status",
+          "priority",
+          "reused"
+        ],
+        "title": "MarketSourceVerificationTaskRead"
+      },
+      "MarketSourceVerificationPlanApplicationRead": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "title": "Plan Digest"
+          },
+          "applied_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Applied At"
+          },
+          "action_count": {
+            "type": "integer",
+            "title": "Action Count"
+          },
+          "created_question_count": {
+            "type": "integer",
+            "title": "Created Question Count"
+          },
+          "reused_question_count": {
+            "type": "integer",
+            "title": "Reused Question Count"
+          },
+          "dependency_count": {
+            "type": "integer",
+            "title": "Dependency Count"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/MarketSourceVerificationTaskRead"
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "reused_application": {
+            "type": "boolean",
+            "title": "Reused Application"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "plan_digest",
+          "applied_at",
+          "action_count",
+          "created_question_count",
+          "reused_question_count",
+          "dependency_count"
+        ],
+        "title": "MarketSourceVerificationPlanApplicationRead"
       }
     }
   }

@@ -45,6 +45,17 @@ final class MarketResearchTests: XCTestCase {
         XCTAssertNil(request.body)
     }
 
+    func testSourceVerificationPlanApplyEndpointIsIdempotentWrite() {
+        let request = Endpoints.applyMarketSourceVerificationPlan(workspaceId: "workspace-1")
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(
+            request.path,
+            "/v1/market/workspaces/workspace-1/source-verification-plan:apply"
+        )
+        XCTAssertNotNil(request.idempotencyKey)
+        XCTAssertNil(request.body)
+    }
+
     func testSourceVerificationPlanEndpointIsReadOnly() {
         let request = Endpoints.marketSourceVerificationPlan(workspaceId: "workspace-1")
         XCTAssertEqual(request.method, .get)

@@ -66,6 +66,7 @@ from app.api.schemas import (
     MarketResearchQuestionRead,
     MarketSourceExtractionAccepted,
     MarketSourceExtractionRead,
+    MarketSourceVerificationPlanApplicationRead,
     MarketSourceVerificationPlanRead,
     MarketWorkspaceCreate,
     MarketWorkspaceEntityCreate,
@@ -88,6 +89,7 @@ from app.services import (
     market_research_dag_service,
     market_research_graph_service,
     market_source_extraction_service,
+    market_source_verification_application_service,
     market_source_verification_service,
     market_workspace_service,
     research_service,
@@ -1277,6 +1279,46 @@ def get_market_source_verification_plan(
         session, context.organization_id, workspace_id
     )
     return MarketSourceVerificationPlanRead.model_validate(plan)
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/source-verification-plan:apply",
+    response_model=MarketSourceVerificationPlanApplicationRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="将来源核验动作转换为研究图任务",
+)
+def apply_market_source_verification_plan(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/source-verification-plan:apply"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_source_verification_application_service.apply_plan(
+        session,
+        context.organization_id,
+        workspace_id,
+        actor_user_id=context.user_id,
+    )
+    body = MarketSourceVerificationPlanApplicationRead.model_validate(result)
+    return guard.finish(
+        status_code=(
+            status.HTTP_200_OK if result.get("reused_application") else status.HTTP_201_CREATED
+        ),
+        body=body,
+    )
 
 
 @router.post(
