@@ -1186,7 +1186,7 @@ def handle_market_claim_verification(
             ):
                 claim_limitations.append("检测到内容哈希重复的来源，不能重复计为独立佐证。")
             if not valid_assessments:
-                claim_limitations.append("模型未能将该主张映射到输入 Evidence。")
+                claim_limitations.append("模型未能映射到任何可用的输入 Evidence。")
             if confidence == "MEDIUM":
                 claim_limitations.append(
                     "中置信度仅表示输入 Evidence 状态与主机数量达到最低门槛，不代表已确认来源独立。"
