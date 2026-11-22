@@ -29,6 +29,7 @@ from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp
 from app.models.reliability import BackgroundJob
 from app.models.trip import Trip, Visit
+from app.services import trip_closeout_service
 
 CATEGORY_DECISION = "DECISION"
 CATEGORY_APPROVAL = "APPROVAL"
@@ -380,6 +381,51 @@ def _visit_follow_up_items(
     )
 
 
+
+
+def _trip_closeout_items(
+    session: Session, organization_id: str, trip_id: str | None, now: datetime
+) -> list[ActionItem]:
+    query = select(Trip).where(
+        Trip.organization_id == organization_id,
+        Trip.status.in_(("ACTIVE", "HOLD", "COMPLETED")),
+    )
+    if trip_id:
+        query = select(Trip).where(
+            Trip.organization_id == organization_id,
+            Trip.id == trip_id,
+        )
+    trips = list(
+        session.scalars(query.order_by(Trip.updated_at.desc()).limit(SECTION_LIMIT))
+    )
+    items: list[ActionItem] = []
+    for trip in trips:
+        readiness = trip_closeout_service.build_trip_closeout_readiness(
+            session, organization_id, trip.id
+        )
+        for issue in readiness["blockers"]:
+            items.append(
+                ActionItem(
+                    category=CATEGORY_PREPARATION,
+                    kind="TRIP_CLOSEOUT",
+                    entity_id=f"{trip.id}:{issue['id']}",
+                    title=issue["title"],
+                    detail=issue["detail"],
+                    status=readiness["status"],
+                    severity="HIGH",
+                    trip_id=str(trip.id),
+                    trip_name=trip.name,
+                    action_hint=issue["action_hint"],
+                    available_actions=["OPEN_TRIP"],
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            if len(items) >= SECTION_LIMIT:
+                return items
+    return items
+
+
 def build_action_center(
     session: Session,
     organization_id: UUID | str,
@@ -397,13 +443,14 @@ def build_action_center(
     reports = _report_items(session, org, trip_filter)
     running_jobs, failed_jobs = _job_items(session, org, trip_filter)
     prepared_crm, failed_crm = _crm_items(session, org, trip_filter)
+    closeout_items = _trip_closeout_items(session, org, trip_filter, now)
 
     groups: dict[str, list[ActionItem]] = {
         CATEGORY_DECISION: suggestions,
         CATEGORY_APPROVAL: reports,
         CATEGORY_RUNNING: running_jobs,
         CATEGORY_FAILED: failed_jobs + failed_crm,
-        CATEGORY_PREPARATION: prepared_crm + active_follow_ups,
+        CATEGORY_PREPARATION: prepared_crm + active_follow_ups + closeout_items,
         CATEGORY_COMPLETED: completed_suggestions + completed_follow_ups,
     }
     for items in groups.values():
