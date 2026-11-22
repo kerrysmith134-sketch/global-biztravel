@@ -2856,6 +2856,66 @@ class MarketWorkspaceTripLinkRead(BaseModel):
     countries: list[str]
 
 
+class MarketOpportunityVisitLinkCreate(BaseModel):
+    trip_id: UUID
+    visit_id: UUID
+    link_note: str | None = Field(default=None, max_length=2000)
+
+
+class MarketOpportunityVisitUnlink(BaseModel):
+    unlink_note: str | None = Field(default=None, max_length=2000)
+
+
+class MarketOpportunityVisitCandidateRead(BaseModel):
+    trip_id: UUID
+    trip_name: str
+    trip_status: str
+    trip_window_start: datetime
+    trip_window_end: datetime
+    visit_id: UUID
+    visit_title: str | None
+    visit_objective: str | None
+    visit_status: str
+    customer_id: UUID | None
+    customer_name: str | None
+    place_id: UUID
+    place_name: str
+    city: str | None
+    country_code: str | None
+    latitude: float | None
+    longitude: float | None
+    timezone: str | None
+    time_window_start: datetime | None
+    time_window_end: datetime | None
+    service_minutes: int
+    priority: int
+    business_value: Decimal
+    movement_mode: str
+
+
+class MarketOpportunityVisitLinkRead(MarketOpportunityVisitCandidateRead):
+    id: UUID
+    workspace_id: UUID
+    opportunity_id: UUID
+    link_status: Literal["LINKED", "UNLINKED"]
+    link_note: str | None
+    linked_by_user_id: UUID | None
+    linked_at: datetime
+    unlinked_by_user_id: UUID | None
+    unlinked_at: datetime | None
+    unlink_note: str | None
+
+
+class MarketOpportunityExecutionRead(BaseModel):
+    workspace_id: UUID
+    opportunity_id: UUID
+    opportunity_status: MarketOpportunityStatus
+    can_link_visits: bool
+    blocked_reason: str | None
+    links: list[MarketOpportunityVisitLinkRead] = Field(default_factory=list)
+    candidates: list[MarketOpportunityVisitCandidateRead] = Field(default_factory=list)
+
+
 class MarketEntityCustomerLinkRead(ORMModel):
     id: UUID
     entity_id: UUID
