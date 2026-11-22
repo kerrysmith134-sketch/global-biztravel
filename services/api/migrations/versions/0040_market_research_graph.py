@@ -32,7 +32,7 @@ def downgrade() -> None:
         ALTER TABLE market_research_questions
             DROP CONSTRAINT IF EXISTS uq_market_question_planner_node,
             DROP CONSTRAINT IF EXISTS fk_market_question_planner_run_same_org,
-            DROP CONSTRAINT IF EXISTS ck_market_questions_planner_provenance_pair,
+            DROP CONSTRAINT IF EXISTS ck_market_research_questions_planner_provenance_pair,
             DROP COLUMN IF EXISTS planner_question_key,
             DROP COLUMN IF EXISTS generated_by_run_id,
             DROP COLUMN IF EXISTS expected_evidence
