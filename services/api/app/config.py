@@ -33,11 +33,22 @@ class Settings(BaseSettings):
 
         生产/预发必须以网关或 OIDC 注入已验签身份；dev_auth 只允许 local/docker/test。
         """
-        if self.dev_auth and self.env.lower() not in ("local", "docker", "test"):
+        environment = self.env.lower()
+        if self.dev_auth and environment not in ("local", "docker", "test"):
             raise ValueError(
                 "GBT_DEV_AUTH=true 仅允许在 local/docker/test 环境；"
                 f"当前 env={self.env!r}。生产必须关闭开发认证并接入可信身份来源。"
             )
+        if self.receipt_storage_provider not in ("filesystem", "s3"):
+            raise ValueError("GBT_RECEIPT_STORAGE_PROVIDER 只允许 filesystem 或 s3")
+        if self.receipt_max_upload_bytes < 1 or self.receipt_max_upload_bytes > 50 * 1024 * 1024:
+            raise ValueError("GBT_RECEIPT_MAX_UPLOAD_BYTES 必须在 1 至 50 MiB 之间")
+        if environment not in ("local", "docker", "test") and self.receipt_storage_provider != "s3":
+            raise ValueError("非本地环境必须使用持久化 S3 兼容票据存储")
+        if self.receipt_storage_provider == "s3" and not all(
+            (self.receipt_s3_bucket, self.receipt_s3_access_key, self.receipt_s3_secret_key)
+        ):
+            raise ValueError("S3 票据存储必须配置 Bucket、Access Key 和 Secret Key")
         return self
     dev_org_id: UUID = DEFAULT_DEV_ORG
     dev_user_id: UUID = DEFAULT_DEV_USER
@@ -140,6 +151,16 @@ class Settings(BaseSettings):
     research_page_timeout_seconds: float = 10.0
     research_page_max_body_bytes: int = 2 * 1024 * 1024
     research_page_max_excerpt_chars: int = 12000
+
+    # 私有原始票据存储（H2.13）。生产/预发必须使用持久化 S3 兼容私有 Bucket。
+    receipt_storage_provider: str = "filesystem"  # filesystem | s3
+    receipt_storage_root: str = "var/receipts"
+    receipt_max_upload_bytes: int = 10 * 1024 * 1024
+    receipt_s3_endpoint_url: str | None = None
+    receipt_s3_bucket: str | None = None
+    receipt_s3_region: str = "us-east-1"
+    receipt_s3_access_key: str | None = None
+    receipt_s3_secret_key: str | None = None
 
     # LLM 网关（第 7 章）
     llm_provider: str = "stub"                # stub | openai_compatible
