@@ -1,8 +1,9 @@
 name: ci
 
-# Cancel superseded runs for the same PR/ref so Xcode runners validate the newest tree only.
+# Versioned concurrency key: release the stale pre-RLS H2.11 runner while still
+# cancelling superseded runs for the same PR/ref on this validation lane.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-baseline-migration
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-11-opportunity-visit-rls
   cancel-in-progress: true
 
 on:
