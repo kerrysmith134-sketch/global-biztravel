@@ -243,7 +243,16 @@ def test_async_minutes_job_and_agent_run(client: TestClient) -> None:
         with org_session(UUID(ORG_A)) as session:
             if job_id:
                 session.execute(delete(BackgroundJob).where(BackgroundJob.id == UUID(job_id)))
-            session.execute(delete(AgentRun).where(AgentRun.created_at >= started))
+            # This service creates an unbound meeting-minutes run; restrict cleanup
+            # to its own agent type so unrelated Planner provenance is never swept
+            # by a broad wall-clock predicate.
+            session.execute(
+                delete(AgentRun).where(
+                    AgentRun.organization_id == UUID(ORG_A),
+                    AgentRun.agent_type == "MEETING_MINUTES_DRAFT",
+                    AgentRun.created_at >= started,
+                )
+            )
         drop_trip(trip_id, place_id)
 
 
