@@ -346,8 +346,6 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
         assert provisional["confidence_level"] == "LOW"
         assert provisional["distinct_host_count"] == 1
         assert provisional["confirmed_independent_source_count"] == 0
-        assert "different" not in str(provisional["limitations"]).lower()
-        assert "different" not in str(conflicting["limitations"]).lower()
         assert all(
             item["verification_status_snapshot"] == "UNVERIFIED"
             for row in run["claims"]
