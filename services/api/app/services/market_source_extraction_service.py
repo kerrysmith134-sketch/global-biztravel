@@ -108,6 +108,8 @@ def enqueue_page_extraction(
             "reused": True,
         }
 
+    source_payload = source.payload or {}
+    question_scope_managed = bool(source_payload.get("question_scope_managed"))
     workflow = WorkflowInstance(
         organization_id=organization_id,
         workflow_type=WORKFLOW_TYPE,
@@ -115,6 +117,7 @@ def enqueue_page_extraction(
         payload={
             "workspace_id": str(workspace_id),
             "source_evidence_id": str(source.id),
+            "question_scope_managed": question_scope_managed,
             "source_url": canonical_url,
             "source_content_hash": source.content_hash,
             "extractor_version": EXTRACTOR_VERSION,
