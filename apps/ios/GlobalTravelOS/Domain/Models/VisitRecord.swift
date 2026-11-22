@@ -186,7 +186,7 @@ struct VisitDraft: Codable, Equatable, Identifiable {
 
 // MARK: - Human-confirmed visit follow-ups
 
-struct VisitFollowUpEvent: Decodable, Equatable, Identifiable {
+struct VisitFollowUpEvent: Codable, Equatable, Identifiable {
     var id: String
     var eventType: String
     var fromStatus: String?
@@ -209,7 +209,7 @@ struct VisitFollowUpEvent: Decodable, Equatable, Identifiable {
     }
 }
 
-struct VisitFollowUp: Decodable, Equatable, Identifiable {
+struct VisitFollowUp: Codable, Equatable, Identifiable {
     var id: String
     var visitId: String
     var tripId: String
@@ -251,7 +251,7 @@ struct VisitFollowUp: Decodable, Equatable, Identifiable {
     }
 }
 
-struct VisitFollowUpSuggestion: Decodable, Equatable, Identifiable {
+struct VisitFollowUpSuggestion: Codable, Equatable, Identifiable {
     var sourceType: String
     var sourceRecordId: String?
     var sourceAgentRunId: String?
@@ -269,7 +269,7 @@ struct VisitFollowUpSuggestion: Decodable, Equatable, Identifiable {
     }
 }
 
-struct VisitFollowUpFeed: Decodable, Equatable {
+struct VisitFollowUpFeed: Codable, Equatable {
     var visitId: String
     var tripId: String
     var items: [VisitFollowUp]
