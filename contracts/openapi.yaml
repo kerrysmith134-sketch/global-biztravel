@@ -23546,7 +23546,14 @@
               "WAITING",
               "BLOCKED",
               "ANSWERED",
-              "CANCELLED"
+              "CANCELLED",
+              "QUEUED",
+              "RUNNING",
+              "WAITING_FOR_REVIEW",
+              "WAITING_FOR_EVIDENCE",
+              "WAITING_FOR_DEPENDENCY",
+              "FAILED",
+              "REJECTED"
             ],
             "title": "Readiness"
           }
