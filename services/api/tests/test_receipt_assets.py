@@ -9,6 +9,7 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.expenses import TripExpense
 from app.models.receipts import ReceiptAsset
 from app.models.trip import Trip
 from app.services import receipt_asset_service
@@ -177,4 +178,9 @@ def test_expense_can_only_reference_receipt_from_same_trip(
         assert cross_trip.status_code == 422, cross_trip.text
     finally:
         with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(TripExpense).where(
+                    TripExpense.trip_id.in_([UUID(trip_id), UUID(other_trip_id)])
+                )
+            )
             session.execute(delete(Trip).where(Trip.id.in_([UUID(trip_id), UUID(other_trip_id)])))
