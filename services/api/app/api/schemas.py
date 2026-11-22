@@ -2000,7 +2000,7 @@ class MarketResearchGraphExecutionCreate(BaseModel):
     max_concurrency: int | None = Field(default=None, ge=1, le=4)
     max_questions: int | None = Field(default=None, ge=1, le=12)
     max_duration_minutes: int | None = Field(default=None, ge=1, le=180)
-    max_cost_usd: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=4)
+    max_cost: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=4)
 
 
 class MarketResearchGraphExecutionNodeRead(BaseModel):
@@ -2046,8 +2046,8 @@ class MarketResearchGraphExecutionRead(BaseModel):
     max_concurrency: int
     max_questions: int
     max_duration_minutes: int
-    max_cost_usd: Decimal | None
-    cost_estimate_usd: Decimal | None
+    max_cost: Decimal | None
+    cost_estimate: Decimal | None
     cost_metering_available: bool
     dispatched_count: int
     completed_count: int
