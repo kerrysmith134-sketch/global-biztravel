@@ -392,12 +392,14 @@ def _node_statuses(
             )
         ).all()
     ) if invocation_ids else []
+    settings = get_settings()
+    cost_metering_available = settings.llm_cost_per_1k_tokens > 0
     total_cost = sum((row.cost_estimate for row in invocations), Decimal("0"))
     return node_states, {
         **counts,
         "evidence_count": len(evidence_ids),
-        "cost_estimate": total_cost,
-        "cost_metering_available": get_settings().llm_cost_per_1k_tokens > 0,
+        "cost_estimate": total_cost if cost_metering_available else None,
+        "cost_metering_available": cost_metering_available,
         "question_ids": question_ids,
         "all_answered": bool(node_states) and all(row["state"] == "ANSWERED" for row in node_states),
     }
