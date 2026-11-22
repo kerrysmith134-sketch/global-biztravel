@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0044`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0045`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -110,9 +110,12 @@
                            0042_market_claim_lineage
                            0043_market_opportunity_visit_links
                            0044_visit_follow_up_lifecycle
+                           0045_receipt_assets
 ```
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
+
+- **H2.13 票据资产后端基础（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、按组织与 Trip 授权的上传/下载 API、文件签名嗅探与大小限制、SHA-256、幂等重放，以及 TripExpense 同组织/同 Trip 复合外键。原始对象不公开 storage key；原始二进制不进入 PostgreSQL。新增迁移 `0045_receipt_assets`。当前尚未完成报销快照票据 pin、存储孤儿对账、OCR 对持久化资产的追溯及结账就绪度，CI/数据库验收以本分支最新 Actions 为准。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
