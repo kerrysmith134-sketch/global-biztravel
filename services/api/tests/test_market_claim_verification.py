@@ -117,8 +117,9 @@ def create_answer(
 
 
 class FakeGateway:
-    def __init__(self, output: dict) -> None:
+    def __init__(self, output: dict, *, degraded: bool = False) -> None:
         self.output = output
+        self.degraded = degraded
         self.requests = []
 
     def complete(self, session, organization_id, request, *, trace_id=None):
@@ -133,7 +134,7 @@ class FakeGateway:
             output=self.output,
             invocation_id=UUID("99999999-9999-4999-8999-999999999999"),
             model="test-claim-verification-model",
-            degraded=False,
+            degraded=self.degraded,
         )
 
 
@@ -754,5 +755,66 @@ def test_duplicate_verified_content_across_hosts_does_not_raise_claim_confidence
             for item in claim["evidence"]
         )
         assert any("相同内容指纹" in item for item in claim["limitations"])
+    finally:
+        cleanup(workspace_ids, workflow_ids, job_ids)
+
+
+def test_degraded_verification_run_can_be_retried_with_same_input(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace_ids: list[str] = []
+    workflow_ids: list[str] = []
+    job_ids: list[str] = []
+    try:
+        workspace_id = create_workspace(client)
+        workspace_ids.append(workspace_id)
+        question_id = create_question(client, workspace_id)
+        evidence_id = create_evidence(
+            client,
+            workspace_id,
+            "https://source.example.test/procurement",
+            "A buyer describes a possible procurement requirement.",
+        )
+        answer_id = create_answer(
+            client,
+            workspace_id,
+            question_id,
+            [(evidence_id, "SUPPORTS")],
+        )
+        gateway = FakeGateway(
+            {"claims": [], "limitations": ["Temporary model fallback."]},
+            degraded=True,
+        )
+        monkeypatch.setattr("app.workers.tasks.get_gateway", lambda: gateway)
+
+        first = client.post(
+            f"/v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims",
+            headers=headers(),
+        )
+        assert first.status_code == 202, first.text
+        workflow_ids.append(first.json()["workflow_id"])
+        job_ids.append(first.json()["job_id"])
+        result = execute_job(first.json()["job_id"])
+        assert result["degraded"] is True
+        assert result["claim_count"] == 0
+
+        first_run = client.get(
+            f"/v1/market/workspaces/{workspace_id}/claim-verification-runs/{first.json()['verification_run_id']}",
+            headers=headers(),
+        )
+        assert first_run.status_code == 200, first_run.text
+        assert first_run.json()["status"] == "COMPLETED"
+        assert first_run.json()["degraded"] is True
+
+        retry = client.post(
+            f"/v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims",
+            headers=headers(),
+        )
+        assert retry.status_code == 202, retry.text
+        workflow_ids.append(retry.json()["workflow_id"])
+        job_ids.append(retry.json()["job_id"])
+        assert retry.json()["reused"] is False
+        assert retry.json()["workflow_id"] != first.json()["workflow_id"]
+        assert retry.json()["job_id"] != first.json()["job_id"]
     finally:
         cleanup(workspace_ids, workflow_ids, job_ids)
