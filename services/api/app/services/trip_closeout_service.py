@@ -14,7 +14,7 @@ from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.expenses import TripExpense
 from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun
 from app.models.records import VisitFollowUp, VisitRecord
-from app.models.trip import Trip, Visit
+from app.models.trip import Visit
 from app.services import trip_service
 
 IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
