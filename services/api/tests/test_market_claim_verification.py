@@ -13,6 +13,7 @@ from app.models.market import (
     MarketClaim,
     MarketClaimEvidence,
     MarketClaimVerificationRun,
+    MarketResearchQuestionAnswerEvidence,
     MarketWorkspace,
 )
 from app.models.reliability import BackgroundJob
@@ -151,32 +152,52 @@ def cleanup(
     job_ids: list[str],
 ) -> None:
     with org_session(UUID(ORG_A)) as session:
-        if workspace_ids:
+        workspace_uuids = [UUID(item) for item in workspace_ids]
+        workflow_uuids = [UUID(item) for item in workflow_ids]
+        if workspace_uuids:
+            session.execute(
+                delete(MarketClaimEvidence).where(
+                    MarketClaimEvidence.organization_id == UUID(ORG_A),
+                    MarketClaimEvidence.workspace_id.in_(workspace_uuids),
+                )
+            )
+            session.execute(
+                delete(MarketClaim).where(
+                    MarketClaim.organization_id == UUID(ORG_A),
+                    MarketClaim.workspace_id.in_(workspace_uuids),
+                )
+            )
+            session.execute(
+                delete(MarketClaimVerificationRun).where(
+                    MarketClaimVerificationRun.organization_id == UUID(ORG_A),
+                    MarketClaimVerificationRun.workspace_id.in_(workspace_uuids),
+                )
+            )
+        if workflow_uuids:
+            session.execute(
+                delete(AgentRun).where(
+                    AgentRun.organization_id == UUID(ORG_A),
+                    AgentRun.workflow_id.in_(workflow_uuids),
+                )
+            )
+            session.execute(
+                delete(WorkflowInstance).where(
+                    WorkflowInstance.organization_id == UUID(ORG_A),
+                    WorkflowInstance.id.in_(workflow_uuids),
+                )
+            )
+        if workspace_uuids:
             session.execute(
                 delete(MarketWorkspace).where(
                     MarketWorkspace.organization_id == UUID(ORG_A),
-                    MarketWorkspace.id.in_([UUID(item) for item in workspace_ids]),
+                    MarketWorkspace.id.in_(workspace_uuids),
                 )
             )
             session.execute(
                 delete(Evidence).where(
                     Evidence.organization_id == UUID(ORG_A),
                     Evidence.subject_type == "market_workspace",
-                    Evidence.subject_id.in_([UUID(item) for item in workspace_ids]),
-                )
-            )
-        if workflow_ids:
-            ids = [UUID(item) for item in workflow_ids]
-            session.execute(
-                delete(AgentRun).where(
-                    AgentRun.organization_id == UUID(ORG_A),
-                    AgentRun.workflow_id.in_(ids),
-                )
-            )
-            session.execute(
-                delete(WorkflowInstance).where(
-                    WorkflowInstance.organization_id == UUID(ORG_A),
-                    WorkflowInstance.id.in_(ids),
+                    Evidence.subject_id.in_(workspace_uuids),
                 )
             )
         if job_ids:
@@ -225,6 +246,11 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
                             "evidence_id": "REPLACE_CONTEXT",
                             "relation_type": "SUPPORTS",
                             "rationale": "The industry source reports an increase in enquiries.",
+                        },
+                        {
+                            "evidence_id": "REPLACE_SUPPORT",
+                            "relation_type": "CONTEXT",
+                            "rationale": "The buyer page provides a separate context signal.",
                         }
                     ],
                 },
@@ -267,6 +293,7 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
         gateway.output["claims"][0]["evidence_assessments"][0]["evidence_id"] = support_id
         gateway.output["claims"][0]["evidence_assessments"][1]["evidence_id"] = contradict_id
         gateway.output["claims"][1]["evidence_assessments"][0]["evidence_id"] = context_id
+        gateway.output["claims"][1]["evidence_assessments"][1]["evidence_id"] = support_id
 
         monkeypatch.setattr("app.workers.tasks.get_gateway", lambda: gateway)
         request_key = str(uuid.uuid4())
@@ -317,6 +344,7 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
         assert conflicting["confidence_level"] == "INSUFFICIENT"
         assert provisional["status"] == "NEEDS_REVIEW"
         assert provisional["confidence_level"] == "LOW"
+        assert provisional["distinct_host_count"] == 1
         assert provisional["confirmed_independent_source_count"] == 0
         assert "different" not in str(provisional["limitations"]).lower()
         assert "different" not in str(conflicting["limitations"]).lower()
