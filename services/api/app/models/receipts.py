@@ -13,8 +13,8 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
-    func,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
