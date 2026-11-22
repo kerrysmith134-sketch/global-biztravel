@@ -629,7 +629,6 @@ def mark_job_failed(
     ).one_or_none()
     if workflow is None:
         return
-    already_failed = workflow.status == "FAILED"
     payload = {
         **(workflow.payload or {}),
         "verification_status": "FAILED",
@@ -638,32 +637,42 @@ def mark_job_failed(
     }
     workflow.payload = payload
     workflow.status = "FAILED"
+    workspace_id = UUID(str(payload["workspace_id"]))
     verification_run = session.scalars(
         select(MarketClaimVerificationRun)
         .where(
             MarketClaimVerificationRun.organization_id == organization_id,
-            MarketClaimVerificationRun.workspace_id == UUID(str(payload["workspace_id"])),
+            MarketClaimVerificationRun.workspace_id == workspace_id,
             MarketClaimVerificationRun.workflow_id == workflow.id,
         )
         .with_for_update()
     ).one_or_none()
-    if already_failed and verification_run is not None and verification_run.status == "FAILED":
-        return
     if verification_run is not None:
         verification_run.status = "FAILED"
         verification_run.failure_reason = error[:2000]
-        verification_run.completed_at = datetime.now(UTC)
-    session.add(
-        MarketActivityEvent(
-            organization_id=organization_id,
-            workspace_id=UUID(str(payload["workspace_id"])),
-            actor_type="SYSTEM",
-            aggregate_type="market_claim_verification",
-            aggregate_id=verification_run.id if verification_run is not None else workflow.id,
-            event_type="MARKET_CLAIM_VERIFICATION_FAILED",
-            payload={"job_id": str(job_uuid), "failure_reason": error[:1000]},
+        verification_run.completed_at = verification_run.completed_at or datetime.now(UTC)
+    aggregate_id = verification_run.id if verification_run is not None else workflow.id
+    failure_event_exists = session.scalars(
+        select(MarketActivityEvent.id).where(
+            MarketActivityEvent.organization_id == organization_id,
+            MarketActivityEvent.workspace_id == workspace_id,
+            MarketActivityEvent.aggregate_type == "market_claim_verification",
+            MarketActivityEvent.aggregate_id == aggregate_id,
+            MarketActivityEvent.event_type == "MARKET_CLAIM_VERIFICATION_FAILED",
+        ).limit(1)
+    ).first()
+    if failure_event_exists is None:
+        session.add(
+            MarketActivityEvent(
+                organization_id=organization_id,
+                workspace_id=workspace_id,
+                actor_type="SYSTEM",
+                aggregate_type="market_claim_verification",
+                aggregate_id=aggregate_id,
+                event_type="MARKET_CLAIM_VERIFICATION_FAILED",
+                payload={"job_id": str(job_uuid), "failure_reason": error[:1000]},
+            )
         )
-    )
     session.flush()
 
 
