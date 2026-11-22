@@ -586,6 +586,38 @@ def handle_market_question_answer_draft(
     if workflow.job_id is not None and workflow.job_id != job.id:
         raise TaskFailed("研究问题答案任务已被更新的任务取代", retryable=False)
 
+    dag_execution_id = (payload.get("dag_execution_workflow_id") or "").strip()
+    if dag_execution_id:
+        try:
+            parsed_execution_id = UUID(dag_execution_id)
+        except ValueError as exc:
+            raise TaskFailed("答案任务包含无效的 DAG execution ID", retryable=False) from exc
+        parent_execution = session.scalars(
+            select(WorkflowInstance).where(
+                WorkflowInstance.organization_id == str(job.organization_id),
+                WorkflowInstance.id == parsed_execution_id,
+                WorkflowInstance.workflow_type == market_research_dag_service.WORKFLOW_TYPE,
+            )
+        ).one_or_none()
+        if parent_execution is None or parent_execution.status != "RUNNING":
+            # A task may have been claimed just before its parent execution was
+            # cancelled or stopped. Persist a truthful child state and do not start
+            # a new provider call after the stop boundary.
+            workflow.status = "REJECTED"
+            workflow.payload = {
+                **(workflow.payload or {}),
+                "generation_status": "CANCELLED",
+                "generation_error": "父研究图执行已停止，未启动模型调用",
+            }
+            session.flush()
+            return {
+                "workspace_id": str(workspace_id),
+                "question_id": str(question_id),
+                "workflow_id": str(workflow.id),
+                "cancelled": True,
+                "reason": "PARENT_EXECUTION_STOPPED",
+            }
+
     try:
         question, evidence_rows = (
             market_question_answer_agent_service.load_answer_draft_inputs(
