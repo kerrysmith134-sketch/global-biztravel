@@ -15,7 +15,7 @@ def upgrade() -> None:
             ADD COLUMN expected_evidence jsonb NOT NULL DEFAULT '[]',
             ADD COLUMN generated_by_run_id uuid,
             ADD COLUMN planner_question_key text,
-            ADD CONSTRAINT ck_market_questions_planner_provenance_pair
+            ADD CONSTRAINT ck_market_research_questions_planner_provenance_pair
                 CHECK ((generated_by_run_id IS NULL) = (planner_question_key IS NULL)),
             ADD CONSTRAINT fk_market_question_planner_run_same_org
                 FOREIGN KEY (organization_id, generated_by_run_id)
