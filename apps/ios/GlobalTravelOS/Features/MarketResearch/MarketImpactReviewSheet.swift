@@ -433,148 +433,20 @@ private extension MarketImpactReviewSheet {
     }
 
     var executionSection: some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
-            DSSectionHeader(
-                title: "出差执行",
-                subtitle: "将已制定行动的商业机会落实到具体 Trip 和拜访，不自动创建或改期"
-            )
-            if let execution = viewModel.execution {
-                if let blockedReason = execution.blockedReason {
-                    DSCard {
-                        Label(blockedReason, systemImage: "info.circle")
-                            .font(.caption)
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+        MarketOpportunityExecutionSection(
+            execution: viewModel.execution,
+            isLoading: viewModel.isLoading,
+            isSubmitting: viewModel.isSubmitting,
+            visitLinkNote: $viewModel.visitLinkNote,
+            onLink: { candidate in
+                Task {
+                    if await viewModel.linkVisit(candidate) {
+                        await onReviewed()
                     }
                 }
-                if !execution.links.isEmpty {
-                    VStack(alignment: .leading, spacing: DS.Spacing.sm) {
-                        Text("已关联 / 历史拜访")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                        ForEach(execution.links) { link in
-                            DSCard(padding: DS.Spacing.md) {
-                                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
-                                    HStack {
-                                        DSBadge(
-                                            text: link.statusLabel,
-                                            color: link.isLinked
-                                                ? DS.ColorToken.success
-                                                : DS.ColorToken.textSecondary
-                                        )
-                                        DSBadge(
-                                            text: link.visitStatus == "DONE" ? "已完成" : link.visitStatus,
-                                            color: DS.ColorToken.status(link.visitStatus)
-                                        )
-                                        Spacer()
-                                        if link.isLinked {
-                                            Button("解除") {
-                                                visitToUnlink = link
-                                            }
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(DS.ColorToken.danger)
-                                            .disabled(viewModel.isSubmitting)
-                                        }
-                                    }
-                                    Text(link.visitTitle ?? link.placeName)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(DS.ColorToken.textPrimary)
-                                    Text("\(link.tripName) · \(link.dateLabel)")
-                                        .font(.caption)
-                                        .foregroundStyle(DS.ColorToken.textSecondary)
-                                    Text(
-                                        [link.customerName, link.placeName, link.city, link.countryCode]
-                                            .compactMap { $0 }
-                                            .filter { !$0.isEmpty }
-                                            .joined(separator: " · ")
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(DS.ColorToken.textSecondary)
-                                    if let note = link.linkNote, !note.isEmpty {
-                                        Text("关联说明：\(note)")
-                                            .font(.caption2)
-                                            .foregroundStyle(DS.ColorToken.textSecondary)
-                                    }
-                                    if let note = link.unlinkNote, !note.isEmpty {
-                                        Text("解除说明：\(note)")
-                                            .font(.caption2)
-                                            .foregroundStyle(DS.ColorToken.textSecondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if execution.canLinkVisits {
-                    VStack(alignment: .leading, spacing: DS.Spacing.sm) {
-                        Text("可关联的 Trip 拜访")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(DS.ColorToken.textSecondary)
-                        TextField("关联说明（可选）", text: $viewModel.visitLinkNote, axis: .vertical)
-                            .lineLimit(2...3)
-                            .textFieldStyle(.roundedBorder)
-                        ForEach(execution.candidates.prefix(8)) { candidate in
-                            DSCard(padding: DS.Spacing.md) {
-                                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
-                                    Text(candidate.visitTitle ?? candidate.placeName)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(DS.ColorToken.textPrimary)
-                                    Text("\(candidate.tripName) · \(candidate.dateLabel)")
-                                        .font(.caption)
-                                        .foregroundStyle(DS.ColorToken.textSecondary)
-                                    Text(
-                                        [candidate.customerName, candidate.placeName,
-                                         candidate.locationLabel]
-                                            .compactMap { $0 }
-                                            .filter { !$0.isEmpty }
-                                            .joined(separator: " · ")
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(DS.ColorToken.textSecondary)
-                                    HStack {
-                                        Label(
-                                            candidate.visitStatusLabel,
-                                            systemImage: "calendar"
-                                        )
-                                        Spacer()
-                                        Button {
-                                            Task {
-                                                if await viewModel.linkVisit(candidate) {
-                                                    await onReviewed()
-                                                }
-                                            }
-                                        } label: {
-                                            Label("关联到机会", systemImage: "link")
-                                                .font(.caption.weight(.semibold))
-                                        }
-                                        .disabled(viewModel.isSubmitting)
-                                    }
-                                    .font(.caption)
-                                    .foregroundStyle(DS.ColorToken.brand)
-                                }
-                            }
-                        }
-                    }
-                }
-                if execution.candidates.count > 8 {
-                    Text("当前仅展示前 8 项可关联拜访，请先缩小 Trip 范围或整理行程。")
-                        .font(.caption2)
-                        .foregroundStyle(DS.ColorToken.textSecondary)
-                }
-            } else if viewModel.isLoading {
-                ProgressView("正在读取 Trip 执行上下文…")
-                    .frame(maxWidth: .infinity)
-            } else {
-                DSCard {
-                    Text("暂时无法读取出差执行上下文，请刷新重试。")
-                        .font(.caption)
-                        .foregroundStyle(DS.ColorToken.textSecondary)
-                }
-            }
-            Text("关联操作不会改变机会阶段、拜访状态或 Trip 计划版本；解除关联会保留审核历史。")
-                .font(.caption2)
-                .foregroundStyle(DS.ColorToken.textSecondary)
-        }
+            },
+            onUnlink: { visitToUnlink = $0 }
+        )
     }
 
     func evidenceSection(
@@ -629,63 +501,10 @@ private extension MarketImpactReviewSheet {
     }
 
     var claimHistorySection: some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
-            DSSectionHeader(title: "主张版本历史", subtitle: "核对本次变化发生在哪个版本")
-            if let history = viewModel.claimHistory {
-                DSCard {
-                    VStack(alignment: .leading, spacing: DS.Spacing.md) {
-                        HStack {
-                            Text("最新版本 v\(history.latestVersion)")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(DS.ColorToken.textPrimary)
-                            Spacer()
-                            if history.currentAcceptedClaimId != nil {
-                                DSBadge(text: "存在已采纳版本", color: DS.ColorToken.success)
-                            } else {
-                                DSBadge(text: "暂无已采纳版本", color: DS.ColorToken.warning)
-                            }
-                        }
-                        ForEach(history.versions) { version in
-                            VStack(alignment: .leading, spacing: DS.Spacing.xs) {
-                                HStack {
-                                    DSBadge(
-                                        text: "v\(version.version) · \(version.statusLabel)",
-                                        color: DS.ColorToken.status(version.status)
-                                    )
-                                    Spacer()
-                                    Text(version.confidenceLevel)
-                                        .font(.caption2)
-                                        .foregroundStyle(DS.ColorToken.textSecondary)
-                                }
-                                Text(version.statement)
-                                    .font(.subheadline)
-                                    .foregroundStyle(DS.ColorToken.textPrimary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Text("支持 \(version.supportingEvidenceCount) · 反驳 \(version.contradictingEvidenceCount)")
-                                    .font(.caption2)
-                                    .foregroundStyle(DS.ColorToken.textSecondary)
-                                if let note = version.reviewNote, !note.isEmpty {
-                                    Text("审核意见：\(note)")
-                                        .font(.caption2)
-                                        .foregroundStyle(DS.ColorToken.textSecondary)
-                                }
-                            }
-                            if version.id != history.versions.last?.id {
-                                Divider()
-                            }
-                        }
-                    }
-                }
-            } else if viewModel.isLoading {
-                ProgressView().frame(maxWidth: .infinity)
-            } else {
-                DSCard {
-                    Text("暂时无法读取主张版本历史。")
-                        .font(.caption)
-                        .foregroundStyle(DS.ColorToken.textSecondary)
-                }
-            }
-        }
+        MarketClaimHistorySection(
+            history: viewModel.claimHistory,
+            isLoading: viewModel.isLoading
+        )
     }
 
     func detailList(title: String, values: [JSONValue]) -> some View {
