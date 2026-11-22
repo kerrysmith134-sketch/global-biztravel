@@ -452,6 +452,28 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
                 )
             session.rollback()
 
+        # Verification inputs and run identity are immutable to the application role.
+        with org_session(UUID(ORG_A)) as session:
+            with pytest.raises(ProgrammingError):
+                session.execute(
+                    update(MarketClaimVerificationRun)
+                    .where(
+                        MarketClaimVerificationRun.organization_id == UUID(ORG_A),
+                        MarketClaimVerificationRun.id == UUID(accepted["verification_run_id"]),
+                    )
+                    .values(input_digest="0" * 64)
+                )
+            session.rollback()
+        with org_session(UUID(ORG_A)) as session:
+            with pytest.raises(ProgrammingError):
+                session.execute(
+                    delete(MarketClaimVerificationRun).where(
+                        MarketClaimVerificationRun.organization_id == UUID(ORG_A),
+                        MarketClaimVerificationRun.id == UUID(accepted["verification_run_id"]),
+                    )
+                )
+            session.rollback()
+
         # Column-level UPDATE permission is not enough to bypass the accepted-claim CHECK.
         with org_session(UUID(ORG_A)) as session:
             with pytest.raises(IntegrityError):
