@@ -137,6 +137,7 @@ def test_action_center_aggregates_existing_facts(client: TestClient) -> None:
             [
                 ExpenseReportItem(
                     organization_id=UUID(ORG_A),
+                    trip_id=UUID(trip_id),
                     report_id=report.id,
                     category="MEALS",
                     amount=Decimal("20.00"),
@@ -145,6 +146,7 @@ def test_action_center_aggregates_existing_facts(client: TestClient) -> None:
                 ),
                 ExpenseReportItem(
                     organization_id=UUID(ORG_A),
+                    trip_id=UUID(trip_id),
                     report_id=report.id,
                     category="TRANSPORT",
                     amount=Decimal("50.00"),

@@ -64,7 +64,7 @@ global-travel-os/                      # 本工作区
 ├── services/api/
 │   ├── app/                            # api / services / models / llm / workers / data
 │   │                                   # （业务规则在 services，路由只做 HTTP 语义）
-│   ├── migrations/versions/            # 0001…0045（源码最新迁移 0045_receipt_assets；部署库以 alembic current 为准）
+│   ├── migrations/versions/            # 0001…0046（源码最新迁移：0046_report_receipt_snapshot；部署库以 alembic current 为准）
 │   └── tests/                          # 单元 + 真实 PostgreSQL 集成 + 验收场景
 ├── packages/planning-engine/           # 纯计算规划引擎（无 IO、不碰数据库、不订票）
 ├── contracts/openapi.yaml              # 契约唯一真相源（由 make openapi 导出）

@@ -18,6 +18,7 @@ from app.api.schemas import ExpenseReportCreate
 from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.expenses import TripExpense
 from app.models.proactive import Approval
+from app.models.receipts import ReceiptAsset
 from app.models.workflow import WorkflowInstance
 from app.services import trip_service
 
@@ -91,6 +92,27 @@ def create_report(
         if missing:
             raise Unprocessable("部分费用不属于该出行或不存在", details={"missing": missing})
 
+    receipt_ids = {expense.receipt_asset_id for expense in expenses if expense.receipt_asset_id}
+    assets_by_id: dict[UUID, ReceiptAsset] = {}
+    if receipt_ids:
+        assets = list(
+            session.scalars(
+                select(ReceiptAsset).where(
+                    ReceiptAsset.organization_id == str(organization_id),
+                    ReceiptAsset.trip_id == trip.id,
+                    ReceiptAsset.id.in_(receipt_ids),
+                    ReceiptAsset.storage_status == "AVAILABLE",
+                )
+            )
+        )
+        assets_by_id = {asset.id: asset for asset in assets}
+        missing_assets = sorted(str(asset_id) for asset_id in receipt_ids - set(assets_by_id))
+        if missing_assets:
+            raise Unprocessable(
+                "部分费用关联的原始票据不存在或不可用",
+                details={"receipt_asset_ids": missing_assets},
+            )
+
     report = ExpenseReport(
         organization_id=str(organization_id),
         trip_id=trip.id,
@@ -104,6 +126,7 @@ def create_report(
         session.add(
             ExpenseReportItem(
                 organization_id=str(organization_id),
+                trip_id=trip.id,
                 report_id=report.id,
                 expense_id=expense.id,
                 category=expense.category,
@@ -112,6 +135,23 @@ def create_report(
                 occurred_on=expense.occurred_on,
                 note=expense.note,
                 receipt_ref=expense.receipt_ref,
+                receipt_asset_id=expense.receipt_asset_id,
+                receipt_sha256=(
+                    assets_by_id[expense.receipt_asset_id].sha256
+                    if expense.receipt_asset_id is not None else None
+                ),
+                receipt_original_filename=(
+                    assets_by_id[expense.receipt_asset_id].original_filename
+                    if expense.receipt_asset_id is not None else None
+                ),
+                receipt_mime_type=(
+                    assets_by_id[expense.receipt_asset_id].mime_type
+                    if expense.receipt_asset_id is not None else None
+                ),
+                receipt_byte_length=(
+                    assets_by_id[expense.receipt_asset_id].byte_length
+                    if expense.receipt_asset_id is not None else None
+                ),
             )
         )
     session.flush()
