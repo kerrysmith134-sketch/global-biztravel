@@ -20,6 +20,9 @@ struct VisitRecordSheet: View {
     @State private var followUpFeed: VisitFollowUpFeed?
     @State private var isLoadingFollowUps = false
     @State private var busyFollowUpIds: Set<String> = []
+    @State private var reopenTarget: VisitFollowUp?
+    @State private var reopenReason = ""
+    @State private var showReopenPrompt = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -316,6 +319,28 @@ struct VisitRecordSheet: View {
                 }
             }
         }
+        .alert("重新打开跟进事项", isPresented: $showReopenPrompt) {
+            TextField("填写重新打开原因", text: $reopenReason)
+            Button("取消", role: .cancel) {
+                reopenTarget = nil
+                reopenReason = ""
+            }
+            Button("确认重新打开") {
+                guard let target = reopenTarget else { return }
+                Task {
+                    await updateFollowUp(
+                        target,
+                        status: "OPEN",
+                        note: reopenReason.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                    reopenTarget = nil
+                    reopenReason = ""
+                }
+            }
+            .disabled(reopenReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("请说明该事项为何需要重新打开，原因会记录在操作历史中。")
+        }
         .task { await loadFollowUps() }
     }
 
@@ -327,7 +352,13 @@ struct VisitRecordSheet: View {
         status: String
     ) -> some View {
         Button {
-            Task { await updateFollowUp(item, status: status) }
+            if status == "OPEN" {
+                reopenTarget = item
+                reopenReason = ""
+                showReopenPrompt = true
+            } else {
+                Task { await updateFollowUp(item, status: status) }
+            }
         } label: {
             Label(title, systemImage: icon)
         }
@@ -419,12 +450,11 @@ struct VisitRecordSheet: View {
         }
     }
 
-    private func updateFollowUp(_ item: VisitFollowUp, status: String) async {
+    private func updateFollowUp(_ item: VisitFollowUp, status: String, note: String? = nil) async {
         busyFollowUpIds.insert(item.id)
         defer { busyFollowUpIds.remove(item.id) }
         errorMessage = nil
         do {
-            let note = status == "OPEN" ? "在拜访工作台重新打开此事项。" : nil
             _ = try await environment.visitRepository.updateFollowUp(
                 id: item.id,
                 request: VisitFollowUpUpdateRequest(
