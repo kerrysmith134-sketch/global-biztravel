@@ -687,6 +687,12 @@ def test_question_scoped_evidence_does_not_leak_between_research_questions(
                 )
                 if workflow_ids:
                     session.execute(
+                        delete(AgentRun).where(
+                            AgentRun.organization_id == UUID(ORG_A),
+                            AgentRun.workflow_id.in_(set(workflow_ids)),
+                        )
+                    )
+                    session.execute(
                         delete(WorkflowInstance).where(
                             WorkflowInstance.organization_id == UUID(ORG_A),
                             WorkflowInstance.id.in_(set(workflow_ids)),
