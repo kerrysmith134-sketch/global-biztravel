@@ -56,7 +56,8 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
             loadErrors.append("业务上下文：\(error.localizedDescription)")
         }
         do {
-            questions = try await questionsRequest.items
+            let questionPage = try await questionsRequest
+            questions = questionPage.items
         } catch {
             loadErrors.append("研究问题：\(error.localizedDescription)")
         }
@@ -634,6 +635,11 @@ struct MarketResearchWorkspaceDetailView: View {
                                     Divider()
                                 }
                             }
+                        }
+                        if report.impacts.count > 8 {
+                            Text("此处展示前 8 项；当前报告共 \(report.impactCount) 条影响关系。")
+                                .font(.caption2)
+                                .foregroundStyle(DS.ColorToken.textSecondary)
                         }
                         if report.truncated {
                             Text("报告已按安全上限截断（分析 \(report.analyzedLineageCount)/\(report.totalLineageCount) 条主张谱系）。")
