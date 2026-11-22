@@ -598,7 +598,7 @@ struct MarketResearchWorkspaceDetailView: View {
                                         }
                                         Image(systemName: "chevron.right")
                                             .font(.caption.weight(.semibold))
-                                            .foregroundStyle(DS.ColorToken.textTertiary)
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
                                             .padding(.top, 2)
                                     }
                                     .contentShape(Rectangle())
