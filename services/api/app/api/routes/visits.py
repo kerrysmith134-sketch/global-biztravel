@@ -48,8 +48,8 @@ from app.services import (
     minutes_service,
     record_service,
     visit_briefing_service,
-    visit_service,
     visit_follow_up_service,
+    visit_service,
 )
 
 router = APIRouter(tags=["visits"])
