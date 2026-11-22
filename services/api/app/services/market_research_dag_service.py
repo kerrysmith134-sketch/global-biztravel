@@ -328,7 +328,11 @@ def _node_statuses(
                 state = "RUNNING" if any(job.status == "RUNNING" for _, job in active_pairs) else "QUEUED"
             elif answer_status == "REJECTED":
                 state = "REJECTED"
-            elif any(job is not None and job.status == "CANCELLED" for _, job in linked_jobs):
+            elif any(
+                workflow.status == "REJECTED"
+                and (workflow.payload or {}).get("generation_status") == "CANCELLED"
+                for workflow, _ in linked_jobs
+            ) or any(job is not None and job.status == "CANCELLED" for _, job in linked_jobs):
                 state = "CANCELLED"
             elif terminal_failed:
                 state = "FAILED"
@@ -883,7 +887,11 @@ def run_scheduler(
     elif counts["waiting_evidence_count"]:
         payload["execution_state"] = "WAITING_FOR_EVIDENCE"
         workflow.payload = payload
-    elif counts["ready_count"] and int(payload.get("dispatched_count") or 0) >= int(payload["max_questions"]):
+    elif (
+        counts["ready_count"]
+        and counts["active_count"] == 0
+        and int(payload.get("dispatched_count") or 0) >= int(payload["max_questions"])
+    ):
         payload["execution_state"] = "PARTIAL"
         payload["stop_reason"] = "达到最大问题数预算"
         payload["finished_at"] = datetime.now(UTC).isoformat()
@@ -968,6 +976,12 @@ def retry_question(
         raise Conflict(
             "只有失败或被驳回的问题才允许手动重试",
             details={"state": target["state"]},
+        )
+    if counts["active_count"] >= int(payload["max_concurrency"]):
+        raise Conflict(
+            "当前执行已达到并发上限，等待现有节点结束后再重试",
+            code="MARKET_RESEARCH_CONCURRENCY_LIMIT",
+            details={"active_count": counts["active_count"], "max_concurrency": payload["max_concurrency"]},
         )
 
     dependency_ids = [
