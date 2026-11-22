@@ -92,9 +92,13 @@ def upgrade() -> None:
         "AND receipt_original_filename IS NULL AND receipt_mime_type IS NULL "
         "AND receipt_byte_length IS NULL"
         ") OR ("
-        "receipt_asset_id IS NOT NULL AND length(receipt_sha256) = 64 "
+        "receipt_asset_id IS NOT NULL "
+        "AND receipt_sha256 IS NOT NULL AND length(receipt_sha256) = 64 "
+        "AND receipt_original_filename IS NOT NULL "
         "AND length(btrim(receipt_original_filename)) > 0 "
-        "AND length(btrim(receipt_mime_type)) > 0 AND receipt_byte_length > 0"
+        "AND receipt_mime_type IS NOT NULL "
+        "AND length(btrim(receipt_mime_type)) > 0 "
+        "AND receipt_byte_length IS NOT NULL AND receipt_byte_length > 0"
         ")",
     )
     op.create_index(
