@@ -1420,10 +1420,6 @@ class MarketClaim(Base):
             "organization_id", "workspace_id", "claim_lineage_id", "version",
             name="uq_market_claims_lineage_version",
         ),
-        UniqueConstraint(
-            "organization_id", "workspace_id", "answer_id", "claim_key", "version",
-            name="uq_market_claims_answer_key_version",
-        ),
         CheckConstraint("version >= 1", name="version_positive"),
         CheckConstraint("length(claim_key) = 64", name="claim_key_length"),
         CheckConstraint("length(btrim(statement)) > 0", name="statement_not_blank"),

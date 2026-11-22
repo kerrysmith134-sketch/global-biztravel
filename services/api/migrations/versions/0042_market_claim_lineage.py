@@ -31,6 +31,9 @@ def upgrade() -> None:
         """
     )
     op.drop_constraint(
+        "uq_market_claims_answer_key_version", "market_claims", type_="unique"
+    )
+    op.drop_constraint(
         "fk_market_claim_supersedes_same_answer", "market_claims", type_="foreignkey"
     )
     op.execute(
@@ -130,5 +133,10 @@ def downgrade() -> None:
         ["organization_id", "workspace_id", "answer_id", "supersedes_id"],
         ["organization_id", "workspace_id", "answer_id", "id"],
         ondelete="NO ACTION",
+    )
+    op.create_unique_constraint(
+        "uq_market_claims_answer_key_version",
+        "market_claims",
+        ["organization_id", "workspace_id", "answer_id", "claim_key", "version"],
     )
     op.drop_column("market_claims", "claim_lineage_id")
