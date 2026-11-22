@@ -26,10 +26,10 @@ from app.api.pagination import clamp_limit, decode_cursor
 from app.api.pagination import next_cursor as page_cursor
 from app.api.schemas import (
     Page,
+    TripCloseoutReadinessRead,
     TripCreate,
     TripOutcomeRead,
     TripRead,
-    TripCloseoutReadinessRead,
     TripUpdate,
     VisitCreate,
     VisitRead,
