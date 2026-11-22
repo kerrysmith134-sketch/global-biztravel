@@ -238,6 +238,16 @@ def upgrade() -> None:
         helpers.enable_org_rls(table, force=True)
 
     if helpers.role_exists("gbt_app"):
+        # Verification inputs and run identity are immutable; only execution lifecycle fields
+        # may change as the durable worker advances the run.
+        op.execute(
+            "REVOKE UPDATE, DELETE, TRUNCATE ON market_claim_verification_runs FROM gbt_app"
+        )
+        op.execute(
+            "GRANT UPDATE (agent_run_id, status, claim_count, degraded, limitations, "
+            "failure_reason, started_at, completed_at) "
+            "ON market_claim_verification_runs TO gbt_app"
+        )
         # Assertion content and its evidence mapping are immutable for the application role.
         # Only the human-review state/audit columns may change after a claim is created.
         op.execute("REVOKE UPDATE, DELETE, TRUNCATE ON market_claims FROM gbt_app")
