@@ -345,7 +345,7 @@ struct MarketImpactReviewSheet: View {
                         .foregroundStyle(DS.ColorToken.textSecondary)
                 }
             } else {
-                ForEach(evidence, id: \.item.id) { row in
+                ForEach(Array(evidence.enumerated()), id: \.offset) { _, row in
                     DSCard(padding: DS.Spacing.md) {
                         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
                             HStack {
