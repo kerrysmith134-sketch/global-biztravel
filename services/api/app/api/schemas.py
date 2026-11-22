@@ -1457,6 +1457,7 @@ class ResearchPlanCreate(BaseModel):
     trip_id: UUID | None = None
     customer_id: UUID | None = None
     workspace_id: UUID | None = None
+    target_question_id: UUID | None = None
     context_text: str | None = Field(default=None, max_length=16000)
     locale: str | None = Field(default=None, max_length=35)
 
@@ -1465,6 +1466,8 @@ class ResearchPlanCreate(BaseModel):
         self.request = self.request.strip()
         if len(self.request) < 3:
             raise ValueError("request 至少需要 3 个非空字符")
+        if self.target_question_id is not None and self.workspace_id is None:
+            raise ValueError("target_question_id 必须同时指定 workspace_id")
         if self.context_text is not None:
             self.context_text = self.context_text.strip() or None
         if self.locale is not None:
@@ -1559,6 +1562,7 @@ class ResearchPlanRead(BaseModel):
     trip_id: UUID | None = None
     customer_id: UUID | None = None
     workspace_id: UUID | None = None
+    target_question_id: UUID | None = None
     generated_question_ids: list[UUID] = Field(default_factory=list)
     job_id: UUID | None = None
     retrieval_error: str | None = None
