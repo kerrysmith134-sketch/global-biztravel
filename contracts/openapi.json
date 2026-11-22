@@ -10232,6 +10232,227 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/execution": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取商业机会的 Trip 执行上下文、关联拜访和可选拜访",
+        "operationId": "get_market_opportunity_execution_v1_market_workspaces__workspace_id__opportunities__opportunity_id__execution_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "opportunity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Opportunity Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketOpportunityExecutionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "将现有 Trip 拜访关联到已制定行动的商业机会",
+        "operationId": "link_market_opportunity_visit_v1_market_workspaces__workspace_id__opportunities__opportunity_id__visits_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "opportunity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Opportunity Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketOpportunityVisitLinkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketOpportunityVisitLinkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits/{visit_id}:unlink": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "解除商业机会与拜访关联并保留审计历史",
+        "operationId": "unlink_market_opportunity_visit_v1_market_workspaces__workspace_id__opportunities__opportunity_id__visits__visit_id__unlink_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "opportunity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Opportunity Id"
+            }
+          },
+          {
+            "name": "visit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Visit Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketOpportunityVisitUnlink"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketOpportunityVisitLinkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -25558,6 +25779,646 @@
           "truncated"
         ],
         "title": "MarketClaimImpactReportRead"
+      },
+      "MarketOpportunityExecutionRead": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "opportunity_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Opportunity Id"
+          },
+          "opportunity_status": {
+            "type": "string",
+            "enum": [
+              "DISCOVERED",
+              "RESEARCHING",
+              "EVIDENCE_READY",
+              "QUALIFICATION_PENDING",
+              "QUALIFIED",
+              "ACTION_PLANNED",
+              "WON",
+              "LOST",
+              "DISQUALIFIED",
+              "ON_HOLD"
+            ],
+            "title": "Opportunity Status"
+          },
+          "can_link_visits": {
+            "type": "boolean",
+            "title": "Can Link Visits"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/MarketOpportunityVisitLinkRead"
+            },
+            "type": "array",
+            "title": "Links"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/MarketOpportunityVisitCandidateRead"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "opportunity_id",
+          "opportunity_status",
+          "can_link_visits",
+          "blocked_reason"
+        ],
+        "title": "MarketOpportunityExecutionRead"
+      },
+      "MarketOpportunityVisitCandidateRead": {
+        "properties": {
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "trip_name": {
+            "type": "string",
+            "title": "Trip Name"
+          },
+          "trip_status": {
+            "type": "string",
+            "title": "Trip Status"
+          },
+          "trip_window_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trip Window Start"
+          },
+          "trip_window_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trip Window End"
+          },
+          "visit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Visit Id"
+          },
+          "visit_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visit Title"
+          },
+          "visit_objective": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visit Objective"
+          },
+          "visit_status": {
+            "type": "string",
+            "title": "Visit Status"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "place_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Place Id"
+          },
+          "place_name": {
+            "type": "string",
+            "title": "Place Name"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "time_window_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Window Start"
+          },
+          "time_window_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Window End"
+          },
+          "service_minutes": {
+            "type": "integer",
+            "title": "Service Minutes"
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority"
+          },
+          "business_value": {
+            "type": "string",
+            "title": "Business Value"
+          },
+          "movement_mode": {
+            "type": "string",
+            "title": "Movement Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip_id",
+          "trip_name",
+          "trip_status",
+          "trip_window_start",
+          "trip_window_end",
+          "visit_id",
+          "visit_title",
+          "visit_objective",
+          "visit_status",
+          "customer_id",
+          "customer_name",
+          "place_id",
+          "place_name",
+          "city",
+          "country_code",
+          "latitude",
+          "longitude",
+          "timezone",
+          "time_window_start",
+          "time_window_end",
+          "service_minutes",
+          "priority",
+          "business_value",
+          "movement_mode"
+        ],
+        "title": "MarketOpportunityVisitCandidateRead"
+      },
+      "MarketOpportunityVisitLinkCreate": {
+        "properties": {
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "visit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Visit Id"
+          },
+          "link_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip_id",
+          "visit_id"
+        ],
+        "title": "MarketOpportunityVisitLinkCreate"
+      },
+      "MarketOpportunityVisitLinkRead": {
+        "properties": {
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "trip_name": {
+            "type": "string",
+            "title": "Trip Name"
+          },
+          "trip_status": {
+            "type": "string",
+            "title": "Trip Status"
+          },
+          "trip_window_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trip Window Start"
+          },
+          "trip_window_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trip Window End"
+          },
+          "visit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Visit Id"
+          },
+          "visit_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visit Title"
+          },
+          "visit_objective": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visit Objective"
+          },
+          "visit_status": {
+            "type": "string",
+            "title": "Visit Status"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "place_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Place Id"
+          },
+          "place_name": {
+            "type": "string",
+            "title": "Place Name"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "time_window_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Window Start"
+          },
+          "time_window_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Window End"
+          },
+          "service_minutes": {
+            "type": "integer",
+            "title": "Service Minutes"
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority"
+          },
+          "business_value": {
+            "type": "string",
+            "title": "Business Value"
+          },
+          "movement_mode": {
+            "type": "string",
+            "title": "Movement Mode"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "opportunity_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Opportunity Id"
+          },
+          "link_status": {
+            "type": "string",
+            "enum": [
+              "LINKED",
+              "UNLINKED"
+            ],
+            "title": "Link Status"
+          },
+          "link_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Note"
+          },
+          "linked_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked By User Id"
+          },
+          "linked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Linked At"
+          },
+          "unlinked_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unlinked By User Id"
+          },
+          "unlinked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unlinked At"
+          },
+          "unlink_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unlink Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip_id",
+          "trip_name",
+          "trip_status",
+          "trip_window_start",
+          "trip_window_end",
+          "visit_id",
+          "visit_title",
+          "visit_objective",
+          "visit_status",
+          "customer_id",
+          "customer_name",
+          "place_id",
+          "place_name",
+          "city",
+          "country_code",
+          "latitude",
+          "longitude",
+          "timezone",
+          "time_window_start",
+          "time_window_end",
+          "service_minutes",
+          "priority",
+          "business_value",
+          "movement_mode",
+          "id",
+          "workspace_id",
+          "opportunity_id",
+          "link_status",
+          "link_note",
+          "linked_by_user_id",
+          "linked_at",
+          "unlinked_by_user_id",
+          "unlinked_at",
+          "unlink_note"
+        ],
+        "title": "MarketOpportunityVisitLinkRead"
+      },
+      "MarketOpportunityVisitUnlink": {
+        "properties": {
+          "unlink_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unlink Note"
+          }
+        },
+        "type": "object",
+        "title": "MarketOpportunityVisitUnlink"
       }
     }
   }
