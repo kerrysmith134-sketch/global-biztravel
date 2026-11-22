@@ -22423,8 +22423,7 @@
           "limitations": {
             "type": "array",
             "items": {
-              "type": "string",
-              "title": "Limitation Item"
+              "type": "string"
             },
             "title": "Limitations"
           },
@@ -22657,8 +22656,7 @@
           "limitations": {
             "type": "array",
             "items": {
-              "type": "string",
-              "title": "Limitation Item"
+              "type": "string"
             },
             "title": "Limitations"
           },
@@ -22772,7 +22770,7 @@
         "required": [
           "items"
         ],
-        "title": "Page_MarketClaimRead_"
+        "title": "Page[MarketClaimRead]"
       }
     }
   }
