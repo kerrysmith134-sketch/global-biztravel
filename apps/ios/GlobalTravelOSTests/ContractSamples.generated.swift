@@ -362,7 +362,8 @@ enum ContractSamples {
   "verified_count": 1,
   "workspace_id": "11111111-1111-1111-1111-111111111111"
 }
-""";
+"""
+    static let minutesDraft = """
 {
   "decisions": [
     "1"
