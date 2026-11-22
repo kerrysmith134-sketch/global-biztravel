@@ -89,6 +89,32 @@ struct MarketOpportunityDetailRead: Decodable, Equatable {
     var assessments: [JSONValue]
 }
 
+@propertyWrapper
+struct FlexibleDecimal: Decodable, Equatable {
+    var wrappedValue: Decimal
+
+    init(wrappedValue: Decimal) {
+        self.wrappedValue = wrappedValue
+    }
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        if let string = try? value.decode(String.self),
+           let decimal = Decimal(string: string, locale: Locale(identifier: "en_US_POSIX")) {
+            wrappedValue = decimal
+            return
+        }
+        if let number = try? value.decode(Double.self) {
+            wrappedValue = Decimal(number)
+            return
+        }
+        throw DecodingError.dataCorruptedError(
+            in: value,
+            debugDescription: "金额既不是有效的十进制字符串也不是数字"
+        )
+    }
+}
+
 struct MarketOpportunityVisitCandidateRead: Decodable, Equatable, Identifiable {
     var tripId: String
     var tripName: String
@@ -112,7 +138,7 @@ struct MarketOpportunityVisitCandidateRead: Decodable, Equatable, Identifiable {
     var timeWindowEnd: Date?
     var serviceMinutes: Int
     var priority: Int
-    var businessValue: Decimal
+    @FlexibleDecimal var businessValue: Decimal
     var movementMode: String
 
     var id: String { visitId }
