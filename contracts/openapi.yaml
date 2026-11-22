@@ -10955,6 +10955,49 @@
           }
         }
       }
+    },
+    "/v1/trips/{trip_id}/closeout-readiness": {
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "评估出差是否具备报销与财务结账条件（只读）",
+        "operationId": "get_trip_closeout_readiness_v1_trips__trip_id__closeout_readiness_get",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripCloseoutReadinessRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11013,7 +11056,8 @@
               "EXPENSE_REPORT",
               "JOB",
               "CRM_SYNC",
-              "VISIT_FOLLOW_UP"
+              "VISIT_FOLLOW_UP",
+              "TRIP_CLOSEOUT"
             ],
             "title": "Kind"
           },
@@ -27848,6 +27892,223 @@
           "created_at"
         ],
         "title": "ReceiptOcrRunRead"
+      },
+      "TripCloseoutIssueRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "BLOCKER",
+              "WARNING"
+            ],
+            "title": "Severity"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type"
+          },
+          "source_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Id"
+          },
+          "action_hint": {
+            "type": "string",
+            "title": "Action Hint"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "severity",
+          "title",
+          "detail",
+          "source_type",
+          "source_id",
+          "action_hint"
+        ],
+        "title": "TripCloseoutIssueRead"
+      },
+      "TripCloseoutSummaryRead": {
+        "properties": {
+          "visit_count": {
+            "type": "integer",
+            "title": "Visit Count"
+          },
+          "visit_outcome_count": {
+            "type": "integer",
+            "title": "Visit Outcome Count"
+          },
+          "visits_open_count": {
+            "type": "integer",
+            "title": "Visits Open Count"
+          },
+          "visits_missing_outcome_count": {
+            "type": "integer",
+            "title": "Visits Missing Outcome Count"
+          },
+          "expense_count": {
+            "type": "integer",
+            "title": "Expense Count"
+          },
+          "expenses_in_report_count": {
+            "type": "integer",
+            "title": "Expenses In Report Count"
+          },
+          "expenses_not_in_report_count": {
+            "type": "integer",
+            "title": "Expenses Not In Report Count"
+          },
+          "expenses_without_receipt_count": {
+            "type": "integer",
+            "title": "Expenses Without Receipt Count"
+          },
+          "receipt_asset_count": {
+            "type": "integer",
+            "title": "Receipt Asset Count"
+          },
+          "receipt_asset_unavailable_count": {
+            "type": "integer",
+            "title": "Receipt Asset Unavailable Count"
+          },
+          "ocr_needs_review_count": {
+            "type": "integer",
+            "title": "Ocr Needs Review Count"
+          },
+          "open_business_follow_up_count": {
+            "type": "integer",
+            "title": "Open Business Follow Up Count"
+          },
+          "latest_report_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Report Id"
+          },
+          "latest_report_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "DRAFT",
+                  "SUBMITTED",
+                  "APPROVED",
+                  "REJECTED"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Report Status"
+          },
+          "blocker_count": {
+            "type": "integer",
+            "title": "Blocker Count"
+          },
+          "warning_count": {
+            "type": "integer",
+            "title": "Warning Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "visit_count",
+          "visit_outcome_count",
+          "visits_open_count",
+          "visits_missing_outcome_count",
+          "expense_count",
+          "expenses_in_report_count",
+          "expenses_not_in_report_count",
+          "expenses_without_receipt_count",
+          "receipt_asset_count",
+          "receipt_asset_unavailable_count",
+          "ocr_needs_review_count",
+          "open_business_follow_up_count",
+          "blocker_count",
+          "warning_count"
+        ],
+        "title": "TripCloseoutSummaryRead"
+      },
+      "TripCloseoutReadinessRead": {
+        "properties": {
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "BLOCKED",
+              "READY_FOR_REVIEW",
+              "REPORT_SUBMITTED",
+              "REPORT_APPROVED",
+              "READY_WITH_EXCEPTIONS"
+            ],
+            "title": "Status"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/TripCloseoutSummaryRead"
+          },
+          "totals_by_currency": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyTotalRead"
+            },
+            "title": "Totals By Currency"
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TripCloseoutIssueRead"
+            },
+            "title": "Blockers"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TripCloseoutIssueRead"
+            },
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip_id",
+          "status",
+          "generated_at",
+          "summary"
+        ],
+        "title": "TripCloseoutReadinessRead"
       }
     }
   }
