@@ -282,9 +282,9 @@ def build_trip_closeout_readiness(
     for asset in assets:
         if asset.mime_type not in IMAGE_MIME_TYPES:
             continue
-        run = latest_ocr_by_asset.get(asset.id)
-        review = reviews_by_run.get(run.id) if run is not None else None
-        if run is None:
+        ocr_run = latest_ocr_by_asset.get(asset.id)
+        review = reviews_by_run.get(ocr_run.id) if ocr_run is not None else None
+        if ocr_run is None:
             warnings.append(
                 _issue(
                     "RECEIPT_OCR_NOT_RUN",
@@ -296,13 +296,13 @@ def build_trip_closeout_readiness(
                     "对已保存原始票据运行 OCR，并人工核对候选字段",
                 )
             )
-        elif run.status != "SUCCEEDED":
+        elif ocr_run.status != "SUCCEEDED":
             warnings.append(
                 _issue(
                     "RECEIPT_OCR_FAILED",
                     "WARNING",
                     "票据 OCR 未成功",
-                    run.error or f"OCR 状态为 {run.status}",
+                    ocr_run.error or f"OCR 状态为 {ocr_run.status}",
                     "RECEIPT_ASSET",
                     asset.id,
                     "检查原始图片质量或 OCR 环境；也可直接人工核对费用",
