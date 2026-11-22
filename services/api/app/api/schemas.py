@@ -1409,6 +1409,67 @@ class ReceiptAssetRead(ORMModel):
     uploaded_at: datetime
 
 
+class ReceiptOcrReviewCreate(BaseModel):
+    decision: Literal["CONFIRMED", "REJECTED"]
+    merchant: str | None = Field(default=None, min_length=1, max_length=200)
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    currency: str | None = Field(default=None, min_length=3, max_length=3, pattern="^[A-Za-z]{3}$")
+    occurred_on: date | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _validate_review(self) -> ReceiptOcrReviewCreate:
+        if self.merchant is not None:
+            merchant = self.merchant.strip()
+            if not merchant:
+                raise ValueError("商户名称不能为空白")
+            object.__setattr__(self, "merchant", merchant)
+        if (self.amount is None) != (self.currency is None):
+            raise ValueError("确认金额时必须同时确认币种")
+        has_fields = any(
+            value is not None
+            for value in (self.merchant, self.amount, self.occurred_on)
+        )
+        if self.decision == "CONFIRMED" and not has_fields:
+            raise ValueError("确认 OCR 结果时至少需要确认一个字段")
+        if self.decision == "REJECTED" and not (self.note and self.note.strip()):
+            raise ValueError("驳回 OCR 结果必须填写原因")
+        if self.decision == "REJECTED" and has_fields:
+            raise ValueError("驳回 OCR 结果不能同时提交确认字段")
+        if self.note is not None:
+            note = self.note.strip()
+            object.__setattr__(self, "note", note or None)
+        if self.currency is not None:
+            object.__setattr__(self, "currency", self.currency.upper())
+        return self
+
+
+class ReceiptOcrReviewRead(ORMModel):
+    id: UUID
+    receipt_ocr_run_id: UUID
+    decision: Literal["CONFIRMED", "REJECTED"]
+    confirmed_fields: dict[str, Any]
+    note: str | None = None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime
+
+
+class ReceiptOcrRunRead(ORMModel):
+    id: UUID
+    receipt_asset_id: UUID
+    agent_run_id: UUID
+    content_sha256: str
+    engine: str
+    engine_version: str
+    status: Literal["RUNNING", "SUCCEEDED", "FAILED"]
+    candidates: dict[str, Any]
+    error: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+    created_at: datetime
+    review: ReceiptOcrReviewRead | None = None
+
+
 class CurrencyTotalRead(BaseModel):
     currency: str
     amount: float
