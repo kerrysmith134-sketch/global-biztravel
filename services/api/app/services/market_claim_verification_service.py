@@ -590,11 +590,11 @@ def review_claim(
 def mark_job_failed(
     session: Session,
     organization_id: UUID | str,
-    job_id: UUID,
+    job_id: UUID | str,
     *,
     error: str,
 ) -> None:
-    """Persist a terminal extraction/verification failure after the shared retry policy."""
+    """Persist a terminal claim-verification failure after the shared retry policy."""
     workflow = session.scalars(
         select(WorkflowInstance)
         .where(
