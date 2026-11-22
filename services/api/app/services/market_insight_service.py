@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
-from sqlalchemy import and_, exists, not_, or_, select
+from sqlalchemy import and_, exists, func, not_, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -187,7 +187,10 @@ def question_evidence_scope(
             MarketResearchPlanEvidence.question_id.is_(None),
         )
     )
-    scope_managed = Evidence.payload["question_scope_managed"].as_boolean().is_(True)
+    scope_managed = func.coalesce(
+        Evidence.payload["question_scope_managed"].as_boolean(),
+        False,
+    ).is_(True)
     workspace_evidence = and_(
         Evidence.subject_type == "market_workspace",
         Evidence.subject_id == workspace_id,
