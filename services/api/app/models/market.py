@@ -870,6 +870,11 @@ class MarketInsight(Base):
             "status <> 'ACCEPTED' OR (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL)",
             name="accepted_has_reviewer",
         ),
+        CheckConstraint(
+            "status <> 'ACCEPTED' OR (verification_verdict = 'PROVISIONAL_SUPPORT' "
+            "AND supporting_evidence_count > 0 AND contradicting_evidence_count = 0)",
+            name="accepted_requires_provisional_support",
+        ),
         CheckConstraint("supersedes_id IS NULL OR supersedes_id <> id", name="supersedes_not_self"),
         Index("ix_market_insights_org_workspace_created", "organization_id", "workspace_id", "created_at"),
         Index("ix_market_insights_org_workspace_key", "organization_id", "workspace_id", "insight_key", "version"),
