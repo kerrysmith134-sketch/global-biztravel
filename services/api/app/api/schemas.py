@@ -2610,6 +2610,45 @@ class MarketClaimLineageRead(BaseModel):
     current_accepted_claim_id: UUID | None
     versions: list[MarketClaimRead] = Field(default_factory=list)
 
+class MarketClaimImpactRead(BaseModel):
+    claim_lineage_id: UUID
+    latest_claim_id: UUID
+    latest_claim_version: int
+    latest_claim_status: Literal[
+        "NEEDS_REVIEW", "CONFLICTED", "INSUFFICIENT", "ACCEPTED", "REJECTED", "SUPERSEDED"
+    ]
+    latest_verification_verdict: Literal[
+        "PROVISIONAL_SUPPORT", "POTENTIAL_CONTRADICTION", "CONFLICTED", "INSUFFICIENT"
+    ]
+    current_accepted_claim_id: UUID | None
+    consumer_type: Literal["INSIGHT", "OPPORTUNITY"]
+    consumer_id: UUID
+    consumer_title: str
+    consumer_status: str
+    relation_types: list[MarketEvidenceRelation]
+    matched_evidence_count: int
+    stale_evidence_count: int
+    referenced_claim_versions: list[int]
+    severity: Literal["HIGH", "MEDIUM"]
+    reason_code: Literal[
+        "LATEST_VERSION_CONTRADICTORY",
+        "LATEST_VERSION_INSUFFICIENT",
+        "LATEST_VERSION_PENDING_REVIEW",
+        "CONSUMER_USES_OLDER_EVIDENCE_SNAPSHOT",
+        "NO_ACCEPTED_CLAIM_VERSION",
+    ]
+
+
+class MarketClaimImpactReportRead(BaseModel):
+    workspace_id: UUID
+    generated_at: datetime
+    analyzed_lineage_count: int
+    total_lineage_count: int
+    affected_consumer_count: int
+    impact_count: int
+    truncated: bool
+    impacts: list[MarketClaimImpactRead] = Field(default_factory=list)
+
 
 class MarketClaimVerificationAccepted(BaseModel):
     job_id: UUID | None

@@ -422,3 +422,11 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 新增 `0040_market_research_graph`：为问题节点增加预期证据和 Planner 运行来源字段、同组织复合外键、节点 key 唯一约束及来源字段成对约束。
 - 新增 `GET /v1/market/workspaces/{workspace_id}/research-graph`，返回拓扑顺序、依赖边、就绪问题和阻塞状态；新增依赖 CRUD，服务端以 Workspace 行锁串行化写入并拒绝自依赖、跨 Workspace 引用和循环依赖。
 - **验证状态：** 已提交到 `feat/sprint-h2.0-research-dag-orchestrator`；真实 PostgreSQL 集成用例、OpenAPI / iOS 契约、Alembic drift、全量 Backend pytest 和 iOS 门禁须以该分支最新 CI 为准。当前不声称 H2.0 已验收或已部署。
+
+## 2026-11-22 市场情报引擎 H2.9 — Claim Impact Intelligence
+
+- 新增只读 `GET /v1/market/workspaces/{workspace_id}/claim-impact-report`，通过 `MarketClaimEvidence` 与 `MarketInsightEvidence` / `MarketOpportunityEvidence` 的精确 Evidence ID 关联识别可能受影响的下游市场判断与商业机会。
+- 最新主张仍待审核、存在冲突/证据不足时，报告提示关联消费者复核；新主张已采纳但消费者仍引用不在最新版本内的旧 Evidence 时，标记旧证据快照。
+- 报告不修改任何 Insight / Opportunity / Claim 状态，不推进或回退商机阶段，不自动撤销人工决策；不使用语义相似度推断依赖。
+- 查询按 organization + Workspace 隔离，并设置 200 条主张谱系、5000 条历史主张和 250 条影响关系的上限；截断时返回标记。
+- **验证状态：** 代码和集成测试已提交至 `feat/sprint-h2.9-claim-impact-intelligence`；最新 GitHub Actions 为最终验收依据。该分支保持 Draft PR，不代表已合并或已部署。

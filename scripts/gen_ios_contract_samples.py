@@ -69,6 +69,7 @@ TARGETS: dict[str, str] = {
     "MarketEvidenceIntelligenceReport": "MarketEvidenceIntelligenceRead",
     "MarketSourceVerificationPlan": "MarketSourceVerificationPlanRead",
     "MarketSourceVerificationPlanApplication": "MarketSourceVerificationPlanApplicationRead",
+    "MarketClaimImpactReport": "MarketClaimImpactReportRead",
     "MarketClaimLineageHistory": "MarketClaimLineageRead",
 }
 

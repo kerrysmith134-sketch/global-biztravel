@@ -13,6 +13,7 @@ protocol ResearchRepository {
     func sourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlan
     func applySourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlanApplication
     func claimHistory(workspaceId: String, claimId: String) async throws -> MarketClaimLineageHistory
+    func claimImpactReport(workspaceId: String) async throws -> MarketClaimImpactReport
     func listQuestions(workspaceId: String, page: PageRequest) async throws -> Page<MarketResearchQuestion>
     func createQuestion(
         workspaceId: String,
@@ -67,6 +68,10 @@ extension ResearchRepository {
 
     func applySourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlanApplication {
         throw RepositoryError.requiresNetwork("当前研究仓库未实现核验任务同步")
+    }
+
+    func claimImpactReport(workspaceId: String) async throws -> MarketClaimImpactReport {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现主张影响分析")
     }
 
     func claimHistory(
@@ -164,6 +169,13 @@ final class RemoteResearchRepository: ResearchRepository {
         try await client.send(
             Endpoints.marketClaimHistory(workspaceId: workspaceId, claimId: claimId),
             as: MarketClaimLineageHistory.self
+        )
+    }
+
+    func claimImpactReport(workspaceId: String) async throws -> MarketClaimImpactReport {
+        try await client.send(
+            Endpoints.marketClaimImpactReport(workspaceId: workspaceId),
+            as: MarketClaimImpactReport.self
         )
     }
 

@@ -370,6 +370,13 @@ enum Endpoints {
         )
     }
 
+    static func marketClaimImpactReport(workspaceId: String) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/claim-impact-report"
+        )
+    }
+
     static func listMarketContexts(workspaceId: String) -> APIRequest {
         APIRequest(
             method: .get,

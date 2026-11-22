@@ -81,6 +81,57 @@ final class MarketResearchTests: XCTestCase {
         XCTAssertNil(request.body)
     }
 
+    func testMarketClaimImpactReportEndpointIsReadOnly() {
+        let request = Endpoints.marketClaimImpactReport(workspaceId: "workspace-1")
+        XCTAssertEqual(request.method, .get)
+        XCTAssertEqual(
+            request.path,
+            "/v1/market/workspaces/workspace-1/claim-impact-report"
+        )
+        XCTAssertNil(request.idempotencyKey)
+        XCTAssertNil(request.body)
+    }
+
+    func testMarketClaimImpactReportDecodesAffectedConsumers() throws {
+        let json = """
+        {
+          "workspace_id": "workspace-1",
+          "generated_at": "2026-11-22T12:00:00+00:00",
+          "analyzed_lineage_count": 3,
+          "total_lineage_count": 3,
+          "affected_consumer_count": 1,
+          "impact_count": 1,
+          "truncated": false,
+          "impacts": [{
+            "claim_lineage_id": "lineage-1",
+            "latest_claim_id": "claim-2",
+            "latest_claim_version": 2,
+            "latest_claim_status": "NEEDS_REVIEW",
+            "latest_verification_verdict": "PROVISIONAL_SUPPORT",
+            "current_accepted_claim_id": "claim-1",
+            "consumer_type": "OPPORTUNITY",
+            "consumer_id": "opportunity-1",
+            "consumer_title": "Potential procurement opportunity",
+            "consumer_status": "RESEARCHING",
+            "relation_types": ["SUPPORTS"],
+            "matched_evidence_count": 1,
+            "stale_evidence_count": 0,
+            "referenced_claim_versions": [1],
+            "severity": "MEDIUM",
+            "reason_code": "LATEST_VERSION_PENDING_REVIEW"
+          }]
+        }
+        """
+        let report = try DateCoding.decode(
+            MarketClaimImpactReport.self,
+            fromJSON: json
+        )
+        XCTAssertEqual(report.affectedConsumerCount, 1)
+        XCTAssertEqual(report.impacts.first?.consumerTypeLabel, "商业机会")
+        XCTAssertEqual(report.impacts.first?.reasonLabel, "最新主张版本等待人工审核")
+        XCTAssertEqual(report.impacts.first?.id, "OPPORTUNITY:opportunity-1:lineage-1")
+    }
+
     func testMarketClaimLineageHistoryDecodesVersionTimeline() throws {
         let json = """
         {

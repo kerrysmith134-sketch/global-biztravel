@@ -9199,6 +9199,49 @@
         }
       }
     },
+    "/v1/market/workspaces/{workspace_id}/claim-impact-report": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "分析主张新版本对已关联市场判断和商业机会的影响",
+        "operationId": "get_market_claim_impact_report_v1_market_workspaces__workspace_id__claim_impact_report_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketClaimImpactReportRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/market/workspaces/{workspace_id}/claims": {
       "get": {
         "tags": [
@@ -25324,6 +25367,198 @@
           "current_accepted_claim_id"
         ],
         "title": "MarketClaimLineageRead"
+      },
+      "MarketClaimImpactRead": {
+        "properties": {
+          "claim_lineage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Claim Lineage Id"
+          },
+          "latest_claim_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Latest Claim Id"
+          },
+          "latest_claim_version": {
+            "type": "integer",
+            "title": "Latest Claim Version"
+          },
+          "latest_claim_status": {
+            "type": "string",
+            "enum": [
+              "NEEDS_REVIEW",
+              "CONFLICTED",
+              "INSUFFICIENT",
+              "ACCEPTED",
+              "REJECTED",
+              "SUPERSEDED"
+            ],
+            "title": "Latest Claim Status"
+          },
+          "latest_verification_verdict": {
+            "type": "string",
+            "enum": [
+              "PROVISIONAL_SUPPORT",
+              "POTENTIAL_CONTRADICTION",
+              "CONFLICTED",
+              "INSUFFICIENT"
+            ],
+            "title": "Latest Verification Verdict"
+          },
+          "current_accepted_claim_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Accepted Claim Id"
+          },
+          "consumer_type": {
+            "type": "string",
+            "enum": [
+              "INSIGHT",
+              "OPPORTUNITY"
+            ],
+            "title": "Consumer Type"
+          },
+          "consumer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Consumer Id"
+          },
+          "consumer_title": {
+            "type": "string",
+            "title": "Consumer Title"
+          },
+          "consumer_status": {
+            "type": "string",
+            "title": "Consumer Status"
+          },
+          "relation_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "SUPPORTS",
+                "CONTRADICTS",
+                "CONTEXT"
+              ],
+              "title": "Relation Type"
+            },
+            "title": "Relation Types"
+          },
+          "matched_evidence_count": {
+            "type": "integer",
+            "title": "Matched Evidence Count"
+          },
+          "stale_evidence_count": {
+            "type": "integer",
+            "title": "Stale Evidence Count"
+          },
+          "referenced_claim_versions": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Referenced Claim Versions"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "HIGH",
+              "MEDIUM"
+            ],
+            "title": "Severity"
+          },
+          "reason_code": {
+            "type": "string",
+            "enum": [
+              "LATEST_VERSION_CONTRADICTORY",
+              "LATEST_VERSION_INSUFFICIENT",
+              "LATEST_VERSION_PENDING_REVIEW",
+              "CONSUMER_USES_OLDER_EVIDENCE_SNAPSHOT",
+              "NO_ACCEPTED_CLAIM_VERSION"
+            ],
+            "title": "Reason Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "claim_lineage_id",
+          "latest_claim_id",
+          "latest_claim_version",
+          "latest_claim_status",
+          "latest_verification_verdict",
+          "current_accepted_claim_id",
+          "consumer_type",
+          "consumer_id",
+          "consumer_title",
+          "consumer_status",
+          "relation_types",
+          "matched_evidence_count",
+          "stale_evidence_count",
+          "referenced_claim_versions",
+          "severity",
+          "reason_code"
+        ],
+        "title": "MarketClaimImpactRead"
+      },
+      "MarketClaimImpactReportRead": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "analyzed_lineage_count": {
+            "type": "integer",
+            "title": "Analyzed Lineage Count"
+          },
+          "total_lineage_count": {
+            "type": "integer",
+            "title": "Total Lineage Count"
+          },
+          "affected_consumer_count": {
+            "type": "integer",
+            "title": "Affected Consumer Count"
+          },
+          "impact_count": {
+            "type": "integer",
+            "title": "Impact Count"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
+          "impacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketClaimImpactRead"
+            },
+            "title": "Impacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "generated_at",
+          "analyzed_lineage_count",
+          "total_lineage_count",
+          "affected_consumer_count",
+          "impact_count",
+          "truncated"
+        ],
+        "title": "MarketClaimImpactReportRead"
       }
     }
   }

@@ -12,6 +12,8 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
     @Published private(set) var sourceVerificationPlanError: String?
     @Published private(set) var isApplyingSourceVerificationPlan = false
     @Published private(set) var sourceVerificationApplication: MarketSourceVerificationPlanApplication?
+    @Published private(set) var claimImpactReport: MarketClaimImpactReport?
+    @Published private(set) var claimImpactReportError: String?
     @Published private(set) var graph: MarketResearchGraph?
     @Published private(set) var execution: MarketResearchGraphExecution?
     @Published private(set) var isLoading = false
@@ -53,6 +55,13 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
             sourceVerificationPlanError = nil
         } catch {
             sourceVerificationPlanError = error.localizedDescription
+        }
+
+        do {
+            claimImpactReport = try await repository.claimImpactReport(workspaceId: workspace.id)
+            claimImpactReportError = nil
+        } catch {
+            claimImpactReportError = error.localizedDescription
         }
     }
 
@@ -191,6 +200,7 @@ struct MarketResearchWorkspaceDetailView: View {
                 contextSection
                 evidenceIntelligenceSection
                 sourceVerificationPlanSection
+                claimImpactSection
                 if let error = viewModel.errorMessage {
                     DSErrorState(message: error)
                 }
@@ -505,6 +515,91 @@ struct MarketResearchWorkspaceDetailView: View {
                 DSCard {
                     VStack(alignment: .leading, spacing: DS.Spacing.sm) {
                         Text("暂时无法读取来源核验计划")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textPrimary)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        Button("重试") {
+                            Task { await viewModel.load() }
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
+                }
+            }
+        }
+    }
+
+    private var claimImpactSection: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            DSSectionHeader(
+                title: "业务结论影响",
+                subtitle: "主张版本变化后，识别仍引用旧证据的市场判断和商业机会"
+            )
+            if let report = viewModel.claimImpactReport {
+                DSCard {
+                    VStack(alignment: .leading, spacing: DS.Spacing.md) {
+                        HStack(spacing: DS.Spacing.md) {
+                            evidenceMetric("受影响对象", value: report.affectedConsumerCount)
+                            evidenceMetric("影响关系", value: report.impactCount)
+                            evidenceMetric("已分析主张", value: report.analyzedLineageCount)
+                        }
+                        if report.impacts.isEmpty {
+                            Label(
+                                "暂未发现需要重新检查的下游结论",
+                                systemImage: "checkmark.circle"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        } else {
+                            ForEach(report.impacts.prefix(8)) { impact in
+                                VStack(alignment: .leading, spacing: 5) {
+                                    HStack {
+                                        Text(impact.consumerTypeLabel)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                        Spacer()
+                                        Text(impact.severityLabel)
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(
+                                                impact.severity == "HIGH"
+                                                    ? DS.ColorToken.status("WARNING")
+                                                    : DS.ColorToken.info
+                                            )
+                                    }
+                                    Text(impact.consumerTitle)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(DS.ColorToken.textPrimary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Text(
+                                        "\(impact.reasonLabel) · 主张 v\(impact.latestClaimVersion) · "
+                                        + "关联证据 \(impact.matchedEvidenceCount) 条"
+                                        + (impact.staleEvidenceCount > 0
+                                            ? " · 旧证据 \(impact.staleEvidenceCount) 条" : "")
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                }
+                                .padding(.vertical, 5)
+                                if impact.id != report.impacts.prefix(8).last?.id {
+                                    Divider()
+                                }
+                            }
+                        }
+                        if report.truncated {
+                            Text("报告已按安全上限截断（分析 \(report.analyzedLineageCount)/\(report.totalLineageCount) 条主张谱系）。")
+                                .font(.caption2)
+                                .foregroundStyle(DS.ColorToken.status("WARNING"))
+                        }
+                        Text("这是基于同一 Evidence ID 的影响提示，不代表下游结论必然错误；不会自动修改 Insight、机会阶段或已采纳决策。")
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                }
+            } else if let error = viewModel.claimImpactReportError {
+                DSCard {
+                    VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                        Text("暂时无法读取业务结论影响报告")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(DS.ColorToken.textPrimary)
                         Text(error)

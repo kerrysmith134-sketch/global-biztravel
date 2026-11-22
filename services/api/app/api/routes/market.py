@@ -22,6 +22,7 @@ from app.api.pagination import next_cursor as page_cursor
 from app.api.schemas import (
     MarketActivityEventRead,
     MarketClaimLineageRead,
+    MarketClaimImpactReportRead,
     MarketClaimRead,
     MarketClaimReview,
     MarketClaimVerificationAccepted,
@@ -80,6 +81,7 @@ from app.api.schemas import (
 )
 from app.services import (
     market_claim_verification_service,
+    market_claim_impact_service,
     market_context_extraction_service,
     market_entity_service,
     market_evidence_intelligence_service,
@@ -928,6 +930,25 @@ def get_market_claim_history(
         claim_id,
     )
     return MarketClaimLineageRead.model_validate(result)
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/claim-impact-report",
+    response_model=MarketClaimImpactReportRead,
+    summary="分析主张新版本对已关联市场判断和商业机会的影响",
+)
+def get_market_claim_impact_report(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    result = market_claim_impact_service.build_report(
+        session,
+        context.organization_id,
+        workspace_id,
+    )
+    return MarketClaimImpactReportRead.model_validate(result)
 
 
 @router.get(

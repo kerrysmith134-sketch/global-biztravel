@@ -989,3 +989,159 @@ def test_claim_lineage_tracks_same_assertion_across_answer_versions(
         assert [row["status"] for row in body["versions"]] == ["SUPERSEDED", "ACCEPTED"]
     finally:
         cleanup(workspace_ids, workflow_ids, job_ids)
+
+def test_claim_impact_report_flags_insights_and_opportunities_across_claim_versions(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace_ids: list[str] = []
+    workflow_ids: list[str] = []
+    job_ids: list[str] = []
+    try:
+        workspace_id = create_workspace(client)
+        workspace_ids.append(workspace_id)
+        question_id = create_question(client, workspace_id)
+        evidence_one = create_evidence(
+            client,
+            workspace_id,
+            "https://buyer.example.test/procurement-v1",
+            "The buyer published a procurement programme for the relevant category in 2026.",
+        )
+        evidence_two = create_evidence(
+            client,
+            workspace_id,
+            "https://buyer.example.test/procurement-v2",
+            "The buyer updated the procurement programme and revised its delivery schedule.",
+        )
+        answer_one = create_answer(
+            client, workspace_id, question_id, [(evidence_one, "SUPPORTS")]
+        )
+        gateway = FakeGateway({"claims": [], "limitations": []})
+        monkeypatch.setattr("app.workers.tasks.get_gateway", lambda: gateway)
+
+        def set_candidate(evidence_id: str, rationale: str) -> None:
+            gateway.output = {
+                "claims": [{
+                    "claim_text": "The buyer published a procurement programme for the relevant category.",
+                    "claim_type": "FACT",
+                    "scope": {"buyer": "Named buyer", "period": "2026"},
+                    "reasoning": "The assertion is scoped to one named buyer and period.",
+                    "evidence_assessments": [{
+                        "evidence_id": evidence_id,
+                        "relation_type": "SUPPORTS",
+                        "rationale": rationale,
+                    }],
+                }],
+                "limitations": [],
+            }
+
+        set_candidate(evidence_one, "The first source reports the programme.")
+        first = client.post(
+            f"/v1/market/workspaces/{workspace_id}/answers/{answer_one}:verify-claims",
+            headers=headers(),
+        )
+        assert first.status_code == 202, first.text
+        workflow_ids.append(first.json()["workflow_id"])
+        job_ids.append(first.json()["job_id"])
+        execute_job(first.json()["job_id"])
+        first_run = client.get(
+            f"/v1/market/workspaces/{workspace_id}/claim-verification-runs/{first.json()['verification_run_id']}",
+            headers=headers(),
+        )
+        first_claim = first_run.json()["claims"][0]
+        accepted = client.post(
+            f"/v1/market/workspaces/{workspace_id}/claims/{first_claim['id']}:accept",
+            headers=headers(),
+            json={"review_note": "已核对第一版采购来源。"},
+        )
+        assert accepted.status_code == 200, accepted.text
+
+        insight = client.post(
+            f"/v1/market/workspaces/{workspace_id}/insights",
+            headers=headers(),
+            json={
+                "insight_key": "buyer-procurement-signal",
+                "insight_type": "BUYER_SIGNAL",
+                "statement": "The named buyer has an active procurement programme.",
+                "confidence_level": "LOW",
+                "evidence": [{
+                    "evidence_id": evidence_one,
+                    "relation_type": "SUPPORTS",
+                    "rationale": "The original procurement publication.",
+                }],
+            },
+        )
+        assert insight.status_code == 201, insight.text
+
+        opportunity = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities",
+            headers=headers(),
+            json={
+                "title": "Potential procurement opportunity",
+                "description": "A prospecting opportunity based on the buyer publication.",
+            },
+        )
+        assert opportunity.status_code == 201, opportunity.text
+        linked = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity.json()['id']}/evidence",
+            headers=headers(),
+            json={
+                "evidence_id": evidence_one,
+                "relation_type": "SUPPORTS",
+                "rationale": "The opportunity relies on the original buyer publication.",
+            },
+        )
+        assert linked.status_code == 201, linked.text
+
+        answer_two = create_answer(
+            client, workspace_id, question_id, [(evidence_two, "SUPPORTS")]
+        )
+        set_candidate(evidence_two, "The updated source revises the programme details.")
+        second = client.post(
+            f"/v1/market/workspaces/{workspace_id}/answers/{answer_two}:verify-claims",
+            headers=headers(),
+        )
+        assert second.status_code == 202, second.text
+        workflow_ids.append(second.json()["workflow_id"])
+        job_ids.append(second.json()["job_id"])
+        execute_job(second.json()["job_id"])
+
+        report_url = f"/v1/market/workspaces/{workspace_id}/claim-impact-report"
+        pending_report = client.get(report_url, headers=headers())
+        assert pending_report.status_code == 200, pending_report.text
+        pending_body = pending_report.json()
+        assert pending_body["affected_consumer_count"] == 2
+        assert {item["consumer_type"] for item in pending_body["impacts"]} == {
+            "INSIGHT", "OPPORTUNITY"
+        }
+        assert all(
+            item["reason_code"] == "LATEST_VERSION_PENDING_REVIEW"
+            and item["latest_claim_version"] == 2
+            and item["current_accepted_claim_id"] == first_claim["id"]
+            for item in pending_body["impacts"]
+        )
+
+        second_run = client.get(
+            f"/v1/market/workspaces/{workspace_id}/claim-verification-runs/{second.json()['verification_run_id']}",
+            headers=headers(),
+        )
+        second_claim = second_run.json()["claims"][0]
+        accepted_second = client.post(
+            f"/v1/market/workspaces/{workspace_id}/claims/{second_claim['id']}:accept",
+            headers=headers(),
+            json={"review_note": "已人工核对更新后的来源版本。"},
+        )
+        assert accepted_second.status_code == 200, accepted_second.text
+
+        accepted_report = client.get(report_url, headers=headers())
+        assert accepted_report.status_code == 200, accepted_report.text
+        accepted_impacts = accepted_report.json()["impacts"]
+        assert len(accepted_impacts) == 2
+        assert all(
+            item["reason_code"] == "CONSUMER_USES_OLDER_EVIDENCE_SNAPSHOT"
+            and item["stale_evidence_count"] == 1
+            and item["current_accepted_claim_id"] == second_claim["id"]
+            for item in accepted_impacts
+        )
+    finally:
+        cleanup(workspace_ids, workflow_ids, job_ids)
+
