@@ -67,6 +67,56 @@ final class MarketResearchTests: XCTestCase {
         XCTAssertNil(request.body)
     }
 
+    func testMarketClaimHistoryEndpointIsReadOnly() {
+        let request = Endpoints.marketClaimHistory(
+            workspaceId: "workspace-1",
+            claimId: "claim-1"
+        )
+        XCTAssertEqual(request.method, .get)
+        XCTAssertEqual(
+            request.path,
+            "/v1/market/workspaces/workspace-1/claims/claim-1/history"
+        )
+        XCTAssertNil(request.idempotencyKey)
+        XCTAssertNil(request.body)
+    }
+
+    func testMarketClaimLineageHistoryDecodesVersionTimeline() throws {
+        let json = """
+        {
+          "workspace_id": "workspace-1",
+          "claim_lineage_id": "lineage-1",
+          "claim_key": "fingerprint",
+          "latest_version": 2,
+          "current_accepted_claim_id": "claim-1",
+          "versions": [{
+            "id": "claim-1",
+            "answer_id": "answer-1",
+            "verification_run_id": "run-1",
+            "claim_lineage_id": "lineage-1",
+            "version": 1,
+            "statement": "A named buyer published a procurement programme.",
+            "claim_type": "FACT",
+            "verification_verdict": "PROVISIONAL_SUPPORT",
+            "confidence_level": "LOW",
+            "status": "SUPERSEDED",
+            "supporting_evidence_count": 1,
+            "contradicting_evidence_count": 0,
+            "reviewed_at": null,
+            "review_note": "The latest evidence was reviewed.",
+            "created_at": "2026-11-22T08:00:00+00:00"
+          }]
+        }
+        """
+        let history = try DateCoding.decode(
+            MarketClaimLineageHistory.self,
+            fromJSON: json
+        )
+        XCTAssertEqual(history.latestVersion, 2)
+        XCTAssertEqual(history.versions.first?.statusLabel, "已被后续版本替代")
+        XCTAssertEqual(history.currentAcceptedClaimId, "claim-1")
+    }
+
     func testMarketContextEndpointsUseVersionedWorkspaceRoutes() {
         let list = Endpoints.listMarketContexts(workspaceId: "workspace-1")
         XCTAssertEqual(list.method, .get)

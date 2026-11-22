@@ -307,6 +307,68 @@ enum ContractSamples {
   ]
 }
 """
+    static let marketClaimLineageHistory = """
+{
+  "claim_key": "1",
+  "claim_lineage_id": "11111111-1111-1111-1111-111111111111",
+  "current_accepted_claim_id": "11111111-1111-1111-1111-111111111111",
+  "latest_version": 1,
+  "versions": [
+    {
+      "answer_id": "11111111-1111-1111-1111-111111111111",
+      "claim_key": "1",
+      "claim_lineage_id": "11111111-1111-1111-1111-111111111111",
+      "claim_type": "FACT",
+      "confidence_level": "MEDIUM",
+      "confirmed_independent_source_count": 1,
+      "contradicting_evidence_count": 1,
+      "created_at": "2026-11-09T09:00:00+00:00",
+      "distinct_host_count": 1,
+      "evidence": [
+        {
+          "content_hash_snapshot": "1",
+          "evidence": {
+            "canonical_ref": "1",
+            "content_hash": "1",
+            "created_at": "2026-11-09T09:00:00+00:00",
+            "id": "11111111-1111-1111-1111-111111111111",
+            "kind": "1",
+            "observation": "1",
+            "source": "1",
+            "verification_status": "1"
+          },
+          "evidence_id": "11111111-1111-1111-1111-111111111111",
+          "origin_assessment": "SINGLE_SOURCE",
+          "rationale": "1",
+          "relation_type": "SUPPORTS",
+          "source_host": "1",
+          "verification_status_snapshot": "1"
+        }
+      ],
+      "id": "11111111-1111-1111-1111-111111111111",
+      "limitations": [
+        "1"
+      ],
+      "reasoning": "1",
+      "review_note": "1",
+      "reviewed_at": "2026-11-09T09:00:00+00:00",
+      "reviewed_by_user_id": "11111111-1111-1111-1111-111111111111",
+      "scope": {},
+      "statement": "1",
+      "status": "NEEDS_REVIEW",
+      "supersedes_id": "11111111-1111-1111-1111-111111111111",
+      "supporting_evidence_count": 1,
+      "verification_run_id": "11111111-1111-1111-1111-111111111111",
+      "verification_verdict": "PROVISIONAL_SUPPORT",
+      "verified_contradiction_count": 1,
+      "verified_support_count": 1,
+      "version": 1,
+      "workspace_id": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
     static let marketEvidenceIntelligenceReport = """
 {
   "analyzed_evidence_count": 1,
@@ -390,8 +452,10 @@ enum ContractSamples {
     {
       "changed_source_count": 1,
       "claim_id": "11111111-1111-1111-1111-111111111111",
+      "claim_lineage_id": "11111111-1111-1111-1111-111111111111",
       "claim_status": "NEEDS_REVIEW",
       "claim_type": "FACT",
+      "claim_version": 1,
       "contradicting_evidence_count": 1,
       "distinct_content_count": 1,
       "distinct_host_count": 1,

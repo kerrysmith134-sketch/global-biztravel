@@ -428,6 +428,7 @@ def _serialize_claims(
             "verification_run_id": row.verification_run_id,
             "version": row.version,
             "claim_key": row.claim_key,
+            "claim_lineage_id": row.claim_lineage_id,
             "statement": row.statement,
             "claim_type": row.claim_type,
             "scope": row.scope,
@@ -477,6 +478,46 @@ def list_claims(
         )
     )
     return _serialize_claims(session, organization_id, rows)
+
+
+def get_claim_history(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    claim_id: UUID,
+) -> dict[str, Any]:
+    """Read the append-only history for one exact claim fingerprint."""
+    _workspace(session, organization_id, workspace_id)
+    anchor = session.scalars(
+        select(MarketClaim).where(
+            MarketClaim.organization_id == organization_id,
+            MarketClaim.workspace_id == workspace_id,
+            MarketClaim.id == claim_id,
+        )
+    ).one_or_none()
+    if anchor is None:
+        raise NotFound("研究主张不存在或不属于当前 Workspace")
+
+    versions = list(
+        session.scalars(
+            select(MarketClaim)
+            .where(
+                MarketClaim.organization_id == organization_id,
+                MarketClaim.workspace_id == workspace_id,
+                MarketClaim.claim_lineage_id == anchor.claim_lineage_id,
+            )
+            .order_by(MarketClaim.version.asc(), MarketClaim.created_at.asc(), MarketClaim.id)
+        ).all()
+    )
+    current_accepted = next((row.id for row in versions if row.status == "ACCEPTED"), None)
+    return {
+        "workspace_id": workspace_id,
+        "claim_lineage_id": anchor.claim_lineage_id,
+        "claim_key": anchor.claim_key,
+        "latest_version": max((row.version for row in versions), default=0),
+        "current_accepted_claim_id": current_accepted,
+        "versions": _serialize_claims(session, organization_id, versions),
+    }
 
 
 def get_verification_run(
@@ -560,8 +601,8 @@ def review_claim(
     actor_user_id: UUID,
     review_note: str | None,
 ) -> dict[str, Any]:
-    _workspace(session, organization_id, workspace_id)
-    # Lock in a stable order shared with the Worker: answer version first, then Claim.
+    _workspace(session, organization_id, workspace_id, lock=True)
+    # Workspace -> answer -> Claim is the common lock order for lineage writes and reviews.
     candidate = session.scalars(
         select(MarketClaim).where(
             MarketClaim.organization_id == organization_id,
@@ -612,11 +653,12 @@ def review_claim(
             select(MarketClaim).where(
                 MarketClaim.organization_id == organization_id,
                 MarketClaim.workspace_id == workspace_id,
-                MarketClaim.answer_id == row.answer_id,
-                MarketClaim.claim_key == row.claim_key,
+                MarketClaim.claim_lineage_id == row.claim_lineage_id,
                 MarketClaim.status == "ACCEPTED",
                 MarketClaim.id != row.id,
             )
+            .order_by(MarketClaim.version, MarketClaim.id)
+            .with_for_update()
         ).all()
         for item in previous:
             item.status = "SUPERSEDED"

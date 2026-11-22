@@ -363,6 +363,13 @@ enum Endpoints {
         )
     }
 
+    static func marketClaimHistory(workspaceId: String, claimId: String) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/claims/\(claimId)/history"
+        )
+    }
+
     static func listMarketContexts(workspaceId: String) -> APIRequest {
         APIRequest(
             method: .get,

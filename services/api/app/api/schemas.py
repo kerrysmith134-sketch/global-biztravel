@@ -2286,6 +2286,8 @@ class MarketSourceVerificationEvidenceRead(BaseModel):
 
 class MarketSourceVerificationClaimRead(BaseModel):
     claim_id: UUID
+    claim_lineage_id: UUID
+    claim_version: int
     statement: str
     claim_type: Literal["FACT", "ESTIMATE", "OPINION", "FORECAST", "INFERENCE"]
     claim_status: Literal[
@@ -2568,6 +2570,7 @@ class MarketClaimRead(BaseModel):
     workspace_id: UUID
     answer_id: UUID
     verification_run_id: UUID
+    claim_lineage_id: UUID
     version: int
     claim_key: str
     statement: str
@@ -2597,6 +2600,15 @@ class MarketClaimRead(BaseModel):
     review_note: str | None
     created_at: datetime
     evidence: list[MarketClaimEvidenceRead] = Field(default_factory=list)
+
+
+class MarketClaimLineageRead(BaseModel):
+    workspace_id: UUID
+    claim_lineage_id: UUID
+    claim_key: str
+    latest_version: int
+    current_accepted_claim_id: UUID | None
+    versions: list[MarketClaimRead] = Field(default_factory=list)
 
 
 class MarketClaimVerificationAccepted(BaseModel):

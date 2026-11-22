@@ -423,6 +423,8 @@ struct MarketSourceVerificationEvidence: Decodable, Equatable, Identifiable {
 
 struct MarketSourceVerificationClaim: Decodable, Equatable, Identifiable {
     var claimId: String
+    var claimLineageId: String?
+    var claimVersion: Int?
     var statement: String
     var claimType: String
     var claimStatus: String
@@ -451,6 +453,44 @@ struct MarketSourceVerificationClaim: Decodable, Equatable, Identifiable {
         default: return sourceOriginState
         }
     }
+}
+
+struct MarketClaimLineageVersion: Decodable, Equatable, Identifiable {
+    var id: String
+    var answerId: String
+    var verificationRunId: String
+    var claimLineageId: String
+    var version: Int
+    var statement: String
+    var claimType: String
+    var verificationVerdict: String
+    var confidenceLevel: String
+    var status: String
+    var supportingEvidenceCount: Int
+    var contradictingEvidenceCount: Int
+    var reviewedAt: Date?
+    var reviewNote: String?
+    var createdAt: Date
+
+    var statusLabel: String {
+        switch status {
+        case "ACCEPTED": return "当前已采纳"
+        case "SUPERSEDED": return "已被后续版本替代"
+        case "REJECTED": return "已驳回"
+        case "CONFLICTED": return "证据冲突"
+        case "INSUFFICIENT": return "证据不足"
+        default: return "待人工审核"
+        }
+    }
+}
+
+struct MarketClaimLineageHistory: Decodable, Equatable {
+    var workspaceId: String
+    var claimLineageId: String
+    var claimKey: String
+    var latestVersion: Int
+    var currentAcceptedClaimId: String?
+    var versions: [MarketClaimLineageVersion]
 }
 
 struct MarketSourceVerificationAction: Decodable, Equatable, Identifiable {

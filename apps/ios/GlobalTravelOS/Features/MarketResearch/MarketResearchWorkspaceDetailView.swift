@@ -173,6 +173,7 @@ struct MarketResearchWorkspaceDetailView: View {
     @StateObject private var viewModel: MarketResearchWorkspaceDetailViewModel
     @State private var showsCreateQuestion = false
     @State private var confirmsCancelExecution = false
+    @State private var historyClaimID: String?
 
     init(workspace: MarketWorkspace, repository: ResearchRepository) {
         _viewModel = StateObject(
@@ -227,6 +228,20 @@ struct MarketResearchWorkspaceDetailView: View {
                     rationale: rationale,
                     priority: priority,
                     acceptanceCriteria: criteria
+                )
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { historyClaimID != nil },
+                set: { if !$0 { historyClaimID = nil } }
+            )
+        ) {
+            if let claimID = historyClaimID {
+                MarketClaimHistorySheet(
+                    workspaceID: viewModel.workspace.id,
+                    claimID: claimID,
+                    repository: viewModel.repository
                 )
             }
         }
@@ -472,6 +487,14 @@ struct MarketResearchWorkspaceDetailView: View {
                             Text("\(claim.originLabel) · 支持 \(claim.supportingEvidenceCount) · 反驳 \(claim.contradictingEvidenceCount)")
                                 .font(.caption)
                                 .foregroundStyle(DS.ColorToken.textSecondary)
+                            Button {
+                                historyClaimID = claim.claimId
+                            } label: {
+                                Label("查看版本历史", systemImage: "clock.arrow.circlepath")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(DS.ColorToken.brand)
                         }
                         Text("此计划仅生成待办建议，不会自动抓取网页、修改证据或批准主张；不同域名不代表来源独立。")
                             .font(.caption2)
@@ -738,6 +761,130 @@ struct MarketResearchWorkspaceDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+}
+
+
+
+private struct MarketClaimHistorySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let workspaceID: String
+    let claimID: String
+    let repository: ResearchRepository
+
+    @State private var history: MarketClaimLineageHistory?
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: DS.Spacing.md) {
+                    if isLoading {
+                        ProgressView("正在读取主张历史…")
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, DS.Spacing.lg)
+                    } else if let errorMessage {
+                        DSErrorState(message: errorMessage)
+                    } else if let history {
+                        DSCard {
+                            VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                                HStack {
+                                    Text("事实谱系")
+                                        .font(.headline)
+                                        .foregroundStyle(DS.ColorToken.textPrimary)
+                                    Spacer()
+                                    DSBadge(
+                                        text: "共 \(history.latestVersion) 个版本",
+                                        color: DS.ColorToken.info
+                                    )
+                                }
+                                Text("同一精确主张指纹下的跨研究答案历史。新版本不会自动撤销当前采纳结论。")
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                if let acceptedID = history.currentAcceptedClaimId,
+                                   let accepted = history.versions.first(where: { $0.id == acceptedID }) {
+                                    Text("当前有效采纳：v\(accepted.version)")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(DS.ColorToken.status("SUCCESS"))
+                                } else {
+                                    Text("当前没有已采纳版本")
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                }
+                            }
+                        }
+                        ForEach(history.versions) { version in
+                            DSCard {
+                                VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                                    HStack {
+                                        Text("版本 v\(version.version)")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(DS.ColorToken.textPrimary)
+                                        Spacer()
+                                        DSBadge(
+                                            text: version.statusLabel,
+                                            color: statusColor(version.status)
+                                        )
+                                    }
+                                    Text(version.statement)
+                                        .font(.subheadline)
+                                        .foregroundStyle(DS.ColorToken.textPrimary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Text(
+                                        "支持 \(version.supportingEvidenceCount) · " +
+                                        "反驳 \(version.contradictingEvidenceCount) · " +
+                                        "\(version.verificationVerdict)"
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                    Text(
+                                        "答案版本 \(version.answerId) · " +
+                                        version.createdAt.formatted(date: .abbreviated, time: .shortened)
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                    if let reviewNote = version.reviewNote, !reviewNote.isEmpty {
+                                        Text("审核说明：\(reviewNote)")
+                                            .font(.caption)
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(DS.Spacing.lg)
+            }
+            .background(DS.ColorToken.canvas.ignoresSafeArea())
+            .navigationTitle("主张版本历史")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .task {
+                isLoading = true
+                defer { isLoading = false }
+                do {
+                    history = try await repository.claimHistory(
+                        workspaceId: workspaceID,
+                        claimId: claimID
+                    )
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func statusColor(_ status: String) -> Color {
+        switch status {
+        case "ACCEPTED": return DS.ColorToken.status("SUCCESS")
+        case "CONFLICTED", "REJECTED": return DS.ColorToken.status("WARNING")
+        default: return DS.ColorToken.textSecondary
         }
     }
 }

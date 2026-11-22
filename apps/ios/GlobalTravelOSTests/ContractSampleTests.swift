@@ -151,6 +151,15 @@ final class ContractSampleTests: XCTestCase {
         XCTAssertEqual(value.tasks.first?.questionStatus, "OPEN")
     }
 
+    func testMarketClaimLineageHistoryContractSampleDecodes() throws {
+        let value = try decode(
+            MarketClaimLineageHistory.self,
+            ContractSamples.marketClaimLineageHistory
+        )
+        XCTAssertGreaterThanOrEqual(value.latestVersion, 1)
+        XCTAssertEqual(value.versions.first?.claimLineageId, value.claimLineageId)
+    }
+
     func testJobResultContractSampleDecodes() throws {
         _ = try decode(JobResult.self, ContractSamples.jobResult)
     }
