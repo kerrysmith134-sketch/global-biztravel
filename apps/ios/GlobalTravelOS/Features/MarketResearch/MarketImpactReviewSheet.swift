@@ -403,7 +403,10 @@ struct MarketImpactReviewSheet: View {
                         ForEach(history.versions) { version in
                             VStack(alignment: .leading, spacing: DS.Spacing.xs) {
                                 HStack {
-                                    DSBadge(text: "v\(version.version) · \(version.statusLabel)", color: DS.ColorToken.status(version.status))
+                                    DSBadge(
+                                        text: "v\(version.version) · \(version.statusLabel)",
+                                        color: DS.ColorToken.status(version.status)
+                                    )
                                     Spacer()
                                     Text(version.confidenceLevel)
                                         .font(.caption2)
