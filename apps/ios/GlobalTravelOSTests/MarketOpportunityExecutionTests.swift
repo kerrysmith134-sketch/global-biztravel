@@ -96,7 +96,7 @@ final class MarketOpportunityExecutionTests: XCTestCase {
                 "time_window_end": "2026-12-11T11:00:00+03:00",
                 "service_minutes": 60,
                 "priority": 1,
-                "business_value": 125000.00,
+                "business_value": "125000.00",
                 "movement_mode": "GROUND"
               }],
               "candidates": [{
@@ -137,7 +137,9 @@ final class MarketOpportunityExecutionTests: XCTestCase {
             XCTAssertEqual(execution.links.first?.id, "link-1")
             XCTAssertTrue(execution.links.first?.isLinked == true)
             XCTAssertEqual(execution.links.first?.customerName, "Example Buyer")
+        XCTAssertEqual(execution.links.first?.businessValue, Decimal(string: "125000.00"))
             XCTAssertEqual(execution.candidates.first?.visitId, "visit-2")
+        XCTAssertEqual(execution.candidates.first?.businessValue, Decimal(string: "0.00"))
             XCTAssertEqual(execution.candidates.first?.locationLabel, "Mombasa · KE")
         }
 }
