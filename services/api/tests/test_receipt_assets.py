@@ -9,6 +9,7 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.expense_reports import ExpenseReport
 from app.models.expenses import TripExpense
 from app.models.receipts import ReceiptAsset
 from app.models.trip import Trip
@@ -16,6 +17,7 @@ from app.services import receipt_asset_service
 from app.services.receipt_storage_service import FilesystemReceiptStorage
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -212,3 +214,88 @@ def test_receipt_asset_download_rejects_changed_object_bytes(
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+
+
+
+def test_expense_report_pins_receipt_identity_after_source_expense_is_deleted(
+    client: TestClient, private_storage
+) -> None:
+    trip_id = create_trip(client)
+    storage_key: str | None = None
+    report_id: str | None = None
+    asset_id: str | None = None
+    try:
+        uploaded = client.post(
+            f"/v1/trips/{trip_id}/receipt-assets",
+            headers=headers(key=str(uuid.uuid4())),
+            files={"file": ("restaurant-receipt.png", _PNG_1PX, "image/png")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        asset = uploaded.json()
+        asset_id = asset["id"]
+        with org_session(UUID(ORG_A)) as session:
+            stored_asset = session.get(ReceiptAsset, UUID(asset_id))
+            assert stored_asset is not None
+            storage_key = stored_asset.storage_key
+
+        expense = client.post(
+            f"/v1/trips/{trip_id}/expenses",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "category": "MEALS",
+                "amount": "24.80",
+                "currency": "EUR",
+                "occurred_on": datetime.now(UTC).date().isoformat(),
+                "receipt_asset_id": asset_id,
+            },
+        )
+        assert expense.status_code == 201, expense.text
+        expense_id = expense.json()["id"]
+
+        created = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers=headers(key=str(uuid.uuid4())),
+            json={},
+        )
+        assert created.status_code == 201, created.text
+        report_id = created.json()["id"]
+        item = created.json()["items"][0]
+        assert item["receipt_asset_id"] == asset_id
+        assert item["receipt_sha256"] == asset["sha256"]
+        assert item["receipt_original_filename"] == "restaurant-receipt.png"
+        assert item["receipt_mime_type"] == "image/png"
+        assert item["receipt_byte_length"] == len(_PNG_1PX)
+
+        removed = client.delete(f"/v1/expenses/{expense_id}", headers=headers())
+        assert removed.status_code == 204
+        detail = client.get(f"/v1/expense-reports/{report_id}", headers=headers())
+        assert detail.status_code == 200, detail.text
+        snap = detail.json()["items"][0]
+        assert snap["expense_id"] is None
+        assert snap["receipt_asset_id"] == asset_id
+        assert snap["receipt_sha256"] == asset["sha256"]
+
+        with pytest.raises(IntegrityError):
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(ReceiptAsset).where(ReceiptAsset.id == UUID(asset_id))
+                )
+
+        original = client.get(
+            f"/v1/receipt-assets/{asset_id}/content", headers=headers()
+        )
+        assert original.status_code == 200
+        assert original.content == _PNG_1PX
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            if report_id is not None:
+                session.execute(
+                    delete(ExpenseReport).where(ExpenseReport.id == UUID(report_id))
+                )
+            if asset_id is not None:
+                session.execute(
+                    delete(ReceiptAsset).where(ReceiptAsset.id == UUID(asset_id))
+                )
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+        if storage_key is not None:
+            private_storage.delete(storage_key)
