@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（源码 head `0032`；部署库以 `alembic current` 为准）
+## 5. 迁移清单（源码 head `0033`；部署库以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -97,6 +97,8 @@
                            0029_assistant_msg_updated_at
                            0030_traveler_nationality
                            0031_visa_catalog_overrides
+                           0032_market_workspace_foundation
+                           0033_market_question_dependencies
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -267,3 +269,12 @@
 - **数据原则**：原始业务输入单独保存；新版本不覆写旧版本；AI 提取状态初始化为 NOT_STARTED；行业、客户群、产品与服务分类不由代码枚举限制；工作空间状态与研究问题状态不能由普通 PATCH 任意改变。
 - **测试新增**：`services/api/tests/test_market_workspaces.py`，覆盖原始输入保留、创建幂等、版本采纳、用户修订值延续、同 Workspace 父子问题、非法状态写入、活动事件及跨租户 404。
 - **未完成 / 未声称通过**：尚未执行真实 PostgreSQL migration、Alembic metadata drift、RLS 集成测试、全量 pytest、OpenAPI 导出及 iOS 契约样本更新；MarketEntity、Insight、Opportunity、Evidence 扩展与关联表、后台 Research Planner/Agent、iOS UI 仍属于后续 H1/H2 切片。部署数据库是否已升级未核实。
+
+### 2026-11-22 H1.2 完整性补强（仍待环境验证）
+
+- **当前上下文指针**：新增 market_workspaces (organization_id, id, current_context_version) 到 market_context_snapshots (organization_id, workspace_id, version) 的延迟复合外键。工作空间与首个上下文可在同一事务内创建，但事务提交时必须指向真实、同租户、同工作空间的版本。
+- **研究依赖图**：新增 market_question_dependencies，与 parent_question_id 的层级关系分离；数据库约束阻止自依赖、重复边及跨工作空间关联。服务按 Workspace 行锁串行化图变更，并在写入前执行可达性检查，拒绝循环依赖。
+- **API**：新增依赖列表、创建和移除端点；写操作具备幂等键，变更写入 append-only 活动事件。
+- **回归覆盖新增**：PostgreSQL 当前版本外键、依赖边去重、自依赖/循环依赖拒绝、跨 Workspace 拒绝、移除后审计。
+- **未完成 / 未声称通过**：本轮没有可用的仓库工作区执行 PostgreSQL migration、Alembic drift、Ruff、MyPy、pytest 或 OpenAPI 导出；必须在 CI / 开发环境完成后再关闭 H1.2 验收。部署数据库状态仍需 alembic current 核对。
+
