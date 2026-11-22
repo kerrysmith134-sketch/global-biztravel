@@ -366,15 +366,36 @@ def test_workspace_contains_existing_research_plan_workflows(client: TestClient)
             ) == 0
 
     finally:
-        if workflow_id is not None:
-            with org_session(UUID(ORG_A)) as session:
-                session.execute(delete(Evidence).where(Evidence.subject_id == UUID(workflow_id)))
-                session.execute(delete(AgentRun).where(AgentRun.workflow_id == UUID(workflow_id)))
-                session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == UUID(workflow_id)))
+        # Generated ResearchQuestions reference their Planner AgentRun with RESTRICT.
+        # Remove the Workspace-owned graph first, then its run provenance.
         if workspace_id is not None:
             with org_session(UUID(ORG_A)) as session:
                 session.execute(
-                    delete(MarketWorkspace).where(MarketWorkspace.id == UUID(workspace_id))
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == UUID(workspace_id),
+                    )
+                )
+        if workflow_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.subject_type == "RESEARCH_PLAN",
+                        Evidence.subject_id == UUID(workflow_id),
+                    )
+                )
+                session.execute(
+                    delete(AgentRun).where(
+                        AgentRun.organization_id == UUID(ORG_A),
+                        AgentRun.workflow_id == UUID(workflow_id),
+                    )
+                )
+                session.execute(
+                    delete(WorkflowInstance).where(
+                        WorkflowInstance.organization_id == UUID(ORG_A),
+                        WorkflowInstance.id == UUID(workflow_id),
+                    )
                 )
 
 
