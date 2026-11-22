@@ -321,6 +321,11 @@ final class LocalVisitRepository: VisitRepository {
             ],
             payload: try DateCoding.encoder().encode(record)
         )
+        let taskData = try DateCoding.encoder().encode(request.followUpTasks)
+        try database.setKeyValue(
+            "visit-follow-up-source:\(record.id)",
+            value: String(decoding: taskData, as: UTF8.self)
+        )
         return record
     }
 
@@ -596,6 +601,331 @@ final class LocalProactiveRepository: ProactiveRepository {
     }
 }
 
+
+private extension LocalVisitRepository {
+    func storedFollowUpItems(visitId: String) -> [VisitFollowUp] {
+        guard let raw = database.keyValue("visit-follow-ups:\(visitId)"),
+              let data = raw.data(using: .utf8) else { return [] }
+        return (try? DateCoding.decoder().decode([VisitFollowUp].self, from: data)) ?? []
+    }
+
+    func saveFollowUpItems(_ items: [VisitFollowUp], visitId: String) throws {
+        let data = try DateCoding.encoder().encode(items)
+        try database.setKeyValue(
+            "visit-follow-ups:\(visitId)",
+            value: String(decoding: data, as: UTF8.self)
+        )
+        for item in items {
+            try database.setKeyValue("visit-follow-up-visit:\(item.id)", value: visitId)
+        }
+    }
+
+    func localTripId(visitId: String) -> String {
+        let rows = try? database.loadPayloads(
+            table: "visits", where: "id = ?", bindings: [visitId]
+        )
+        guard let payload = rows?.first,
+              let visit = try? DateCoding.decoder().decode(TripVisit.self, from: payload) else {
+            return ""
+        }
+        return visit.tripId ?? ""
+    }
+
+    func localTaskList(_ raw: Any?) -> [FollowUpTask] {
+        guard let values = raw as? [Any] else { return [] }
+        return values.compactMap { value in
+            if let title = value as? String {
+                let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                return clean.isEmpty ? nil : FollowUpTask(title: clean)
+            }
+            guard let object = value as? [String: Any],
+                  let title = object["title"] as? String else { return nil }
+            let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty else { return nil }
+            return FollowUpTask(title: clean, dueDate: object["due_date"] as? String)
+        }
+    }
+
+    func localFollowUpSourceKey(
+        sourceType: String,
+        sourceId: String,
+        sourceIndex: Int
+    ) -> String {
+        "\(sourceType):\(sourceId):\(sourceIndex)"
+    }
+}
+
+extension LocalVisitRepository {
+    func followUps(visitId: String) async throws -> VisitFollowUpFeed {
+        let items = storedFollowUpItems(visitId: visitId)
+        let consumed = Set(items.compactMap { item -> String? in
+            guard item.sourceType != "MANUAL",
+                  let sourceId = item.sourceRecordId ?? item.sourceAgentRunId,
+                  let index = item.sourceIndex else { return nil }
+            return localFollowUpSourceKey(
+                sourceType: item.sourceType,
+                sourceId: sourceId,
+                sourceIndex: index
+            )
+        })
+
+        var suggestions: [VisitFollowUpSuggestion] = []
+        let records = try database.loadPayloads(
+            table: "visit_records", where: "visit_id = ?", bindings: [visitId], order: "id"
+        )
+        for payload in records {
+            guard let record = try? DateCoding.decoder().decode(VisitRecord.self, from: payload),
+                  let rawTasks = database.keyValue("visit-follow-up-source:\(record.id)"),
+                  let taskData = rawTasks.data(using: .utf8),
+                  let tasks = try? DateCoding.decoder().decode([FollowUpTask].self, from: taskData) else {
+                continue
+            }
+            for (index, task) in tasks.enumerated() {
+                let key = localFollowUpSourceKey(
+                    sourceType: "RECORD",
+                    sourceId: record.id,
+                    sourceIndex: index
+                )
+                guard !consumed.contains(key) else { continue }
+                suggestions.append(
+                    VisitFollowUpSuggestion(
+                        sourceType: "RECORD",
+                        sourceRecordId: record.id,
+                        sourceAgentRunId: nil,
+                        sourceIndex: index,
+                        title: task.title,
+                        dueDate: task.dueDate,
+                        sourceCreatedAt: Date()
+                    )
+                )
+            }
+        }
+
+        if let rawMinutes = database.keyValue("minutes:\(visitId)"),
+           let data = rawMinutes.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let draftId = object["id"] as? String {
+            for (index, task) in localTaskList(object["follow_up_tasks"]).enumerated() {
+                let key = localFollowUpSourceKey(
+                    sourceType: "MINUTES_DRAFT",
+                    sourceId: draftId,
+                    sourceIndex: index
+                )
+                guard !consumed.contains(key) else { continue }
+                suggestions.append(
+                    VisitFollowUpSuggestion(
+                        sourceType: "MINUTES_DRAFT",
+                        sourceRecordId: nil,
+                        sourceAgentRunId: draftId,
+                        sourceIndex: index,
+                        title: task.title,
+                        dueDate: task.dueDate,
+                        sourceCreatedAt: Date()
+                    )
+                )
+            }
+        }
+
+        return VisitFollowUpFeed(
+            visitId: visitId,
+            tripId: localTripId(visitId: visitId),
+            items: items.sorted { $0.createdAt > $1.createdAt },
+            suggestions: suggestions
+        )
+    }
+
+    func decideFollowUp(
+        visitId: String,
+        request: VisitFollowUpDecisionRequest
+    ) async throws -> VisitFollowUp {
+        var items = storedFollowUpItems(visitId: visitId)
+        let now = Date()
+        let sourceId = request.sourceRecordId ?? request.sourceAgentRunId
+        let sourceSuggestion: VisitFollowUpSuggestion?
+        if request.sourceType == "MANUAL" {
+            sourceSuggestion = nil
+            guard request.decision == "CREATE",
+                  let title = request.title,
+                  !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw APIError.serverError(
+                    code: "VALIDATION_ERROR", message: "手工跟进必须提供标题",
+                    traceId: nil, details: [:]
+                )
+            }
+        } else {
+            guard let sourceId, let sourceIndex = request.sourceIndex else {
+                throw APIError.serverError(
+                    code: "VALIDATION_ERROR", message: "来源跟进项缺少来源标识",
+                    traceId: nil, details: [:]
+                )
+            }
+            let feed = try await followUps(visitId: visitId)
+            sourceSuggestion = feed.suggestions.first {
+                $0.sourceType == request.sourceType
+                    && ($0.sourceRecordId ?? $0.sourceAgentRunId) == sourceId
+                    && $0.sourceIndex == sourceIndex
+            }
+            guard sourceSuggestion != nil,
+                  request.decision == "ACCEPT" || request.decision == "DISMISS" else {
+                throw APIError.serverError(
+                    code: "NOT_FOUND", message: "该来源跟进建议不存在或已经处理",
+                    traceId: nil, details: [:]
+                )
+            }
+        }
+
+        let sourceTitle = sourceSuggestion?.title ?? request.title ?? ""
+        let title = sourceTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else {
+            throw APIError.serverError(
+                code: "VALIDATION_ERROR", message: "跟进标题不能为空",
+                traceId: nil, details: [:]
+            )
+        }
+        let status = request.decision == "DISMISS" ? "DISMISSED" : "OPEN"
+        let item = VisitFollowUp(
+            id: UUID().uuidString.lowercased(),
+            visitId: visitId,
+            tripId: localTripId(visitId: visitId),
+            sourceType: request.sourceType,
+            sourceRecordId: request.sourceRecordId,
+            sourceAgentRunId: request.sourceAgentRunId,
+            sourceIndex: request.sourceIndex,
+            sourceTitle: sourceSuggestion?.title ?? request.title,
+            sourceDueDate: sourceSuggestion?.dueDate,
+            title: title,
+            dueDate: request.dueDate ?? sourceSuggestion?.dueDate,
+            status: status,
+            createdByUserId: nil,
+            confirmedByUserId: nil,
+            confirmedAt: request.sourceType == "MANUAL" ? nil : now,
+            completedByUserId: nil,
+            completedAt: nil,
+            createdAt: now,
+            updatedAt: now,
+            events: [
+                VisitFollowUpEvent(
+                    id: UUID().uuidString.lowercased(),
+                    eventType: request.decision == "DISMISS" ? "DISMISSED" : (
+                        request.sourceType == "MANUAL" ? "CREATED_MANUAL" : "ACCEPTED"
+                    ),
+                    fromStatus: nil,
+                    toStatus: status,
+                    actorUserId: nil,
+                    note: request.note,
+                    createdAt: now
+                )
+            ]
+        )
+        items.append(item)
+        try saveFollowUpItems(items, visitId: visitId)
+        return item
+    }
+
+    func updateFollowUp(
+        id: String,
+        request: VisitFollowUpUpdateRequest
+    ) async throws -> VisitFollowUp {
+        guard let visitId = database.keyValue("visit-follow-up-visit:\(id)") else {
+            throw APIError.serverError(
+                code: "NOT_FOUND", message: "本地拜访跟进项不存在",
+                traceId: nil, details: [:]
+            )
+        }
+        var items = storedFollowUpItems(visitId: visitId)
+        guard let index = items.firstIndex(where: { $0.id == id }) else {
+            throw APIError.serverError(
+                code: "NOT_FOUND", message: "本地拜访跟进项不存在",
+                traceId: nil, details: [:]
+            )
+        }
+
+        var item = items[index]
+        let oldStatus = item.status
+        let newStatus = request.status ?? oldStatus
+        if newStatus != oldStatus {
+            let allowed: [String: Set<String>] = [
+                "OPEN": ["IN_PROGRESS", "COMPLETED", "DISMISSED"],
+                "IN_PROGRESS": ["OPEN", "COMPLETED", "DISMISSED"],
+                "COMPLETED": ["OPEN"],
+                "DISMISSED": ["OPEN"],
+            ]
+            guard allowed[oldStatus, default: []].contains(newStatus) else {
+                throw APIError.serverError(
+                    code: "CONFLICT", message: "不允许该跟进状态转换",
+                    traceId: nil,
+                    details: ["from_status": .string(oldStatus), "to_status": .string(newStatus)]
+                )
+            }
+            if (oldStatus == "COMPLETED" || oldStatus == "DISMISSED")
+                && newStatus == "OPEN"
+                && (request.note?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                throw APIError.serverError(
+                    code: "VALIDATION_ERROR", message: "重新打开事项时必须填写原因",
+                    traceId: nil, details: [:]
+                )
+            }
+            item.status = newStatus
+            if newStatus == "COMPLETED" {
+                item.completedAt = Date()
+            } else if newStatus == "OPEN" {
+                item.completedAt = nil
+                item.completedByUserId = nil
+            }
+        }
+
+        if let title = request.title {
+            let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty else {
+                throw APIError.serverError(
+                    code: "VALIDATION_ERROR", message: "跟进标题不能为空",
+                    traceId: nil, details: [:]
+                )
+            }
+            item.title = clean
+        }
+        if let dueDate = request.dueDate {
+            item.dueDate = dueDate
+        }
+
+        guard item.status != oldStatus || request.title != nil || request.dueDate != nil else {
+            throw APIError.serverError(
+                code: "VALIDATION_ERROR", message: "至少需要更新状态、标题或截止日期",
+                traceId: nil, details: [:]
+            )
+        }
+
+        let now = Date()
+        item.updatedAt = now
+        let eventType: String
+        if newStatus != oldStatus {
+            switch newStatus {
+            case "IN_PROGRESS": eventType = "STARTED"
+            case "COMPLETED": eventType = "COMPLETED"
+            case "DISMISSED": eventType = "DISMISSED"
+            case "OPEN": eventType = "REOPENED"
+            default: eventType = "UPDATED"
+            }
+        } else {
+            eventType = "UPDATED"
+        }
+        item.events.append(
+            VisitFollowUpEvent(
+                id: UUID().uuidString.lowercased(),
+                eventType: eventType,
+                fromStatus: oldStatus,
+                toStatus: item.status,
+                actorUserId: nil,
+                note: request.note,
+                createdAt: now
+            )
+        )
+        items[index] = item
+        try saveFollowUpItems(items, visitId: visitId)
+        return item
+    }
+}
+
 // MARK: - ActionCenterRepository（P3 充实聚合；P1 返回空视图）
 
 final class LocalActionCenterRepository: ActionCenterRepository {
@@ -645,12 +975,66 @@ final class LocalActionCenterRepository: ActionCenterRepository {
                 )
             )
         }
+        let visitPayloads = (try? database.loadPayloads(table: "visits", order: "id")) ?? []
+        var activeFollowUps: [ActionItem] = []
+        var completedFollowUps: [ActionItem] = []
+        let completedSince = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+        for payload in visitPayloads {
+            guard let visit = try? DateCoding.decoder().decode(TripVisit.self, from: payload),
+                  tripId == nil || visit.tripId == tripId,
+                  let raw = database.keyValue("visit-follow-ups:\(visit.id)"),
+                  let data = raw.data(using: .utf8),
+                  let items = try? DateCoding.decoder().decode([VisitFollowUp].self, from: data) else {
+                continue
+            }
+            for item in items {
+                let isActive = item.status == "OPEN" || item.status == "IN_PROGRESS"
+                let isRecentCompletion = item.status == "COMPLETED"
+                    && (item.completedAt ?? item.updatedAt) >= completedSince
+                guard isActive || isRecentCompletion else { continue }
+                let state = item.status == "IN_PROGRESS" ? "进行中" : (
+                    item.status == "COMPLETED" ? "已完成" : "待开始"
+                )
+                let due = item.dueDate.map { " · 截止 \($0)" } ?? ""
+                let action = ActionItem(
+                    category: isActive ? "PREPARATION" : "COMPLETED",
+                    kind: "VISIT_FOLLOW_UP",
+                    entityId: item.id,
+                    title: item.title,
+                    detail: state + due,
+                    status: item.status,
+                    severity: "LOW",
+                    tripId: item.tripId,
+                    tripName: nil,
+                    actionHint: "打开对应行程，在拜访工作台更新进度",
+                    availableActions: ["OPEN_TRIP"],
+                    createdAt: item.createdAt,
+                    updatedAt: item.updatedAt
+                )
+                if isActive {
+                    activeFollowUps.append(action)
+                } else {
+                    completedFollowUps.append(action)
+                }
+            }
+        }
+
         var sections: [ActionSection] = []
         if !decisionItems.isEmpty {
             sections.append(ActionSection(key: "DECISION", title: "待决定", items: decisionItems))
         }
         if !approvalItems.isEmpty {
             sections.append(ActionSection(key: "APPROVAL", title: "待审批", items: approvalItems))
+        }
+        if !activeFollowUps.isEmpty {
+            sections.append(
+                ActionSection(key: "PREPARATION", title: "待跟进", items: activeFollowUps)
+            )
+        }
+        if !completedFollowUps.isEmpty {
+            sections.append(
+                ActionSection(key: "COMPLETED", title: "已完成", items: completedFollowUps)
+            )
         }
         let total = sections.reduce(0) { $0 + $1.items.count }
         return ActionCenter(generatedAt: Date(), total: total, counts: nil, sections: sections)

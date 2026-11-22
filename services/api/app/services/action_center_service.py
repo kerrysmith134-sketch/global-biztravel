@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.models.crm import CrmSyncJob
 from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.proactive import ProactiveSuggestion
+from app.models.records import VisitFollowUp
 from app.models.reliability import BackgroundJob
 from app.models.trip import Trip, Visit
 
@@ -325,6 +326,60 @@ def _crm_items(
     return prepared, failed
 
 
+
+def _visit_follow_up_items(
+    session: Session, organization_id: str, trip_id: str | None, now: datetime
+) -> tuple[list[ActionItem], list[ActionItem]]:
+    base = select(VisitFollowUp).where(
+        VisitFollowUp.organization_id == organization_id,
+    )
+    if trip_id:
+        base = base.where(VisitFollowUp.trip_id == trip_id)
+    active_rows = list(
+        session.scalars(
+            base.where(VisitFollowUp.status.in_(("OPEN", "IN_PROGRESS")))
+            .order_by(VisitFollowUp.updated_at.desc())
+            .limit(SECTION_LIMIT)
+        )
+    )
+    completed_rows = list(
+        session.scalars(
+            base.where(
+                VisitFollowUp.status == "COMPLETED",
+                VisitFollowUp.completed_at >= now - COMPLETED_WINDOW,
+            )
+            .order_by(VisitFollowUp.completed_at.desc())
+            .limit(SECTION_LIMIT)
+        )
+    )
+
+    def item(row: VisitFollowUp, category: str) -> ActionItem:
+        due = f" · 截止 {row.due_date}" if row.due_date else ""
+        state = "进行中" if row.status == "IN_PROGRESS" else (
+            "已完成" if row.status == "COMPLETED" else "待开始"
+        )
+        return ActionItem(
+            category=category,
+            kind="VISIT_FOLLOW_UP",
+            entity_id=str(row.id),
+            title=row.title,
+            detail=f"{state}{due}",
+            status=row.status,
+            severity="LOW",
+            trip_id=str(row.trip_id),
+            trip_name=None,
+            action_hint="打开对应行程，在原拜访记录中更新进度；不会自动写入 CRM",
+            available_actions=["OPEN_TRIP"],
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    return (
+        [item(row, CATEGORY_PREPARATION) for row in active_rows],
+        [item(row, CATEGORY_COMPLETED) for row in completed_rows],
+    )
+
+
 def build_action_center(
     session: Session,
     organization_id: UUID | str,
@@ -335,7 +390,10 @@ def build_action_center(
     trip_filter = str(trip_id) if trip_id else None
     now = datetime.now(UTC)
 
-    suggestions, completed = _suggestion_items(session, org, trip_filter, now)
+    suggestions, completed_suggestions = _suggestion_items(session, org, trip_filter, now)
+    active_follow_ups, completed_follow_ups = _visit_follow_up_items(
+        session, org, trip_filter, now
+    )
     reports = _report_items(session, org, trip_filter)
     running_jobs, failed_jobs = _job_items(session, org, trip_filter)
     prepared_crm, failed_crm = _crm_items(session, org, trip_filter)
@@ -345,8 +403,8 @@ def build_action_center(
         CATEGORY_APPROVAL: reports,
         CATEGORY_RUNNING: running_jobs,
         CATEGORY_FAILED: failed_jobs + failed_crm,
-        CATEGORY_PREPARATION: prepared_crm,
-        CATEGORY_COMPLETED: completed,
+        CATEGORY_PREPARATION: prepared_crm + active_follow_ups,
+        CATEGORY_COMPLETED: completed_suggestions + completed_follow_ups,
     }
     for items in groups.values():
         items.sort(key=lambda item: item.sort_key())

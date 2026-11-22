@@ -34,6 +34,10 @@ from app.api.schemas import (
     MinutesJobAcceptedRead,
     TripRead,
     VisitBriefingRead,
+    VisitFollowUpDecisionCreate,
+    VisitFollowUpFeedRead,
+    VisitFollowUpRead,
+    VisitFollowUpUpdate,
     VisitRead,
     VisitRecordCreate,
     VisitRecordRead,
@@ -44,6 +48,7 @@ from app.services import (
     minutes_service,
     record_service,
     visit_briefing_service,
+    visit_follow_up_service,
     visit_service,
 )
 
@@ -51,6 +56,88 @@ router = APIRouter(tags=["visits"])
 
 VISIT_RECORDS_ENDPOINT = "POST /v1/visits/{visit_id}/records"
 MINUTES_DRAFT_ENDPOINT = "POST /v1/visits/{visit_id}/minutes:draft"
+
+
+
+VISIT_FOLLOW_UP_CREATE_ENDPOINT = "POST /v1/visits/{visit_id}/follow-ups"
+VISIT_FOLLOW_UP_UPDATE_ENDPOINT = "PATCH /v1/visit-follow-ups/{follow_up_id}"
+
+
+@router.get(
+    "/visits/{visit_id}/follow-ups",
+    response_model=VisitFollowUpFeedRead,
+    summary="读取拜访跟进项与尚待人工决策的来源草稿",
+)
+def get_visit_follow_ups(visit_id: UUID, context: ContextDep, session: SessionDep):
+    require_role(context, ROLE_VIEWER)
+    return visit_follow_up_service.list_follow_ups(
+        session, context.organization_id, visit_id
+    )
+
+
+@router.post(
+    "/visits/{visit_id}/follow-ups",
+    response_model=VisitFollowUpRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="人工确认、驳回或创建拜访跟进项",
+)
+def create_visit_follow_up(
+    visit_id: UUID,
+    payload: VisitFollowUpDecisionCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=VISIT_FOLLOW_UP_CREATE_ENDPOINT,
+        key=idempotency_key,
+        payload={"visit_id": str(visit_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = visit_follow_up_service.create_follow_up(
+        session, context.organization_id, visit_id, payload,
+        actor_user_id=context.user_id,
+    )
+    body = VisitFollowUpRead.model_validate(
+        visit_follow_up_service.read_follow_up(session, context.organization_id, row)
+    )
+    return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
+
+
+@router.patch(
+    "/visit-follow-ups/{follow_up_id}",
+    response_model=VisitFollowUpRead,
+    summary="更新拜访跟进项状态或内容",
+)
+def patch_visit_follow_up(
+    follow_up_id: UUID,
+    payload: VisitFollowUpUpdate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=VISIT_FOLLOW_UP_UPDATE_ENDPOINT,
+        key=idempotency_key,
+        payload={"follow_up_id": str(follow_up_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row = visit_follow_up_service.update_follow_up(
+        session, context.organization_id, follow_up_id, payload,
+        actor_user_id=context.user_id,
+    )
+    body = VisitFollowUpRead.model_validate(
+        visit_follow_up_service.read_follow_up(session, context.organization_id, row)
+    )
+    return guard.finish(status_code=status.HTTP_200_OK, body=body)
 
 
 def record_read(outcome: record_service.RecordOutcome) -> VisitRecordRead:

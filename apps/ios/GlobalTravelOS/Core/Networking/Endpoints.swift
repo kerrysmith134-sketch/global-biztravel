@@ -693,6 +693,35 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/visits/\(visitId)/briefing")
     }
 
+
+    static func visitFollowUps(visitId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/visits/\(visitId)/follow-ups")
+    }
+
+    static func decideVisitFollowUp(
+        visitId: String,
+        request: VisitFollowUpDecisionRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/visits/\(visitId)/follow-ups",
+            body: try DateCoding.encode(request),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func updateVisitFollowUp(
+        id: String,
+        request: VisitFollowUpUpdateRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .patch,
+            path: "/v1/visit-follow-ups/\(id)",
+            body: try DateCoding.encode(request),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func updateVisitObjective(visitId: String, objective: String?) throws -> APIRequest {
         APIRequest(
             method: .patch,

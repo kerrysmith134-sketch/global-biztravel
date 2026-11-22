@@ -899,4 +899,117 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(report.caveats.count, 1)
     }
 
+
+    func testVisitFollowUpFeedDecodesSuggestionsItemsAndAuditHistory() throws {
+        let json = """
+        {
+          "visit_id": "visit-1",
+          "trip_id": "trip-1",
+          "suggestions": [{
+            "source_type": "MINUTES_DRAFT",
+            "source_record_id": null,
+            "source_agent_run_id": "agent-run-1",
+            "source_index": 0,
+            "title": "Send revised commercial offer",
+            "due_date": "2026-12-05",
+            "source_created_at": "2026-11-22T10:00:00+00:00"
+          }],
+          "items": [{
+            "id": "follow-up-1",
+            "visit_id": "visit-1",
+            "trip_id": "trip-1",
+            "source_type": "RECORD",
+            "source_record_id": "record-1",
+            "source_agent_run_id": null,
+            "source_index": 1,
+            "source_title": "Confirm warranty terms",
+            "source_due_date": "2026-12-03",
+            "title": "Confirm warranty terms",
+            "due_date": "2026-12-03",
+            "status": "IN_PROGRESS",
+            "created_by_user_id": "user-1",
+            "confirmed_by_user_id": "user-1",
+            "confirmed_at": "2026-11-22T10:05:00+00:00",
+            "completed_by_user_id": null,
+            "completed_at": null,
+            "created_at": "2026-11-22T10:05:00+00:00",
+            "updated_at": "2026-11-22T10:10:00+00:00",
+            "events": [{
+              "id": "event-1",
+              "event_type": "ACCEPTED",
+              "from_status": null,
+              "to_status": "OPEN",
+              "actor_user_id": "user-1",
+              "note": null,
+              "created_at": "2026-11-22T10:05:00+00:00"
+            }, {
+              "id": "event-2",
+              "event_type": "STARTED",
+              "from_status": "OPEN",
+              "to_status": "IN_PROGRESS",
+              "actor_user_id": "user-1",
+              "note": "开始跟进",
+              "created_at": "2026-11-22T10:10:00+00:00"
+            }]
+          }]
+        }
+        """
+        let feed = try DateCoding.decode(VisitFollowUpFeed.self, fromJSON: json)
+
+        XCTAssertEqual(feed.visitId, "visit-1")
+        XCTAssertEqual(feed.tripId, "trip-1")
+        XCTAssertEqual(feed.suggestions.count, 1)
+        XCTAssertEqual(feed.suggestions[0].sourceLabel, "来自 AI 会议纪要")
+        XCTAssertEqual(feed.suggestions[0].sourceAgentRunId, "agent-run-1")
+        XCTAssertEqual(feed.items.count, 1)
+        XCTAssertEqual(feed.items[0].statusLabel, "进行中")
+        XCTAssertEqual(feed.items[0].sourceLabel, "现场记录")
+        XCTAssertEqual(feed.items[0].events.map(\.eventType), ["ACCEPTED", "STARTED"])
+        XCTAssertEqual(feed.items[0].events.last?.note, "开始跟进")
+    }
+
+    func testVisitFollowUpEndpointsCarryExplicitDecisionAndIdempotency() throws {
+        let suggestion = VisitFollowUpSuggestion(
+            sourceType: "RECORD",
+            sourceRecordId: "record-1",
+            sourceAgentRunId: nil,
+            sourceIndex: 2,
+            title: "Send capacity evidence",
+            dueDate: "2026-12-01",
+            sourceCreatedAt: Date(timeIntervalSince1970: 1_795_000_000)
+        )
+        let accept = try Endpoints.decideVisitFollowUp(
+            visitId: "visit-1",
+            request: .accept(suggestion)
+        )
+        XCTAssertEqual(accept.method, .post)
+        XCTAssertEqual(accept.path, "/v1/visits/visit-1/follow-ups")
+        XCTAssertNotNil(accept.idempotencyKey)
+        let acceptBody = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(accept.body)) as? [String: Any]
+        )
+        XCTAssertEqual(acceptBody["source_type"] as? String, "RECORD")
+        XCTAssertEqual(acceptBody["decision"] as? String, "ACCEPT")
+        XCTAssertEqual(acceptBody["source_record_id"] as? String, "record-1")
+        XCTAssertEqual(acceptBody["source_index"] as? Int, 2)
+
+        let feed = Endpoints.visitFollowUps(visitId: "visit-1")
+        XCTAssertEqual(feed.method, .get)
+        XCTAssertEqual(feed.path, "/v1/visits/visit-1/follow-ups")
+
+        let update = try Endpoints.updateVisitFollowUp(
+            id: "follow-up-1",
+            request: VisitFollowUpUpdateRequest(
+                status: "COMPLETED",
+                title: nil,
+                dueDate: nil,
+                note: nil
+            )
+        )
+        XCTAssertEqual(update.method, .patch)
+        XCTAssertEqual(update.path, "/v1/visit-follow-ups/follow-up-1")
+        XCTAssertNotNil(update.idempotencyKey)
+    }
+
+
 }

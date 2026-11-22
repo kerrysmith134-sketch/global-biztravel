@@ -57,7 +57,7 @@ from app.models.proactive import (
     ProactiveTrigger,
     SuggestionAudit,
 )
-from app.models.records import VisitRecord
+from app.models.records import VisitFollowUp, VisitFollowUpEvent, VisitRecord
 from app.models.reliability import (
     BackgroundJob,
     IdempotencyRecord,
@@ -151,5 +151,7 @@ __all__ = [
     "Visit",
     "VisaCase",
     "VisitRecord",
+    "VisitFollowUp",
+    "VisitFollowUpEvent",
     "WorkflowInstance",
 ]

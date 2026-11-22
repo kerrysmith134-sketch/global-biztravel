@@ -1,9 +1,9 @@
 name: ci
 
-# Versioned concurrency key: release the stale pre-RLS H2.11 runner while still
+# Versioned concurrency key: release the superseded H2.11 runner while still
 # cancelling superseded runs for the same PR/ref on this validation lane.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-11-opportunity-visit-rls
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-12-visit-follow-up
   cancel-in-progress: true
 
 on:
