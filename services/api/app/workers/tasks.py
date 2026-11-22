@@ -897,6 +897,27 @@ def handle_market_claim_verification(
     by_id = {row.id: row for row in evidence_rows}
     if len(by_id) != len(evidence_ids):
         raise TaskFailed("主张核验所引用的 Evidence 已删除或不可用", retryable=False)
+    linked_workflow_ids = set(
+        session.scalars(
+            select(MarketWorkspaceWorkflow.workflow_id).where(
+                MarketWorkspaceWorkflow.organization_id == job.organization_id,
+                MarketWorkspaceWorkflow.workspace_id == workspace_id,
+            )
+        ).all()
+    )
+    for evidence_row in by_id.values():
+        valid_scope = (
+            evidence_row.subject_type == "market_workspace"
+            and evidence_row.subject_id == workspace_id
+        ) or (
+            evidence_row.subject_type == "RESEARCH_PLAN"
+            and evidence_row.subject_id in linked_workflow_ids
+        )
+        if not valid_scope:
+            raise TaskFailed(
+                "主张核验拒绝使用不属于当前 Workspace 或其 ResearchPlan 的 Evidence",
+                retryable=False,
+            )
     ordered_evidence = [by_id[item] for item in evidence_ids]
     content_evidence = [
         row for row in ordered_evidence
@@ -1037,7 +1058,6 @@ def handle_market_claim_verification(
         if row.content_hash:
             digest = row.content_hash.casefold()
             hash_counts[digest] = hash_counts.get(digest, 0) + 1
-    all_host_count = len(host_counts)
 
     created_claims: list[MarketClaim] = []
     seen_claim_keys: set[str] = set()
@@ -1110,10 +1130,10 @@ def handle_market_claim_verification(
             support_rows = [item[0] for item in valid_assessments if item[1] == "SUPPORTS"]
             contradict_rows = [item[0] for item in valid_assessments if item[1] == "CONTRADICTS"]
             linked_rows = [item[0] for item in valid_assessments]
-            host_values = {
-                host for host in (_claim_source_host(row) for row in linked_rows) if host
+            support_hosts = {
+                host for host in (_claim_source_host(row) for row in support_rows) if host
             }
-            distinct_hosts = len(host_values)
+            distinct_hosts = len(support_hosts)
             verified_support_count = sum(
                 1 for row in support_rows if row.verification_status == "VERIFIED"
             )
