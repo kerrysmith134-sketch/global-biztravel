@@ -10,7 +10,7 @@ import pytest
 from app.db import org_session
 from app.main import app
 from app.models.records import VisitFollowUp, VisitFollowUpEvent
-from app.models.trip import Trip, Visit
+from app.models.trip import Trip
 from app.models.workflow import AgentRun
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
@@ -263,8 +263,25 @@ def test_minutes_agent_run_follow_up_is_bound_to_exact_visit(client: TestClient)
         assert suggestion["source_type"] == "MINUTES_DRAFT"
         assert suggestion["source_agent_run_id"] == str(run_id)
 
-        wrong_visit = str(uuid.uuid4())
+        other_visit = client.post(
+            f"/v1/trips/{trip_id}/visits",
+            headers=headers(key=str(uuid.uuid4())),
+            json={"place_id": place_id, "title": "A different customer meeting", "service_minutes": 60},
+        )
+        assert other_visit.status_code == 201, other_visit.text
         rejected = client.post(
+            f"/v1/visits/{other_visit.json()['id']}/follow-ups",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "source_type": "MINUTES_DRAFT",
+                "decision": "ACCEPT",
+                "source_agent_run_id": str(run_id),
+                "source_index": 0,
+            },
+        )
+        assert rejected.status_code == 404, rejected.text
+
+        accepted = client.post(
             f"/v1/visits/{visit_id}/follow-ups",
             headers=headers(key=str(uuid.uuid4())),
             json={
@@ -274,11 +291,15 @@ def test_minutes_agent_run_follow_up_is_bound_to_exact_visit(client: TestClient)
                 "source_index": 0,
             },
         )
-        assert rejected.status_code == 201, rejected.text
-        assert rejected.json()["source_agent_run_id"] == str(run_id)
-        assert rejected.json()["visit_id"] == visit_id
+        assert accepted.status_code == 201, accepted.text
+        follow_up_id = accepted.json()["id"]
+        assert accepted.json()["source_agent_run_id"] == str(run_id)
+        assert accepted.json()["visit_id"] == visit_id
 
         with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(VisitFollowUp).where(VisitFollowUp.id == UUID(follow_up_id))
+            )
             session.execute(delete(AgentRun).where(AgentRun.id == run_id))
     finally:
         with org_session(UUID(ORG_A)) as session:
