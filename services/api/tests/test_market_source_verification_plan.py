@@ -353,11 +353,23 @@ def test_plan_flags_claim_when_new_source_version_appears(
     finally:
         with owner_session(UUID(ORG_A)) as session:
             if workspace_id:
-                # Workspace deletion cascades the Claim -> VerificationRun -> Workflow link graph.
+                workspace_uuid = UUID(workspace_id)
                 session.execute(
-                    delete(MarketWorkspace).where(
-                        MarketWorkspace.organization_id == UUID(ORG_A),
-                        MarketWorkspace.id == UUID(workspace_id),
+                    delete(MarketClaimEvidence).where(
+                        MarketClaimEvidence.organization_id == UUID(ORG_A),
+                        MarketClaimEvidence.workspace_id == workspace_uuid,
+                    )
+                )
+                session.execute(
+                    delete(MarketClaim).where(
+                        MarketClaim.organization_id == UUID(ORG_A),
+                        MarketClaim.workspace_id == workspace_uuid,
+                    )
+                )
+                session.execute(
+                    delete(MarketClaimVerificationRun).where(
+                        MarketClaimVerificationRun.organization_id == UUID(ORG_A),
+                        MarketClaimVerificationRun.workspace_id == workspace_uuid,
                     )
                 )
             if workflow_ids:
@@ -374,7 +386,12 @@ def test_plan_flags_claim_when_new_source_version_appears(
                     )
                 )
             if workspace_id:
-                # Evidence is append-only for the application role but owner cleanup is allowed.
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == UUID(workspace_id),
+                    )
+                )
                 session.execute(
                     delete(Evidence).where(
                         Evidence.organization_id == UUID(ORG_A),
