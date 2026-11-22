@@ -718,9 +718,15 @@ def list_research_plans_for_workspace(
         )
 
     workflow_ids = session.scalars(
-        select(MarketWorkspaceWorkflow.workflow_id)
+        select(WorkflowInstance.id)
+        .join(
+            MarketWorkspaceWorkflow,
+            (MarketWorkspaceWorkflow.organization_id == WorkflowInstance.organization_id)
+            & (MarketWorkspaceWorkflow.workflow_id == WorkflowInstance.id),
+        )
         .where(
-            MarketWorkspaceWorkflow.organization_id == str(organization_id),
+            WorkflowInstance.organization_id == str(organization_id),
+            WorkflowInstance.workflow_type == WORKFLOW_TYPE,
             MarketWorkspaceWorkflow.workspace_id == str(workspace_id),
         )
         .order_by(MarketWorkspaceWorkflow.created_at.desc())
