@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
+    func,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -69,7 +70,9 @@ class ReceiptAsset(Base):
     uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     created_at: Mapped[datetime] = created_at()
 
 
