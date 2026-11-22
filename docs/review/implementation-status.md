@@ -115,7 +115,7 @@
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
 
-- **H2.13 票据资产后端基础（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、按组织与 Trip 授权的上传/下载 API、文件签名嗅探与大小限制、SHA-256、幂等重放，以及 TripExpense 同组织/同 Trip 复合外键。原始对象不公开 storage key；原始二进制不进入 PostgreSQL。新增迁移 `0045_receipt_assets`。当前尚未完成报销快照票据 pin、存储孤儿对账、OCR 对持久化资产的追溯及结账就绪度，CI/数据库验收以本分支最新 Actions 为准。
+- **H2.13 票据资产后端基础（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、按组织与 Trip 授权的上传/下载 API、文件签名嗅探与大小限制、SHA-256、幂等重放，以及 TripExpense 同组织/同 Trip 复合外键。原始对象不公开 storage key；原始二进制不进入 PostgreSQL；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。新增迁移 `0045_receipt_assets`。当前尚未完成报销快照票据 pin、存储孤儿对账、OCR 对持久化资产的追溯及结账就绪度，CI/数据库验收以本分支最新 Actions 为准。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
