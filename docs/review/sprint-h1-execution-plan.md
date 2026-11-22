@@ -444,7 +444,7 @@ MarketInsight 采用 `workspace_id + insight_key + version` 建立版本链；�
 
 问题不再只有 OPEN/IN_PROGRESS/ANSWERED/BLOCKED 状态及一个覆盖式 answer_summary。新增 MarketResearchQuestionAnswer 版本记录和 MarketResearchQuestionAnswerEvidence 显式证据关系。
 
-一次回答从 NEEDS_REVIEW 开始；存在支持与反驳时标记 CONFLICTED。只有 Admin 审核采纳后，Question 才更新为 ANSWERED。采纳必须有 SUPPORTS 且无 CONTRADICTS；independent_sources minimum 通过不同来源 host 数量校验；其他无法自动核验的 acceptance criteria 要求 review_note。修订答案追加版本并保留 supersedes 关系，同一 Question 只允许一个 ACCEPTED 版本。
+一次回答从 NEEDS_REVIEW 开始；存在支持与反驳时标记 CONFLICTED。只有 Admin 审核采纳后，Question 才更新为 ANSWERED。采纳必须有 SUPPORTS 且无 CONTRADICTS；independent_sources minimum 先按 host 与内容指纹合并为候选来源组，重复转载不重复计数；达到数量后仍要求 Admin 人工核查出版方归属/所有权/转载关系并填写 review_note，不把 host 数等同于独立来源确认；其他无法自动核验的 acceptance criteria 同样要求 review_note。修订答案追加版本并保留 supersedes 关系，同一 Question 只允许一个 ACCEPTED 版本。
 
 本切片提供答案版本创建/查询、采纳、驳回 API；它为未来 Research Answer Agent 提供持久化边界，但当前并未声称 LLM 自动综合、全文抓取或事实核验 Agent 已经完成。
 
@@ -477,3 +477,21 @@ H1.7 把 H1.6 的版本化问题答案变成真正的 Agent 执行链：
 - 复用现有 BackgroundJob/WorkflowInstance/AgentRun，不另建队列或 Agent Runtime；抓取失败进入既有重试/DLQ。
 - 内容只存有上限摘录与规范化全文 hash；输出始终 UNVERIFIED，独立事实核验留给 H1.9。
 - Draft PR 及严格 CI 尚待创建/执行；当前不声称迁移、RLS、Alembic drift、pytest 或 iOS 门禁已通过。
+
+
+## 17. H1.9 Claim-level Verification Agent
+
+- 分支：`feat/sprint-h1.9-claim-verification-agent`，直接叠加 H1.8，保留既有 PR 栈。
+- 用户显式选定某一答案版本后触发；不自动抓取、不自动扩展证据集合。
+- LLM 把答案拆成原子主张并为每条主张映射 SUPPORTS / CONTRADICTS / CONTEXT；服务端校验 Evidence ID，重算冲突与暂定结论。
+- 新增 `MarketClaimVerificationRun`、`MarketClaim`、`MarketClaimEvidence`；迁移 `0039_market_claim_verification`；复用现有队列、Workflow、AgentRun 和 LLM Gateway。
+- 不将不同 host 视为来源独立；数据库固定 `confirmed_independent_source_count=0`；Agent 不会产生 VERIFIED，也不会输出 HIGH confidence。
+- 管理员只可人工采纳无反驳且有支持关系的暂定主张；人工采纳不等于事实认证，也不更改原答案版本。
+- 严格 CI 尚待执行，尤其 Alembic metadata drift、PostgreSQL RLS 与全量 pytest。
+
+
+### H1.9 质量修正补充
+
+在 H1.9 中同步修正 H1.6 的答案采纳规则：`independent_sources` 不再把不同 host 直接等同于独立出版方。服务端先按同 host 或相同内容指纹聚类候选来源组；达到数量门槛后，Admin 仍必须人工检查出版方归属、所有权和转载关系并写入审核说明。答案/主张采纳不是自动事实认证。
+
+主张表的 PostgreSQL CHECK 约束还要求 ACCEPTED 必须具备 PROVISIONAL_SUPPORT、至少一条支持 Evidence、零条反驳 Evidence，以及 reviewer/time/nonblank reason。应用角色只拥有审核字段的列级 UPDATE 权限。

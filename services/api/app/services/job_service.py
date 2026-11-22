@@ -35,6 +35,7 @@ JOB_TYPE_FX_SYNC = "fx_rate_sync"
 JOB_TYPE_RESEARCH_EXECUTE = "research_execute"
 JOB_TYPE_MARKET_QUESTION_ANSWER = "market_question_answer_draft"
 JOB_TYPE_MARKET_PAGE_EXTRACT = "market_page_extract"
+JOB_TYPE_MARKET_CLAIM_VERIFY = "market_claim_verify"
 KNOWN_JOB_TYPES = (
     JOB_TYPE_PLAN_TRIP,
     JOB_TYPE_DRAFT_MINUTES,
@@ -43,6 +44,7 @@ KNOWN_JOB_TYPES = (
     JOB_TYPE_RESEARCH_EXECUTE,
     JOB_TYPE_MARKET_QUESTION_ANSWER,
     JOB_TYPE_MARKET_PAGE_EXTRACT,
+    JOB_TYPE_MARKET_CLAIM_VERIFY,
 )
 
 
@@ -341,6 +343,7 @@ def _running_job(session: Session, job_id: UUID | str) -> BackgroundJob:
 __all__ = [
     "JOB_TYPE_FX_SYNC",
     "JOB_TYPE_MARKET_PAGE_EXTRACT",
+    "JOB_TYPE_MARKET_CLAIM_VERIFY",
     "JOB_TYPE_MARKET_QUESTION_ANSWER",
     "JOB_TYPE_PLAN_TRIP",
     "JOB_TYPE_RESEARCH_EXECUTE",

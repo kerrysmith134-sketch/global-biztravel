@@ -2207,6 +2207,109 @@ class MarketSourceExtractionRead(BaseModel):
     updated_at: datetime
 
 
+class MarketClaimEvidenceSourceRead(BaseModel):
+    id: UUID
+    kind: str
+    source: str | None
+    canonical_ref: str | None
+    verification_status: str
+    content_hash: str | None
+    observation: str | None
+    created_at: datetime
+
+
+class MarketClaimEvidenceRead(BaseModel):
+    evidence_id: UUID
+    relation_type: Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"]
+    rationale: str | None
+    source_host: str | None
+    content_hash_snapshot: str | None
+    verification_status_snapshot: str
+    origin_assessment: Literal[
+        "SINGLE_SOURCE",
+        "SAME_HOST",
+        "DUPLICATE_CONTENT",
+        "DISTINCT_HOST_UNCONFIRMED",
+    ]
+    evidence: MarketClaimEvidenceSourceRead
+
+
+class MarketClaimRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    answer_id: UUID
+    verification_run_id: UUID
+    version: int
+    claim_key: str
+    statement: str
+    claim_type: Literal["FACT", "ESTIMATE", "OPINION", "FORECAST", "INFERENCE"]
+    scope: dict[str, Any]
+    reasoning: str | None
+    verification_verdict: Literal[
+        "PROVISIONAL_SUPPORT",
+        "POTENTIAL_CONTRADICTION",
+        "CONFLICTED",
+        "INSUFFICIENT",
+    ]
+    confidence_level: Literal["MEDIUM", "LOW", "INSUFFICIENT"]
+    status: Literal[
+        "NEEDS_REVIEW", "CONFLICTED", "INSUFFICIENT", "ACCEPTED", "REJECTED", "SUPERSEDED"
+    ]
+    supporting_evidence_count: int
+    contradicting_evidence_count: int
+    verified_support_count: int
+    verified_contradiction_count: int
+    distinct_host_count: int
+    confirmed_independent_source_count: int
+    limitations: list[str]
+    supersedes_id: UUID | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
+    review_note: str | None
+    created_at: datetime
+    evidence: list[MarketClaimEvidenceRead] = Field(default_factory=list)
+
+
+class MarketClaimVerificationAccepted(BaseModel):
+    job_id: UUID | None
+    workflow_id: UUID
+    verification_run_id: UUID
+    status: Literal["PENDING", "RUNNING", "COMPLETED"]
+    evidence_count: int
+    reused: bool
+
+
+class MarketClaimVerificationRunRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    answer_id: UUID
+    workflow_id: UUID
+    agent_run_id: UUID | None
+    job_id: UUID | None
+    job_status: str | None
+    status: Literal["QUEUED", "RUNNING", "COMPLETED", "FAILED"]
+    prompt_version: str
+    input_digest: str
+    claim_count: int
+    degraded: bool
+    limitations: list[str]
+    failure_reason: str | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+    claims: list[MarketClaimRead] = Field(default_factory=list)
+
+
+class MarketClaimReview(BaseModel):
+    review_note: str = Field(min_length=1, max_length=3000)
+
+    @model_validator(mode="after")
+    def _review_note_not_blank(self) -> MarketClaimReview:
+        if not self.review_note.strip():
+            raise ValueError("人工审核主张必须填写审核说明")
+        return self
+
+
 class MarketQuestionAnswerGenerationCreate(BaseModel):
     evidence_ids: list[UUID] | None = Field(default=None, max_length=24)
 

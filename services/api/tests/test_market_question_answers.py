@@ -121,7 +121,7 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
             assert response.status_code == 201, response.text
             return response.json()
 
-        # One supporting domain does not meet the question's independent-source criterion.
+        # One candidate source group does not meet the configured source-group threshold.
         version_one = create_answer(
             "There is one specific buyer intent signal, but corroboration is insufficient.",
             [(evidence_one, "SUPPORTS", "A concrete procurement plan is published.")],
@@ -137,6 +137,8 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
         assert not_enough.json()["error"]["details"] == {
             "required_sources": 2,
             "actual_sources": 1,
+            "source_count_basis": "distinct_host_and_content_groups",
+            "independence_confirmed_by_system": False,
         }
 
         # Contradictory evidence puts the answer into CONFLICTED, regardless of support count.
@@ -157,7 +159,7 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
         )
         assert blocked.status_code == 409, blocked.text
 
-        # A clean evidence-backed answer can be accepted by an Admin after review.
+        # A clean evidence-backed answer can be accepted only after explicit human source-independence review.
         version_three = create_answer(
             "Two independent sources support a current purchasing demand signal; budget remains unknown.",
             [
@@ -167,10 +169,19 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
         )
         assert version_three["version"] == 3
         assert version_three["supersedes_id"] == version_two["id"]
+        # Multiple host/content groups are candidates only; a blank review cannot certify independence.
+        no_independence_review = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{version_three['id']}:accept",
+            headers=headers(),
+            json={},
+        )
+        assert no_independence_review.status_code == 409, no_independence_review.text
+        assert no_independence_review.json()["error"]["details"]["manual_independence_review_required"] is True
+
         accepted = client.post(
             f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{version_three['id']}:accept",
             headers=headers(),
-            json={"review_note": "Both sources and the two-source acceptance criterion were reviewed."},
+            json={"review_note": "I manually checked the publishers and their ownership; the sources are independently produced and are not syndicated copies."},
         )
         assert accepted.status_code == 200, accepted.text
         assert accepted.json()["status"] == "ACCEPTED"
@@ -200,7 +211,7 @@ def test_question_answer_versions_require_support_and_human_review(client: TestC
         accepted_four = client.post(
             f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{version_four['id']}:accept",
             headers=headers(),
-            json={"review_note": "Updated answer reviewed against the same two independent sources."},
+            json={"review_note": "I rechecked the publisher ownership and confirmed these two sources are independent rather than syndicated copies."},
         )
         assert accepted_four.status_code == 200, accepted_four.text
         assert accepted_four.json()["status"] == "ACCEPTED"
@@ -340,3 +351,83 @@ def test_question_answer_rejects_cross_workspace_evidence(client: TestClient) ->
                             Evidence.subject_id == UUID(workspace_id),
                         )
                     )
+
+
+def test_duplicate_publications_across_hosts_count_as_one_candidate_source_group(
+    client: TestClient,
+) -> None:
+    workspace_id: str | None = None
+    try:
+        workspace_id = create_workspace(client)
+        question = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions",
+            headers=headers(),
+            json={
+                "question": "Is there independently corroborated demand?",
+                "acceptance_criteria": [
+                    {"kind": "independent_sources", "minimum": 2}
+                ],
+            },
+        )
+        assert question.status_code == 201, question.text
+        question_id = question.json()["id"]
+
+        duplicated_text = "A buyer announced a procurement programme for the target category."
+        first = create_evidence(
+            client,
+            workspace_id,
+            "https://publisher-a.example.test/procurement",
+            duplicated_text,
+        )
+        republished = create_evidence(
+            client,
+            workspace_id,
+            "https://publisher-b.example.org/republication",
+            duplicated_text,
+        )
+        answer = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers",
+            headers=headers(),
+            json={
+                "answer_summary": "Two URLs repeat the same procurement announcement.",
+                "assumptions": [],
+                "unknowns": [],
+                "confidence_level": "LOW",
+                "evidence": [
+                    {"evidence_id": first, "relation_type": "SUPPORTS"},
+                    {"evidence_id": republished, "relation_type": "SUPPORTS"},
+                ],
+            },
+        )
+        assert answer.status_code == 201, answer.text
+
+        accepted = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{answer.json()['id']}:accept",
+            headers=headers(),
+            json={
+                "review_note": "Both URLs contain the exact same syndicated publication."
+            },
+        )
+        assert accepted.status_code == 409, accepted.text
+        assert accepted.json()["error"]["details"] == {
+            "required_sources": 2,
+            "actual_sources": 1,
+            "source_count_basis": "distinct_host_and_content_groups",
+            "independence_confirmed_by_system": False,
+        }
+    finally:
+        if workspace_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == UUID(workspace_id),
+                    )
+                )
+                session.execute(
+                    delete(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.subject_type == "market_workspace",
+                        Evidence.subject_id == UUID(workspace_id),
+                    )
+                )

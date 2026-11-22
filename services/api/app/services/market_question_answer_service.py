@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -335,16 +336,50 @@ def list_answers(
     return _serialize(session, organization_id, rows)
 
 
-def _independent_source_count(evidence_rows: list[Evidence]) -> int:
-    source_keys: set[str] = set()
-    for evidence in evidence_rows:
+def _candidate_source_group_count(evidence_rows: list[Evidence]) -> int:
+    """Count conservative source groups, not independently verified publishers.
+
+    Evidence from one host is one candidate group. Identical content across hosts
+    is also one group (likely syndication/republication). A human must still review
+    publisher ownership and content lineage before treating groups as independent.
+    """
+    parent = list(range(len(evidence_rows)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        root_left, root_right = find(left), find(right)
+        if root_left != root_right:
+            parent[root_right] = root_left
+
+    first_by_host: dict[str, int] = {}
+    first_by_digest: dict[str, int] = {}
+    for index, evidence in enumerate(evidence_rows):
         ref = evidence.canonical_ref or evidence.ref
-        parsed = urlsplit(ref)
-        if parsed.hostname:
-            source_keys.add(parsed.hostname.casefold())
+        try:
+            parsed = urlsplit(ref)
+            host = parsed.hostname.casefold().rstrip(".") if parsed.hostname else ref.casefold()
+        except ValueError:
+            host = ref.casefold()
+        body = str((evidence.payload or {}).get("content") or "")
+        digest = (
+            evidence.content_hash.casefold()
+            if evidence.content_hash
+            else sha256(body.encode("utf-8")).hexdigest()
+        )
+        if host in first_by_host:
+            union(index, first_by_host[host])
         else:
-            source_keys.add(ref.casefold())
-    return len(source_keys)
+            first_by_host[host] = index
+        if digest in first_by_digest:
+            union(index, first_by_digest[digest])
+        else:
+            first_by_digest[digest] = index
+    return len({find(index) for index in range(len(evidence_rows))})
 
 
 def _validate_acceptance_criteria(
@@ -360,11 +395,25 @@ def _validate_acceptance_criteria(
             minimum = criterion.get("minimum", 1)
             if isinstance(minimum, bool) or not isinstance(minimum, int) or minimum < 1:
                 raise Conflict("independent_sources 验收标准必须提供正整数 minimum")
-            actual = _independent_source_count(supporting_evidence)
+            actual = _candidate_source_group_count(supporting_evidence)
             if actual < minimum:
                 raise Conflict(
-                    "支持证据未达到独立来源数量要求",
-                    details={"required_sources": minimum, "actual_sources": actual},
+                    "支持证据的候选来源组数量未达到要求；同一 host 或相同内容只计为一个候选组",
+                    details={
+                        "required_sources": minimum,
+                        "actual_sources": actual,
+                        "source_count_basis": "distinct_host_and_content_groups",
+                        "independence_confirmed_by_system": False,
+                    },
+                )
+            if not (review_note and review_note.strip()):
+                raise Conflict(
+                    "不同 host 及不同内容不能自动证明来源独立；管理员必须人工核查出版方归属、所有权及转载关系，并填写审核说明",
+                    details={
+                        "required_sources": minimum,
+                        "candidate_source_groups": actual,
+                        "manual_independence_review_required": True,
+                    },
                 )
         else:
             if not (review_note and review_note.strip()):

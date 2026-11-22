@@ -1245,6 +1245,310 @@ class MarketWorkspaceTripLink(Base):
     updated_at: Mapped[datetime] = updated_at()
 
 
+
+class MarketClaimVerificationRun(Base):
+    """One explicit, versioned claim-analysis run for a selected answer version."""
+
+    __tablename__ = "market_claim_verification_runs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            ondelete="CASCADE",
+            name="fk_market_claim_verification_run_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "answer_id"],
+            [
+                "market_research_question_answers.organization_id",
+                "market_research_question_answers.workspace_id",
+                "market_research_question_answers.id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_market_claim_verification_run_answer",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "workflow_id"],
+            [
+                "market_workspace_workflows.organization_id",
+                "market_workspace_workflows.workspace_id",
+                "market_workspace_workflows.workflow_id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_claim_verification_run_workflow",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "agent_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_claim_verification_run_agent_run",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "id",
+            name="uq_market_claim_verification_runs_org_workspace_id",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "workflow_id",
+            name="uq_market_claim_verification_runs_workflow",
+        ),
+        CheckConstraint(
+            "status IN ('QUEUED','RUNNING','COMPLETED','FAILED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("length(input_digest) = 64", name="input_digest_length"),
+        CheckConstraint("claim_count >= 0", name="claim_count_nonnegative"),
+        Index(
+            "ix_market_claim_verification_runs_org_answer_created",
+            "organization_id", "workspace_id", "answer_id", "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    answer_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    agent_run_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="QUEUED")
+    prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
+    input_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    degraded: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    limitations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+
+
+class MarketClaim(Base):
+    """Atomic, versioned assertion extracted from one immutable answer version."""
+
+    __tablename__ = "market_claims"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            ondelete="CASCADE",
+            name="fk_market_claim_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "answer_id"],
+            [
+                "market_research_question_answers.organization_id",
+                "market_research_question_answers.workspace_id",
+                "market_research_question_answers.id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_market_claim_answer",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "verification_run_id"],
+            [
+                "market_claim_verification_runs.organization_id",
+                "market_claim_verification_runs.workspace_id",
+                "market_claim_verification_runs.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_claim_verification_run",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "generated_by_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_claim_agent_run",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "answer_id", "supersedes_id"],
+            [
+                "market_claims.organization_id",
+                "market_claims.workspace_id",
+                "market_claims.answer_id",
+                "market_claims.id",
+            ],
+            ondelete="NO ACTION",
+            name="fk_market_claim_supersedes_same_answer",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "id",
+            name="uq_market_claims_org_workspace_id",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "answer_id", "id",
+            name="uq_market_claims_org_workspace_answer_id",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "answer_id", "claim_key", "version",
+            name="uq_market_claims_answer_key_version",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("length(claim_key) = 64", name="claim_key_length"),
+        CheckConstraint("length(btrim(statement)) > 0", name="statement_not_blank"),
+        CheckConstraint(
+            "claim_type IN ('FACT','ESTIMATE','OPINION','FORECAST','INFERENCE')",
+            name="claim_type_allowed",
+        ),
+        CheckConstraint(
+            "status IN ('NEEDS_REVIEW','CONFLICTED','INSUFFICIENT','ACCEPTED','REJECTED','SUPERSEDED')",
+            name="status_allowed",
+        ),
+        CheckConstraint(
+            "verification_verdict IN ('PROVISIONAL_SUPPORT','POTENTIAL_CONTRADICTION','CONFLICTED','INSUFFICIENT')",
+            name="verification_verdict_allowed",
+        ),
+        CheckConstraint(
+            "confidence_level IN ('MEDIUM','LOW','INSUFFICIENT')",
+            name="confidence_allowed",
+        ),
+        CheckConstraint("supporting_evidence_count >= 0", name="support_count_nonnegative"),
+        CheckConstraint("contradicting_evidence_count >= 0", name="contradict_count_nonnegative"),
+        CheckConstraint("verified_support_count >= 0", name="verified_support_count_nonnegative"),
+        CheckConstraint("verified_contradiction_count >= 0", name="verified_contradiction_count_nonnegative"),
+        CheckConstraint("distinct_host_count >= 0", name="distinct_host_count_nonnegative"),
+        CheckConstraint(
+            "confirmed_independent_source_count = 0",
+            name="no_automated_independence_confirmation",
+        ),
+        CheckConstraint(
+            "status NOT IN ('ACCEPTED','REJECTED') OR "
+            "(reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL "
+            "AND length(btrim(coalesce(review_note, ''))) > 0)",
+            name="terminal_review_has_audit_reason",
+        ),
+        CheckConstraint(
+            "status <> 'ACCEPTED' OR "
+            "(verification_verdict = 'PROVISIONAL_SUPPORT' "
+            "AND supporting_evidence_count >= 1 "
+            "AND contradicting_evidence_count = 0 "
+            "AND reviewed_by_user_id IS NOT NULL "
+            "AND reviewed_at IS NOT NULL "
+            "AND length(btrim(coalesce(review_note, ''))) > 0)",
+            name="accepted_requires_supported_claim",
+        ),
+        CheckConstraint("supersedes_id IS NULL OR supersedes_id <> id", name="supersedes_not_self"),
+        Index(
+            "ix_market_claims_org_workspace_answer",
+            "organization_id", "workspace_id", "answer_id", "created_at",
+        ),
+        Index(
+            "ix_market_claims_org_verification_run",
+            "organization_id", "verification_run_id",
+        ),
+        Index(
+            "uq_market_claims_one_accepted_per_key",
+            "organization_id", "workspace_id", "answer_id", "claim_key",
+            unique=True,
+            postgresql_where=text("status = 'ACCEPTED'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    answer_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    verification_run_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    generated_by_run_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    claim_key: Mapped[str] = mapped_column(Text, nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_type: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    reasoning: Mapped[str | None] = mapped_column(Text)
+    verification_verdict: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence_level: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="NEEDS_REVIEW")
+    supporting_evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    contradicting_evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    verified_support_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    verified_contradiction_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    distinct_host_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    confirmed_independent_source_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    limitations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class MarketClaimEvidence(Base):
+    """Claim-to-Evidence relation plus an immutable source-quality snapshot."""
+
+    __tablename__ = "market_claim_evidence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "claim_id"],
+            ["market_claims.organization_id", "market_claims.workspace_id", "market_claims.id"],
+            ondelete="CASCADE",
+            name="fk_market_claim_evidence_claim",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "evidence_id"],
+            ["evidence.organization_id", "evidence.id"],
+            ondelete="RESTRICT",
+            name="fk_market_claim_evidence_evidence",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "assessed_by_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_claim_evidence_agent_run",
+        ),
+        UniqueConstraint(
+            "organization_id", "claim_id", "evidence_id",
+            name="uq_market_claim_evidence_relation",
+        ),
+        CheckConstraint(
+            "relation_type IN ('SUPPORTS','CONTRADICTS','CONTEXT')",
+            name="relation_type_allowed",
+        ),
+        CheckConstraint(
+            "origin_assessment IN ('SINGLE_SOURCE','SAME_HOST','DUPLICATE_CONTENT','DISTINCT_HOST_UNCONFIRMED')",
+            name="origin_assessment_allowed",
+        ),
+        Index(
+            "ix_market_claim_evidence_org_claim",
+            "organization_id", "workspace_id", "claim_id",
+        ),
+        Index(
+            "ix_market_claim_evidence_org_evidence",
+            "organization_id", "evidence_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    claim_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    evidence_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    assessed_by_run_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    relation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    source_host: Mapped[str | None] = mapped_column(Text)
+    content_hash_snapshot: Mapped[str | None] = mapped_column(Text)
+    verification_status_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    origin_assessment: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = created_at()
+
+
+
 __all__ = [
     "MARKET_ACTIVITY_ACTORS",
     "MARKET_CONTEXT_EXTRACTION_STATUSES",
@@ -1257,6 +1561,9 @@ __all__ = [
     "MARKET_OPPORTUNITY_STATUSES",
     "MARKET_EVIDENCE_RELATIONS",
     "MarketActivityEvent",
+    "MarketClaim",
+    "MarketClaimEvidence",
+    "MarketClaimVerificationRun",
     "MarketEntity",
     "MarketEvidenceDerivation",
     "MarketEntityAlias",

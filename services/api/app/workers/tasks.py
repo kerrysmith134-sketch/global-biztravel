@@ -16,10 +16,12 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy import select
@@ -39,6 +41,10 @@ from app.integrations.research_search import (
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
 from app.llm.prompts import (
+    MARKET_CLAIM_VERIFY_PROMPT_VERSION,
+    MARKET_CLAIM_VERIFY_SCHEMA,
+    MARKET_CLAIM_VERIFY_SYSTEM,
+    MARKET_CLAIM_VERIFY_TEMPLATE_ID,
     MARKET_QUESTION_ANSWER_PROMPT_VERSION,
     MARKET_QUESTION_ANSWER_SCHEMA,
     MARKET_QUESTION_ANSWER_SYSTEM,
@@ -46,7 +52,12 @@ from app.llm.prompts import (
 )
 from app.models.market import (
     MarketActivityEvent,
+    MarketClaim,
+    MarketClaimEvidence,
+    MarketClaimVerificationRun,
     MarketEvidenceDerivation,
+    MarketResearchQuestionAnswer,
+    MarketResearchQuestionAnswerEvidence,
     MarketWorkspaceWorkflow,
 )
 from app.models.reliability import BackgroundJob
@@ -57,6 +68,7 @@ from app.services import (
     evidence_service,
     fx_market_service,
     job_service,
+    market_claim_verification_service,
     market_insight_service,
     market_question_answer_agent_service,
     market_question_answer_service,
@@ -797,6 +809,552 @@ def handle_market_question_answer_draft(
     }
 
 
+def _claim_source_host(row: Evidence) -> str | None:
+    reference = row.canonical_ref or row.ref
+    try:
+        host = urlsplit(reference).hostname
+    except ValueError:
+        return None
+    return host.casefold().rstrip(".") if host else None
+
+
+def _claim_evidence_digest(row: Evidence) -> str:
+    if row.content_hash:
+        return row.content_hash.casefold()
+    content = str((row.payload or {}).get("content") or "")
+    return sha256(content.encode("utf-8")).hexdigest()
+def handle_market_claim_verification(
+    session: Session, job: BackgroundJob
+) -> dict[str, Any]:
+    """Extract atomic claims and map each one to only the selected answer Evidence."""
+    payload = job.payload or {}
+    try:
+        workspace_id = UUID(str(payload["workspace_id"]))
+        answer_id = UUID(str(payload["answer_id"]))
+        workflow_id = UUID(str(payload["workflow_id"]))
+        verification_run_id = UUID(str(payload["verification_run_id"]))
+        evidence_ids = [UUID(str(item)) for item in payload.get("evidence_ids") or []]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TaskFailed("主张核验任务载荷无效", retryable=False) from exc
+
+    workflow = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == job.organization_id,
+            WorkflowInstance.id == workflow_id,
+            WorkflowInstance.workflow_type == market_claim_verification_service.WORKFLOW_TYPE,
+        ).with_for_update()
+    ).one_or_none()
+    if workflow is None:
+        raise TaskFailed("主张核验 Workflow 不存在", retryable=False)
+    if workflow.job_id is not None and workflow.job_id != job.id:
+        raise TaskFailed("主张核验任务已被更新的任务取代", retryable=False)
+
+    verification_run = session.scalars(
+        select(MarketClaimVerificationRun).where(
+            MarketClaimVerificationRun.organization_id == job.organization_id,
+            MarketClaimVerificationRun.workspace_id == workspace_id,
+            MarketClaimVerificationRun.id == verification_run_id,
+            MarketClaimVerificationRun.workflow_id == workflow_id,
+        ).with_for_update()
+    ).one_or_none()
+    if verification_run is None:
+        raise TaskFailed("主张核验运行记录不存在", retryable=False)
+
+    answer = session.scalars(
+        select(MarketResearchQuestionAnswer)
+        .where(
+            MarketResearchQuestionAnswer.organization_id == job.organization_id,
+            MarketResearchQuestionAnswer.workspace_id == workspace_id,
+            MarketResearchQuestionAnswer.id == answer_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if answer is None:
+        raise TaskFailed("研究答案版本不存在", retryable=False)
+    if answer.status in {"REJECTED", "SUPERSEDED"}:
+        raise TaskFailed("研究答案版本已驳回或已被替代，不能继续核验", retryable=False)
+
+    answer_links = session.scalars(
+        select(MarketResearchQuestionAnswerEvidence).where(
+            MarketResearchQuestionAnswerEvidence.organization_id == job.organization_id,
+            MarketResearchQuestionAnswerEvidence.workspace_id == workspace_id,
+            MarketResearchQuestionAnswerEvidence.answer_id == answer_id,
+        )
+    ).all()
+    linked_ids = {row.evidence_id for row in answer_links}
+    if not evidence_ids or len(evidence_ids) != len(set(evidence_ids)):
+        raise TaskFailed("主张核验必须提供非空且不重复的 Evidence ID 列表", retryable=False)
+    if not set(evidence_ids).issubset(linked_ids):
+        raise TaskFailed("主张核验输入包含未关联到该答案版本的 Evidence", retryable=False)
+
+    evidence_rows = list(
+        session.scalars(
+            select(Evidence).where(
+                Evidence.organization_id == job.organization_id,
+                Evidence.id.in_(evidence_ids),
+            )
+        ).all()
+    )
+    by_id = {row.id: row for row in evidence_rows}
+    if len(by_id) != len(evidence_ids):
+        raise TaskFailed("主张核验所引用的 Evidence 已删除或不可用", retryable=False)
+    linked_workflow_ids = set(
+        session.scalars(
+            select(MarketWorkspaceWorkflow.workflow_id).where(
+                MarketWorkspaceWorkflow.organization_id == job.organization_id,
+                MarketWorkspaceWorkflow.workspace_id == workspace_id,
+            )
+        ).all()
+    )
+    for evidence_row in by_id.values():
+        valid_scope = (
+            evidence_row.subject_type == "market_workspace"
+            and evidence_row.subject_id == workspace_id
+        ) or (
+            evidence_row.subject_type == "RESEARCH_PLAN"
+            and evidence_row.subject_id in linked_workflow_ids
+        )
+        if not valid_scope:
+            raise TaskFailed(
+                "主张核验拒绝使用不属于当前 Workspace 或其 ResearchPlan 的 Evidence",
+                retryable=False,
+            )
+    ordered_evidence = [by_id[item] for item in evidence_ids]
+    content_evidence = [
+        row for row in ordered_evidence
+        if isinstance((row.payload or {}).get("content"), str)
+        and (row.payload or {}).get("content", "").strip()
+    ]
+    if len(content_evidence) != len(ordered_evidence):
+        raise TaskFailed("主张核验输入中有 Evidence 缺少正文或摘要", retryable=False)
+    actual_digest = market_claim_verification_service.compute_input_digest(
+        answer, content_evidence
+    )
+    if actual_digest != verification_run.input_digest:
+        raise TaskFailed(
+            "入队后的答案或 Evidence 内容/状态发生变化，输入快照校验失败",
+            retryable=False,
+        )
+
+    now = datetime.now(UTC)
+    verification_run.status = "RUNNING"
+    verification_run.started_at = verification_run.started_at or now
+    verification_run.failure_reason = None
+    workflow.status = "RUNNING"
+    workflow.payload = {
+        **(workflow.payload or {}),
+        "verification_status": "RUNNING",
+        "started_at": now.isoformat(),
+    }
+
+    evidence_context: list[dict[str, Any]] = []
+    evidence_by_id: dict[str, Evidence] = {}
+    for row in content_evidence:
+        body = str((row.payload or {}).get("content") or "").strip()
+        evidence_context.append(
+            {
+                "evidence_id": str(row.id),
+                "source_ref": str(row.canonical_ref or row.ref)[:2000],
+                "source_host": _claim_source_host(row),
+                "kind": row.kind,
+                "source": row.source,
+                "published_at": row.published_at.isoformat() if row.published_at else None,
+                "verification_status": row.verification_status or "UNVERIFIED",
+                "content_hash": row.content_hash,
+                "content": body[:4000],
+                "content_truncated": len(body) > 4000,
+            }
+        )
+        evidence_by_id[str(row.id)] = row
+
+    run = AgentRun(
+        organization_id=job.organization_id,
+        workflow_id=workflow.id,
+        agent_type="MARKET_CLAIM_VERIFICATION",
+        status="RUNNING",
+        input={
+            "job_id": str(job.id),
+            "workspace_id": str(workspace_id),
+            "answer_id": str(answer_id),
+            "answer_version": answer.version,
+            "verification_run_id": str(verification_run.id),
+            "evidence_ids": [str(row.id) for row in content_evidence],
+            "prompt_template_id": MARKET_CLAIM_VERIFY_TEMPLATE_ID,
+            "prompt_version": MARKET_CLAIM_VERIFY_PROMPT_VERSION,
+            "input_digest": verification_run.input_digest,
+        },
+    )
+    session.add(run)
+    session.flush()
+    verification_run.agent_run_id = run.id
+
+    fallback: dict[str, Any] = {
+        "claims": [],
+        "limitations": [
+            "LLM Gateway 未能可靠完成主张提取；本次未生成可审核的原子主张。",
+            "网页 Evidence 的来源独立性和事实真实性未由本次运行确认。",
+        ],
+    }
+    variables = {
+        "workspace_id": str(workspace_id),
+        "answer_id": str(answer_id),
+        "answer_version": answer.version,
+        "answer_summary": answer.answer_summary,
+        "answer_assumptions": answer.assumptions or [],
+        "answer_unknowns": answer.unknowns or [],
+        "evidence": evidence_context,
+        "evidence_count": len(evidence_context),
+    }
+    request = LLMRequest(
+        task="market_claim_verify",
+        prompt_template_id=MARKET_CLAIM_VERIFY_TEMPLATE_ID,
+        prompt_version=MARKET_CLAIM_VERIFY_PROMPT_VERSION,
+        variables=variables,
+        schema=MARKET_CLAIM_VERIFY_SCHEMA,
+        fallback=fallback,
+        system=MARKET_CLAIM_VERIFY_SYSTEM,
+        max_tokens=2600,
+        temperature=0.1,
+    )
+    try:
+        response = get_gateway().complete(
+            session,
+            job.organization_id,
+            request,
+            trace_id=str(job.id),
+        )
+    except Exception as exc:  # Gateway failure should use the shared job retry policy.
+        raise TaskFailed(
+            f"主张核验 LLM Gateway 调用失败：{type(exc).__name__}: {exc}",
+            retryable=True,
+        ) from exc
+
+    output = response.output or fallback
+    if response.degraded:
+        output = fallback
+    raw_claims = output.get("claims")
+    raw_claims = raw_claims if isinstance(raw_claims, list) else []
+    raw_limitations = output.get("limitations")
+    limitations = [
+        item.strip()[:1000]
+        for item in raw_limitations[:30]
+        if isinstance(item, str) and item.strip()
+    ] if isinstance(raw_limitations, list) else []
+    if response.degraded:
+        limitations.extend(fallback["limitations"])
+
+    created_claims: list[MarketClaim] = []
+    seen_claim_keys: set[str] = set()
+    excluded_claim_count = 0
+    excluded_assessment_count = 0
+
+    if not response.degraded:
+        for candidate in raw_claims[:30]:
+            if not isinstance(candidate, dict):
+                excluded_claim_count += 1
+                continue
+            statement_value = candidate.get("claim_text")
+            if not isinstance(statement_value, str):
+                excluded_claim_count += 1
+                continue
+            statement = " ".join(statement_value.split()).strip()
+            if not statement or len(statement) > 2000:
+                excluded_claim_count += 1
+                continue
+            normalized = statement.casefold()
+
+            claim_type = str(candidate.get("claim_type") or "INFERENCE").upper()
+            if claim_type not in {"FACT", "ESTIMATE", "OPINION", "FORECAST", "INFERENCE"}:
+                claim_type = "INFERENCE"
+            raw_scope = candidate.get("scope")
+            scope: dict[str, Any] = raw_scope if isinstance(raw_scope, dict) else {}
+            try:
+                scope_json = json.dumps(
+                    scope, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+                )
+                if len(scope_json) > 8000:
+                    raise ValueError("scope too large")
+            except (TypeError, ValueError):
+                scope = {}
+                scope_json = "{}"
+            claim_key_material = json.dumps(
+                {
+                    "statement": normalized,
+                    "claim_type": claim_type,
+                    "scope": json.loads(scope_json),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            claim_key = sha256(claim_key_material.encode("utf-8")).hexdigest()
+            if claim_key in seen_claim_keys:
+                excluded_claim_count += 1
+                continue
+            seen_claim_keys.add(claim_key)
+
+            reasoning = candidate.get("reasoning")
+            reasoning = reasoning.strip()[:2000] if isinstance(reasoning, str) and reasoning.strip() else None
+
+            raw_assessments = candidate.get("evidence_assessments")
+            assessments = raw_assessments if isinstance(raw_assessments, list) else []
+            valid_assessments: list[tuple[Evidence, str, str | None]] = []
+            seen_evidence_ids: set[UUID] = set()
+            for assessment in assessments[:50]:
+                if not isinstance(assessment, dict):
+                    excluded_assessment_count += 1
+                    continue
+                try:
+                    evidence_id = UUID(str(assessment.get("evidence_id")))
+                except (TypeError, ValueError):
+                    excluded_assessment_count += 1
+                    continue
+                relation = str(assessment.get("relation_type") or "").upper()
+                evidence_row = by_id.get(evidence_id)
+                if (
+                    evidence_row is None
+                    or evidence_id in seen_evidence_ids
+                    or relation not in {"SUPPORTS", "CONTRADICTS", "CONTEXT"}
+                    or (
+                        evidence_row.verification_status == "REJECTED"
+                        and relation != "CONTEXT"
+                    )
+                ):
+                    excluded_assessment_count += 1
+                    continue
+                seen_evidence_ids.add(evidence_id)
+                rationale_value = assessment.get("rationale")
+                rationale = (
+                    rationale_value.strip()[:2000]
+                    if isinstance(rationale_value, str) and rationale_value.strip()
+                    else None
+                )
+                valid_assessments.append((evidence_row, relation, rationale))
+
+            support_rows = [item[0] for item in valid_assessments if item[1] == "SUPPORTS"]
+            contradict_rows = [item[0] for item in valid_assessments if item[1] == "CONTRADICTS"]
+            linked_rows = [item[0] for item in valid_assessments]
+            linked_hosts = {
+                host for host in (_claim_source_host(row) for row in linked_rows) if host
+            }
+            support_hosts = {
+                host for host in (_claim_source_host(row) for row in support_rows) if host
+            }
+            linked_distinct_hosts = len(linked_hosts)
+            distinct_hosts = len(support_hosts)
+            claim_host_counts: dict[str, int] = {}
+            claim_hash_counts: dict[str, int] = {}
+            for evidence_row in linked_rows:
+                linked_host = _claim_source_host(evidence_row)
+                if linked_host:
+                    claim_host_counts[linked_host] = claim_host_counts.get(linked_host, 0) + 1
+                linked_digest = _claim_evidence_digest(evidence_row)
+                claim_hash_counts[linked_digest] = claim_hash_counts.get(linked_digest, 0) + 1
+            support_content_digests = {
+                _claim_evidence_digest(row) for row in support_rows
+            }
+            verified_support_count = sum(
+                1 for row in support_rows if row.verification_status == "VERIFIED"
+            )
+            verified_contradiction_count = sum(
+                1 for row in contradict_rows if row.verification_status == "VERIFIED"
+            )
+
+            if support_rows and contradict_rows:
+                verdict = "CONFLICTED"
+                confidence = "INSUFFICIENT"
+                status_value = "CONFLICTED"
+            elif support_rows:
+                verdict = "PROVISIONAL_SUPPORT"
+                confidence = (
+                    "MEDIUM"
+                    if (
+                        verified_support_count == len(support_rows)
+                        and distinct_hosts >= 2
+                        and len(support_content_digests) == len(support_rows)
+                    )
+                    else "LOW"
+                )
+                status_value = "NEEDS_REVIEW"
+            elif contradict_rows:
+                verdict = "POTENTIAL_CONTRADICTION"
+                confidence = "LOW"
+                status_value = "NEEDS_REVIEW"
+            else:
+                verdict = "INSUFFICIENT"
+                confidence = "INSUFFICIENT"
+                status_value = "INSUFFICIENT"
+
+            claim_limitations: list[str] = []
+            unverified_count = sum(
+                1 for row in linked_rows
+                if (row.verification_status or "UNVERIFIED") != "VERIFIED"
+            )
+            if unverified_count:
+                claim_limitations.append(
+                    f"{unverified_count} 条关联 Evidence 尚未达到 VERIFIED 状态。"
+                )
+            if linked_distinct_hosts > 1:
+                claim_limitations.append(
+                    "检测到多个来源主机，但主机不同不能证明出版方或来源彼此独立。"
+                )
+            if len(support_content_digests) < len(support_rows):
+                claim_limitations.append(
+                    "支持该主张的 Evidence 存在相同内容指纹；重复内容不得作为额外佐证。"
+                )
+            linked_hashes = [row.content_hash for row in linked_rows if row.content_hash]
+            if len(linked_hashes) != len(set(linked_hashes)):
+                claim_limitations.append("检测到内容哈希重复的来源，不能重复计为独立佐证。")
+            if not valid_assessments:
+                claim_limitations.append("模型未能映射到任何可用的输入 Evidence。")
+            if confidence == "MEDIUM":
+                claim_limitations.append(
+                    "中置信度仅表示输入 Evidence 状态与主机数量达到最低门槛，不代表已确认来源独立。"
+                )
+            claim_limitations.append(
+                "本次 Agent 结果是待审核的证据映射，不是事实认证；confirmed_independent_source_count 固定为 0。"
+            )
+
+            latest = session.scalars(
+                select(MarketClaim)
+                .where(
+                    MarketClaim.organization_id == job.organization_id,
+                    MarketClaim.workspace_id == workspace_id,
+                    MarketClaim.answer_id == answer_id,
+                    MarketClaim.claim_key == claim_key,
+                )
+                .order_by(MarketClaim.version.desc())
+                .limit(1)
+                .with_for_update()
+            ).one_or_none()
+            version = latest.version + 1 if latest is not None else 1
+            claim = MarketClaim(
+                organization_id=job.organization_id,
+                workspace_id=workspace_id,
+                answer_id=answer_id,
+                verification_run_id=verification_run.id,
+                generated_by_run_id=run.id,
+                version=version,
+                claim_key=claim_key,
+                statement=statement,
+                claim_type=claim_type,
+                scope=scope,
+                reasoning=reasoning,
+                verification_verdict=verdict,
+                confidence_level=confidence,
+                status=status_value,
+                supporting_evidence_count=len(support_rows),
+                contradicting_evidence_count=len(contradict_rows),
+                verified_support_count=verified_support_count,
+                verified_contradiction_count=verified_contradiction_count,
+                distinct_host_count=distinct_hosts,
+                confirmed_independent_source_count=0,
+                limitations=claim_limitations,
+                supersedes_id=latest.id if latest is not None else None,
+            )
+            session.add(claim)
+            session.flush()
+            if latest is not None and latest.status in {"NEEDS_REVIEW", "CONFLICTED", "INSUFFICIENT"}:
+                latest.status = "SUPERSEDED"
+                session.flush()
+
+            for evidence_row, relation, rationale in valid_assessments:
+                host = _claim_source_host(evidence_row)
+                digest = _claim_evidence_digest(evidence_row)
+                if claim_hash_counts.get(digest, 0) > 1:
+                    origin_assessment = "DUPLICATE_CONTENT"
+                elif host and claim_host_counts.get(host, 0) > 1:
+                    origin_assessment = "SAME_HOST"
+                elif linked_distinct_hosts > 1:
+                    origin_assessment = "DISTINCT_HOST_UNCONFIRMED"
+                else:
+                    origin_assessment = "SINGLE_SOURCE"
+                session.add(
+                    MarketClaimEvidence(
+                        organization_id=job.organization_id,
+                        workspace_id=workspace_id,
+                        claim_id=claim.id,
+                        evidence_id=evidence_row.id,
+                        assessed_by_run_id=run.id,
+                        relation_type=relation,
+                        rationale=rationale,
+                        source_host=host,
+                        content_hash_snapshot=digest,
+                        verification_status_snapshot=evidence_row.verification_status or "UNVERIFIED",
+                        origin_assessment=origin_assessment,
+                    )
+                )
+            session.flush()
+            created_claims.append(claim)
+
+    if excluded_claim_count:
+        limitations.append(f"已排除 {excluded_claim_count} 条格式无效或重复的主张。")
+    if excluded_assessment_count:
+        limitations.append(
+            f"已排除 {excluded_assessment_count} 条无法映射到本次输入 Evidence 的关系。"
+        )
+    if not created_claims and not limitations:
+        limitations.append("模型没有提取出可单独核验的原子主张。")
+
+    verification_run.claim_count = len(created_claims)
+    verification_run.degraded = response.degraded
+    verification_run.limitations = limitations
+    verification_run.status = "COMPLETED"
+    verification_run.completed_at = datetime.now(UTC)
+    run.status = "SUCCEEDED"
+    run.finished_at = datetime.now(UTC)
+    run.output = {
+        "verification_run_id": str(verification_run.id),
+        "answer_id": str(answer_id),
+        "claim_count": len(created_claims),
+        "claim_ids": [str(item.id) for item in created_claims],
+        "excluded_claim_count": excluded_claim_count,
+        "excluded_assessment_count": excluded_assessment_count,
+        "degraded": response.degraded,
+        "llm_invocation_id": str(response.invocation_id),
+        "model": response.model,
+        "cached": response.cached,
+        "automatic_independence_confirmations": 0,
+    }
+    workflow.status = "COMPLETED"
+    workflow.payload = {
+        **(workflow.payload or {}),
+        "verification_status": "COMPLETED",
+        "verification_run_id": str(verification_run.id),
+        "agent_run_id": str(run.id),
+        "claim_count": len(created_claims),
+        "degraded": response.degraded,
+        "completed_at": verification_run.completed_at.isoformat(),
+    }
+    session.add(
+        MarketActivityEvent(
+            organization_id=job.organization_id,
+            workspace_id=workspace_id,
+            actor_type="SYSTEM",
+            actor_user_id=None,
+            aggregate_type="market_claim_verification",
+            aggregate_id=verification_run.id,
+            event_type="MARKET_CLAIM_VERIFICATION_COMPLETED",
+            payload={
+                "answer_id": str(answer_id),
+                "claim_count": len(created_claims),
+                "degraded": response.degraded,
+                "automatic_independence_confirmations": 0,
+            },
+        )
+    )
+    session.flush()
+    return {
+        "workspace_id": str(workspace_id),
+        "answer_id": str(answer_id),
+        "workflow_id": str(workflow.id),
+        "verification_run_id": str(verification_run.id),
+        "agent_run_id": str(run.id),
+        "claim_count": len(created_claims),
+        "degraded": response.degraded,
+    }
+
+
 def handle_market_source_page_extraction(
     session: Session, job: BackgroundJob
 ) -> dict[str, Any]:
@@ -1045,6 +1603,7 @@ TASK_HANDLERS: Mapping[str, TaskHandler] = {
     job_service.JOB_TYPE_RESEARCH_EXECUTE: handle_research_execute,
     job_service.JOB_TYPE_MARKET_QUESTION_ANSWER: handle_market_question_answer_draft,
     job_service.JOB_TYPE_MARKET_PAGE_EXTRACT: handle_market_source_page_extraction,
+    job_service.JOB_TYPE_MARKET_CLAIM_VERIFY: handle_market_claim_verification,
 }
 
 
@@ -1059,4 +1618,5 @@ __all__ = [
     "handle_research_execute",
     "handle_market_question_answer_draft",
     "handle_market_source_page_extraction",
+    "handle_market_claim_verification",
 ]

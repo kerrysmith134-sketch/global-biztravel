@@ -491,8 +491,7 @@ paths:
       - visits
       summary: 提交现场拜访记录（LWW，幂等）
       description: '记录现场结果。``client_record_id`` 本身已是幂等键；``Idempotency-Key`` 再保证整次
-
-        HTTP 重试不产生第二次副作用。两者都带时以 ``client_record_id`` 为准——它跨设备重启仍在。'
+HTTP 重试不产生第二次副作用。两者都带时以 ``client_record_id`` 为准——它跨设备重启仍在。'
       operationId: submit_visit_record_v1_visits__visit_id__records_post
       parameters:
       - name: visit_id
@@ -535,8 +534,7 @@ paths:
       - visits
       summary: 生成会议纪要与跟进任务草稿（不发送）
       description: '基于最近一条生效的现场记录起草纪要。草稿写入 ``llm_invocations`` 并返回其 id，
-
-        任何后续动作（发送、建任务）都必须由人确认后走业务接口。'
+任何后续动作（发送、建任务）都必须由人确认后走业务接口。'
       operationId: draft_meeting_minutes_v1_visits__visit_id__minutes_draft_post
       parameters:
       - name: visit_id
@@ -739,8 +737,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/EntryAssessmentRead'
-                title: Response List Entry Assessments V1 Trips  Trip Id  Entry Assessments
-                  Get
+                title: Response List Entry Assessments V1 Trips  Trip Id  Entry Assessments Get
         '422':
           description: Validation Error
           content:
@@ -770,8 +767,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/EntryAssessmentRead'
-                title: Response Refresh Entry Assessments V1 Trips  Trip Id  Entry
-                  Assessments Refresh Post
+                title: Response Refresh Entry Assessments V1 Trips  Trip Id  Entry Assessments Refresh Post
         '422':
           description: Validation Error
           content:
@@ -907,10 +903,8 @@ paths:
       summary: 确认导入（按勾选行号落库）
       description: '把用户勾选的行真正落库。``accepted_row_numbers`` 为空表示"接受全部有效行"。
 
-
-        重复确认同一批次返回 409 ``IMPORT_ALREADY_CONFIRMED``——落库不是幂等操作，
-
-        必须让客户端知道"这次没有产生新数据，是第二次提交"。'
+重复确认同一批次返回 409 ``IMPORT_ALREADY_CONFIRMED``——落库不是幂等操作，
+必须让客户端知道"这次没有产生新数据，是第二次提交"。'
       operationId: confirm_import_v1_trips__trip_id__imports_confirm_post
       parameters:
       - name: trip_id
@@ -1743,8 +1737,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/CustomerPlaceRead'
-                title: Response List Customer Places V1 Customers  Customer Id  Places
-                  Get
+                title: Response List Customer Places V1 Customers  Customer Id  Places Get
         '422':
           description: Validation Error
           content:
@@ -1906,8 +1899,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/CrmSyncJobRead'
-                title: Response List Crm Sync Jobs V1 Trips  Trip Id  Crm Sync Jobs
-                  Get
+                title: Response List Crm Sync Jobs V1 Trips  Trip Id  Crm Sync Jobs Get
         '422':
           description: Validation Error
           content:
@@ -2462,12 +2454,9 @@ paths:
       summary: 从公开行情源同步最新汇率（异步 job；未配置源时任务显式失败）
       description: 'ADR-0033：行情写入同一张 `fx_rates` 表（``source=fx-<provider>``）。
 
-
-        受理即返回 202；真正取数由 Worker 执行 ``fx_rate_sync`` 任务。行情源未配置
-
-        时任务终态 FAILED 并带原因——不伪造数据。幂等键回放受理响应；同一
-
-        ``(org, base, symbols)`` 的在途任务按 dedupe 复用。'
+受理即返回 202；真正取数由 Worker 执行 ``fx_rate_sync`` 任务。行情源未配置
+时任务终态 FAILED 并带原因——不伪造数据。幂等键回放受理响应；同一
+``(org, base, symbols)`` 的在途任务按 dedupe 复用。'
       operationId: sync_fx_rates_v1_fx_rates_sync_post
       parameters:
       - name: Idempotency-Key
@@ -2740,19 +2729,13 @@ paths:
       summary: '激活某一版计划（幂等；If-Match: version）'
       description: '把某一份计划版本扶正为出行生效计划（把旧的生效版本标为 ``SUPERSEDED``）。
 
+与 ``plans:generate`` 的差别：**激活是同步事务，不是异步任务**。改的是状态而非算结果，
+没有不可预期的耗时，因此不排队、不返回 202，用户点完立刻看到出行进入 ``ACTIVE``。
+全部判定（``If-Match`` 乐观并发、计划陈旧、重复激活、并发抢先）都在
+:func:`plan_change_service.activate_plan_version` 里，路由只做权限与组装。
 
-        与 ``plans:generate`` 的差别：**激活是同步事务，不是异步任务**。改的是状态而非算结果，
-
-        没有不可预期的耗时，因此不排队、不返回 202，用户点完立刻看到出行进入 ``ACTIVE``。
-
-        全部判定（``If-Match`` 乐观并发、计划陈旧、重复激活、并发抢先）都在
-
-        :func:`plan_change_service.activate_plan_version` 里，路由只做权限与组装。
-
-
-        ``If-Match`` 建议带上：不带则退化为"最后写入者胜"，并发的两个激活会被行锁串行化，
-
-        后者拿到 409。带上则两者之一必然先拿到 412 而重取，语义更清晰。'
+``If-Match`` 建议带上：不带则退化为"最后写入者胜"，并发的两个激活会被行锁串行化，
+后者拿到 409。带上则两者之一必然先拿到 412 而重取，语义更清晰。'
       operationId: activate_plan_v1_trips__trip_id__plans__plan_version_id__activate_post
       parameters:
       - name: trip_id
@@ -2805,10 +2788,8 @@ paths:
       summary: 两版计划差异对比（只读）
       description: '把路径里那一版（target）与 ``against``（base）摊开来逐拜访对照。
 
-
-        ``against`` 是查询参数而不是路径参数：被比较的对象是输入，要看的是主体，
-
-        这样返回值的主语始终是路径里的那份计划。'
+``against`` 是查询参数而不是路径参数：被比较的对象是输入，要看的是主体，
+这样返回值的主语始终是路径里的那份计划。'
       operationId: diff_plan_v1_trips__trip_id__plans__plan_version_id__diff_get
       parameters:
       - name: trip_id
@@ -3442,8 +3423,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MarketContextRead'
-                title: Response List Contexts V1 Market Workspaces  Workspace Id  Contexts
-                  Get
+                title: Response List Contexts V1 Market Workspaces  Workspace Id  Contexts Get
         '422':
           description: Validation Error
           content:
@@ -3693,8 +3673,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MarketQuestionAnswerRead'
-                title: Response List Market Question Answers V1 Market Workspaces  Workspace
-                  Id  Questions  Question Id  Answers Get
+                title: Response List Market Question Answers V1 Market Workspaces  Workspace Id  Questions  Question Id  Answers Get
         '422':
           description: Validation Error
           content:
@@ -4519,8 +4498,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MarketEntityRead'
-                title: Response Attach Market Opportunity Entities V1 Market Workspaces  Workspace
-                  Id  Opportunities  Opportunity Id  Entities Post
+                title: Response Attach Market Opportunity Entities V1 Market Workspaces  Workspace Id  Opportunities  Opportunity Id  Entities Post
         '422':
           description: Validation Error
           content:
@@ -4749,8 +4727,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MarketWorkspaceTripLinkRead'
-                title: Response List Workspace Trips V1 Market Workspaces  Workspace
-                  Id  Trips Get
+                title: Response List Workspace Trips V1 Market Workspaces  Workspace Id  Trips Get
         '422':
           description: Validation Error
           content:
@@ -4862,8 +4839,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ResearchPlanRead'
-                title: Response List Workspace Research Plans V1 Market Workspaces  Workspace
-                  Id  Research Plans Get
+                title: Response List Workspace Research Plans V1 Market Workspaces  Workspace Id  Research Plans Get
         '422':
           description: Validation Error
           content:
@@ -4902,8 +4878,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MarketActivityEventRead'
-                title: Response List Activity V1 Market Workspaces  Workspace Id  Activity
-                  Get
+                title: Response List Activity V1 Market Workspaces  Workspace Id  Activity Get
         '422':
           description: Validation Error
           content:
@@ -5523,6 +5498,231 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims:
+    post:
+      tags:
+      - market intelligence
+      summary: 启动答案版本的原子主张核验 Agent
+      operationId: enqueue_market_claim_verification_v1_market_workspaces__workspace_id__answers__answer_id__verify_claims_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: answer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Answer Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketClaimVerificationAccepted'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/claim-verification-runs/{verification_run_id}:
+    get:
+      tags:
+      - market intelligence
+      summary: 读取主张核验运行结果及原子主张
+      operationId: get_market_claim_verification_run_v1_market_workspaces__workspace_id__claim_verification_runs__verification_run_id__get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: verification_run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Verification Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketClaimVerificationRunRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/claims:
+    get:
+      tags:
+      - market intelligence
+      summary: 读取 Workspace 的原子研究主张
+      operationId: list_market_claims_v1_market_workspaces__workspace_id__claims_get
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: answer_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Answer Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Limit
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_MarketClaimRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/claims/{claim_id}:accept:
+    post:
+      tags:
+      - market intelligence
+      summary: 人工采纳一条原子研究主张
+      operationId: accept_market_claim_v1_market_workspaces__workspace_id__claims__claim_id__accept_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: claim_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Claim Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketClaimReview'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketClaimRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/market/workspaces/{workspace_id}/claims/{claim_id}:reject:
+    post:
+      tags:
+      - market intelligence
+      summary: 人工驳回一条原子研究主张
+      operationId: reject_market_claim_v1_market_workspaces__workspace_id__claims__claim_id__reject_post
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workspace Id
+      - name: claim_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Claim Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketClaimReview'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketClaimRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     ActionCenterRead:
@@ -5676,8 +5876,8 @@ components:
           default: TRAVELER
         required_approvals:
           type: integer
-          maximum: 10.0
-          minimum: 1.0
+          maximum: 10
+          minimum: 1
           title: Required Approvals
           default: 1
         enabled:
@@ -5791,14 +5991,10 @@ components:
       title: AssistantCardRead
       description: '助手消息里的卡片：服务端算好的事实快照，客户端直接展示。
 
-
-        契约此前写成 ``list[dict]``，但六种卡片（TRIP_STATUS / ACTION_CENTER /
-
-        PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
-
-        ``type``/``title``/``detail`` 必有，``entity_id``/``link`` 用于跳转。
-
-        ``ACTION_RESULT`` 额外带 ``proposal_id``——显式保留，避免契约收紧时丢字段。'
+契约此前写成 ``list[dict]``，但六种卡片（TRIP_STATUS / ACTION_CENTER /
+PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
+``type``/``title``/``detail`` 必有，``entity_id``/``link`` 用于跳转。
+``ACTION_RESULT`` 额外带 ``proposal_id``——显式保留，避免契约收紧时丢字段。'
     AssistantConversationCreate:
       properties:
         trip_id:
@@ -6768,8 +6964,7 @@ components:
       title: CustomerPlaceRead
       description: '客户的一个地址（PRD P0-3：一家企业可有多个地址）。
 
-
-        ``geocode_source``/``geocode_confidence`` 即"信息来源及可信度"——地址坐标从哪来、有多可靠。'
+``geocode_source``/``geocode_confidence`` 即"信息来源及可信度"——地址坐标从哪来、有多可靠。'
     CustomerRead:
       properties:
         id:
@@ -7048,7 +7243,7 @@ components:
         amount:
           anyOf:
           - type: number
-            exclusiveMinimum: 0.0
+            exclusiveMinimum: 0
           - type: string
           title: Amount
         currency:
@@ -7308,8 +7503,8 @@ components:
           title: Payload
         confidence:
           type: number
-          maximum: 1.0
-          minimum: 0.0
+          maximum: 1
+          minimum: 0
           title: Confidence
           default: 0.7
         observed_at:
@@ -7338,10 +7533,8 @@ components:
       title: ExternalSignalCreate
       description: '外部源上报的一条事实。
 
-
-        ``dedupe_key`` 由上报方保证稳定（例如 ``visa_policy:DE:2026-11``）；同一键重推是更新，
-
-        不是新信号。``payload`` 的具体字段由信号类型约定，至少应包含可展示的 ``summary``。'
+``dedupe_key`` 由上报方保证稳定（例如 ``visa_policy:DE:2026-11``）；同一键重推是更新，
+不是新信号。``payload`` 的具体字段由信号类型约定，至少应包含可展示的 ``summary``。'
     ExternalSignalRead:
       properties:
         id:
@@ -7553,7 +7746,7 @@ components:
         rate:
           anyOf:
           - type: number
-            exclusiveMinimum: 0.0
+            exclusiveMinimum: 0
           - type: string
           title: Rate
         as_of:
@@ -7670,10 +7863,8 @@ components:
       title: FxSyncRequest
       description: '行情同步请求：把 `symbols` 的最新行情写进组织 `fx_rates`（ADR-0033）。
 
-
-        ``symbols`` 是显式的管理员意图（同步哪些币种），行情没覆盖的币种进任务结果
-
-        `missing`，绝不伪造。无行情覆盖保证的币种（ECB 目录外）会一直留在缺口里。'
+``symbols`` 是显式的管理员意图（同步哪些币种），行情没覆盖的币种进任务结果
+`missing`，绝不伪造。无行情覆盖保证的币种（ECB 目录外）会一直留在缺口里。'
     GuideWeatherRead:
       properties:
         place_id:
@@ -9640,8 +9831,8 @@ components:
           title: Rationale
         priority:
           type: integer
-          maximum: 5.0
-          minimum: 1.0
+          maximum: 5
+          minimum: 1
           title: Priority
           default: 3
         acceptance_criteria:
@@ -10448,10 +10639,8 @@ components:
       title: MinutesInsightRead
       description: '一条被识别的信息（PRD 页面 07 §8.2）。
 
-
-        ``requires_confirmation`` 是服务端强制的业务规则：除 SUMMARY 外一律 True，
-
-        客户需求/商机信号/交易条件/商业承诺/阶段变化都必须人工核对后才能采信。'
+``requires_confirmation`` 是服务端强制的业务规则：除 SUMMARY 外一律 True，
+客户需求/商机信号/交易条件/商业承诺/阶段变化都必须人工核对后才能采信。'
     MinutesJobAcceptedRead:
       properties:
         job_id:
@@ -10779,15 +10968,15 @@ components:
         lat:
           anyOf:
           - type: number
-            maximum: 90.0
-            minimum: -90.0
+            maximum: 90
+            minimum: -90
           - type: 'null'
           title: Lat
         lon:
           anyOf:
           - type: number
-            maximum: 180.0
-            minimum: -180.0
+            maximum: 180
+            minimum: -180
           - type: 'null'
           title: Lon
       type: object
@@ -10940,14 +11129,10 @@ components:
       title: PlanActivationRead
       description: '``plans/{plan_version_id}:activate`` 的响应。
 
-
-        返回激活**之后**的事实，而不是"请求已接受"：激活是同步的、事务性的（只有求解是异步的），
-
-        响应里给出目标版本、被顶替的上一版、出行状态与两侧的版本号，客户端无需再回查就能更新本地状态。
-
-        ``trip_version`` 与 ``plan_trip_version`` 都回传，是因为二者在激活前后**应当相等**——
-
-        客户端可以据此断言"生效的计划确实基于当前的出行输入"。'
+返回激活**之后**的事实，而不是"请求已接受"：激活是同步的、事务性的（只有求解是异步的），
+响应里给出目标版本、被顶替的上一版、出行状态与两侧的版本号，客户端无需再回查就能更新本地状态。
+``trip_version`` 与 ``plan_trip_version`` 都回传，是因为二者在激活前后**应当相等**——
+客户端可以据此断言"生效的计划确实基于当前的出行输入"。'
     PlanChangeCreate:
       properties:
         base_plan_version_id:
@@ -10956,7 +11141,7 @@ components:
           title: Base Plan Version Id
         base_trip_version:
           type: integer
-          minimum: 1.0
+          minimum: 1
           title: Base Trip Version
         source:
           type: string
@@ -11045,12 +11230,9 @@ components:
       title: PlanGenerateRead
       description: '``plans:generate`` 的受理响应。
 
-
-        返回 **202 + job_id** 而不是计划本身：求解要走 OR-Tools，耗时不可预期，不能把 HTTP 请求
-
-        挂在那里等。客户端拿 ``job_id`` 去轮询 ``GET /v1/jobs/{job_id}``，或等出行状态变化。
-
-        ``reused=true`` 表示这次请求复用了已经在途的同一任务（同一出行同一版本重复点了按钮）。'
+返回 **202 + job_id** 而不是计划本身：求解要走 OR-Tools，耗时不可预期，不能把 HTTP 请求
+挂在那里等。客户端拿 ``job_id`` 去轮询 ``GET /v1/jobs/{job_id}``，或等出行状态变化。
+``reused=true`` 表示这次请求复用了已经在途的同一任务（同一出行同一版本重复点了按钮）。'
     PlanStopDeltaRead:
       properties:
         visit_id:
@@ -11348,10 +11530,8 @@ components:
       title: PlanUnplacedRead
       description: '未排进计划的拜访（求解器没放下 + 输入阶段就被排除，用 ``source`` 区分）。
 
-
-        契约此前写成 ``list[dict]``，实际结构固定（见 ``planning_service._unplaced_payload``）：
-
-        客户端要按 ``visit_id`` 回到具体拜访，靠 ``reason`` 解释为什么没排上。'
+契约此前写成 ``list[dict]``，实际结构固定（见 ``planning_service._unplaced_payload``）：
+客户端要按 ``visit_id`` 回到具体拜访，靠 ``reason`` 解释为什么没排上。'
     PlanVersionDetailRead:
       properties:
         id:
@@ -11603,10 +11783,8 @@ components:
       title: PlanVersionDiffRead
       description: '``plans/{plan_version_id}:diff`` 的响应。
 
-
-        以路径里那份计划为主语（target），``against`` 为基准（base）。``summary`` 是各变更类型的
-
-        计数（键为小写变更名 + ``total``），供客户端一句话概括"改了多少"。'
+以路径里那份计划为主语（target），``against`` 为基准（base）。``summary`` 是各变更类型的
+计数（键为小写变更名 + ``total``），供客户端一句话概括"改了多少"。'
     PlanVersionRead:
       properties:
         id:
@@ -12380,10 +12558,8 @@ components:
       title: SuggestionFeedRead
       description: '``GET /v1/proactive/suggestions`` 的分页壳。
 
-
-        与通用 ``Page`` 不同，这个列表额外携带"今日打扰额度"——客户端 Today 页要同时展示
-
-        "还剩几次提醒"，把它放进同一响应可以少一次往返。'
+与通用 ``Page`` 不同，这个列表额外携带"今日打扰额度"——客户端 Today 页要同时展示
+"还剩几次提醒"，把它放进同一响应可以少一次往返。'
     SyncItemRequest:
       properties:
         item_id:
@@ -12559,21 +12735,21 @@ components:
         max_trip_budget:
           anyOf:
           - type: number
-            minimum: 0.0
+            minimum: 0
           - type: string
           - type: 'null'
           title: Max Trip Budget
         max_plan_cost:
           anyOf:
           - type: number
-            minimum: 0.0
+            minimum: 0
           - type: string
           - type: 'null'
           title: Max Plan Cost
         min_advance_booking_days:
           anyOf:
           - type: integer
-            minimum: 0.0
+            minimum: 0
           - type: 'null'
           title: Min Advance Booking Days
         allowed_countries:
@@ -12668,21 +12844,21 @@ components:
         max_trip_budget:
           anyOf:
           - type: number
-            minimum: 0.0
+            minimum: 0
           - type: string
           - type: 'null'
           title: Max Trip Budget
         max_plan_cost:
           anyOf:
           - type: number
-            minimum: 0.0
+            minimum: 0
           - type: string
           - type: 'null'
           title: Max Plan Cost
         min_advance_booking_days:
           anyOf:
           - type: integer
-            minimum: 0.0
+            minimum: 0
           - type: 'null'
           title: Min Advance Booking Days
         allowed_countries:
@@ -12753,10 +12929,10 @@ components:
           title: Notes
         confidence:
           type: number
-          maximum: 1.0
-          minimum: 0.0
+          maximum: 1
+          minimum: 0
           title: Confidence
-          default: 1.0
+          default: 1
       type: object
       title: TravelerProfileUpdate
     TripCreate:
@@ -12805,7 +12981,7 @@ components:
         budget_amount:
           anyOf:
           - type: number
-            minimum: 0.0
+            minimum: 0
           - type: string
           - type: 'null'
           title: Budget Amount
@@ -12962,10 +13138,8 @@ components:
       title: TripOutcomeRead
       description: '出差结果分析与客户机会复盘（PRD P1）。
 
-
-        只读聚合：拜访结果、费用计划 vs 实际、纪要分类洞察与商机信号。
-
-        所有"机会"都标注 requires_confirmation=True——不得当作已确认事实。'
+只读聚合：拜访结果、费用计划 vs 实际、纪要分类洞察与商机信号。
+所有"机会"都标注 requires_confirmation=True——不得当作已确认事实。'
     TripRead:
       properties:
         id:
@@ -13111,7 +13285,7 @@ components:
         budget_amount:
           anyOf:
           - type: number
-            minimum: 0.0
+            minimum: 0
           - type: string
           - type: 'null'
           title: Budget Amount
@@ -13396,8 +13570,8 @@ components:
           title: Objective
         service_minutes:
           type: integer
-          maximum: 1440.0
-          exclusiveMinimum: 0.0
+          maximum: 1440
+          exclusiveMinimum: 0
           title: Service Minutes
           default: 60
         time_window_start:
@@ -13414,14 +13588,14 @@ components:
           title: Time Window End
         priority:
           type: integer
-          maximum: 3.0
-          minimum: 1.0
+          maximum: 3
+          minimum: 1
           title: Priority
           default: 2
         business_value:
           anyOf:
           - type: number
-            minimum: 0.0
+            minimum: 0
           - type: string
           title: Business Value
           default: '0'
@@ -13587,12 +13761,9 @@ components:
       title: VisitRecordCreate
       description: '``POST /v1/visits/{visit_id}/records`` 请求体。
 
-
-        ``client_record_id`` 是客户端生成并持久化的幂等键（离线队列的 item id 与它相同）。
-
-        ``client_updated_at`` 是 LWW 冲突判定的依据，必须由客户端给出；服务端收到的时间
-
-        只用于审计，不参与"谁后写"的判断。'
+``client_record_id`` 是客户端生成并持久化的幂等键（离线队列的 item id 与它相同）。
+``client_updated_at`` 是 LWW 冲突判定的依据，必须由客户端给出；服务端收到的时间
+只用于审计，不参与"谁后写"的判断。'
     VisitRecordRead:
       properties:
         id:
@@ -13660,8 +13831,8 @@ components:
         service_minutes:
           anyOf:
           - type: integer
-            maximum: 1440.0
-            exclusiveMinimum: 0.0
+            maximum: 1440
+            exclusiveMinimum: 0
           - type: 'null'
           title: Service Minutes
         time_window_start:
@@ -13679,14 +13850,14 @@ components:
         priority:
           anyOf:
           - type: integer
-            maximum: 3.0
-            minimum: 1.0
+            maximum: 3
+            minimum: 1
           - type: 'null'
           title: Priority
         business_value:
           anyOf:
           - type: number
-            minimum: 0.0
+            minimum: 0
           - type: string
           - type: 'null'
           title: Business Value
@@ -13797,7 +13968,6 @@ components:
       - trip_id
       title: WeatherPullRequest
       description: 按出行拉取目的地当前天气（Open-Meteo，免钥公开源，ADR-0034）。
-
     MarketSourceExtractionAccepted:
       properties:
         workspace_id:
@@ -13925,3 +14095,426 @@ components:
       - created_at
       - updated_at
       title: MarketSourceExtractionRead
+    MarketClaimEvidenceSourceRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          title: Kind
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+        canonical_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Canonical Ref
+        verification_status:
+          type: string
+          title: Verification Status
+        content_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content Hash
+        observation:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Observation
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - kind
+      - source
+      - canonical_ref
+      - verification_status
+      - content_hash
+      - observation
+      - created_at
+      title: MarketClaimEvidenceSourceRead
+    MarketClaimEvidenceRead:
+      properties:
+        evidence_id:
+          type: string
+          format: uuid
+          title: Evidence Id
+        relation_type:
+          type: string
+          enum:
+          - SUPPORTS
+          - CONTRADICTS
+          - CONTEXT
+          title: Relation Type
+        rationale:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rationale
+        source_host:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Host
+        content_hash_snapshot:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content Hash Snapshot
+        verification_status_snapshot:
+          type: string
+          title: Verification Status Snapshot
+        origin_assessment:
+          type: string
+          enum:
+          - SINGLE_SOURCE
+          - SAME_HOST
+          - DUPLICATE_CONTENT
+          - DISTINCT_HOST_UNCONFIRMED
+          title: Origin Assessment
+        evidence:
+          $ref: '#/components/schemas/MarketClaimEvidenceSourceRead'
+      type: object
+      required:
+      - evidence_id
+      - relation_type
+      - rationale
+      - source_host
+      - content_hash_snapshot
+      - verification_status_snapshot
+      - origin_assessment
+      - evidence
+      title: MarketClaimEvidenceRead
+    MarketClaimRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        workspace_id:
+          type: string
+          format: uuid
+          title: Workspace Id
+        answer_id:
+          type: string
+          format: uuid
+          title: Answer Id
+        verification_run_id:
+          type: string
+          format: uuid
+          title: Verification Run Id
+        version:
+          type: integer
+          title: Version
+        claim_key:
+          type: string
+          title: Claim Key
+        statement:
+          type: string
+          title: Statement
+        claim_type:
+          type: string
+          enum:
+          - FACT
+          - ESTIMATE
+          - OPINION
+          - FORECAST
+          - INFERENCE
+          title: Claim Type
+        scope:
+          type: object
+          additionalProperties: true
+          title: Scope
+        reasoning:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reasoning
+        verification_verdict:
+          type: string
+          enum:
+          - PROVISIONAL_SUPPORT
+          - POTENTIAL_CONTRADICTION
+          - CONFLICTED
+          - INSUFFICIENT
+          title: Verification Verdict
+        confidence_level:
+          type: string
+          enum:
+          - MEDIUM
+          - LOW
+          - INSUFFICIENT
+          title: Confidence Level
+        status:
+          type: string
+          enum:
+          - NEEDS_REVIEW
+          - CONFLICTED
+          - INSUFFICIENT
+          - ACCEPTED
+          - REJECTED
+          - SUPERSEDED
+          title: Status
+        supporting_evidence_count:
+          type: integer
+          title: Supporting Evidence Count
+        contradicting_evidence_count:
+          type: integer
+          title: Contradicting Evidence Count
+        verified_support_count:
+          type: integer
+          title: Verified Support Count
+        verified_contradiction_count:
+          type: integer
+          title: Verified Contradiction Count
+        distinct_host_count:
+          type: integer
+          title: Distinct Host Count
+        confirmed_independent_source_count:
+          type: integer
+          title: Confirmed Independent Source Count
+        limitations:
+          type: array
+          items:
+            type: string
+          title: Limitations
+        supersedes_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supersedes Id
+        reviewed_by_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Reviewed By User Id
+        reviewed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reviewed At
+        review_note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Review Note
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketClaimEvidenceRead'
+          title: Evidence
+      type: object
+      required:
+      - id
+      - workspace_id
+      - answer_id
+      - verification_run_id
+      - version
+      - claim_key
+      - statement
+      - claim_type
+      - scope
+      - reasoning
+      - verification_verdict
+      - confidence_level
+      - status
+      - supporting_evidence_count
+      - contradicting_evidence_count
+      - verified_support_count
+      - verified_contradiction_count
+      - distinct_host_count
+      - confirmed_independent_source_count
+      - limitations
+      - supersedes_id
+      - reviewed_by_user_id
+      - reviewed_at
+      - review_note
+      - created_at
+      title: MarketClaimRead
+    MarketClaimVerificationAccepted:
+      properties:
+        job_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Job Id
+        workflow_id:
+          type: string
+          format: uuid
+          title: Workflow Id
+        verification_run_id:
+          type: string
+          format: uuid
+          title: Verification Run Id
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - COMPLETED
+          title: Status
+        evidence_count:
+          type: integer
+          title: Evidence Count
+        reused:
+          type: boolean
+          title: Reused
+      type: object
+      required:
+      - job_id
+      - workflow_id
+      - verification_run_id
+      - status
+      - evidence_count
+      - reused
+      title: MarketClaimVerificationAccepted
+    MarketClaimVerificationRunRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        workspace_id:
+          type: string
+          format: uuid
+          title: Workspace Id
+        answer_id:
+          type: string
+          format: uuid
+          title: Answer Id
+        workflow_id:
+          type: string
+          format: uuid
+          title: Workflow Id
+        agent_run_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agent Run Id
+        job_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Job Id
+        job_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Job Status
+        status:
+          type: string
+          enum:
+          - QUEUED
+          - RUNNING
+          - COMPLETED
+          - FAILED
+          title: Status
+        prompt_version:
+          type: string
+          title: Prompt Version
+        input_digest:
+          type: string
+          title: Input Digest
+        claim_count:
+          type: integer
+          title: Claim Count
+        degraded:
+          type: boolean
+          title: Degraded
+        limitations:
+          type: array
+          items:
+            type: string
+          title: Limitations
+        failure_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Reason
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketClaimRead'
+          title: Claims
+      type: object
+      required:
+      - id
+      - workspace_id
+      - answer_id
+      - workflow_id
+      - agent_run_id
+      - job_id
+      - job_status
+      - status
+      - prompt_version
+      - input_digest
+      - claim_count
+      - degraded
+      - limitations
+      - failure_reason
+      - started_at
+      - completed_at
+      - created_at
+      title: MarketClaimVerificationRunRead
+    MarketClaimReview:
+      properties:
+        review_note:
+          type: string
+          title: Review Note
+          minLength: 1
+          maxLength: 3000
+      type: object
+      required:
+      - review_note
+      title: MarketClaimReview
+    Page_MarketClaimRead_:
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketClaimRead'
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      title: Page[MarketClaimRead]
