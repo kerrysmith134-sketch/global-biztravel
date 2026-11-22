@@ -57,7 +57,7 @@ from app.models.proactive import (
     ProactiveTrigger,
     SuggestionAudit,
 )
-from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun, ReceiptOcrReview, ReceiptOcrRun
+from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun
 from app.models.records import VisitFollowUp, VisitFollowUpEvent, VisitRecord
 from app.models.reliability import (
     BackgroundJob,
