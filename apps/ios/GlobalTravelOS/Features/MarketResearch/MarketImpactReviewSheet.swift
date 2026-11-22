@@ -139,7 +139,7 @@ struct MarketImpactReviewSheet: View {
                             .padding(.vertical, DS.Spacing.xl)
                     } else if let insight = viewModel.insight {
                         insightSection(insight)
-                        insightReviewSection(insight)
+                        insightReviewSection
                     } else if let opportunity = viewModel.opportunity {
                         opportunitySection(opportunity)
                     }
