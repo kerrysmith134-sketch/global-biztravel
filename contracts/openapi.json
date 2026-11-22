@@ -9635,6 +9635,276 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/research-graph/executions": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "启动持久化研究图执行",
+        "operationId": "start_market_research_graph_execution_v1_market_workspaces__workspace_id__research_graph_executions_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketResearchGraphExecutionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketResearchGraphExecutionAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取研究图执行进度",
+        "operationId": "get_market_research_graph_execution_v1_market_workspaces__workspace_id__research_graph_executions__execution_id__get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Execution Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketResearchGraphExecutionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}:cancel": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "取消研究图执行",
+        "operationId": "cancel_market_research_graph_execution_v1_market_workspaces__workspace_id__research_graph_executions__execution_id__cancel_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Execution Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketResearchGraphExecutionCancelled"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}/questions/{question_id}:retry": {
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "显式重试一个失败或被驳回的研究问题",
+        "operationId": "retry_market_research_graph_question_v1_market_workspaces__workspace_id__research_graph_executions__execution_id__questions__question_id__retry_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Execution Id"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketResearchGraphQuestionRetryAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -23276,7 +23546,14 @@
               "WAITING",
               "BLOCKED",
               "ANSWERED",
-              "CANCELLED"
+              "CANCELLED",
+              "QUEUED",
+              "RUNNING",
+              "WAITING_FOR_REVIEW",
+              "WAITING_FOR_EVIDENCE",
+              "WAITING_FOR_DEPENDENCY",
+              "FAILED",
+              "REJECTED"
             ],
             "title": "Readiness"
           }
@@ -23409,6 +23686,426 @@
           "question"
         ],
         "title": "ResearchPlanGraphNode"
+      },
+      "MarketResearchGraphExecutionAccepted": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "workflow_status": {
+            "type": "string",
+            "title": "Workflow Status"
+          },
+          "reused": {
+            "type": "boolean",
+            "title": "Reused"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "job_id",
+          "workflow_status",
+          "reused"
+        ],
+        "title": "MarketResearchGraphExecutionAccepted"
+      },
+      "MarketResearchGraphExecutionCancelled": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "cancelled": {
+            "type": "boolean",
+            "title": "Cancelled"
+          },
+          "cancelled_jobs": {
+            "type": "integer",
+            "title": "Cancelled Jobs"
+          },
+          "running_jobs": {
+            "type": "integer",
+            "title": "Running Jobs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "cancelled",
+          "cancelled_jobs",
+          "running_jobs"
+        ],
+        "title": "MarketResearchGraphExecutionCancelled"
+      },
+      "MarketResearchGraphExecutionCreate": {
+        "properties": {
+          "max_concurrency": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 4,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Concurrency"
+          },
+          "max_questions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Questions"
+          },
+          "max_duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 180,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Duration Minutes"
+          },
+          "max_cost": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Cost"
+          }
+        },
+        "type": "object",
+        "title": "MarketResearchGraphExecutionCreate"
+      },
+      "MarketResearchGraphExecutionNodeRead": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Question Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "QUEUED",
+              "RUNNING",
+              "WAITING_FOR_REVIEW",
+              "WAITING_FOR_EVIDENCE",
+              "WAITING_FOR_DEPENDENCY",
+              "ANSWERED",
+              "FAILED",
+              "REJECTED",
+              "BLOCKED",
+              "CANCELLED"
+            ],
+            "title": "State"
+          },
+          "latest_answer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Answer Id"
+          },
+          "latest_answer_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Answer Status"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "state"
+        ],
+        "title": "MarketResearchGraphExecutionNodeRead"
+      },
+      "MarketResearchGraphExecutionRead": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "workflow_status": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "COMPLETED",
+              "FAILED",
+              "REJECTED"
+            ],
+            "title": "Workflow Status"
+          },
+          "execution_state": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "READY",
+              "RUNNING",
+              "WAITING_FOR_REVIEW",
+              "WAITING_FOR_EVIDENCE",
+              "WAITING_FOR_DEPENDENCY",
+              "COMPLETED",
+              "PARTIAL",
+              "FAILED",
+              "CANCELLED",
+              "BUDGET_EXHAUSTED",
+              "TIMED_OUT"
+            ],
+            "title": "Execution State"
+          },
+          "graph_digest": {
+            "type": "string",
+            "title": "Graph Digest"
+          },
+          "max_concurrency": {
+            "type": "integer",
+            "title": "Max Concurrency"
+          },
+          "max_questions": {
+            "type": "integer",
+            "title": "Max Questions"
+          },
+          "max_duration_minutes": {
+            "type": "integer",
+            "title": "Max Duration Minutes"
+          },
+          "max_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Cost"
+          },
+          "cost_estimate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Estimate"
+          },
+          "cost_metering_available": {
+            "type": "boolean",
+            "title": "Cost Metering Available"
+          },
+          "dispatched_count": {
+            "type": "integer",
+            "title": "Dispatched Count"
+          },
+          "completed_count": {
+            "type": "integer",
+            "title": "Completed Count"
+          },
+          "active_count": {
+            "type": "integer",
+            "title": "Active Count"
+          },
+          "ready_count": {
+            "type": "integer",
+            "title": "Ready Count"
+          },
+          "waiting_review_count": {
+            "type": "integer",
+            "title": "Waiting Review Count"
+          },
+          "waiting_evidence_count": {
+            "type": "integer",
+            "title": "Waiting Evidence Count"
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count"
+          },
+          "node_states": {
+            "items": {
+              "$ref": "#/components/schemas/MarketResearchGraphExecutionNodeRead"
+            },
+            "type": "array",
+            "title": "Node States"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "workspace_id",
+          "workflow_status",
+          "execution_state",
+          "graph_digest",
+          "max_concurrency",
+          "max_questions",
+          "max_duration_minutes",
+          "max_cost",
+          "cost_estimate",
+          "cost_metering_available",
+          "dispatched_count",
+          "completed_count",
+          "active_count",
+          "ready_count",
+          "waiting_review_count",
+          "waiting_evidence_count",
+          "failed_count",
+          "node_states",
+          "stop_reason",
+          "created_at",
+          "started_at",
+          "deadline_at",
+          "finished_at"
+        ],
+        "title": "MarketResearchGraphExecutionRead"
+      },
+      "MarketResearchGraphQuestionRetryAccepted": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Question Id"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "reused": {
+            "type": "boolean",
+            "title": "Reused"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "question_id",
+          "job_id",
+          "reused"
+        ],
+        "title": "MarketResearchGraphQuestionRetryAccepted"
       }
     }
   }

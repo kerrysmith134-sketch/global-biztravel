@@ -312,6 +312,11 @@ def create_answer(
         )
     )
     session.flush()
+    # Human review changes the dependency graph's readiness. Wake the durable
+    # scheduler in the same transaction so accepted answers release downstream nodes.
+    from app.services.market_research_dag_service import wake_workspace_executions
+
+    wake_workspace_executions(session, organization_id, workspace_id)
     return _serialize(session, organization_id, [row])[0]
 
 

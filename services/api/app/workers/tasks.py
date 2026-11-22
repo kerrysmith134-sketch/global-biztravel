@@ -72,6 +72,7 @@ from app.services import (
     market_insight_service,
     market_question_answer_agent_service,
     market_question_answer_service,
+    market_research_dag_service,
     memory_service,
     minutes_service,
     outbox_service,
@@ -530,6 +531,25 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
     }
 
 
+def handle_market_research_dag_schedule(
+    session: Session, job: BackgroundJob
+) -> dict[str, Any]:
+    """Advance a durable Workspace research DAG through the shared Worker queue."""
+    raw_execution_id = (job.payload or {}).get("execution_workflow_id")
+    try:
+        execution_id = UUID(str(raw_execution_id))
+    except (TypeError, ValueError) as exc:
+        raise TaskFailed("研究图调度任务缺少合法 execution_workflow_id", retryable=False) from exc
+    try:
+        return market_research_dag_service.run_scheduler(
+            session,
+            job.organization_id,
+            execution_id,
+        )
+    except ApiError as exc:
+        raise TaskFailed(exc.message, retryable=False) from exc
+
+
 def _answer_text_list(value: Any, *, limit: int = 12, item_limit: int = 1200) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -565,6 +585,38 @@ def handle_market_question_answer_draft(
         raise TaskFailed("研究问题答案 Workflow 不存在", retryable=False)
     if workflow.job_id is not None and workflow.job_id != job.id:
         raise TaskFailed("研究问题答案任务已被更新的任务取代", retryable=False)
+
+    dag_execution_id = (payload.get("dag_execution_workflow_id") or "").strip()
+    if dag_execution_id:
+        try:
+            parsed_execution_id = UUID(dag_execution_id)
+        except ValueError as exc:
+            raise TaskFailed("答案任务包含无效的 DAG execution ID", retryable=False) from exc
+        parent_execution = session.scalars(
+            select(WorkflowInstance).where(
+                WorkflowInstance.organization_id == str(job.organization_id),
+                WorkflowInstance.id == parsed_execution_id,
+                WorkflowInstance.workflow_type == market_research_dag_service.WORKFLOW_TYPE,
+            )
+        ).one_or_none()
+        if parent_execution is None or parent_execution.status != "RUNNING":
+            # A task may have been claimed just before its parent execution was
+            # cancelled or stopped. Persist a truthful child state and do not start
+            # a new provider call after the stop boundary.
+            workflow.status = "REJECTED"
+            workflow.payload = {
+                **(workflow.payload or {}),
+                "generation_status": "CANCELLED",
+                "generation_error": "父研究图执行已停止，未启动模型调用",
+            }
+            session.flush()
+            return {
+                "workspace_id": str(workspace_id),
+                "question_id": str(question_id),
+                "workflow_id": str(workflow.id),
+                "cancelled": True,
+                "reason": "PARENT_EXECUTION_STOPPED",
+            }
 
     try:
         question, evidence_rows = (
@@ -1602,6 +1654,7 @@ TASK_HANDLERS: Mapping[str, TaskHandler] = {
     job_service.JOB_TYPE_FX_SYNC: handle_fx_sync,
     job_service.JOB_TYPE_RESEARCH_EXECUTE: handle_research_execute,
     job_service.JOB_TYPE_MARKET_QUESTION_ANSWER: handle_market_question_answer_draft,
+    job_service.JOB_TYPE_MARKET_RESEARCH_DAG_SCHEDULE: handle_market_research_dag_schedule,
     job_service.JOB_TYPE_MARKET_PAGE_EXTRACT: handle_market_source_page_extraction,
     job_service.JOB_TYPE_MARKET_CLAIM_VERIFY: handle_market_claim_verification,
 }
@@ -1617,6 +1670,7 @@ __all__ = [
     "handle_plan_trip",
     "handle_research_execute",
     "handle_market_question_answer_draft",
+    "handle_market_research_dag_schedule",
     "handle_market_source_page_extraction",
     "handle_market_claim_verification",
 ]
