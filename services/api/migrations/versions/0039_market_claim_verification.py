@@ -120,14 +120,16 @@ def upgrade() -> None:
             CONSTRAINT fk_market_claim_agent_run
                 FOREIGN KEY (organization_id, generated_by_run_id)
                 REFERENCES agent_runs (organization_id, id) ON DELETE RESTRICT,
-            CONSTRAINT fk_market_claim_supersedes_same_workspace
-                FOREIGN KEY (organization_id, workspace_id, supersedes_id)
-                REFERENCES market_claims (organization_id, workspace_id, id)
+            CONSTRAINT fk_market_claim_supersedes_same_answer
+                FOREIGN KEY (organization_id, workspace_id, answer_id, supersedes_id)
+                REFERENCES market_claims (organization_id, workspace_id, answer_id, id)
                 ON DELETE NO ACTION,
             CONSTRAINT fk_market_claims_reviewed_by_user_id_users
                 FOREIGN KEY (reviewed_by_user_id) REFERENCES users (id) ON DELETE RESTRICT,
             CONSTRAINT uq_market_claims_org_workspace_id
                 UNIQUE (organization_id, workspace_id, id),
+            CONSTRAINT uq_market_claims_org_workspace_answer_id
+                UNIQUE (organization_id, workspace_id, answer_id, id),
             CONSTRAINT uq_market_claims_answer_key_version
                 UNIQUE (organization_id, workspace_id, answer_id, claim_key, version),
             CONSTRAINT ck_market_claims_version_positive CHECK (version >= 1),
