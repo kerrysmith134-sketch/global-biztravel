@@ -96,7 +96,7 @@ final class MarketOpportunityExecutionTests: XCTestCase {
                 "time_window_end": "2026-12-11T11:00:00+03:00",
                 "service_minutes": 60,
                 "priority": 1,
-                "business_value": "125000.00",
+                "business_value": 125000.00,
                 "movement_mode": "GROUND"
               }],
               "candidates": [{
@@ -122,7 +122,7 @@ final class MarketOpportunityExecutionTests: XCTestCase {
                 "time_window_end": null,
                 "service_minutes": 90,
                 "priority": 2,
-                "business_value": "0.00",
+                "business_value": 0.00,
                 "movement_mode": "GROUND"
               }]
             }
