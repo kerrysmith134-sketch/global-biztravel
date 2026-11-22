@@ -10826,7 +10826,7 @@
                     "$ref": "#/components/schemas/ReceiptOcrRunRead"
                   },
                   "type": "array",
-                  "title": "Response List Saved Receipt Ocr Runs"
+                  "title": "Response List Saved Receipt Ocr Runs V1 Receipt Assets  Asset Id  Ocr Runs Get"
                 }
               }
             }
@@ -27831,8 +27831,7 @@
               {
                 "type": "null"
               }
-            ],
-            "title": "Review"
+            ]
           }
         },
         "type": "object",
