@@ -21,7 +21,8 @@ from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service
 from app.workers.tasks import handle_market_claim_verification
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -426,6 +427,39 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
             )
             assert len(links) == 4
             assert all(link.verification_status_snapshot == "UNVERIFIED" for link in links)
+
+        # Claim facts are immutable for the application DB role; only review fields can update.
+        with org_session(UUID(ORG_A)) as session:
+            with pytest.raises(ProgrammingError):
+                session.execute(
+                    update(MarketClaim)
+                    .where(
+                        MarketClaim.organization_id == UUID(ORG_A),
+                        MarketClaim.id == UUID(provisional["id"]),
+                    )
+                    .values(statement="tampered after verification")
+                )
+            session.rollback()
+
+        # Column-level UPDATE permission is not enough to bypass the accepted-claim CHECK.
+        with org_session(UUID(ORG_A)) as session:
+            with pytest.raises(IntegrityError):
+                session.execute(
+                    update(MarketClaim)
+                    .where(
+                        MarketClaim.organization_id == UUID(ORG_A),
+                        MarketClaim.id == UUID(conflicting["id"]),
+                    )
+                    .values(
+                        status="ACCEPTED",
+                        reviewed_by_user_id=UUID(ADMIN_A),
+                        reviewed_at=__import__("datetime").datetime.now(
+                            __import__("datetime").UTC
+                        ),
+                        review_note="Attempted direct acceptance of a conflicted claim.",
+                    )
+                )
+            session.rollback()
     finally:
         cleanup(workspace_ids, workflow_ids, job_ids)
 
