@@ -23,7 +23,7 @@ H1.8 补充了用户选定网页的受限正文摘录，但抓取成功不代表
    - 没有明确关系 → INSUFFICIENT。
 5. **不自动认证来源**：不同 host 只能记录为 DISTINCT_HOST_UNCONFIRMED；相同 host 与相同 content hash 可用于标记重复或同源。不同域名/不同哈希均不能证明出版方相互独立。H1.9 的 `confirmed_independent_source_count` 固定为 0，必须由未来独立的人工来源关系审核能力处理。
 6. **不输出机器 VERIFIED**：主张 verdict 只能是暂定支持、潜在反驳、冲突或证据不足。Agent 不设置 Evidence.verification_status，不输出 HIGH confidence。即使出现多个 VERIFIED Evidence host，也最多给 MEDIUM，并继续明确独立性尚未确认。
-7. **人工采纳与事实核验分离**：管理员可以采纳/驳回主张。ACCEPTED 表示有人审核并接受该主张用于产品工作流，不代表机器或数据库把它认证为 VERIFIED；所有审核必须记录审查人、时间和理由。
+7. **人工采纳与事实核验分离**：管理员可以采纳/驳回主张。ACCEPTED 表示有人审核并接受该主张用于产品工作流，不代表机器或数据库把它认证为 VERIFIED；所有审核必须记录审查人、时间和理由。数据库仅允许应用角色更新状态与审核字段；主张正文、范围、分类、核验结论、置信度和计数在创建后不可修改。数据库 CHECK 进一步保证只有 PROVISIONAL_SUPPORT、至少一条支持且没有反驳的主张才能被写为 ACCEPTED，ACCEPTED/REJECTED 都必须有审核人、时间和非空理由。
 8. **版本化和审计**：每次核验保存输入摘要、Prompt 版本、Workflow、AgentRun、LLMInvocation、Claim 版本、Evidence 内容哈希/核验状态快照与活动事件。重复输入可幂等复用完成的运行。
 9. **复用现有执行基础设施**：只新增 Claim 领域对象，不创建新队列、Agent Runtime、搜索适配器或证据主表；复用 BackgroundJob、WorkflowInstance、MarketWorkspaceWorkflow、AgentRun、Evidence 与 LLM Gateway。
 
