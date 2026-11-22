@@ -38,6 +38,8 @@ CATEGORY_FAILED = "FAILED"
 CATEGORY_PREPARATION = "PREPARATION"
 CATEGORY_COMPLETED = "COMPLETED"
 
+TRIP_CLOSEOUT_SCAN_LIMIT = 10
+
 CATEGORY_ORDER = (
     CATEGORY_DECISION,
     CATEGORY_APPROVAL,
@@ -388,7 +390,7 @@ def _trip_closeout_items(
 ) -> list[ActionItem]:
     query = select(Trip).where(
         Trip.organization_id == organization_id,
-        Trip.status.in_(("ACTIVE", "HOLD", "COMPLETED")),
+        Trip.status.in_(("READY", "ACTIVE", "HOLD", "COMPLETED")),
     )
     if trip_id:
         query = select(Trip).where(
@@ -396,7 +398,7 @@ def _trip_closeout_items(
             Trip.id == trip_id,
         )
     trips = list(
-        session.scalars(query.order_by(Trip.updated_at.desc()).limit(SECTION_LIMIT))
+        session.scalars(query.order_by(Trip.updated_at.desc()).limit(TRIP_CLOSEOUT_SCAN_LIMIT))
     )
     items: list[ActionItem] = []
     for trip in trips:
