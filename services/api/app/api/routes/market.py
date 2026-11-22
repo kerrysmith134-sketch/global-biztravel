@@ -364,6 +364,7 @@ def list_question_dependencies(
     "/market/workspaces/{workspace_id}/questions/{question_id}/dependencies",
     response_model=MarketQuestionDependencyRead,
     status_code=status.HTTP_201_CREATED,
+    responses={200: {"model": MarketQuestionDependencyRead, "description": "依赖边已存在，未重复创建"}},
     summary="新增研究问题依赖（服务端阻止循环依赖）",
 )
 def create_question_dependency(
