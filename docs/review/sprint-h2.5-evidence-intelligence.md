@@ -1,6 +1,6 @@
 # Sprint H2.5 — Evidence Intelligence Report
 
-> Base: \`feat/sprint-h2.4-context-extraction-agent\`  
+> Base: `feat/sprint-h2.4-context-extraction-agent`  
 > Scope: deterministic, read-only diagnostics over existing Workspace / ResearchPlan Evidence. No new evidence store and no automated truth certification.
 
 ## Delivered contract
@@ -16,7 +16,7 @@
 
 ## API
 
-\`GET /v1/market/workspaces/{workspace_id}/evidence-intelligence\`
+`GET /v1/market/workspaces/{workspace_id}/evidence-intelligence`
 
 Viewer role. The result contains summary counts, per-Evidence diagnostics and non-negotiable caveats. No schema migration is required.
 
@@ -24,7 +24,7 @@ Viewer role. The result contains summary counts, per-Evidence diagnostics and no
 
 - Distinct hosts do not prove independent publishers, ownership separation or absence of syndication.
 - Equal content fingerprints identify exact-content duplicate candidates, not the original publisher.
-- \`BODY_SHA256\` is a fallback fingerprint computed over the stored body; it is not interchangeable with a source-provided full-page hash.
+- `BODY_SHA256` is a fallback fingerprint computed over the stored body; it is not interchangeable with a source-provided full-page hash.
 - Freshness must be determined by the user's research question and domain-specific time sensitivity, not a universal age threshold.
 - Truncated reports only describe relationships among the analyzed subset.
 
