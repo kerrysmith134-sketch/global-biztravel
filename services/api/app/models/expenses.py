@@ -43,6 +43,7 @@ class TripExpense(Base):
             name="fk_trip_expenses_receipt_asset_same_trip",
         ),
         Index("ix_trip_expenses_org_trip_date", "organization_id", "trip_id", "occurred_on"),
+        Index("ix_trip_expenses_receipt_asset_id", "receipt_asset_id"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
