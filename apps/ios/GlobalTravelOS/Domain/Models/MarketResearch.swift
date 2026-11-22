@@ -239,3 +239,11 @@ struct MarketQuestionAnswerGenerationAccepted: Decodable, Equatable {
 struct MarketQuestionAnswerReviewRequest: Codable, Equatable {
     var reviewNote: String?
 }
+
+struct MarketQuestionAnswerGenerationCreate: Codable, Equatable {
+    var evidenceIds: [String]?
+
+    init(evidenceIds: [String]? = nil) {
+        self.evidenceIds = evidenceIds
+    }
+}
