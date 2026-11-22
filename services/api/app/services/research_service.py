@@ -6,8 +6,8 @@ against the same WorkflowInstance through the shared Evidence service.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import json
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 from uuid import UUID
