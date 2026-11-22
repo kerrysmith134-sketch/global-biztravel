@@ -56,6 +56,7 @@ from app.models.market import (
     MarketClaimEvidence,
     MarketClaimVerificationRun,
     MarketEvidenceDerivation,
+    MarketResearchQuestion,
     MarketResearchQuestionAnswer,
     MarketResearchQuestionAnswerEvidence,
     MarketWorkspaceWorkflow,
@@ -324,6 +325,28 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
 
     payload = dict(workflow.payload or {})
     plan = payload.get("plan") or {}
+    target_question_id: UUID | None = None
+    if payload.get("target_question_id"):
+        try:
+            target_question_id = UUID(str(payload["target_question_id"]))
+            target_workspace_id = UUID(str(payload["workspace_id"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise TaskFailed("问题级 ResearchPlan 的目标引用无效", retryable=False) from exc
+        target_question = session.scalars(
+            select(MarketResearchQuestion).where(
+                MarketResearchQuestion.organization_id == str(job.organization_id),
+                MarketResearchQuestion.workspace_id == target_workspace_id,
+                MarketResearchQuestion.id == target_question_id,
+            )
+        ).one_or_none()
+        if target_question is None or target_question.status in {"BLOCKED", "CANCELLED"}:
+            reason = "目标研究问题已不存在、阻塞或取消，检索未启动"
+            payload["retrieval_status"] = "FAILED"
+            payload["retrieval_error"] = reason
+            workflow.payload = payload
+            workflow.status = "FAILED"
+            session.flush()
+            raise TaskFailed(reason, retryable=False)
     if not bool(plan.get("external_research_needed")):
         raise TaskFailed("研究计划没有外部检索意图", retryable=False)
     queries = payload.get("reviewed_search_queries")
@@ -386,6 +409,29 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
         # Temporary network/provider failures should use the existing queue retry policy.
         raise TaskFailed(str(exc), retryable=True) from exc
 
+    if target_question_id is not None:
+        target_workspace_id = UUID(str(payload["workspace_id"]))
+        target_question = session.scalars(
+            select(MarketResearchQuestion).where(
+                MarketResearchQuestion.organization_id == str(job.organization_id),
+                MarketResearchQuestion.workspace_id == target_workspace_id,
+                MarketResearchQuestion.id == target_question_id,
+            ).with_for_update()
+        ).one_or_none()
+        if target_question is None or target_question.status in {"BLOCKED", "CANCELLED"}:
+            # Provider work may already have completed, but a cancelled node must
+            # not receive new Evidence after the user stopped that research target.
+            reason = "目标研究问题在检索期间已阻塞或取消；来源未写入 Workspace"
+            run.status = "FAILED"
+            run.error = reason
+            run.finished_at = datetime.now(UTC)
+            payload["retrieval_status"] = "FAILED"
+            payload["retrieval_error"] = reason
+            workflow.payload = payload
+            workflow.status = "FAILED"
+            session.flush()
+            raise TaskFailed(reason, retryable=False)
+
     collected_at = datetime.now(UTC)
     workspace_ids = list(
         session.scalars(
@@ -429,6 +475,8 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
                         "evidence_state": "UNVERIFIED_SEARCH_RESULT",
                         "content_kind": "search_result_snippet",
                         "research_plan_id": str(workflow.id),
+                        "question_scope_managed": bool(payload.get("target_question_id")),
+                        "target_question_id": payload.get("target_question_id"),
                         "agent_run_id": str(run.id),
                         "retrieved_at": collected_at.isoformat(),
                     },
@@ -443,6 +491,11 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
                         evidence.id,
                         search_query=query,
                         collected_by_run_id=run.id,
+                        question_id=(
+                            UUID(str(payload["target_question_id"]))
+                            if payload.get("target_question_id")
+                            else None
+                        ),
                     )
                 evidence_items.append(
                     {
@@ -1562,6 +1615,8 @@ def handle_market_source_page_extraction(
             "excerpt_truncated": page.content_chars > len(page.excerpt),
             "extractor_version": page.extractor_version,
             "derived_from_evidence_id": str(source.id),
+            "question_scope_managed": bool((source.payload or {}).get("question_scope_managed")),
+            "target_question_id": (source.payload or {}).get("target_question_id"),
             "extraction_workflow_id": str(workflow.id),
             "extraction_agent_run_id": str(run.id),
             "retrieved_at": page.retrieved_at.isoformat(),
@@ -1586,6 +1641,15 @@ def handle_market_source_page_extraction(
             content_hash=page.content_hash,
         )
         .on_conflict_do_nothing(constraint="uq_market_evidence_derivation")
+    )
+    market_insight_service.inherit_research_plan_evidence_links(
+        session,
+        job.organization_id,
+        workspace_id,
+        source.id,
+        extracted.id,
+        extraction_workflow_id=workflow.id,
+        extraction_agent_run_id=run.id,
     )
 
     now = datetime.now(UTC)

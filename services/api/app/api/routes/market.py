@@ -93,6 +93,7 @@ router = APIRouter(tags=["market intelligence"])
 WORKSPACES_ENDPOINT = "POST /v1/market/workspaces"
 OPPORTUNITY_STATUS_QUERY = Query(default=None, alias="status")
 ANSWER_ID_QUERY = Query(default=None)
+TARGET_QUESTION_ID_QUERY = Query(default=None)
 
 
 @router.get(
@@ -1866,17 +1867,21 @@ def unlink_trip_from_workspace(
 @router.get(
     "/market/workspaces/{workspace_id}/research-plans",
     response_model=list[ResearchPlanRead],
-    summary="读取工作空间关联的研究计划",
+    summary="读取工作空间关联的研究计划，可按目标问题筛选",
 )
 def list_workspace_research_plans(
     workspace_id: UUID,
     context: ContextDep,
     session: SessionDep,
+    target_question_id: UUID | None = TARGET_QUESTION_ID_QUERY,
 ):
     require_role(context, ROLE_VIEWER)
-    return research_service.list_research_plans_for_workspace(
+    rows = research_service.list_research_plans_for_workspace(
         session, context.organization_id, workspace_id
     )
+    if target_question_id is not None:
+        rows = [row for row in rows if row.target_question_id == target_question_id]
+    return rows
 
 
 @router.get(

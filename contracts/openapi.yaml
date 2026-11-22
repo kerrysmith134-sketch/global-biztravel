@@ -7926,7 +7926,7 @@
         "tags": [
           "market intelligence"
         ],
-        "summary": "读取工作空间关联的研究计划",
+        "summary": "读取工作空间关联的研究计划，可按目标问题筛选",
         "operationId": "list_workspace_research_plans_v1_market_workspaces__workspace_id__research_plans_get",
         "parameters": [
           {
@@ -7937,6 +7937,23 @@
               "type": "string",
               "format": "uuid",
               "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "target_question_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Question Id"
             }
           }
         ],
@@ -19699,6 +19716,18 @@
               }
             ],
             "title": "Locale"
+          },
+          "target_question_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Question Id"
           }
         },
         "type": "object",
@@ -19966,6 +19995,18 @@
             },
             "type": "array",
             "title": "Generated Question Ids"
+          },
+          "target_question_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Question Id"
           }
         },
         "type": "object",

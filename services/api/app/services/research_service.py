@@ -36,6 +36,7 @@ from app.llm.prompts import (
 from app.models.market import (
     MarketActivityEvent,
     MarketContextSnapshot,
+    MarketResearchQuestion,
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
@@ -331,6 +332,30 @@ def create_research_plan(
             "objective": workspace.objective,
             "context_snapshot": None,
         }
+        target_question: MarketResearchQuestion | None = None
+        if payload.target_question_id is not None:
+            target_question = session.scalars(
+                select(MarketResearchQuestion).where(
+                    MarketResearchQuestion.organization_id == str(organization_id),
+                    MarketResearchQuestion.workspace_id == workspace.id,
+                    MarketResearchQuestion.id == payload.target_question_id,
+                )
+            ).one_or_none()
+            if target_question is None:
+                raise NotFound(
+                    "目标研究问题不属于当前 Workspace",
+                    details={"question_id": str(payload.target_question_id)},
+                )
+            if target_question.status in {"BLOCKED", "CANCELLED"}:
+                raise Conflict("已阻塞或取消的问题不能创建定向 ResearchPlan")
+            workspace_context["target_question"] = {
+                "id": str(target_question.id),
+                "question": target_question.question,
+                "rationale": target_question.rationale,
+                "acceptance_criteria": target_question.acceptance_criteria or [],
+                "expected_evidence": target_question.expected_evidence or [],
+                "priority": target_question.priority,
+            }
         context_snapshot: MarketContextSnapshot | None = None
         if workspace.current_context_version is not None:
             context_snapshot = session.scalars(
@@ -516,7 +541,9 @@ def create_research_plan(
     agent_run.finished_at = now
 
     generated_question_ids: list[UUID] = []
-    if payload.workspace_id is not None:
+    # A question-targeted ResearchPlan only proposes sources for that existing node;
+    # persisting its incidental planner graph would recursively expand the Workspace DAG.
+    if payload.workspace_id is not None and payload.target_question_id is None:
         generated_question_ids = market_research_graph_service.persist_planner_graph(
             session,
             organization_id,
@@ -530,6 +557,9 @@ def create_research_plan(
     workflow.payload = {
         "request": payload.request,
         "workspace_id": str(payload.workspace_id) if payload.workspace_id else None,
+        "target_question_id": (
+            str(payload.target_question_id) if payload.target_question_id else None
+        ),
         "workspace_context_ref": workspace_context_ref,
         "generated_question_ids": [str(item) for item in generated_question_ids],
         "requested_scope": requested_scope,
@@ -639,6 +669,11 @@ def get_research_plan(
         id=workflow.id,
         trip_id=workflow.trip_id,
         workspace_id=(UUID(str(payload["workspace_id"])) if payload.get("workspace_id") else None),
+        target_question_id=(
+            UUID(str(payload["target_question_id"]))
+            if payload.get("target_question_id")
+            else None
+        ),
         generated_question_ids=[
             UUID(str(item)) for item in payload.get("generated_question_ids", [])
             if item
@@ -683,9 +718,15 @@ def list_research_plans_for_workspace(
         )
 
     workflow_ids = session.scalars(
-        select(MarketWorkspaceWorkflow.workflow_id)
+        select(WorkflowInstance.id)
+        .join(
+            MarketWorkspaceWorkflow,
+            (MarketWorkspaceWorkflow.organization_id == WorkflowInstance.organization_id)
+            & (MarketWorkspaceWorkflow.workflow_id == WorkflowInstance.id),
+        )
         .where(
-            MarketWorkspaceWorkflow.organization_id == str(organization_id),
+            WorkflowInstance.organization_id == str(organization_id),
+            WorkflowInstance.workflow_type == WORKFLOW_TYPE,
             MarketWorkspaceWorkflow.workspace_id == str(workspace_id),
         )
         .order_by(MarketWorkspaceWorkflow.created_at.desc())
@@ -716,6 +757,25 @@ def enqueue_research_execution(
         raise NotFound("研究计划不存在", details={"plan_id": str(plan_id)})
 
     payload = dict(workflow.payload or {})
+    target_question_id = payload.get("target_question_id")
+    if target_question_id:
+        raw_workspace_id = payload.get("workspace_id")
+        if not raw_workspace_id:
+            raise Conflict("问题级 ResearchPlan 缺少 Workspace 归属")
+        target_question = session.scalars(
+            select(MarketResearchQuestion)
+            .where(
+                MarketResearchQuestion.organization_id == str(organization_id),
+                MarketResearchQuestion.workspace_id == str(raw_workspace_id),
+                MarketResearchQuestion.id == str(target_question_id),
+            )
+            .with_for_update()
+        ).one_or_none()
+        if target_question is None:
+            raise NotFound("目标研究问题不存在或已不属于当前 Workspace")
+        if target_question.status in {"BLOCKED", "CANCELLED"}:
+            raise Conflict("目标研究问题已阻塞或取消，不能启动外部检索")
+
     plan = payload.get("plan") or {}
     if not bool(plan.get("external_research_needed")):
         raise Unprocessable(
