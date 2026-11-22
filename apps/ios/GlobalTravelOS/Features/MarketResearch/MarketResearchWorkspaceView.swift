@@ -937,17 +937,14 @@ struct MarketResearchQuestionDetailView: View {
                                     DS.ColorToken.surfaceSecondary,
                                     in: RoundedRectangle(cornerRadius: DS.Radius.control)
                                 )
-                            Button {
+                            DSButton(
+                                title: viewModel.isSubmitting ? "正在提交…" : "确认查询并开始检索",
+                                systemImage: "magnifyingglass",
+                                isLoading: viewModel.isSubmitting,
+                                isDisabled: viewModel.isSubmitting
+                            ) {
                                 Task { await viewModel.executeSearch() }
-                            } label: {
-                                Label(
-                                    viewModel.isSubmitting ? "正在提交…" : "确认查询并开始检索",
-                                    systemImage: "magnifyingglass"
-                                )
-                                .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(DSPrimaryButtonStyle())
-                            .disabled(viewModel.isSubmitting)
                         } else if plan.plan.externalResearchNeeded {
                             Text("本次提交的查询已锁定。状态刷新后会显示采集结果。")
                                 .font(.caption)
