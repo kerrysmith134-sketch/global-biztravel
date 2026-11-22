@@ -429,6 +429,8 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
                         "evidence_state": "UNVERIFIED_SEARCH_RESULT",
                         "content_kind": "search_result_snippet",
                         "research_plan_id": str(workflow.id),
+                        "question_scope_managed": bool(payload.get("target_question_id")),
+                        "target_question_id": payload.get("target_question_id"),
                         "agent_run_id": str(run.id),
                         "retrieved_at": collected_at.isoformat(),
                     },
@@ -443,6 +445,11 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
                         evidence.id,
                         search_query=query,
                         collected_by_run_id=run.id,
+                        question_id=(
+                            UUID(str(payload["target_question_id"]))
+                            if payload.get("target_question_id")
+                            else None
+                        ),
                     )
                 evidence_items.append(
                     {
