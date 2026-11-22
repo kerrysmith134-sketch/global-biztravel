@@ -4,6 +4,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from migrations import helpers
+
 revision = "0043_market_opp_visit_link"
 down_revision = "0042_market_claim_lineage"
 branch_labels = None
@@ -114,9 +116,12 @@ def upgrade() -> None:
         "market_opportunity_visit_links",
         ["organization_id", "trip_id", "visit_id"],
     )
+    # Every organization-scoped table must enable and force tenant RLS at creation.
+    helpers.enable_org_rls("market_opportunity_visit_links", force=True)
 
 
 def downgrade() -> None:
+    helpers.disable_org_rls("market_opportunity_visit_links")
     op.drop_index(
         "ix_market_opp_visit_links_org_trip_visit",
         table_name="market_opportunity_visit_links",
