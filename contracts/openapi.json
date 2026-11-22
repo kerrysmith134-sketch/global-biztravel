@@ -22757,13 +22757,13 @@
           "next_cursor": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Next Cursor"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Next Cursor"
           }
         },
         "type": "object",
