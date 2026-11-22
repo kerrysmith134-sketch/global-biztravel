@@ -9155,13 +9155,13 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "format": "uuid",
-                  "title": "Answer Id"
+                  "format": "uuid"
                 },
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "title": "Answer Id"
             }
           },
           {
@@ -9172,13 +9172,13 @@
               "anyOf": [
                 {
                   "type": "integer",
-                  "title": "Limit",
                   "minimum": 1
                 },
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "title": "Limit"
             }
           },
           {
@@ -9188,13 +9188,13 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "title": "Cursor"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "title": "Cursor"
             }
           }
         ],
@@ -22160,24 +22160,24 @@
           "source": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Source"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Source"
           },
           "canonical_ref": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Canonical Ref"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Canonical Ref"
           },
           "verification_status": {
             "type": "string",
@@ -22186,24 +22186,24 @@
           "content_hash": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Content Hash"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Content Hash"
           },
           "observation": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Observation"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Observation"
           },
           "created_at": {
             "type": "string",
@@ -22243,35 +22243,35 @@
           "rationale": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Rationale"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Rationale"
           },
           "source_host": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Source Host"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Source Host"
           },
           "content_hash_snapshot": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Content Hash Snapshot"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Content Hash Snapshot"
           },
           "verification_status_snapshot": {
             "type": "string",
@@ -22357,13 +22357,13 @@
           "reasoning": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Reasoning"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Reasoning"
           },
           "verification_verdict": {
             "type": "string",
@@ -22431,48 +22431,48 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "title": "Supersedes Id"
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Supersedes Id"
           },
           "reviewed_by_user_id": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "title": "Reviewed By User Id"
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Reviewed By User Id"
           },
           "reviewed_at": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "date-time",
-                "title": "Reviewed At"
+                "format": "date-time"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Reviewed At"
           },
           "review_note": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Review Note"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Review Note"
           },
           "created_at": {
             "type": "string",
@@ -22523,13 +22523,13 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "title": "Job Id"
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Job Id"
           },
           "workflow_id": {
             "type": "string",
@@ -22596,36 +22596,36 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "title": "Agent Run Id"
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Agent Run Id"
           },
           "job_id": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "title": "Job Id"
+                "format": "uuid"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Job Id"
           },
           "job_status": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Job Status"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Job Status"
           },
           "status": {
             "type": "string",
@@ -22663,37 +22663,37 @@
           "failure_reason": {
             "anyOf": [
               {
-                "type": "string",
-                "title": "Failure Reason"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Failure Reason"
           },
           "started_at": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "date-time",
-                "title": "Started At"
+                "format": "date-time"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Started At"
           },
           "completed_at": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "date-time",
-                "title": "Completed At"
+                "format": "date-time"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Completed At"
           },
           "created_at": {
             "type": "string",
