@@ -14512,8 +14512,8 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
         next_cursor:
           anyOf:
           - type: string
-            title: Next Cursor
           - type: 'null'
+          title: Next Cursor
       type: object
       required:
       - items
