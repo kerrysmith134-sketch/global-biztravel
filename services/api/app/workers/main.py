@@ -235,9 +235,21 @@ def execute_one(
 
 
 def recover_leases(org_id: str, *, limit: int = 50) -> int:
-    """回收租约过期的任务，返回回收条数。"""
+    """回收租约过期的任务；答案 Agent 进入 DEAD 时唤醒父 DAG。"""
     with org_session(org_id) as session:
-        return len(job_service.recover_expired_leases(session, limit=limit))
+        recovered_ids = job_service.recover_expired_leases(session, limit=limit)
+        if recovered_ids:
+            dead_answer_jobs = session.scalars(
+                select(BackgroundJob).where(
+                    BackgroundJob.organization_id == org_id,
+                    BackgroundJob.id.in_(recovered_ids),
+                    BackgroundJob.job_type == job_service.JOB_TYPE_MARKET_QUESTION_ANSWER,
+                    BackgroundJob.status == "DEAD",
+                )
+            ).all()
+            for job in dead_answer_jobs:
+                _wake_research_graph_for_job(session, org_id, job)
+        return len(recovered_ids)
 
 
 def publish_outbox(org_id: str, *, batch_size: int | None) -> outbox_service.PublishReport:
