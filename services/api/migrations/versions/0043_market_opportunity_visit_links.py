@@ -4,7 +4,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0043_market_opportunity_visit_links"
+revision = "0043_market_opp_visit_link"
 down_revision = "0042_market_claim_lineage"
 branch_labels = None
 depends_on = None
@@ -41,19 +41,19 @@ def upgrade() -> None:
             ["organization_id"],
             ["organizations.id"],
             ondelete="CASCADE",
-            name="fk_market_opp_visit_links_organization",
+            name="fk_market_opportunity_visit_links_organization_id_organizations",
         ),
         sa.ForeignKeyConstraint(
             ["linked_by_user_id"],
             ["users.id"],
             ondelete="SET NULL",
-            name="fk_market_opp_visit_links_linked_by_user",
+            name="fk_market_opportunity_visit_links_linked_by_user_id_users",
         ),
         sa.ForeignKeyConstraint(
             ["unlinked_by_user_id"],
             ["users.id"],
             ondelete="RESTRICT",
-            name="fk_market_opp_visit_links_unlinked_by_user",
+            name="fk_market_opportunity_visit_links_unlinked_by_user_id_users",
         ),
         sa.ForeignKeyConstraint(
             ["organization_id", "workspace_id", "opportunity_id"],
@@ -91,16 +91,16 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "link_status IN ('LINKED','UNLINKED')",
-            name="ck_market_opp_visit_links_status_allowed",
+            name="ck_market_opportunity_visit_links_link_status_allowed",
         ),
         sa.CheckConstraint(
             "link_status <> 'UNLINKED' OR "
             "(unlinked_by_user_id IS NOT NULL AND unlinked_at IS NOT NULL)",
-            name="ck_market_opp_visit_links_unlinked_has_actor_and_time",
+            name="ck_market_opportunity_visit_links_unlinked_has_actor_and_time",
         ),
     )
     op.create_index(
-        "ix_market_opp_visit_links_organization_id",
+        "ix_market_opportunity_visit_links_organization_id",
         "market_opportunity_visit_links",
         ["organization_id"],
     )
