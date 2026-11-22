@@ -167,7 +167,7 @@ def get_receipt_storage(provider: str | None = None) -> ReceiptStorage:
         return S3ReceiptStorage(
             bucket=bucket,
             region=settings.receipt_s3_region,
-            endpoint_url=settings.receipt_s3_endpoint_url,
+            endpoint_url=settings.receipt_s3_endpoint_url or None,
             access_key=access_key,
             secret_key=secret_key,
         )
