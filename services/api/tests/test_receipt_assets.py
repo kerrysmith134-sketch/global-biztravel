@@ -184,3 +184,31 @@ def test_expense_can_only_reference_receipt_from_same_trip(
                 )
             )
             session.execute(delete(Trip).where(Trip.id.in_([UUID(trip_id), UUID(other_trip_id)])))
+
+
+
+def test_receipt_asset_download_rejects_changed_object_bytes(
+    client: TestClient, private_storage
+) -> None:
+    trip_id = create_trip(client)
+    try:
+        uploaded = client.post(
+            f"/v1/trips/{trip_id}/receipt-assets",
+            headers=headers(key=str(uuid.uuid4())),
+            files={"file": ("receipt.png", _PNG_1PX, "image/png")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        asset_id = uploaded.json()["id"]
+        with org_session(UUID(ORG_A)) as session:
+            asset = session.get(ReceiptAsset, UUID(asset_id))
+            assert asset is not None
+            storage_key = asset.storage_key
+        private_storage.put(storage_key, b"tampered object bytes", "image/png")
+
+        downloaded = client.get(
+            f"/v1/receipt-assets/{asset_id}/content", headers=headers()
+        )
+        assert downloaded.status_code == 503, downloaded.text
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
