@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct MarketResearchWorkspaceCreateSheet: View {
+struct MarketResearchWorkspaceCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var objective = ""
@@ -54,7 +54,7 @@ private struct MarketResearchWorkspaceCreateSheet: View {
     }
 }
 
-private struct MarketResearchQuestionCreateSheet: View {
+struct MarketResearchQuestionCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var question = ""
     @State private var rationale = ""
