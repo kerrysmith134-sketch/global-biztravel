@@ -22,9 +22,14 @@ from app.api.deps import (
 )
 from app.api.errors import BadRequest, UnsupportedMedia
 from app.api.idempotent import IdempotentWrite
-from app.api.schemas import ReceiptAssetRead
+from app.api.schemas import (
+    ReceiptAssetRead,
+    ReceiptOcrReviewCreate,
+    ReceiptOcrReviewRead,
+    ReceiptOcrRunRead,
+)
 from app.config import get_settings
-from app.services import receipt_asset_service, trip_service
+from app.services import receipt_asset_ocr_service, receipt_asset_service, trip_service
 
 router = APIRouter(tags=["receipt-assets"])
 
@@ -151,6 +156,135 @@ def download_receipt_asset(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+def _ocr_run_read(session, organization_id: UUID, run) -> ReceiptOcrRunRead:  # noqa: ANN001
+    review = receipt_asset_ocr_service.get_receipt_ocr_review(
+        session, organization_id, run.id
+    )
+    return ReceiptOcrRunRead(
+        id=run.id,
+        receipt_asset_id=run.receipt_asset_id,
+        agent_run_id=run.agent_run_id,
+        content_sha256=run.content_sha256,
+        engine=run.engine,
+        engine_version=run.engine_version,
+        status=run.status,
+        candidates=run.candidates,
+        error=run.error,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        created_at=run.created_at,
+        review=ReceiptOcrReviewRead.model_validate(review) if review is not None else None,
+    )
+
+
+@router.post(
+    "/receipt-assets/{asset_id}:ocr",
+    response_model=ReceiptOcrRunRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="对已保存的原始票据执行 OCR（仅返回候选字段）",
+)
+def extract_saved_receipt(
+    asset_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint="POST /v1/receipt-assets/{asset_id}:ocr",
+        key=idempotency_key,
+        payload={"receipt_asset_id": str(asset_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    run = receipt_asset_ocr_service.create_receipt_ocr_run(
+        session,
+        context.organization_id,
+        asset_id,
+        actor_user_id=context.user_id,
+    )
+    body = _ocr_run_read(session, context.organization_id, run)
+    return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
+
+
+@router.get(
+    "/receipt-assets/{asset_id}/ocr-runs",
+    response_model=list[ReceiptOcrRunRead],
+    summary="读取原始票据的 OCR 运行历史",
+)
+def list_saved_receipt_ocr_runs(
+    asset_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    runs = receipt_asset_ocr_service.list_receipt_ocr_runs(
+        session, context.organization_id, asset_id
+    )
+    return [_ocr_run_read(session, context.organization_id, run) for run in runs]
+
+
+@router.get(
+    "/receipt-ocr-runs/{run_id}",
+    response_model=ReceiptOcrRunRead,
+    summary="读取 OCR 候选字段、AgentRun 追溯与人工审核结果",
+)
+def get_saved_receipt_ocr_run(
+    run_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    run = receipt_asset_ocr_service.require_receipt_ocr_run(
+        session, context.organization_id, run_id
+    )
+    return _ocr_run_read(session, context.organization_id, run)
+
+
+@router.post(
+    "/receipt-ocr-runs/{run_id}:review",
+    response_model=ReceiptOcrReviewRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="人工确认或驳回 OCR 候选字段",
+)
+def review_saved_receipt_ocr_run(
+    run_id: UUID,
+    payload: ReceiptOcrReviewCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint="POST /v1/receipt-ocr-runs/{run_id}:review",
+        key=idempotency_key,
+        payload={"receipt_ocr_run_id": str(run_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    fields = payload.model_dump(
+        exclude={"decision", "note"},
+        exclude_none=True,
+        mode="json",
+    )
+    review = receipt_asset_ocr_service.review_receipt_ocr_run(
+        session,
+        context.organization_id,
+        run_id,
+        decision=payload.decision,
+        confirmed_fields=fields,
+        note=payload.note,
+        actor_user_id=context.user_id,
+    )
+    body = ReceiptOcrReviewRead.model_validate(review)
+    return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
+
 
 
 __all__ = ["router"]
