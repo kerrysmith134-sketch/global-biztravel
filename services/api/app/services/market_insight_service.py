@@ -16,11 +16,11 @@ from sqlalchemy.orm import Session
 from app.api.errors import Conflict, NotFound, Unprocessable
 from app.models.market import (
     MarketActivityEvent,
+    MarketEvidenceDerivation,
     MarketInsight,
     MarketInsightEvidence,
     MarketResearchPlanEvidence,
     MarketResearchQuestion,
-    MarketEvidenceDerivation,
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
