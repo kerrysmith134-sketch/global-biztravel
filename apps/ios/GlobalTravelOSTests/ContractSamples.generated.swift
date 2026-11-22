@@ -183,7 +183,12 @@ enum ContractSamples {
       "id": "11111111-1111-1111-1111-111111111111",
       "note": "1",
       "occurred_on": "2026-11-09",
+      "receipt_asset_id": "11111111-1111-1111-1111-111111111111",
+      "receipt_byte_length": 1,
+      "receipt_mime_type": "1",
+      "receipt_original_filename": "1",
       "receipt_ref": "1",
+      "receipt_sha256": "1",
       "report_id": "11111111-1111-1111-1111-111111111111"
     }
   ],
