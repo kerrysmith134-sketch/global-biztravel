@@ -2030,6 +2030,7 @@ class MarketResearchGraphExecutionRead(BaseModel):
     workflow_status: Literal["RUNNING", "COMPLETED", "FAILED", "REJECTED"]
     execution_state: Literal[
         "QUEUED",
+        "READY",
         "RUNNING",
         "WAITING_FOR_REVIEW",
         "WAITING_FOR_EVIDENCE",
