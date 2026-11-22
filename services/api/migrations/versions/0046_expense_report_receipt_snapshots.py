@@ -84,6 +84,19 @@ def upgrade() -> None:
         deferrable=True,
         initially="DEFERRED",
     )
+    op.create_check_constraint(
+        "ck_expense_report_items_receipt_snapshot_metadata_consistent",
+        "expense_report_items",
+        "("
+        "receipt_asset_id IS NULL AND receipt_sha256 IS NULL "
+        "AND receipt_original_filename IS NULL AND receipt_mime_type IS NULL "
+        "AND receipt_byte_length IS NULL"
+        ") OR ("
+        "receipt_asset_id IS NOT NULL AND length(receipt_sha256) = 64 "
+        "AND length(btrim(receipt_original_filename)) > 0 "
+        "AND length(btrim(receipt_mime_type)) > 0 AND receipt_byte_length > 0"
+        ")",
+    )
     op.create_index(
         "ix_expense_report_items_receipt_asset_id",
         "expense_report_items",
@@ -95,6 +108,11 @@ def downgrade() -> None:
     op.drop_index(
         "ix_expense_report_items_receipt_asset_id",
         table_name="expense_report_items",
+    )
+    op.drop_constraint(
+        "ck_expense_report_items_receipt_snapshot_metadata_consistent",
+        "expense_report_items",
+        type_="check",
     )
     op.drop_constraint(
         "fk_expense_report_items_receipt_asset_same_trip",
