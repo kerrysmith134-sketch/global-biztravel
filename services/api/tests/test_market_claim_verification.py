@@ -13,7 +13,6 @@ from app.models.market import (
     MarketClaim,
     MarketClaimEvidence,
     MarketClaimVerificationRun,
-    MarketResearchQuestionAnswerEvidence,
     MarketWorkspace,
 )
 from app.models.reliability import BackgroundJob
