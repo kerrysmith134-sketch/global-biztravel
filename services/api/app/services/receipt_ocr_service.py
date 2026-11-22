@@ -40,7 +40,30 @@ class OcrUnavailable(RuntimeError):
     pass
 
 
-def extract_receipt_fields(image_bytes: bytes) -> dict[str, Any]:
+def ocr_engine_version() -> str:
+    """返回 Tesseract 版本标识；无法获取时用稳定的 unknown。"""
+    if not ocr_available():
+        return "unavailable"
+    try:
+        completed = subprocess.run(
+            ["tesseract", "--version"],
+            capture_output=True,
+            timeout=5,
+            check=True,
+            text=True,
+        )
+    except subprocess.SubprocessError:
+        return "unknown"
+    first_line = completed.stdout.splitlines()[0] if completed.stdout.splitlines() else ""
+    return first_line.strip()[:120] or "unknown"
+
+
+def extract_receipt_fields(
+    image_bytes: bytes,
+    *,
+    file_extension: str = ".png",
+    include_raw_text_preview: bool = True,
+) -> dict[str, Any]:
     """跑 Tesseract 并抽候选字段。仅提取，不做结论。"""
     if not ocr_available():
         raise OcrUnavailable(
@@ -49,8 +72,13 @@ def extract_receipt_fields(image_bytes: bytes) -> dict[str, Any]:
     if not image_bytes:
         raise OcrUnavailable("票据图片为空")
 
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    suffix = file_extension.lower()
+    if suffix not in allowed_extensions:
+        raise OcrUnavailable("该文件格式暂不支持 OCR；请使用 JPEG、PNG、GIF 或 WebP 图片")
+
     with tempfile.TemporaryDirectory() as tmp:
-        image_path = Path(tmp) / "receipt.png"
+        image_path = Path(tmp) / f"receipt{suffix}"
         image_path.write_bytes(image_bytes)
         text = None
         last_error: Exception | None = None
@@ -70,13 +98,15 @@ def extract_receipt_fields(image_bytes: bytes) -> dict[str, Any]:
         if text is None:
             raise OcrUnavailable(f"Tesseract 识别失败：{last_error}")
 
-    return {
+    result = {
         "merchant_hint": _merchant_hint(text),
         "amount_candidates": _amounts(text),
         "date_candidates": _dates(text),
         "text_length": len(text),
-        "raw_text_preview": text[:400],
     }
+    if include_raw_text_preview:
+        result["raw_text_preview"] = text[:400]
+    return result
 
 
 def _lines(text: str) -> list[str]:
@@ -105,4 +135,4 @@ def _dates(text: str) -> list[str]:
     return []
 
 
-__all__ = ["OcrUnavailable", "extract_receipt_fields", "ocr_available"]
+__all__ = ["OcrUnavailable", "extract_receipt_fields", "ocr_available", "ocr_engine_version"]
