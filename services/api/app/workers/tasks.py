@@ -1129,6 +1129,9 @@ def handle_market_claim_verification(
                     claim_host_counts[linked_host] = claim_host_counts.get(linked_host, 0) + 1
                 linked_digest = _claim_evidence_digest(evidence_row)
                 claim_hash_counts[linked_digest] = claim_hash_counts.get(linked_digest, 0) + 1
+            support_content_digests = {
+                _claim_evidence_digest(row) for row in support_rows
+            }
             verified_support_count = sum(
                 1 for row in support_rows if row.verification_status == "VERIFIED"
             )
@@ -1144,7 +1147,11 @@ def handle_market_claim_verification(
                 verdict = "PROVISIONAL_SUPPORT"
                 confidence = (
                     "MEDIUM"
-                    if verified_support_count == len(support_rows) and distinct_hosts >= 2
+                    if (
+                        verified_support_count == len(support_rows)
+                        and distinct_hosts >= 2
+                        and len(support_content_digests) == len(support_rows)
+                    )
                     else "LOW"
                 )
                 status_value = "NEEDS_REVIEW"
@@ -1169,6 +1176,10 @@ def handle_market_claim_verification(
             if linked_distinct_hosts > 1:
                 claim_limitations.append(
                     "检测到多个来源主机，但主机不同不能证明出版方或来源彼此独立。"
+                )
+            if len(support_content_digests) < len(support_rows):
+                claim_limitations.append(
+                    "支持该主张的 Evidence 存在相同内容指纹；重复内容不得作为额外佐证。"
                 )
             if len(linked_rows) and len({row.content_hash for row in linked_rows if row.content_hash}) < len(
                 [row for row in linked_rows if row.content_hash]
