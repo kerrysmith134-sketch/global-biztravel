@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -453,9 +454,7 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
                     .values(
                         status="ACCEPTED",
                         reviewed_by_user_id=UUID(ADMIN_A),
-                        reviewed_at=__import__("datetime").datetime.now(
-                            __import__("datetime").UTC
-                        ),
+                        reviewed_at=datetime.now(UTC),
                         review_note="Attempted direct acceptance of a conflicted claim.",
                     )
                 )
