@@ -40,6 +40,8 @@ def compute_input_digest(
         "answer_id": str(answer.id),
         "answer_version": answer.version,
         "answer_summary": answer.answer_summary,
+        "answer_assumptions": answer.assumptions or [],
+        "answer_unknowns": answer.unknowns or [],
         "prompt_version": MARKET_CLAIM_VERIFY_PROMPT_VERSION,
         "evidence": [
             {
@@ -68,14 +70,19 @@ def compute_input_digest(
 
 
 def _workspace(
-    session: Session, organization_id: UUID | str, workspace_id: UUID
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    *,
+    lock: bool = False,
 ) -> MarketWorkspace:
-    row = session.scalars(
-        select(MarketWorkspace).where(
-            MarketWorkspace.organization_id == organization_id,
-            MarketWorkspace.id == workspace_id,
-        )
-    ).one_or_none()
+    query = select(MarketWorkspace).where(
+        MarketWorkspace.organization_id == organization_id,
+        MarketWorkspace.id == workspace_id,
+    )
+    if lock:
+        query = query.with_for_update()
+    row = session.scalars(query).one_or_none()
     if row is None:
         raise NotFound("市场工作空间不存在", details={"workspace_id": str(workspace_id)})
     return row
@@ -512,7 +519,7 @@ def review_claim(
     actor_user_id: UUID,
     review_note: str | None,
 ) -> dict[str, Any]:
-    _workspace(session, organization_id, workspace_id)
+    _workspace(session, organization_id, workspace_id, lock=True)
     row = session.scalars(
         select(MarketClaim)
         .where(
