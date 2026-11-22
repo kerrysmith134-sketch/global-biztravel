@@ -401,10 +401,12 @@ def test_question_scoped_evidence_does_not_leak_between_research_questions(
                 canonical_ref: str,
                 body: str,
                 *,
-                managed: bool,
+                managed: bool | None,
                 target_question_id: UUID | None = None,
             ) -> Evidence:
-                payload = {"content": body, "question_scope_managed": managed}
+                payload = {"content": body}
+                if managed is not None:
+                    payload["question_scope_managed"] = managed
                 if target_question_id is not None:
                     payload["target_question_id"] = str(target_question_id)
                 row = market_insight_service.record_market_evidence(
@@ -441,6 +443,11 @@ def test_question_scoped_evidence_does_not_leak_between_research_questions(
                 "https://scope.example.test/shared",
                 "用户主动添加的 Workspace 共享背景资料。",
                 managed=False,
+            )
+            legacy_shared_source = record(
+                "https://scope.example.test/legacy-shared",
+                "旧版本未包含 question_scope_managed 字段的共享来源。",
+                managed=None,
             )
 
             market_insight_service.link_research_plan_evidence(
@@ -512,8 +519,12 @@ def test_question_scoped_evidence_does_not_leak_between_research_questions(
                     )
                 ).all()
             )
-            assert q1_visible == {q1_source.id, shared_source.id, q1_legacy.id}
-            assert q2_visible == {q2_source.id, shared_source.id, q2_legacy.id}
+            assert q1_visible == {
+                q1_source.id, shared_source.id, legacy_shared_source.id, q1_legacy.id
+            }
+            assert q2_visible == {
+                q2_source.id, shared_source.id, legacy_shared_source.id, q2_legacy.id
+            }
             assert q2_source.id not in q1_visible
             assert q1_source.id not in q2_visible
 
