@@ -196,7 +196,7 @@ struct MarketOpportunityVisitLinkRead: Decodable, Equatable, Identifiable {
     var timeWindowEnd: Date?
     var serviceMinutes: Int
     var priority: Int
-    var businessValue: Decimal
+    @FlexibleDecimal var businessValue: Decimal
     var movementMode: String
 
     var isLinked: Bool { linkStatus.uppercased() == "LINKED" }
