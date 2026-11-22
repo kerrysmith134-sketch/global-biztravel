@@ -578,3 +578,104 @@ def test_answer_evidence_from_another_workspace_cannot_be_verified(
         assert "不属于当前 Workspace" in rejected.json()["error"]["message"]
     finally:
         cleanup(workspace_ids, [], [])
+
+
+def test_duplicate_verified_content_across_hosts_does_not_raise_claim_confidence(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace_ids: list[str] = []
+    workflow_ids: list[str] = []
+    job_ids: list[str] = []
+    try:
+        workspace_id = create_workspace(client)
+        workspace_ids.append(workspace_id)
+        question_id = create_question(client, workspace_id)
+        duplicate_body = (
+            "The named buyer announced a procurement programme for the target category in 2026."
+        )
+        source_one = create_evidence(
+            client,
+            workspace_id,
+            "https://publisher-one.example.test/procurement",
+            duplicate_body,
+        )
+        source_two = create_evidence(
+            client,
+            workspace_id,
+            "https://publisher-two.example.org/republication",
+            duplicate_body,
+        )
+        with org_session(UUID(ORG_A)) as session:
+            rows = list(
+                session.scalars(
+                    select(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.id.in_([UUID(source_one), UUID(source_two)]),
+                    )
+                ).all()
+            )
+            assert len(rows) == 2
+            assert rows[0].content_hash == rows[1].content_hash
+            for row in rows:
+                row.verification_status = "VERIFIED"
+
+        answer_id = create_answer(
+            client,
+            workspace_id,
+            question_id,
+            [(source_one, "SUPPORTS"), (source_two, "SUPPORTS")],
+        )
+        gateway = FakeGateway(
+            {
+                "claims": [
+                    {
+                        "claim_text": "The named buyer announced a procurement programme for the target category in 2026.",
+                        "claim_type": "FACT",
+                        "scope": {"buyer": "Named buyer", "period": "2026"},
+                        "reasoning": "Both provided URLs contain the same published text.",
+                        "evidence_assessments": [
+                            {
+                                "evidence_id": source_one,
+                                "relation_type": "SUPPORTS",
+                                "rationale": "The source contains the publication text.",
+                            },
+                            {
+                                "evidence_id": source_two,
+                                "relation_type": "SUPPORTS",
+                                "rationale": "The second URL reproduces the same publication text.",
+                            },
+                        ],
+                    }
+                ],
+                "limitations": [],
+            }
+        )
+        monkeypatch.setattr("app.workers.tasks.get_gateway", lambda: gateway)
+        queued = client.post(
+            f"/v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims",
+            headers=headers(),
+        )
+        assert queued.status_code == 202, queued.text
+        workflow_ids.append(queued.json()["workflow_id"])
+        job_ids.append(queued.json()["job_id"])
+
+        result = execute_job(queued.json()["job_id"])
+        assert result["claim_count"] == 1
+        response = client.get(
+            f"/v1/market/workspaces/{workspace_id}/claim-verification-runs/{queued.json()['verification_run_id']}",
+            headers=headers(),
+        )
+        assert response.status_code == 200, response.text
+        claim = response.json()["claims"][0]
+        assert claim["verification_verdict"] == "PROVISIONAL_SUPPORT"
+        assert claim["verified_support_count"] == 2
+        assert claim["distinct_host_count"] == 2
+        assert claim["confidence_level"] == "LOW"
+        assert claim["confirmed_independent_source_count"] == 0
+        assert all(
+            item["origin_assessment"] == "DUPLICATE_CONTENT"
+            for item in claim["evidence"]
+        )
+        assert any("相同内容指纹" in item for item in claim["limitations"])
+    finally:
+        cleanup(workspace_ids, workflow_ids, job_ids)
