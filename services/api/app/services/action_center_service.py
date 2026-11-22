@@ -26,8 +26,8 @@ from sqlalchemy.orm import Session
 from app.models.crm import CrmSyncJob
 from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.proactive import ProactiveSuggestion
-from app.models.reliability import BackgroundJob
 from app.models.records import VisitFollowUp
+from app.models.reliability import BackgroundJob
 from app.models.trip import Trip, Visit
 
 CATEGORY_DECISION = "DECISION"
