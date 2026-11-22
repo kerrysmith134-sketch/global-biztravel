@@ -353,10 +353,16 @@ def test_opportunity_contradiction_blocks_qualification(client: TestClient) -> N
     try:
         workspace_id = create_workspace(client, "Opportunity conflict")
         support = create_evidence(
-            client, workspace_id, "https://example.com/buyer-intent", "Buyer has a signed procurement request."
+            client,
+            workspace_id,
+            "https://example.com/buyer-intent",
+            "Buyer has a signed procurement request.",
         )
         contradiction = create_evidence(
-            client, workspace_id, "https://example.org/budget-freeze", "Buyer publicly paused this category's budget."
+            client,
+            workspace_id,
+            "https://example.org/budget-freeze",
+            "Buyer publicly paused this category's budget.",
         )
         created = client.post(
             f"/v1/market/workspaces/{workspace_id}/opportunities",
@@ -500,7 +506,8 @@ def test_opportunity_execution_links_trip_visits_with_reversible_audit(client: T
         assert before_qualification.status_code == 200, before_qualification.text
         assert before_qualification.json()["can_link_visits"] is False
         assert "ACTION_PLANNED" in before_qualification.json()["blocked_reason"]
-        assert [item["visit_id"] for item in before_qualification.json()["candidates"]] == [visit_id]
+        candidate_ids = [item["visit_id"] for item in before_qualification.json()["candidates"]]
+        assert candidate_ids == [visit_id]
 
         premature = client.post(
             f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits",
@@ -701,4 +708,7 @@ def test_cross_tenant_trip_link_rejected_by_database_fk(client: TestClient) -> N
                     )
                     session.flush()
     finally:
-        cleanup([workspace_id] if workspace_id else [], [foreign_trip_id] if foreign_trip_id else [])
+        cleanup(
+            [workspace_id] if workspace_id else [],
+            [foreign_trip_id] if foreign_trip_id else [],
+        )
