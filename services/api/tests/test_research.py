@@ -9,7 +9,13 @@ import pytest
 from app.db import org_session
 from app.integrations.research_search import ResearchSearchResult
 from app.main import app
-from app.models.market import MarketActivityEvent, MarketResearchPlanEvidence, MarketWorkspace
+from app.models.market import (
+    MarketActivityEvent,
+    MarketQuestionDependency,
+    MarketResearchPlanEvidence,
+    MarketResearchQuestion,
+    MarketWorkspace,
+)
 from app.models.reliability import BackgroundJob
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service
@@ -572,5 +578,267 @@ def test_workspace_research_worker_uses_shared_versioned_evidence_and_plan_query
                     delete(BackgroundJob).where(
                         BackgroundJob.organization_id == UUID(ORG_A),
                         BackgroundJob.id.in_([UUID(item) for item in job_ids]),
+                    )
+                )
+
+
+def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+    workspace_id: str | None = None
+    plan_id: str | None = None
+
+    graph = [
+        {
+            "key": "scope",
+            "question": "明确用户目标所需的市场事实范围",
+            "rationale": "确定分析边界",
+            "priority": 1,
+            "acceptance_criteria": ["每项事实都与用户目标直接相关"],
+            "expected_evidence": ["用户明确指定的目标和范围"],
+            "depends_on_keys": [],
+        },
+        {
+            "key": "regulation",
+            "question": "核验目标市场适用的监管与准入要求",
+            "rationale": "法规结论建立在明确的市场范围之上",
+            "priority": 1,
+            "acceptance_criteria": ["列出适用要求及其官方来源"],
+            "expected_evidence": ["监管机构或政府官方资料"],
+            "depends_on_keys": ["scope"],
+        },
+        {
+            "key": "channels",
+            "question": "评估目标市场可用的渠道结构与合作方类型",
+            "rationale": "在目标市场范围明确后识别渠道",
+            "priority": 2,
+            "acceptance_criteria": ["区分渠道类型并标注证据缺口"],
+            "expected_evidence": ["企业、协会或行业来源"],
+            "depends_on_keys": ["scope"],
+        },
+        {
+            "key": "entry",
+            "question": "综合监管约束与渠道条件形成市场进入判断",
+            "rationale": "综合前置研究结果",
+            "priority": 2,
+            "acceptance_criteria": ["明确支持条件、限制和未知项"],
+            "expected_evidence": ["监管核验结果和渠道研究结果"],
+            "depends_on_keys": ["regulation", "channels"],
+        },
+    ]
+
+    class FakeGatewayResponse:
+        output = {
+            "intent_summary": "围绕用户提供的市场进入目标形成研究计划",
+            "objective": "形成有证据的市场进入判断",
+            "subject": "用户指定的目标市场",
+            "domain": None,
+            "geographies": [],
+            "entities": [],
+            "time_scope": None,
+            "research_questions": [node["question"] for node in graph],
+            "research_graph": graph,
+            "search_queries": ["user reviewed target market research"],
+            "source_types": ["official regulatory sources", "industry sources"],
+            "deliverables": ["evidence-backed market entry assessment"],
+            "missing_information": [],
+            "external_research_needed": True,
+        }
+        invocation_id = uuid.uuid4()
+        model = "test-research-planner"
+        degraded = False
+        error = None
+
+    class FakeGateway:
+        def complete(self, session, organization_id, request, *, trace_id=None):
+            captured["workspace_context"] = request.variables["workspace_context"]
+            captured["prompt_version"] = request.prompt_version
+            return FakeGatewayResponse()
+
+    monkeypatch.setattr(
+        "app.services.research_service.get_gateway",
+        lambda: FakeGateway(),
+    )
+
+    try:
+        workspace_response = client.post(
+            "/v1/market/workspaces",
+            headers=headers(),
+            json={
+                "name": f"Context-aware DAG {uuid.uuid4().hex[:8]}",
+                "objective": "研究用户明确指定的市场进入目标",
+                "initial_context": (
+                    "用户提供的业务背景：目标市场、产品范围、现有能力和希望验证的商业假设。"
+                ),
+            },
+        )
+        assert workspace_response.status_code == 201, workspace_response.text
+        workspace_id = workspace_response.json()["id"]
+
+        created = client.post(
+            "/v1/research/plans",
+            headers=headers(),
+            json={
+                "request": "根据工作空间的业务背景研究目标市场进入条件",
+                "source_scope": "EXTERNAL_ONLY",
+                "workspace_id": workspace_id,
+            },
+        )
+        assert created.status_code == 201, created.text
+        body = created.json()
+        plan_id = body["id"]
+
+        # EXTERNAL_ONLY limits retrieval to external sources; it must not discard
+        # the user-adopted Workspace brief that defines what the research is about.
+        workspace_context = captured["workspace_context"]
+        assert isinstance(workspace_context, dict)
+        snapshot = workspace_context["context_snapshot"]
+        assert snapshot["raw_input"].startswith("用户提供的业务背景")
+        assert snapshot["version"] == 1
+        assert captured["prompt_version"] == "v2"
+
+        generated_ids = body["generated_question_ids"]
+        assert len(generated_ids) == 4
+        assert [node["key"] for node in body["plan"]["research_graph"]] == [
+            "scope", "regulation", "channels", "entry"
+        ]
+        assert body["plan"]["planning_warnings"] == []
+
+        with org_session(UUID(ORG_A)) as session:
+            workflow = session.get(WorkflowInstance, UUID(plan_id))
+            assert workflow is not None
+            run = session.scalars(
+                select(AgentRun).where(
+                    AgentRun.organization_id == UUID(ORG_A),
+                    AgentRun.workflow_id == UUID(plan_id),
+                    AgentRun.agent_type == "research_planner",
+                )
+            ).one()
+            assert run.input["workspace_context_ref"]["context_version"] == 1
+            assert run.input["workspace_context_ref"]["sha256"]
+            assert "workspace_context" not in run.input
+            assert "raw_input" not in run.input["workspace_context_ref"]
+
+            questions = session.scalars(
+                select(MarketResearchQuestion).where(
+                    MarketResearchQuestion.organization_id == UUID(ORG_A),
+                    MarketResearchQuestion.workspace_id == UUID(workspace_id),
+                    MarketResearchQuestion.generated_by_run_id == run.id,
+                )
+            ).all()
+            assert len(questions) == 4
+            by_key = {row.planner_question_key: row for row in questions}
+            assert by_key["scope"].source == "AGENT"
+            assert by_key["scope"].expected_evidence == ["用户明确指定的目标和范围"]
+            assert all(row.generated_by_run_id == run.id for row in questions)
+
+            edges = session.scalars(
+                select(MarketQuestionDependency).where(
+                    MarketQuestionDependency.organization_id == UUID(ORG_A),
+                    MarketQuestionDependency.workspace_id == UUID(workspace_id),
+                )
+            ).all()
+            edge_keys = {
+                (by_key[next(k for k, row in by_key.items() if row.id == edge.question_id)].planner_question_key,
+                 by_key[next(k for k, row in by_key.items() if row.id == edge.depends_on_question_id)].planner_question_key)
+                for edge in edges
+            }
+            assert edge_keys == {
+                ("regulation", "scope"),
+                ("channels", "scope"),
+                ("entry", "regulation"),
+                ("entry", "channels"),
+            }
+
+            context_evidence = session.scalars(
+                select(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "RESEARCH_PLAN",
+                    Evidence.subject_id == UUID(plan_id),
+                    Evidence.kind == "WORKSPACE_CONTEXT_SNAPSHOT",
+                )
+            ).one()
+            assert context_evidence.payload["sha256"] == run.input["workspace_context_ref"]["sha256"]
+            assert "raw_input" not in context_evidence.payload
+
+        graph_response = client.get(
+            f"/v1/market/workspaces/{workspace_id}/research-graph",
+            headers=headers(),
+        )
+        assert graph_response.status_code == 200, graph_response.text
+        graph_body = graph_response.json()
+        assert graph_body["cycle_detected"] is False
+        assert len(graph_body["edges"]) == 4
+        assert graph_body["topological_order"] == generated_ids
+        readiness = {node["planner_question_key"]: node["readiness"] for node in graph_body["nodes"]}
+        assert readiness == {
+            "scope": "READY",
+            "regulation": "WAITING",
+            "channels": "WAITING",
+            "entry": "WAITING",
+        }
+
+        # Reposting a previously generated edge under a new idempotency key is
+        # semantically idempotent; the inverse edge must be rejected as a cycle.
+        regulation_id = next(
+            node["id"] for node in graph_body["nodes"]
+            if node["planner_question_key"] == "regulation"
+        )
+        scope_id = next(
+            node["id"] for node in graph_body["nodes"]
+            if node["planner_question_key"] == "scope"
+        )
+        duplicate = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions/{regulation_id}/dependencies",
+            headers=headers(),
+            json={"depends_on_question_id": scope_id},
+        )
+        assert duplicate.status_code == 200, duplicate.text
+
+        cycle = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions/{scope_id}/dependencies",
+            headers=headers(),
+            json={"depends_on_question_id": regulation_id},
+        )
+        assert cycle.status_code == 409, cycle.text
+        assert cycle.json()["error"]["code"] == "RESEARCH_DEPENDENCY_CYCLE"
+
+        with org_session(UUID(ORG_A)) as session:
+            assert session.scalar(
+                select(MarketQuestionDependency).where(
+                    MarketQuestionDependency.organization_id == UUID(ORG_A),
+                    MarketQuestionDependency.workspace_id == UUID(workspace_id),
+                ).count()
+            ) is None
+
+    finally:
+        if workspace_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == UUID(workspace_id),
+                    )
+                )
+        if plan_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.subject_type == "RESEARCH_PLAN",
+                        Evidence.subject_id == UUID(plan_id),
+                    )
+                )
+                session.execute(
+                    delete(AgentRun).where(
+                        AgentRun.organization_id == UUID(ORG_A),
+                        AgentRun.workflow_id == UUID(plan_id),
+                    )
+                )
+                session.execute(
+                    delete(WorkflowInstance).where(
+                        WorkflowInstance.organization_id == UUID(ORG_A),
+                        WorkflowInstance.id == UUID(plan_id),
                     )
                 )
