@@ -16,6 +16,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Numeric,
     Text,
@@ -35,6 +36,12 @@ class TripExpense(Base):
             "category IN ('TRANSPORT','LODGING','MEALS','OTHER')", name="category_allowed"
         ),
         CheckConstraint("amount > 0", name="amount_positive"),
+        ForeignKeyConstraint(
+            ["organization_id", "trip_id", "receipt_asset_id"],
+            ["receipt_assets.organization_id", "receipt_assets.trip_id", "receipt_assets.id"],
+            ondelete="RESTRICT",
+            name="fk_trip_expenses_receipt_asset_same_trip",
+        ),
         Index("ix_trip_expenses_org_trip_date", "organization_id", "trip_id", "occurred_on"),
     )
 
@@ -54,6 +61,7 @@ class TripExpense(Base):
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
     receipt_ref: Mapped[str | None] = mapped_column(Text)
+    receipt_asset_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
