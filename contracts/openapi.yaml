@@ -5595,25 +5595,25 @@ HTTP 重试不产生第二次副作用。两者都带时以 ``client_record_id``
           anyOf:
           - type: string
             format: uuid
-            title: Answer Id
           - type: 'null'
+          title: Answer Id
       - name: limit
         in: query
         required: false
         schema:
           anyOf:
           - type: integer
-            title: Limit
             minimum: 1
           - type: 'null'
+          title: Limit
       - name: cursor
         in: query
         required: false
         schema:
           anyOf:
           - type: string
-            title: Cursor
           - type: 'null'
+          title: Cursor
       responses:
         '200':
           description: Successful Response
@@ -14107,26 +14107,26 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
         source:
           anyOf:
           - type: string
-            title: Source
           - type: 'null'
+          title: Source
         canonical_ref:
           anyOf:
           - type: string
-            title: Canonical Ref
           - type: 'null'
+          title: Canonical Ref
         verification_status:
           type: string
           title: Verification Status
         content_hash:
           anyOf:
           - type: string
-            title: Content Hash
           - type: 'null'
+          title: Content Hash
         observation:
           anyOf:
           - type: string
-            title: Observation
           - type: 'null'
+          title: Observation
         created_at:
           type: string
           format: date-time
@@ -14158,18 +14158,18 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
         rationale:
           anyOf:
           - type: string
-            title: Rationale
           - type: 'null'
+          title: Rationale
         source_host:
           anyOf:
           - type: string
-            title: Source Host
           - type: 'null'
+          title: Source Host
         content_hash_snapshot:
           anyOf:
           - type: string
-            title: Content Hash Snapshot
           - type: 'null'
+          title: Content Hash Snapshot
         verification_status_snapshot:
           type: string
           title: Verification Status Snapshot
@@ -14237,8 +14237,8 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
         reasoning:
           anyOf:
           - type: string
-            title: Reasoning
           - type: 'null'
+          title: Reasoning
         verification_verdict:
           type: string
           enum:
@@ -14291,25 +14291,25 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
           anyOf:
           - type: string
             format: uuid
-            title: Supersedes Id
           - type: 'null'
+          title: Supersedes Id
         reviewed_by_user_id:
           anyOf:
           - type: string
             format: uuid
-            title: Reviewed By User Id
           - type: 'null'
+          title: Reviewed By User Id
         reviewed_at:
           anyOf:
           - type: string
             format: date-time
-            title: Reviewed At
           - type: 'null'
+          title: Reviewed At
         review_note:
           anyOf:
           - type: string
-            title: Review Note
           - type: 'null'
+          title: Review Note
         created_at:
           type: string
           format: date-time
@@ -14353,8 +14353,8 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
           anyOf:
           - type: string
             format: uuid
-            title: Job Id
           - type: 'null'
+          title: Job Id
         workflow_id:
           type: string
           format: uuid
@@ -14407,19 +14407,19 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
           anyOf:
           - type: string
             format: uuid
-            title: Agent Run Id
           - type: 'null'
+          title: Agent Run Id
         job_id:
           anyOf:
           - type: string
             format: uuid
-            title: Job Id
           - type: 'null'
+          title: Job Id
         job_status:
           anyOf:
           - type: string
-            title: Job Status
           - type: 'null'
+          title: Job Status
         status:
           type: string
           enum:
@@ -14448,20 +14448,20 @@ PENDING_SUGGESTION / PLAN_JOB / ACTION_RESULT / EXPENSE_REPORT）结构一致：
         failure_reason:
           anyOf:
           - type: string
-            title: Failure Reason
           - type: 'null'
+          title: Failure Reason
         started_at:
           anyOf:
           - type: string
             format: date-time
-            title: Started At
           - type: 'null'
+          title: Started At
         completed_at:
           anyOf:
           - type: string
             format: date-time
-            title: Completed At
           - type: 'null'
+          title: Completed At
         created_at:
           type: string
           format: date-time
