@@ -4,12 +4,14 @@ import SwiftUI
 final class MarketImpactReviewViewModel: ObservableObject {
     @Published private(set) var insight: MarketInsightRead?
     @Published private(set) var opportunity: MarketOpportunityDetailRead?
+    @Published private(set) var execution: MarketOpportunityExecutionRead?
     @Published private(set) var claimHistory: MarketClaimLineageHistory?
     @Published private(set) var isLoading = false
     @Published private(set) var isSubmitting = false
     @Published private(set) var successMessage: String?
     @Published var errorMessage: String?
     @Published var reviewNote = ""
+    @Published var visitLinkNote = ""
 
     let impact: MarketClaimImpact
     let workspaceId: String
@@ -57,14 +59,83 @@ final class MarketImpactReviewViewModel: ObservableObject {
                 workspaceId: workspaceId,
                 opportunityId: impact.consumerId
             )
+            async let executionRequest = repository.marketOpportunityExecution(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId
+            )
             do {
-                let (history, opportunity) = try await (historyRequest, opportunityRequest)
-                claimHistory = history
-                self.opportunity = opportunity
+                claimHistory = try await historyRequest
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            do {
+                self.opportunity = try await opportunityRequest
                 insight = nil
             } catch {
                 errorMessage = error.localizedDescription
             }
+            do {
+                execution = try await executionRequest
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func linkVisit(_ candidate: MarketOpportunityVisitCandidateRead) async -> Bool {
+        guard execution?.canLinkVisits == true, !isSubmitting else { return false }
+        isSubmitting = true
+        errorMessage = nil
+        successMessage = nil
+        defer { isSubmitting = false }
+
+        do {
+            let note = visitLinkNote.trimmingCharacters(in: .whitespacesAndNewlines)
+            _ = try await repository.linkMarketOpportunityVisit(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId,
+                request: MarketOpportunityVisitLinkCreate(
+                    tripId: candidate.tripId,
+                    visitId: candidate.visitId,
+                    linkNote: note.isEmpty ? nil : note
+                )
+            )
+            visitLinkNote = ""
+            successMessage = "已将这次拜访关联到商业机会。"
+            execution = try await repository.marketOpportunityExecution(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId
+            )
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func unlinkVisit(_ link: MarketOpportunityVisitLinkRead) async -> Bool {
+        guard link.isLinked, !isSubmitting else { return false }
+        isSubmitting = true
+        errorMessage = nil
+        successMessage = nil
+        defer { isSubmitting = false }
+
+        do {
+            _ = try await repository.unlinkMarketOpportunityVisit(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId,
+                visitId: link.visitId,
+                unlinkNote: "用户从机会执行工作台解除关联"
+            )
+            successMessage = "已解除机会与拜访的关联，历史记录仍被保留。"
+            execution = try await repository.marketOpportunityExecution(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId
+            )
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -106,6 +177,7 @@ struct MarketImpactReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: MarketImpactReviewViewModel
     @State private var showsReviewConfirmation = false
+    @State private var visitToUnlink: MarketOpportunityVisitLinkRead?
 
     let onReviewed: () async -> Void
 
@@ -198,6 +270,30 @@ struct MarketImpactReviewSheet: View {
             Button("暂不处理", role: .cancel) {}
         } message: {
             Text("操作会写入审核记录。采纳前服务端仍会检查是否存在反驳证据；影响报告本身不会自动修改任何判断或商机。")
+        }
+        .confirmationDialog(
+            "解除这项拜访与商业机会的关联？",
+            isPresented: Binding(
+                get: { visitToUnlink != nil },
+                set: { if !$0 { visitToUnlink = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("解除关联", role: .destructive) {
+                guard let link = visitToUnlink else { return }
+                Task {
+                    if await viewModel.unlinkVisit(link) {
+                        await onReviewed()
+                    }
+                    visitToUnlink = nil
+                }
+            }
+            .disabled(viewModel.isSubmitting)
+            Button("保留关联", role: .cancel) {
+                visitToUnlink = nil
+            }
+        } message: {
+            Text("只会解除机会与拜访的业务关联，不会删除 Trip、拜访或现场记录。")
         }
     }
 
@@ -332,6 +428,152 @@ private extension MarketImpactReviewSheet {
                     (relation: $0.relationType, rationale: $0.rationale, item: $0.evidence)
                 }
             )
+            executionSection
+        }
+    }
+
+    var executionSection: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            DSSectionHeader(
+                title: "出差执行",
+                subtitle: "将已制定行动的商业机会落实到具体 Trip 和拜访，不自动创建或改期"
+            )
+            if let execution = viewModel.execution {
+                if let blockedReason = execution.blockedReason {
+                    DSCard {
+                        Label(blockedReason, systemImage: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if !execution.links.isEmpty {
+                    VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                        Text("已关联 / 历史拜访")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        ForEach(execution.links) { link in
+                            DSCard(padding: DS.Spacing.md) {
+                                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                                    HStack {
+                                        DSBadge(
+                                            text: link.statusLabel,
+                                            color: link.isLinked
+                                                ? DS.ColorToken.success
+                                                : DS.ColorToken.textSecondary
+                                        )
+                                        DSBadge(
+                                            text: link.visitStatus == "DONE" ? "已完成" : link.visitStatus,
+                                            color: DS.ColorToken.status(link.visitStatus)
+                                        )
+                                        Spacer()
+                                        if link.isLinked {
+                                            Button("解除") {
+                                                visitToUnlink = link
+                                            }
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(DS.ColorToken.danger)
+                                            .disabled(viewModel.isSubmitting)
+                                        }
+                                    }
+                                    Text(link.visitTitle ?? link.placeName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(DS.ColorToken.textPrimary)
+                                    Text("\(link.tripName) · \(link.dateLabel)")
+                                        .font(.caption)
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                    Text(
+                                        [link.customerName, link.placeName, link.city, link.countryCode]
+                                            .compactMap { $0 }
+                                            .filter { !$0.isEmpty }
+                                            .joined(separator: " · ")
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                    if let note = link.linkNote, !note.isEmpty {
+                                        Text("关联说明：\(note)")
+                                            .font(.caption2)
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                    }
+                                    if let note = link.unlinkNote, !note.isEmpty {
+                                        Text("解除说明：\(note)")
+                                            .font(.caption2)
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if execution.canLinkVisits {
+                    VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                        Text("可关联的 Trip 拜访")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                        TextField("关联说明（可选）", text: $viewModel.visitLinkNote, axis: .vertical)
+                            .lineLimit(2...3)
+                            .textFieldStyle(.roundedBorder)
+                        ForEach(execution.candidates.prefix(8)) { candidate in
+                            DSCard(padding: DS.Spacing.md) {
+                                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                                    Text(candidate.visitTitle ?? candidate.placeName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(DS.ColorToken.textPrimary)
+                                    Text("\(candidate.tripName) · \(candidate.dateLabel)")
+                                        .font(.caption)
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                    Text(
+                                        [candidate.customerName, candidate.placeName,
+                                         candidate.locationLabel]
+                                            .compactMap { $0 }
+                                            .filter { !$0.isEmpty }
+                                            .joined(separator: " · ")
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                    HStack {
+                                        Label(
+                                            candidate.visitStatusLabel,
+                                            systemImage: "calendar"
+                                        )
+                                        Spacer()
+                                        Button {
+                                            Task {
+                                                if await viewModel.linkVisit(candidate) {
+                                                    await onReviewed()
+                                                }
+                                            }
+                                        } label: {
+                                            Label("关联到机会", systemImage: "link")
+                                                .font(.caption.weight(.semibold))
+                                        }
+                                        .disabled(viewModel.isSubmitting)
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(DS.ColorToken.brand)
+                                }
+                            }
+                        }
+                    }
+                }
+                if execution.candidates.count > 8 {
+                    Text("当前仅展示前 8 项可关联拜访，请先缩小 Trip 范围或整理行程。")
+                        .font(.caption2)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+            } else if viewModel.isLoading {
+                ProgressView("正在读取 Trip 执行上下文…")
+                    .frame(maxWidth: .infinity)
+            } else {
+                DSCard {
+                    Text("暂时无法读取出差执行上下文，请刷新重试。")
+                        .font(.caption)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+            }
+            Text("关联操作不会改变机会阶段、拜访状态或 Trip 计划版本；解除关联会保留审核历史。")
+                .font(.caption2)
+                .foregroundStyle(DS.ColorToken.textSecondary)
         }
     }
 
