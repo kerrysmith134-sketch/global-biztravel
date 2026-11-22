@@ -450,11 +450,11 @@ def apply_plan(
         if action.get("target_type") != "CLAIM":
             continue
         question = question_by_action[str(action["action_id"])]
-        dependency_ids: set[UUID] = set()
+        task_dependency_ids: set[UUID] = set()
         for evidence_id in action.get("evidence_ids", []):
-            dependency_ids.update(evidence_action_questions.get(str(evidence_id), set()))
-        dependency_ids.discard(question.id)
-        for dependency_id in sorted(dependency_ids, key=str):
+            task_dependency_ids.update(evidence_action_questions.get(str(evidence_id), set()))
+        task_dependency_ids.discard(question.id)
+        for dependency_id in sorted(task_dependency_ids, key=str):
             _, reused = market_research_graph_service.create_question_dependency(
                 session,
                 organization_id,
@@ -465,7 +465,7 @@ def apply_plan(
             )
             if not reused:
                 dependency_count += 1
-        dependencies_by_action[str(action["action_id"])] = sorted(dependency_ids, key=str)
+        dependencies_by_action[str(action["action_id"])] = sorted(task_dependency_ids, key=str)
 
     tasks = [
         _serialize_task(
