@@ -14,7 +14,7 @@ from app.models.expenses import TripExpense
 from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun
 from app.models.trip import Trip
 from app.models.workflow import AgentRun
-from app.services import receipt_asset_ocr_service, receipt_asset_service, receipt_ocr_service
+from app.services import receipt_asset_service, receipt_ocr_service
 from app.services.receipt_storage_service import FilesystemReceiptStorage
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
