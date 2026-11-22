@@ -1203,7 +1203,11 @@ def unlink_opportunity_visit(
             "market_opportunity",
             opportunity_id,
             "MARKET_OPPORTUNITY_VISIT_UNLINKED",
-            {"trip_id": str(row.trip_id), "visit_id": str(visit_id), "unlink_note": row.unlink_note},
+            {
+                "trip_id": str(row.trip_id),
+                "visit_id": str(visit_id),
+                "unlink_note": row.unlink_note,
+            },
         )
         session.flush()
     return next(
