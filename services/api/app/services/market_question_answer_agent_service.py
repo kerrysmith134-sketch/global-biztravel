@@ -19,7 +19,7 @@ from app.models.market import (
 )
 from app.models.reliability import BackgroundJob
 from app.models.workflow import Evidence, WorkflowInstance
-from app.services import job_service
+from app.services import job_service, market_insight_service
 
 WORKFLOW_TYPE = "market_question_answer"
 MAX_EVIDENCE_PER_DRAFT = 24
@@ -28,23 +28,14 @@ MAX_EVIDENCE_PER_DRAFT = 24
 def _evidence_scope(
     organization_id: UUID | str,
     workspace_id: UUID,
+    question_id: UUID,
     workflow_ids: list[UUID],
 ):
-    workspace_scope = and_(
-        Evidence.subject_type == "market_workspace",
-        Evidence.subject_id == workspace_id,
-    )
-    if not workflow_ids:
-        return and_(Evidence.organization_id == organization_id, workspace_scope)
-    return and_(
-        Evidence.organization_id == organization_id,
-        or_(
-            workspace_scope,
-            and_(
-                Evidence.subject_type == "RESEARCH_PLAN",
-                Evidence.subject_id.in_(workflow_ids),
-            ),
-        ),
+    return market_insight_service.question_evidence_scope(
+        organization_id,
+        workspace_id,
+        question_id,
+        workflow_ids,
     )
 
 
@@ -97,7 +88,9 @@ def load_answer_draft_inputs(
             )
         ).all()
     )
-    scope = _evidence_scope(organization_id, workspace_id, linked_workflow_ids)
+    scope = _evidence_scope(
+        organization_id, workspace_id, question_id, linked_workflow_ids
+    )
     rows = session.scalars(
         select(Evidence)
         .where(scope, Evidence.id.in_(evidence_ids))
@@ -158,7 +151,7 @@ def enqueue_answer_draft(
             )
         ).all()
     )
-    scope = _evidence_scope(organization_id, workspace_id, workflow_ids)
+    scope = _evidence_scope(organization_id, workspace_id, question_id, workflow_ids)
     if evidence_ids is not None:
         if not evidence_ids:
             selected_rows: list[Evidence] = []
