@@ -201,7 +201,10 @@ struct MarketImpactReviewSheet: View {
         }
     }
 
-    private var impactSummary: some View {
+}
+
+private extension MarketImpactReviewSheet {
+    var impactSummary: some View {
         DSCard {
             VStack(alignment: .leading, spacing: DS.Spacing.sm) {
                 HStack {
@@ -242,7 +245,7 @@ struct MarketImpactReviewSheet: View {
         }
     }
 
-    private func insightSection(_ insight: MarketInsightRead) -> some View {
+    func insightSection(_ insight: MarketInsightRead) -> some View {
         VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             DSSectionHeader(title: "受影响的市场判断", subtitle: "判断内容、置信度和直接关联的来源证据")
             DSCard {
@@ -283,7 +286,7 @@ struct MarketImpactReviewSheet: View {
         }
     }
 
-    private func opportunitySection(_ detail: MarketOpportunityDetailRead) -> some View {
+    func opportunitySection(_ detail: MarketOpportunityDetailRead) -> some View {
         VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             DSSectionHeader(title: "受影响的商业机会", subtitle: "只读取当前机会状态，不自动改变资格、阶段或结果")
             DSCard {
@@ -332,7 +335,7 @@ struct MarketImpactReviewSheet: View {
         }
     }
 
-    private func evidenceSection(
+    func evidenceSection(
         title: String,
         evidence: [(relation: String, rationale: String?, item: ResearchEvidence)]
     ) -> some View {
@@ -383,7 +386,7 @@ struct MarketImpactReviewSheet: View {
         }
     }
 
-    private var claimHistorySection: some View {
+    var claimHistorySection: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             DSSectionHeader(title: "主张版本历史", subtitle: "核对本次变化发生在哪个版本")
             if let history = viewModel.claimHistory {
@@ -443,7 +446,7 @@ struct MarketImpactReviewSheet: View {
         }
     }
 
-    private func detailList(title: String, values: [JSONValue]) -> some View {
+    func detailList(title: String, values: [JSONValue]) -> some View {
         let rendered = values.map(\.displayDescription).filter { !$0.isEmpty && $0 != "null" }
         guard !rendered.isEmpty else { return AnyView(EmptyView()) }
         return AnyView(
@@ -461,7 +464,7 @@ struct MarketImpactReviewSheet: View {
         )
     }
 
-    private func relationLabel(_ relation: String) -> String {
+    func relationLabel(_ relation: String) -> String {
         switch relation {
         case "SUPPORTS": return "支持"
         case "CONTRADICTS": return "反驳"
@@ -470,7 +473,7 @@ struct MarketImpactReviewSheet: View {
         }
     }
 
-    private func relationColor(_ relation: String) -> Color {
+    func relationColor(_ relation: String) -> Color {
         switch relation {
         case "SUPPORTS": return DS.ColorToken.success
         case "CONTRADICTS": return DS.ColorToken.danger
@@ -478,7 +481,7 @@ struct MarketImpactReviewSheet: View {
         }
     }
 
-    private var insightReviewSection: some View {
+    var insightReviewSection: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             DSSectionHeader(
                 title: "人工审核",
