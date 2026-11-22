@@ -92,6 +92,160 @@ final class MarketResearchTests: XCTestCase {
         XCTAssertNil(request.body)
     }
 
+    func testMarketImpactResolutionEndpointsUseExistingServerRoutes() throws {
+        let list = Endpoints.listMarketInsights(
+            workspaceId: "workspace-1",
+            page: PageRequest(limit: 100, cursor: "next-page")
+        )
+        XCTAssertEqual(list.method, .get)
+        XCTAssertEqual(list.path, "/v1/market/workspaces/workspace-1/insights")
+        XCTAssertEqual(list.queryItems.map(\.name), ["limit", "cursor"])
+        XCTAssertEqual(list.queryItems.map(\.value), ["100", "next-page"])
+        XCTAssertNil(list.idempotencyKey)
+
+        let opportunity = Endpoints.marketOpportunityDetail(
+            workspaceId: "workspace-1",
+            opportunityId: "opportunity-1"
+        )
+        XCTAssertEqual(opportunity.method, .get)
+        XCTAssertEqual(
+            opportunity.path,
+            "/v1/market/workspaces/workspace-1/opportunities/opportunity-1"
+        )
+
+        let accept = try Endpoints.acceptMarketInsight(
+            workspaceId: "workspace-1",
+            insightId: "insight-1",
+            body: MarketQuestionAnswerReviewRequest(reviewNote: "已核对最新证据")
+        )
+        XCTAssertEqual(accept.method, .post)
+        XCTAssertEqual(
+            accept.path,
+            "/v1/market/workspaces/workspace-1/insights/insight-1:accept"
+        )
+        XCTAssertNotNil(accept.idempotencyKey)
+        let acceptBody = try XCTUnwrap(accept.body)
+        let acceptPayload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: acceptBody) as? [String: Any]
+        )
+        XCTAssertEqual(acceptPayload["review_note"] as? String, "已核对最新证据")
+
+        let reject = try Endpoints.rejectMarketInsight(
+            workspaceId: "workspace-1",
+            insightId: "insight-1",
+            body: MarketQuestionAnswerReviewRequest(reviewNote: "新版本来源不再支持该判断")
+        )
+        XCTAssertEqual(reject.method, .post)
+        XCTAssertEqual(
+            reject.path,
+            "/v1/market/workspaces/workspace-1/insights/insight-1:reject"
+        )
+        XCTAssertNotNil(reject.idempotencyKey)
+    }
+
+    func testMarketInsightDetailDecodesEvidenceAndReviewState() throws {
+        let json = """
+        {
+          "id": "insight-1",
+          "workspace_id": "workspace-1",
+          "version": 2,
+          "insight_key": "buyer-demand",
+          "insight_type": "BUYER_SIGNAL",
+          "statement": "The buyer has an active procurement programme.",
+          "assumptions": ["The programme remains funded"],
+          "unknowns": ["Final procurement date"],
+          "implications": ["Reconfirm buyer timing"],
+          "confidence_level": "LOW",
+          "status": "NEEDS_REVIEW",
+          "insufficient_evidence_reason": null,
+          "reviewed_at": null,
+          "review_note": null,
+          "created_at": "2026-11-22T08:00:00+00:00",
+          "updated_at": "2026-11-22T08:00:00+00:00",
+          "evidence": [{
+            "relation_type": "SUPPORTS",
+            "rationale": "The source directly describes the programme.",
+            "evidence": {
+              "id": "evidence-1",
+              "subject_type": "market_workspace",
+              "subject_id": "workspace-1",
+              "kind": "WEB_PAGE",
+              "ref": "https://buyer.example.test/procurement",
+              "source": "Buyer website",
+              "payload": {
+                "title": "Procurement programme",
+                "url": "https://buyer.example.test/procurement",
+                "snippet": "The programme is open for supplier submissions."
+              },
+              "retrieved_at": "2026-11-22T07:00:00+00:00",
+              "created_at": "2026-11-22T07:00:00+00:00"
+            }
+          }]
+        }
+        """
+        let insight = try DateCoding.decode(MarketInsightRead.self, fromJSON: json)
+        XCTAssertEqual(insight.id, "insight-1")
+        XCTAssertEqual(insight.statusLabel, "待审核")
+        XCTAssertTrue(insight.canReview)
+        XCTAssertEqual(insight.evidence.first?.relationType, "SUPPORTS")
+        XCTAssertEqual(insight.evidence.first?.evidence.title, "Procurement programme")
+        XCTAssertEqual(insight.assumptions.first?.stringValue, "The programme remains funded")
+    }
+
+    func testMarketOpportunityDetailDecodesEvidenceAndStatus() throws {
+        let json = """
+        {
+          "opportunity": {
+            "id": "opportunity-1",
+            "workspace_id": "workspace-1",
+            "title": "Potential procurement opportunity",
+            "description": "Possible supplier engagement.",
+            "status": "RESEARCHING",
+            "next_action": "Confirm procurement owner",
+            "qualification_reason": null,
+            "disqualification_reason": null,
+            "assessment_version": 1,
+            "assessment_dimensions": {},
+            "assessment_summary": "The buyer signal requires confirmation.",
+            "assessment_confidence": "LOW",
+            "created_by_run_id": null,
+            "owner_user_id": null,
+            "created_by_user_id": "user-1",
+            "qualified_by_user_id": null,
+            "qualified_at": null,
+            "outcome_recorded_by_user_id": null,
+            "outcome_recorded_at": null,
+            "outcome_note": null,
+            "created_at": "2026-11-22T08:00:00+00:00",
+            "updated_at": "2026-11-22T08:00:00+00:00"
+          },
+          "evidence": [{
+            "relation_type": "SUPPORTS",
+            "rationale": "The source identifies an open procurement programme.",
+            "evidence": {
+              "id": "evidence-2",
+              "subject_type": "market_workspace",
+              "subject_id": "workspace-1",
+              "kind": "WEB_PAGE",
+              "ref": "https://buyer.example.test/tender",
+              "source": "Buyer website",
+              "payload": {"title": "Open tender"},
+              "retrieved_at": "2026-11-22T07:00:00+00:00",
+              "created_at": "2026-11-22T07:00:00+00:00"
+            }
+          }],
+          "entities": [],
+          "assessments": []
+        }
+        """
+        let detail = try DateCoding.decode(MarketOpportunityDetailRead.self, fromJSON: json)
+        XCTAssertEqual(detail.opportunity.id, "opportunity-1")
+        XCTAssertEqual(detail.opportunity.statusLabel, "研究中")
+        XCTAssertEqual(detail.evidence.first?.evidence.title, "Open tender")
+        XCTAssertTrue(detail.entities.isEmpty)
+        XCTAssertTrue(detail.assessments.isEmpty)
+    }
+
     func testMarketClaimImpactReportDecodesAffectedConsumers() throws {
         let json = """
         {

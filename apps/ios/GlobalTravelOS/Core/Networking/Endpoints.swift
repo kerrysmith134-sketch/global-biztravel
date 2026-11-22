@@ -377,6 +377,47 @@ enum Endpoints {
         )
     }
 
+    static func listMarketInsights(workspaceId: String, page: PageRequest) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/insights",
+            queryItems: page.queryItems
+        )
+    }
+
+    static func marketOpportunityDetail(workspaceId: String, opportunityId: String) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/opportunities/\(opportunityId)"
+        )
+    }
+
+    static func acceptMarketInsight(
+        workspaceId: String,
+        insightId: String,
+        body: MarketQuestionAnswerReviewRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/insights/\(insightId):accept",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func rejectMarketInsight(
+        workspaceId: String,
+        insightId: String,
+        body: MarketQuestionAnswerReviewRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/insights/\(insightId):reject",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func listMarketContexts(workspaceId: String) -> APIRequest {
         APIRequest(
             method: .get,

@@ -544,6 +544,7 @@ struct MarketClaimImpactReport: Decodable, Equatable {
     var impacts: [MarketClaimImpact]
 }
 
+
 struct MarketSourceVerificationAction: Decodable, Equatable, Identifiable {
     var actionId: String
     var actionType: String
