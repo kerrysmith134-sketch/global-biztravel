@@ -183,6 +183,7 @@ struct MarketResearchWorkspaceDetailView: View {
     @State private var showsCreateQuestion = false
     @State private var confirmsCancelExecution = false
     @State private var historyClaimID: String?
+    @State private var selectedImpact: MarketClaimImpact?
 
     init(workspace: MarketWorkspace, repository: ResearchRepository) {
         _viewModel = StateObject(
@@ -254,6 +255,14 @@ struct MarketResearchWorkspaceDetailView: View {
                     repository: viewModel.repository
                 )
             }
+        }
+        .sheet(item: $selectedImpact) { impact in
+            MarketImpactReviewSheet(
+                workspaceId: viewModel.workspace.id,
+                impact: impact,
+                repository: viewModel.repository,
+                onReviewed: { await viewModel.load() }
+            )
         }
         .confirmationDialog(
             "取消本次研究图执行？",
@@ -553,34 +562,49 @@ struct MarketResearchWorkspaceDetailView: View {
                             .foregroundStyle(DS.ColorToken.textSecondary)
                         } else {
                             ForEach(report.impacts.prefix(8)) { impact in
-                                VStack(alignment: .leading, spacing: 5) {
-                                    HStack {
-                                        Text(impact.consumerTypeLabel)
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(DS.ColorToken.textSecondary)
-                                        Spacer()
-                                        Text(impact.severityLabel)
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(
-                                                impact.severity == "HIGH"
-                                                    ? DS.ColorToken.status("WARNING")
-                                                    : DS.ColorToken.info
+                                Button {
+                                    selectedImpact = impact
+                                } label: {
+                                    HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            HStack {
+                                                Text(impact.consumerTypeLabel)
+                                                    .font(.caption.weight(.semibold))
+                                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                                Spacer()
+                                                Text(impact.severityLabel)
+                                                    .font(.caption2.weight(.semibold))
+                                                    .foregroundStyle(
+                                                        impact.severity == "HIGH"
+                                                            ? DS.ColorToken.status("WARNING")
+                                                            : DS.ColorToken.info
+                                                    )
+                                            }
+                                            Text(impact.consumerTitle)
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(DS.ColorToken.textPrimary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                            Text(
+                                                "\(impact.reasonLabel) · 主张 v\(impact.latestClaimVersion) · "
+                                                + "关联证据 \(impact.matchedEvidenceCount) 条"
+                                                + (impact.staleEvidenceCount > 0
+                                                    ? " · 旧证据 \(impact.staleEvidenceCount) 条" : "")
                                             )
+                                            .font(.caption)
+                                            .foregroundStyle(DS.ColorToken.textSecondary)
+                                            Label("查看证据与版本历史", systemImage: "arrow.up.right.circle")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(DS.ColorToken.brand)
+                                        }
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(DS.ColorToken.textTertiary)
+                                            .padding(.top, 2)
                                     }
-                                    Text(impact.consumerTitle)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(DS.ColorToken.textPrimary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    Text(
-                                        "\(impact.reasonLabel) · 主张 v\(impact.latestClaimVersion) · "
-                                        + "关联证据 \(impact.matchedEvidenceCount) 条"
-                                        + (impact.staleEvidenceCount > 0
-                                            ? " · 旧证据 \(impact.staleEvidenceCount) 条" : "")
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                    .contentShape(Rectangle())
+                                    .padding(.vertical, 7)
                                 }
-                                .padding(.vertical, 5)
+                                .buttonStyle(.plain)
                                 if impact.id != report.impacts.prefix(8).last?.id {
                                     Divider()
                                 }
