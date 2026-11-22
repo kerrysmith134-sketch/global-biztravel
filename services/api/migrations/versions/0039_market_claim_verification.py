@@ -240,7 +240,7 @@ def upgrade() -> None:
     if helpers.role_exists("gbt_app"):
         # Assertion content and its evidence mapping are immutable for the application role.
         # Only the human-review state/audit columns may change after a claim is created.
-        op.execute("REVOKE UPDATE ON market_claims FROM gbt_app")
+        op.execute("REVOKE UPDATE, DELETE, TRUNCATE ON market_claims FROM gbt_app")
         op.execute(
             "GRANT UPDATE (status, reviewed_by_user_id, reviewed_at, review_note) "
             "ON market_claims TO gbt_app"
