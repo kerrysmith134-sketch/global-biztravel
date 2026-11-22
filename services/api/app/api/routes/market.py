@@ -22,6 +22,9 @@ from app.api.market_schemas import (
     MarketActivityEventRead,
     MarketContextCreate,
     MarketContextRead,
+    MarketQuestionDependencyCreate,
+    MarketQuestionDependencyDeleted,
+    MarketQuestionDependencyRead,
     MarketResearchQuestionCreate,
     MarketResearchQuestionRead,
     MarketResearchQuestionUpdate,
@@ -336,6 +339,110 @@ def update_question(
     return guard.finish(
         status_code=status.HTTP_200_OK,
         body=MarketResearchQuestionRead.model_validate(row),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/questions/{question_id}/dependencies",
+    response_model=list[MarketQuestionDependencyRead],
+    summary="读取研究问题的前置依赖",
+)
+def list_question_dependencies(
+    workspace_id: UUID,
+    question_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    rows = market_service.list_question_dependencies(
+        session, context.organization_id, workspace_id, question_id
+    )
+    return [MarketQuestionDependencyRead.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/questions/{question_id}/dependencies",
+    response_model=MarketQuestionDependencyRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="新增研究问题依赖（服务端阻止循环依赖）",
+)
+def create_question_dependency(
+    workspace_id: UUID,
+    question_id: UUID,
+    payload: MarketQuestionDependencyCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=f"POST /v1/market/workspaces/{workspace_id}/questions/{question_id}/dependencies",
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "question_id": str(question_id),
+            "depends_on_question_id": str(payload.depends_on_question_id),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    row, created = market_service.create_question_dependency(
+        session,
+        context.organization_id,
+        workspace_id,
+        question_id,
+        payload.depends_on_question_id,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        body=MarketQuestionDependencyRead.model_validate(row),
+    )
+
+
+@router.delete(
+    "/market/workspaces/{workspace_id}/questions/{question_id}/dependencies/{dependency_id}",
+    response_model=MarketQuestionDependencyDeleted,
+    summary="移除研究问题依赖",
+)
+def delete_question_dependency(
+    workspace_id: UUID,
+    question_id: UUID,
+    dependency_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=(
+            f"DELETE /v1/market/workspaces/{workspace_id}/questions/"
+            f"{question_id}/dependencies/{dependency_id}"
+        ),
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "question_id": str(question_id),
+            "dependency_id": str(dependency_id),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    removed_id = market_service.delete_question_dependency(
+        session,
+        context.organization_id,
+        workspace_id,
+        question_id,
+        dependency_id,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketQuestionDependencyDeleted(dependency_id=removed_id, deleted=True),
     )
 
 
