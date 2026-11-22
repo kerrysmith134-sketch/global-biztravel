@@ -403,3 +403,93 @@ struct MarketEvidenceIntelligenceReport: Decodable, Equatable {
     var caveats: [String]
 }
 
+
+
+struct MarketSourceVerificationEvidence: Decodable, Equatable, Identifiable {
+    var evidenceId: String
+    var relationType: String
+    var sourceHost: String?
+    var contentFingerprint: String?
+    var fingerprintSource: String
+    var contentChangedSinceAssessment: Bool
+    var statusChangedSinceAssessment: Bool
+    var sourceVersionChanged: Bool
+    var latestSourceEvidenceId: String?
+    var unextracted: Bool
+    var issues: [String]
+
+    var id: String { evidenceId }
+}
+
+struct MarketSourceVerificationClaim: Decodable, Equatable, Identifiable {
+    var claimId: String
+    var statement: String
+    var claimType: String
+    var claimStatus: String
+    var verificationVerdict: String
+    var supportingEvidenceCount: Int
+    var contradictingEvidenceCount: Int
+    var distinctHostCount: Int
+    var distinctContentCount: Int
+    var sourceOriginState: String
+    var changedSourceCount: Int
+    var statusChangedSourceCount: Int
+    var unextractedSourceCount: Int
+    var evidence: [MarketSourceVerificationEvidence]
+    var issues: [String]
+
+    var id: String { claimId }
+
+    var originLabel: String {
+        switch sourceOriginState {
+        case "NO_SUPPORTING_EVIDENCE": return "缺少支持证据"
+        case "SINGLE_SOURCE_ONLY": return "单一来源"
+        case "SAME_HOST_ONLY": return "同一主机"
+        case "POSSIBLE_SYNDICATION": return "疑似转载"
+        case "MULTIPLE_HOSTS_UNCONFIRMED": return "多主机未确认独立"
+        case "CONFLICTING_SIGNALS": return "存在冲突"
+        default: return sourceOriginState
+        }
+    }
+}
+
+struct MarketSourceVerificationAction: Decodable, Equatable, Identifiable {
+    var actionId: String
+    var actionType: String
+    var priority: String
+    var targetType: String
+    var targetId: String
+    var evidenceIds: [String]
+    var claimId: String?
+    var title: String
+    var rationale: String
+
+    var id: String { actionId }
+
+    var priorityLabel: String {
+        switch priority {
+        case "HIGH": return "高优先级"
+        case "MEDIUM": return "中优先级"
+        default: return "低优先级"
+        }
+    }
+}
+
+struct MarketSourceVerificationPlan: Decodable, Equatable {
+    var workspaceId: String
+    var generatedAt: Date
+    var totalEvidenceCount: Int
+    var analyzedEvidenceCount: Int
+    var evidenceTruncated: Bool
+    var totalClaimCount: Int
+    var analyzedClaimCount: Int
+    var claimsTruncated: Bool
+    var claimsNeedingCorroborationCount: Int
+    var claimsWithContradictionsCount: Int
+    var claimsWithChangedSourcesCount: Int
+    var actionCount: Int
+    var actionsTruncated: Bool
+    var claims: [MarketSourceVerificationClaim]
+    var actions: [MarketSourceVerificationAction]
+    var limitations: [String]
+}

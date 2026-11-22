@@ -2270,6 +2270,88 @@ class MarketEvidenceIntelligenceRead(BaseModel):
     caveats: list[str] = Field(default_factory=list)
 
 
+class MarketSourceVerificationEvidenceRead(BaseModel):
+    evidence_id: UUID
+    relation_type: Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"]
+    source_host: str | None
+    content_fingerprint: str | None
+    fingerprint_source: Literal["STORED_HASH", "BODY_SHA256", "UNAVAILABLE"]
+    content_changed_since_assessment: bool
+    status_changed_since_assessment: bool
+    source_version_changed: bool
+    latest_source_evidence_id: UUID | None
+    unextracted: bool
+    issues: list[str] = Field(default_factory=list)
+
+
+class MarketSourceVerificationClaimRead(BaseModel):
+    claim_id: UUID
+    statement: str
+    claim_type: Literal["FACT", "ESTIMATE", "OPINION", "FORECAST", "INFERENCE"]
+    claim_status: Literal[
+        "NEEDS_REVIEW", "CONFLICTED", "INSUFFICIENT", "ACCEPTED", "REJECTED"
+    ]
+    verification_verdict: Literal[
+        "PROVISIONAL_SUPPORT", "POTENTIAL_CONTRADICTION", "CONFLICTED", "INSUFFICIENT"
+    ]
+    supporting_evidence_count: int
+    contradicting_evidence_count: int
+    distinct_host_count: int
+    distinct_content_count: int
+    source_origin_state: Literal[
+        "NO_SUPPORTING_EVIDENCE",
+        "SINGLE_SOURCE_ONLY",
+        "SAME_HOST_ONLY",
+        "POSSIBLE_SYNDICATION",
+        "MULTIPLE_HOSTS_UNCONFIRMED",
+        "CONFLICTING_SIGNALS",
+    ]
+    changed_source_count: int
+    status_changed_source_count: int
+    unextracted_source_count: int
+    evidence: list[MarketSourceVerificationEvidenceRead] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+
+
+class MarketSourceVerificationActionRead(BaseModel):
+    action_id: str
+    action_type: Literal[
+        "EXTRACT_SOURCE_PAGE",
+        "COMPLETE_SOURCE_METADATA",
+        "INVESTIGATE_POSSIBLE_SYNDICATION",
+        "REVIEW_SOURCE_VERSION_DRIFT",
+        "REVERIFY_CLAIM_AFTER_SOURCE_CHANGE",
+        "REVIEW_CONTRADICTORY_EVIDENCE",
+        "SEEK_SEPARATELY_ORIGINATED_CORROBORATION",
+    ]
+    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    target_type: Literal["EVIDENCE", "CLAIM"]
+    target_id: UUID
+    evidence_ids: list[UUID] = Field(default_factory=list)
+    claim_id: UUID | None = None
+    title: str
+    rationale: str
+
+
+class MarketSourceVerificationPlanRead(BaseModel):
+    workspace_id: UUID
+    generated_at: datetime
+    total_evidence_count: int
+    analyzed_evidence_count: int
+    evidence_truncated: bool
+    total_claim_count: int
+    analyzed_claim_count: int
+    claims_truncated: bool
+    claims_needing_corroboration_count: int
+    claims_with_contradictions_count: int
+    claims_with_changed_sources_count: int
+    action_count: int
+    actions_truncated: bool
+    claims: list[MarketSourceVerificationClaimRead] = Field(default_factory=list)
+    actions: list[MarketSourceVerificationActionRead] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
 class MarketInsightEvidenceInput(BaseModel):
     evidence_id: UUID
     relation_type: MarketEvidenceRelation

@@ -45,6 +45,17 @@ final class MarketResearchTests: XCTestCase {
         XCTAssertNil(request.body)
     }
 
+    func testSourceVerificationPlanEndpointIsReadOnly() {
+        let request = Endpoints.marketSourceVerificationPlan(workspaceId: "workspace-1")
+        XCTAssertEqual(request.method, .get)
+        XCTAssertEqual(
+            request.path,
+            "/v1/market/workspaces/workspace-1/source-verification-plan"
+        )
+        XCTAssertNil(request.idempotencyKey)
+        XCTAssertNil(request.body)
+    }
+
     func testMarketContextEndpointsUseVersionedWorkspaceRoutes() {
         let list = Endpoints.listMarketContexts(workspaceId: "workspace-1")
         XCTAssertEqual(list.method, .get)

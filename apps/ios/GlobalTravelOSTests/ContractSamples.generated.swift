@@ -363,6 +363,78 @@ enum ContractSamples {
   "workspace_id": "11111111-1111-1111-1111-111111111111"
 }
 """
+    static let marketSourceVerificationPlan = """
+{
+  "action_count": 1,
+  "actions": [
+    {
+      "action_id": "1",
+      "action_type": "EXTRACT_SOURCE_PAGE",
+      "claim_id": "11111111-1111-1111-1111-111111111111",
+      "evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "priority": "HIGH",
+      "rationale": "1",
+      "target_id": "11111111-1111-1111-1111-111111111111",
+      "target_type": "EVIDENCE",
+      "title": "1"
+    }
+  ],
+  "actions_truncated": true,
+  "analyzed_claim_count": 1,
+  "analyzed_evidence_count": 1,
+  "claims": [
+    {
+      "changed_source_count": 1,
+      "claim_id": "11111111-1111-1111-1111-111111111111",
+      "claim_status": "NEEDS_REVIEW",
+      "claim_type": "FACT",
+      "contradicting_evidence_count": 1,
+      "distinct_content_count": 1,
+      "distinct_host_count": 1,
+      "evidence": [
+        {
+          "content_changed_since_assessment": true,
+          "content_fingerprint": "1",
+          "evidence_id": "11111111-1111-1111-1111-111111111111",
+          "fingerprint_source": "STORED_HASH",
+          "issues": [
+            "1"
+          ],
+          "latest_source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "relation_type": "SUPPORTS",
+          "source_host": "1",
+          "source_version_changed": true,
+          "status_changed_since_assessment": true,
+          "unextracted": true
+        }
+      ],
+      "issues": [
+        "1"
+      ],
+      "source_origin_state": "NO_SUPPORTING_EVIDENCE",
+      "statement": "1",
+      "status_changed_source_count": 1,
+      "supporting_evidence_count": 1,
+      "unextracted_source_count": 1,
+      "verification_verdict": "PROVISIONAL_SUPPORT"
+    }
+  ],
+  "claims_needing_corroboration_count": 1,
+  "claims_truncated": true,
+  "claims_with_changed_sources_count": 1,
+  "claims_with_contradictions_count": 1,
+  "evidence_truncated": true,
+  "generated_at": "2026-11-09T09:00:00+00:00",
+  "limitations": [
+    "1"
+  ],
+  "total_claim_count": 1,
+  "total_evidence_count": 1,
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
     static let minutesDraft = """
 {
   "decisions": [

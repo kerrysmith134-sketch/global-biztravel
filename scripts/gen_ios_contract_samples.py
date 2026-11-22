@@ -67,6 +67,7 @@ TARGETS: dict[str, str] = {
     # target_plan_version_id、changes vs stops），加入契约样本后这类错误会在解码测试里直接失败。
     "PlanDiff": "PlanVersionDiffRead",
     "MarketEvidenceIntelligenceReport": "MarketEvidenceIntelligenceRead",
+    "MarketSourceVerificationPlan": "MarketSourceVerificationPlanRead",
 }
 
 SAMPLE_UUID = "11111111-1111-1111-1111-111111111111"

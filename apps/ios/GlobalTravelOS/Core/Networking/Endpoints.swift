@@ -348,6 +348,13 @@ enum Endpoints {
         )
     }
 
+    static func marketSourceVerificationPlan(workspaceId: String) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/source-verification-plan"
+        )
+    }
+
     static func listMarketContexts(workspaceId: String) -> APIRequest {
         APIRequest(
             method: .get,

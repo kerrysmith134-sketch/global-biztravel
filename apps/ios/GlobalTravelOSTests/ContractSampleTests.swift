@@ -133,6 +133,15 @@ final class ContractSampleTests: XCTestCase {
         XCTAssertEqual(value.items.first?.originLabel, "内容重复")
     }
 
+    func testMarketSourceVerificationPlanContractSampleDecodes() throws {
+        let value = try decode(
+            MarketSourceVerificationPlan.self,
+            ContractSamples.marketSourceVerificationPlan
+        )
+        XCTAssertEqual(value.workspaceId, "11111111-1111-1111-1111-111111111111")
+        XCTAssertEqual(value.actions.first?.priority, "HIGH")
+    }
+
     func testJobResultContractSampleDecodes() throws {
         _ = try decode(JobResult.self, ContractSamples.jobResult)
     }
