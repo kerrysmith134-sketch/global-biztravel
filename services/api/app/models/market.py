@@ -1399,15 +1399,14 @@ class MarketClaim(Base):
             name="fk_market_claim_agent_run",
         ),
         ForeignKeyConstraint(
-            ["organization_id", "workspace_id", "answer_id", "supersedes_id"],
+            ["organization_id", "workspace_id", "supersedes_id"],
             [
                 "market_claims.organization_id",
                 "market_claims.workspace_id",
-                "market_claims.answer_id",
                 "market_claims.id",
             ],
             ondelete="NO ACTION",
-            name="fk_market_claim_supersedes_same_answer",
+            name="fk_market_claim_supersedes_same_workspace",
         ),
         UniqueConstraint(
             "organization_id", "workspace_id", "id",
@@ -1416,6 +1415,10 @@ class MarketClaim(Base):
         UniqueConstraint(
             "organization_id", "workspace_id", "answer_id", "id",
             name="uq_market_claims_org_workspace_answer_id",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "claim_lineage_id", "version",
+            name="uq_market_claims_lineage_version",
         ),
         UniqueConstraint(
             "organization_id", "workspace_id", "answer_id", "claim_key", "version",
@@ -1475,8 +1478,8 @@ class MarketClaim(Base):
             "organization_id", "verification_run_id",
         ),
         Index(
-            "uq_market_claims_one_accepted_per_key",
-            "organization_id", "workspace_id", "answer_id", "claim_key",
+            "uq_market_claims_one_accepted_per_lineage",
+            "organization_id", "workspace_id", "claim_lineage_id",
             unique=True,
             postgresql_where=text("status = 'ACCEPTED'"),
         ),
@@ -1495,6 +1498,10 @@ class MarketClaim(Base):
     generated_by_run_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     claim_key: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_lineage_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), nullable=False, default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
     statement: Mapped[str] = mapped_column(Text, nullable=False)
     claim_type: Mapped[str] = mapped_column(Text, nullable=False)
     scope: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")

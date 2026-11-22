@@ -161,26 +161,37 @@ def build_plan(
     )
     evidence_rows = evidence_rows[:MAX_ANALYZED_EVIDENCE]
 
+    claim_scope = (
+        MarketClaim.organization_id == organization_id,
+        MarketClaim.workspace_id == workspace_id,
+    )
     total_claim_count = int(
         session.scalar(
-            select(func.count())
-            .select_from(MarketClaim)
-            .where(
-                MarketClaim.organization_id == organization_id,
-                MarketClaim.workspace_id == workspace_id,
-                MarketClaim.status != "SUPERSEDED",
-            )
+            select(func.count(func.distinct(MarketClaim.claim_lineage_id)))
+            .where(*claim_scope)
         )
         or 0
+    )
+    ranked_claims = (
+        select(
+            MarketClaim.id.label("claim_id"),
+            func.row_number().over(
+                partition_by=MarketClaim.claim_lineage_id,
+                order_by=(
+                    MarketClaim.version.desc(),
+                    MarketClaim.created_at.desc(),
+                    MarketClaim.id.desc(),
+                ),
+            ).label("lineage_rank"),
+        )
+        .where(*claim_scope)
+        .subquery()
     )
     claim_rows = list(
         session.scalars(
             select(MarketClaim)
-            .where(
-                MarketClaim.organization_id == organization_id,
-                MarketClaim.workspace_id == workspace_id,
-                MarketClaim.status != "SUPERSEDED",
-            )
+            .join(ranked_claims, ranked_claims.c.claim_id == MarketClaim.id)
+            .where(ranked_claims.c.lineage_rank == 1)
             .order_by(MarketClaim.created_at.desc(), MarketClaim.id)
             .limit(MAX_ANALYZED_CLAIMS + 1)
         ).all()
@@ -485,6 +496,8 @@ def build_plan(
         claim_assessments.append(
             {
                 "claim_id": claim.id,
+                "claim_lineage_id": claim.claim_lineage_id,
+                "claim_version": claim.version,
                 "statement": claim.statement,
                 "claim_type": claim.claim_type,
                 "claim_status": claim.status,

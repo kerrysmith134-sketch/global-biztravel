@@ -909,6 +909,27 @@ def get_market_claim_verification_run(
 
 
 @router.get(
+    "/market/workspaces/{workspace_id}/claims/{claim_id}/history",
+    response_model=MarketClaimLineageRead,
+    summary="读取同一原子主张跨答案版本的完整历史",
+)
+def get_market_claim_history(
+    workspace_id: UUID,
+    claim_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    result = market_claim_verification_service.get_claim_history(
+        session,
+        context.organization_id,
+        workspace_id,
+        claim_id,
+    )
+    return MarketClaimLineageRead.model_validate(result)
+
+
+@router.get(
     "/market/workspaces/{workspace_id}/claims",
     response_model=Page[MarketClaimRead],
     summary="读取 Workspace 的原子研究主张",

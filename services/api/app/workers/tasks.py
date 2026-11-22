@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 from urllib.parse import urlsplit
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -56,6 +56,7 @@ from app.models.market import (
     MarketClaimEvidence,
     MarketClaimVerificationRun,
     MarketEvidenceDerivation,
+    MarketWorkspace,
     MarketResearchQuestion,
     MarketResearchQuestionAnswer,
     MarketResearchQuestionAnswerEvidence,
@@ -965,6 +966,17 @@ def handle_market_claim_verification(
     if verification_run is None:
         raise TaskFailed("主张核验运行记录不存在", retryable=False)
 
+    workspace = session.scalars(
+        select(MarketWorkspace)
+        .where(
+            MarketWorkspace.organization_id == job.organization_id,
+            MarketWorkspace.id == workspace_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if workspace is None:
+        raise TaskFailed("主张核验 Workspace 不存在", retryable=False)
+
     answer = session.scalars(
         select(MarketResearchQuestionAnswer)
         .where(
@@ -1325,7 +1337,6 @@ def handle_market_claim_verification(
                 .where(
                     MarketClaim.organization_id == job.organization_id,
                     MarketClaim.workspace_id == workspace_id,
-                    MarketClaim.answer_id == answer_id,
                     MarketClaim.claim_key == claim_key,
                 )
                 .order_by(MarketClaim.version.desc())
@@ -1341,6 +1352,7 @@ def handle_market_claim_verification(
                 generated_by_run_id=run.id,
                 version=version,
                 claim_key=claim_key,
+                claim_lineage_id=latest.claim_lineage_id if latest is not None else uuid4(),
                 statement=statement,
                 claim_type=claim_type,
                 scope=scope,
