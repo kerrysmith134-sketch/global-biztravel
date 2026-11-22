@@ -6,10 +6,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, Unprocessable
+from app.models.geo import Customer, Place
 from app.models.identity import Membership
 from app.models.market import (
     MarketActivityEvent,
@@ -18,12 +19,13 @@ from app.models.market import (
     MarketOpportunityAssessment,
     MarketOpportunityEntity,
     MarketOpportunityEvidence,
+    MarketOpportunityVisitLink,
     MarketWorkspace,
     MarketWorkspaceEntity,
     MarketWorkspaceTripLink,
     MarketWorkspaceWorkflow,
 )
-from app.models.trip import Trip
+from app.models.trip import Trip, Visit
 from app.models.workflow import AgentRun, Evidence
 
 TRANSITIONS: dict[str, set[str]] = {
@@ -768,6 +770,21 @@ def unlink_trip_from_workspace(
     if row is None:
         raise NotFound("Workspace 与 Trip 的关联不存在")
     if row.link_status == "LINKED":
+        active_visit_link = session.scalars(
+            select(MarketOpportunityVisitLink.id)
+            .where(
+                MarketOpportunityVisitLink.organization_id == organization_id,
+                MarketOpportunityVisitLink.workspace_id == workspace_id,
+                MarketOpportunityVisitLink.trip_id == trip_id,
+                MarketOpportunityVisitLink.link_status == "LINKED",
+            )
+            .limit(1)
+        ).first()
+        if active_visit_link is not None:
+            raise Conflict(
+                "该 Trip 仍承载已关联商业机会的拜访；请先解除机会与拜访的关联",
+                details={"trip_id": str(trip_id)},
+            )
         row.link_status = "UNLINKED"
         row.unlinked_by_user_id = actor_user_id
         row.unlinked_at = datetime.now(UTC)
@@ -799,6 +816,405 @@ def unlink_trip_from_workspace(
         "window_end": trip.window_end if trip else None,
         "countries": trip.countries if trip else [],
     }
+
+
+def _visit_candidate_payload(
+    trip: Trip,
+    visit: Visit,
+    customer: Customer | None,
+    place: Place,
+) -> dict[str, Any]:
+    return {
+        "trip_id": trip.id,
+        "trip_name": trip.name,
+        "trip_status": trip.status,
+        "trip_window_start": trip.window_start,
+        "trip_window_end": trip.window_end,
+        "visit_id": visit.id,
+        "visit_title": visit.title,
+        "visit_objective": visit.objective,
+        "visit_status": visit.status,
+        "customer_id": visit.customer_id,
+        "customer_name": customer.name if customer else None,
+        "place_id": place.id,
+        "place_name": place.name,
+        "city": place.city,
+        "country_code": place.country_code,
+        "latitude": place.lat,
+        "longitude": place.lon,
+        "timezone": place.timezone,
+        "time_window_start": visit.time_window_start,
+        "time_window_end": visit.time_window_end,
+        "service_minutes": visit.service_minutes,
+        "priority": visit.priority,
+        "business_value": visit.business_value,
+        "movement_mode": visit.movement_mode,
+    }
+
+
+def list_opportunity_visit_links(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    opportunity_id: UUID,
+) -> list[dict[str, Any]]:
+    _opportunity(session, organization_id, workspace_id, opportunity_id)
+    rows = session.execute(
+        select(MarketOpportunityVisitLink, Trip, Visit, Customer, Place)
+        .join(
+            Trip,
+            and_(
+                Trip.organization_id == MarketOpportunityVisitLink.organization_id,
+                Trip.id == MarketOpportunityVisitLink.trip_id,
+            ),
+        )
+        .join(
+            Visit,
+            and_(
+                Visit.organization_id == MarketOpportunityVisitLink.organization_id,
+                Visit.trip_id == MarketOpportunityVisitLink.trip_id,
+                Visit.id == MarketOpportunityVisitLink.visit_id,
+            ),
+        )
+        .outerjoin(
+            Customer,
+            and_(
+                Customer.organization_id == Visit.organization_id,
+                Customer.id == Visit.customer_id,
+            ),
+        )
+        .join(
+            Place,
+            and_(
+                Place.organization_id == Visit.organization_id,
+                Place.id == Visit.place_id,
+            ),
+        )
+        .where(
+            MarketOpportunityVisitLink.organization_id == organization_id,
+            MarketOpportunityVisitLink.workspace_id == workspace_id,
+            MarketOpportunityVisitLink.opportunity_id == opportunity_id,
+        )
+        .order_by(
+            MarketOpportunityVisitLink.linked_at.desc(),
+            MarketOpportunityVisitLink.id.desc(),
+        )
+    ).all()
+    result = []
+    for link, trip, visit, customer, place in rows:
+        result.append({
+            **_visit_candidate_payload(trip, visit, customer, place),
+            "id": link.id,
+            "workspace_id": link.workspace_id,
+            "opportunity_id": link.opportunity_id,
+            "link_status": link.link_status,
+            "link_note": link.link_note,
+            "linked_by_user_id": link.linked_by_user_id,
+            "linked_at": link.linked_at,
+            "unlinked_by_user_id": link.unlinked_by_user_id,
+            "unlinked_at": link.unlinked_at,
+            "unlink_note": link.unlink_note,
+        })
+    return result
+
+
+def list_opportunity_visit_candidates(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    *,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    _opportunity(session, organization_id, workspace_id, opportunity_id)
+    linked_visit_ids = set(
+        session.scalars(
+            select(MarketOpportunityVisitLink.visit_id).where(
+                MarketOpportunityVisitLink.organization_id == organization_id,
+                MarketOpportunityVisitLink.workspace_id == workspace_id,
+                MarketOpportunityVisitLink.opportunity_id == opportunity_id,
+                MarketOpportunityVisitLink.link_status == "LINKED",
+            )
+        ).all()
+    )
+    query = (
+        select(Trip, Visit, Customer, Place)
+        .join(
+            MarketWorkspaceTripLink,
+            and_(
+                MarketWorkspaceTripLink.organization_id == Trip.organization_id,
+                MarketWorkspaceTripLink.trip_id == Trip.id,
+                MarketWorkspaceTripLink.workspace_id == workspace_id,
+                MarketWorkspaceTripLink.link_status == "LINKED",
+            ),
+        )
+        .join(
+            Visit,
+            and_(
+                Visit.organization_id == Trip.organization_id,
+                Visit.trip_id == Trip.id,
+            ),
+        )
+        .outerjoin(
+            Customer,
+            and_(
+                Customer.organization_id == Visit.organization_id,
+                Customer.id == Visit.customer_id,
+            ),
+        )
+        .join(
+            Place,
+            and_(
+                Place.organization_id == Visit.organization_id,
+                Place.id == Visit.place_id,
+            ),
+        )
+        .where(
+            Trip.organization_id == organization_id,
+            Trip.status.in_(("DRAFT", "PLANNING", "READY", "ACTIVE", "HOLD")),
+            Visit.status.in_(("PLANNED", "SCHEDULED")),
+        )
+        .order_by(
+            Trip.window_start.asc(),
+            Visit.time_window_start.asc().nullslast(),
+            Visit.priority.asc(),
+            Visit.created_at.asc(),
+        )
+        .limit(limit)
+    )
+    rows = session.execute(query).all()
+    return [
+        _visit_candidate_payload(trip, visit, customer, place)
+        for trip, visit, customer, place in rows
+        if visit.id not in linked_visit_ids
+    ]
+
+
+def get_opportunity_execution(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    opportunity_id: UUID,
+) -> dict[str, Any]:
+    opportunity = _opportunity(session, organization_id, workspace_id, opportunity_id)
+    active_trip_link = session.scalars(
+        select(MarketWorkspaceTripLink.id)
+        .where(
+            MarketWorkspaceTripLink.organization_id == organization_id,
+            MarketWorkspaceTripLink.workspace_id == workspace_id,
+            MarketWorkspaceTripLink.link_status == "LINKED",
+        )
+        .limit(1)
+    ).first()
+    links = list_opportunity_visit_links(
+        session, organization_id, workspace_id, opportunity_id
+    )
+    candidates = list_opportunity_visit_candidates(
+        session, organization_id, workspace_id, opportunity_id
+    )
+
+    blocked_reason = None
+    if opportunity.status != "ACTION_PLANNED":
+        blocked_reason = "请先完成机会资格确认，并将机会推进到 ACTION_PLANNED。"
+    elif active_trip_link is None:
+        blocked_reason = "请先将一个 Trip 关联到当前研究工作空间。"
+    elif not candidates:
+        blocked_reason = "关联的 Trip 中没有可执行的待排期拜访；请先在 Trip 中创建拜访。"
+
+    return {
+        "workspace_id": workspace_id,
+        "opportunity_id": opportunity_id,
+        "opportunity_status": opportunity.status,
+        "can_link_visits": blocked_reason is None,
+        "blocked_reason": blocked_reason,
+        "links": links,
+        "candidates": candidates,
+    }
+
+
+def link_opportunity_visit(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    *,
+    trip_id: UUID,
+    visit_id: UUID,
+    link_note: str | None,
+    actor_user_id: UUID,
+) -> dict[str, Any]:
+    _workspace(session, organization_id, workspace_id, lock=True)
+    opportunity = _opportunity(
+        session, organization_id, workspace_id, opportunity_id, lock=True
+    )
+    if opportunity.status != "ACTION_PLANNED":
+        raise Conflict(
+            "只有已确认资格且进入 ACTION_PLANNED 的机会才能关联执行拜访",
+            details={"opportunity_status": opportunity.status},
+        )
+
+    trip_link = session.scalars(
+        select(MarketWorkspaceTripLink)
+        .where(
+            MarketWorkspaceTripLink.organization_id == organization_id,
+            MarketWorkspaceTripLink.workspace_id == workspace_id,
+            MarketWorkspaceTripLink.trip_id == trip_id,
+            MarketWorkspaceTripLink.link_status == "LINKED",
+        )
+        .with_for_update()
+    ).one_or_none()
+    if trip_link is None:
+        raise Conflict(
+            "Trip 必须先关联到当前研究工作空间，且关联仍处于有效状态",
+            details={"trip_id": str(trip_id)},
+        )
+
+    trip = session.scalars(
+        select(Trip).where(
+            Trip.organization_id == organization_id,
+            Trip.id == trip_id,
+        )
+    ).one_or_none()
+    if trip is None:
+        raise NotFound("Trip 不存在或不属于当前组织", details={"trip_id": str(trip_id)})
+    if trip.status not in {"DRAFT", "PLANNING", "READY", "ACTIVE", "HOLD"}:
+        raise Conflict(
+            "已完成或已取消的 Trip 不能接收新的执行拜访",
+            details={"trip_status": trip.status},
+        )
+
+    visit = session.scalars(
+        select(Visit)
+        .where(
+            Visit.organization_id == organization_id,
+            Visit.trip_id == trip_id,
+            Visit.id == visit_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if visit is None:
+        raise NotFound(
+            "拜访不存在、不属于指定 Trip 或不属于当前组织",
+            details={"visit_id": str(visit_id), "trip_id": str(trip_id)},
+        )
+    if visit.status not in {"PLANNED", "SCHEDULED"}:
+        raise Conflict(
+            "只有待排期或已排期的拜访可以作为新的执行动作关联",
+            details={"visit_status": visit.status},
+        )
+
+    row = session.scalars(
+        select(MarketOpportunityVisitLink)
+        .where(
+            MarketOpportunityVisitLink.organization_id == organization_id,
+            MarketOpportunityVisitLink.workspace_id == workspace_id,
+            MarketOpportunityVisitLink.opportunity_id == opportunity_id,
+            MarketOpportunityVisitLink.trip_id == trip_id,
+            MarketOpportunityVisitLink.visit_id == visit_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if row is None:
+        row = MarketOpportunityVisitLink(
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+            opportunity_id=opportunity_id,
+            trip_id=trip_id,
+            visit_id=visit_id,
+            link_status="LINKED",
+            link_note=link_note.strip() if link_note and link_note.strip() else None,
+            linked_by_user_id=actor_user_id,
+            linked_at=datetime.now(UTC),
+        )
+        session.add(row)
+        event_type = "MARKET_OPPORTUNITY_VISIT_LINKED"
+    elif row.link_status == "UNLINKED":
+        row.link_status = "LINKED"
+        row.link_note = link_note.strip() if link_note and link_note.strip() else None
+        row.linked_by_user_id = actor_user_id
+        row.linked_at = datetime.now(UTC)
+        row.unlinked_by_user_id = None
+        row.unlinked_at = None
+        row.unlink_note = None
+        event_type = "MARKET_OPPORTUNITY_VISIT_RELINKED"
+    else:
+        return next(
+            item for item in list_opportunity_visit_links(
+                session, organization_id, workspace_id, opportunity_id
+            ) if item["id"] == row.id
+        )
+
+    session.flush()
+    _activity(
+        session,
+        organization_id,
+        workspace_id,
+        actor_user_id,
+        "market_opportunity",
+        opportunity_id,
+        event_type,
+        {"trip_id": str(trip_id), "visit_id": str(visit_id)},
+    )
+    session.flush()
+    return next(
+        item for item in list_opportunity_visit_links(
+            session, organization_id, workspace_id, opportunity_id
+        ) if item["id"] == row.id
+    )
+
+
+def unlink_opportunity_visit(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    visit_id: UUID,
+    *,
+    unlink_note: str | None,
+    actor_user_id: UUID,
+) -> dict[str, Any]:
+    _workspace(session, organization_id, workspace_id, lock=True)
+    _opportunity(session, organization_id, workspace_id, opportunity_id, lock=True)
+    row = session.scalars(
+        select(MarketOpportunityVisitLink)
+        .where(
+            MarketOpportunityVisitLink.organization_id == organization_id,
+            MarketOpportunityVisitLink.workspace_id == workspace_id,
+            MarketOpportunityVisitLink.opportunity_id == opportunity_id,
+            MarketOpportunityVisitLink.visit_id == visit_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if row is None:
+        raise NotFound(
+            "商业机会与拜访的关联不存在",
+            details={"opportunity_id": str(opportunity_id), "visit_id": str(visit_id)},
+        )
+    if row.link_status == "LINKED":
+        row.link_status = "UNLINKED"
+        row.unlinked_by_user_id = actor_user_id
+        row.unlinked_at = datetime.now(UTC)
+        row.unlink_note = unlink_note.strip() if unlink_note and unlink_note.strip() else None
+        _activity(
+            session,
+            organization_id,
+            workspace_id,
+            actor_user_id,
+            "market_opportunity",
+            opportunity_id,
+            "MARKET_OPPORTUNITY_VISIT_UNLINKED",
+            {
+                "trip_id": str(row.trip_id),
+                "visit_id": str(visit_id),
+                "unlink_note": row.unlink_note,
+            },
+        )
+        session.flush()
+    return next(
+        item for item in list_opportunity_visit_links(
+            session, organization_id, workspace_id, opportunity_id
+        ) if item["id"] == row.id
+    )
 
 
 def get_opportunity_detail(

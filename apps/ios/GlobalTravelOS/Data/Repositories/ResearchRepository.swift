@@ -16,6 +16,21 @@ protocol ResearchRepository {
     func claimImpactReport(workspaceId: String) async throws -> MarketClaimImpactReport
     func marketInsight(workspaceId: String, insightId: String) async throws -> MarketInsightRead
     func marketOpportunity(workspaceId: String, opportunityId: String) async throws -> MarketOpportunityDetailRead
+    func marketOpportunityExecution(
+        workspaceId: String,
+        opportunityId: String
+    ) async throws -> MarketOpportunityExecutionRead
+    func linkMarketOpportunityVisit(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityVisitLinkCreate
+    ) async throws -> MarketOpportunityVisitLinkRead
+    func unlinkMarketOpportunityVisit(
+        workspaceId: String,
+        opportunityId: String,
+        visitId: String,
+        unlinkNote: String?
+    ) async throws -> MarketOpportunityVisitLinkRead
     func acceptMarketInsight(
         workspaceId: String,
         insightId: String,
@@ -95,6 +110,30 @@ extension ResearchRepository {
         opportunityId: String
     ) async throws -> MarketOpportunityDetailRead {
         throw RepositoryError.requiresNetwork("当前研究仓库未实现商业机会详情读取")
+    }
+
+    func marketOpportunityExecution(
+        workspaceId: String,
+        opportunityId: String
+    ) async throws -> MarketOpportunityExecutionRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现机会执行上下文读取")
+    }
+
+    func linkMarketOpportunityVisit(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityVisitLinkCreate
+    ) async throws -> MarketOpportunityVisitLinkRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现机会与拜访关联")
+    }
+
+    func unlinkMarketOpportunityVisit(
+        workspaceId: String,
+        opportunityId: String,
+        visitId: String,
+        unlinkNote: String?
+    ) async throws -> MarketOpportunityVisitLinkRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现机会与拜访解除关联")
     }
 
     func acceptMarketInsight(
@@ -247,6 +286,51 @@ final class RemoteResearchRepository: ResearchRepository {
                 opportunityId: opportunityId
             ),
             as: MarketOpportunityDetailRead.self
+        )
+    }
+
+    func marketOpportunityExecution(
+        workspaceId: String,
+        opportunityId: String
+    ) async throws -> MarketOpportunityExecutionRead {
+        try await client.send(
+            Endpoints.marketOpportunityExecution(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId
+            ),
+            as: MarketOpportunityExecutionRead.self
+        )
+    }
+
+    func linkMarketOpportunityVisit(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityVisitLinkCreate
+    ) async throws -> MarketOpportunityVisitLinkRead {
+        try await client.send(
+            try Endpoints.linkMarketOpportunityVisit(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId,
+                body: request
+            ),
+            as: MarketOpportunityVisitLinkRead.self
+        )
+    }
+
+    func unlinkMarketOpportunityVisit(
+        workspaceId: String,
+        opportunityId: String,
+        visitId: String,
+        unlinkNote: String?
+    ) async throws -> MarketOpportunityVisitLinkRead {
+        try await client.send(
+            try Endpoints.unlinkMarketOpportunityVisit(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId,
+                visitId: visitId,
+                body: MarketOpportunityVisitUnlinkRequest(unlinkNote: unlinkNote)
+            ),
+            as: MarketOpportunityVisitLinkRead.self
         )
     }
 

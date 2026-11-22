@@ -45,11 +45,15 @@ from app.api.schemas import (
     MarketOpportunityEntitiesAttach,
     MarketOpportunityEvidenceCreate,
     MarketOpportunityEvidenceRead,
+    MarketOpportunityExecutionRead,
     MarketOpportunityOutcome,
     MarketOpportunityQualify,
     MarketOpportunityRead,
     MarketOpportunityStatus,
     MarketOpportunityTransition,
+    MarketOpportunityVisitLinkCreate,
+    MarketOpportunityVisitLinkRead,
+    MarketOpportunityVisitUnlink,
     MarketQuestionAnswerCreate,
     MarketQuestionAnswerGenerationAccepted,
     MarketQuestionAnswerGenerationCreate,
@@ -1655,6 +1659,120 @@ def get_market_opportunity(
         session, context.organization_id, workspace_id, opportunity_id
     )
     return MarketOpportunityDetailRead.model_validate(result)
+
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/execution",
+    response_model=MarketOpportunityExecutionRead,
+    summary="读取商业机会的 Trip 执行上下文、关联拜访和可选拜访",
+)
+def get_market_opportunity_execution(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    result = market_opportunity_service.get_opportunity_execution(
+        session, context.organization_id, workspace_id, opportunity_id
+    )
+    return MarketOpportunityExecutionRead.model_validate(result)
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits",
+    response_model=MarketOpportunityVisitLinkRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="将现有 Trip 拜访关联到已制定行动的商业机会",
+)
+def link_market_opportunity_visit(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    payload: MarketOpportunityVisitLinkCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "opportunity_id": str(opportunity_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_opportunity_service.link_opportunity_visit(
+        session,
+        context.organization_id,
+        workspace_id,
+        opportunity_id,
+        trip_id=payload.trip_id,
+        visit_id=payload.visit_id,
+        link_note=payload.link_note,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=MarketOpportunityVisitLinkRead.model_validate(result),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits/{visit_id}:unlink",
+    response_model=MarketOpportunityVisitLinkRead,
+    summary="解除商业机会与拜访关联并保留审计历史",
+)
+def unlink_market_opportunity_visit(
+    workspace_id: UUID,
+    opportunity_id: UUID,
+    visit_id: UUID,
+    payload: MarketOpportunityVisitUnlink,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/opportunities/"
+        f"{opportunity_id}/visits/{visit_id}:unlink"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "opportunity_id": str(opportunity_id),
+            "visit_id": str(visit_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_opportunity_service.unlink_opportunity_visit(
+        session,
+        context.organization_id,
+        workspace_id,
+        opportunity_id,
+        visit_id,
+        unlink_note=payload.unlink_note,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketOpportunityVisitLinkRead.model_validate(result),
+    )
 
 
 @router.post(

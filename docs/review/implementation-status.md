@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0042`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0043`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -108,6 +108,7 @@
                            0040_market_research_graph
                            0041_market_question_evidence_scope
                            0042_market_claim_lineage
+                           0043_market_opportunity_visit_links
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）

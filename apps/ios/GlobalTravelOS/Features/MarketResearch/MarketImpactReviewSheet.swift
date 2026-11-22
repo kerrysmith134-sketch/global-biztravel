@@ -4,12 +4,14 @@ import SwiftUI
 final class MarketImpactReviewViewModel: ObservableObject {
     @Published private(set) var insight: MarketInsightRead?
     @Published private(set) var opportunity: MarketOpportunityDetailRead?
+    @Published private(set) var execution: MarketOpportunityExecutionRead?
     @Published private(set) var claimHistory: MarketClaimLineageHistory?
     @Published private(set) var isLoading = false
     @Published private(set) var isSubmitting = false
     @Published private(set) var successMessage: String?
     @Published var errorMessage: String?
     @Published var reviewNote = ""
+    @Published var visitLinkNote = ""
 
     let impact: MarketClaimImpact
     let workspaceId: String
@@ -57,14 +59,83 @@ final class MarketImpactReviewViewModel: ObservableObject {
                 workspaceId: workspaceId,
                 opportunityId: impact.consumerId
             )
+            async let executionRequest = repository.marketOpportunityExecution(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId
+            )
             do {
-                let (history, opportunity) = try await (historyRequest, opportunityRequest)
-                claimHistory = history
-                self.opportunity = opportunity
+                claimHistory = try await historyRequest
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            do {
+                self.opportunity = try await opportunityRequest
                 insight = nil
             } catch {
                 errorMessage = error.localizedDescription
             }
+            do {
+                execution = try await executionRequest
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func linkVisit(_ candidate: MarketOpportunityVisitCandidateRead) async -> Bool {
+        guard execution?.canLinkVisits == true, !isSubmitting else { return false }
+        isSubmitting = true
+        errorMessage = nil
+        successMessage = nil
+        defer { isSubmitting = false }
+
+        do {
+            let note = visitLinkNote.trimmingCharacters(in: .whitespacesAndNewlines)
+            _ = try await repository.linkMarketOpportunityVisit(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId,
+                request: MarketOpportunityVisitLinkCreate(
+                    tripId: candidate.tripId,
+                    visitId: candidate.visitId,
+                    linkNote: note.isEmpty ? nil : note
+                )
+            )
+            visitLinkNote = ""
+            successMessage = "已将这次拜访关联到商业机会。"
+            execution = try await repository.marketOpportunityExecution(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId
+            )
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func unlinkVisit(_ link: MarketOpportunityVisitLinkRead) async -> Bool {
+        guard link.isLinked, !isSubmitting else { return false }
+        isSubmitting = true
+        errorMessage = nil
+        successMessage = nil
+        defer { isSubmitting = false }
+
+        do {
+            _ = try await repository.unlinkMarketOpportunityVisit(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId,
+                visitId: link.visitId,
+                unlinkNote: "用户从机会执行工作台解除关联"
+            )
+            successMessage = "已解除机会与拜访的关联，历史记录仍被保留。"
+            execution = try await repository.marketOpportunityExecution(
+                workspaceId: workspaceId,
+                opportunityId: impact.consumerId
+            )
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -106,6 +177,7 @@ struct MarketImpactReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: MarketImpactReviewViewModel
     @State private var showsReviewConfirmation = false
+    @State private var visitToUnlink: MarketOpportunityVisitLinkRead?
 
     let onReviewed: () async -> Void
 
@@ -198,6 +270,30 @@ struct MarketImpactReviewSheet: View {
             Button("暂不处理", role: .cancel) {}
         } message: {
             Text("操作会写入审核记录。采纳前服务端仍会检查是否存在反驳证据；影响报告本身不会自动修改任何判断或商机。")
+        }
+        .confirmationDialog(
+            "解除这项拜访与商业机会的关联？",
+            isPresented: Binding(
+                get: { visitToUnlink != nil },
+                set: { if !$0 { visitToUnlink = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("解除关联", role: .destructive) {
+                guard let link = visitToUnlink else { return }
+                Task {
+                    if await viewModel.unlinkVisit(link) {
+                        await onReviewed()
+                    }
+                    visitToUnlink = nil
+                }
+            }
+            .disabled(viewModel.isSubmitting)
+            Button("保留关联", role: .cancel) {
+                visitToUnlink = nil
+            }
+        } message: {
+            Text("只会解除机会与拜访的业务关联，不会删除 Trip、拜访或现场记录。")
         }
     }
 
@@ -332,7 +428,25 @@ private extension MarketImpactReviewSheet {
                     (relation: $0.relationType, rationale: $0.rationale, item: $0.evidence)
                 }
             )
+            executionSection
         }
+    }
+
+    var executionSection: some View {
+        MarketOpportunityExecutionSection(
+            execution: viewModel.execution,
+            isLoading: viewModel.isLoading,
+            isSubmitting: viewModel.isSubmitting,
+            visitLinkNote: $viewModel.visitLinkNote,
+            onLink: { candidate in
+                Task {
+                    if await viewModel.linkVisit(candidate) {
+                        await onReviewed()
+                    }
+                }
+            },
+            onUnlink: { visitToUnlink = $0 }
+        )
     }
 
     func evidenceSection(
@@ -387,63 +501,10 @@ private extension MarketImpactReviewSheet {
     }
 
     var claimHistorySection: some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
-            DSSectionHeader(title: "主张版本历史", subtitle: "核对本次变化发生在哪个版本")
-            if let history = viewModel.claimHistory {
-                DSCard {
-                    VStack(alignment: .leading, spacing: DS.Spacing.md) {
-                        HStack {
-                            Text("最新版本 v\(history.latestVersion)")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(DS.ColorToken.textPrimary)
-                            Spacer()
-                            if history.currentAcceptedClaimId != nil {
-                                DSBadge(text: "存在已采纳版本", color: DS.ColorToken.success)
-                            } else {
-                                DSBadge(text: "暂无已采纳版本", color: DS.ColorToken.warning)
-                            }
-                        }
-                        ForEach(history.versions) { version in
-                            VStack(alignment: .leading, spacing: DS.Spacing.xs) {
-                                HStack {
-                                    DSBadge(
-                                        text: "v\(version.version) · \(version.statusLabel)",
-                                        color: DS.ColorToken.status(version.status)
-                                    )
-                                    Spacer()
-                                    Text(version.confidenceLevel)
-                                        .font(.caption2)
-                                        .foregroundStyle(DS.ColorToken.textSecondary)
-                                }
-                                Text(version.statement)
-                                    .font(.subheadline)
-                                    .foregroundStyle(DS.ColorToken.textPrimary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Text("支持 \(version.supportingEvidenceCount) · 反驳 \(version.contradictingEvidenceCount)")
-                                    .font(.caption2)
-                                    .foregroundStyle(DS.ColorToken.textSecondary)
-                                if let note = version.reviewNote, !note.isEmpty {
-                                    Text("审核意见：\(note)")
-                                        .font(.caption2)
-                                        .foregroundStyle(DS.ColorToken.textSecondary)
-                                }
-                            }
-                            if version.id != history.versions.last?.id {
-                                Divider()
-                            }
-                        }
-                    }
-                }
-            } else if viewModel.isLoading {
-                ProgressView().frame(maxWidth: .infinity)
-            } else {
-                DSCard {
-                    Text("暂时无法读取主张版本历史。")
-                        .font(.caption)
-                        .foregroundStyle(DS.ColorToken.textSecondary)
-                }
-            }
-        }
+        MarketClaimHistorySection(
+            history: viewModel.claimHistory,
+            isLoading: viewModel.isLoading
+        )
     }
 
     func detailList(title: String, values: [JSONValue]) -> some View {

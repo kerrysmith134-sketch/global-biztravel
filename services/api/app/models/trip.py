@@ -94,6 +94,10 @@ class Trip(Base):
 class Visit(Base):
     __tablename__ = "visits"
     __table_args__ = (
+        UniqueConstraint(
+            "organization_id", "trip_id", "id",
+            name="uq_visits_org_trip_id",
+        ),
         CheckConstraint("service_minutes > 0", name="service_minutes_positive"),
         CheckConstraint("priority BETWEEN 1 AND 3", name="priority_range"),
         CheckConstraint("business_value >= 0", name="business_value_non_negative"),

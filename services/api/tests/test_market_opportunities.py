@@ -9,14 +9,16 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.geo import Place
 from app.models.market import (
     MarketActivityEvent,
     MarketOpportunity,
     MarketOpportunityAssessment,
+    MarketOpportunityVisitLink,
     MarketWorkspace,
     MarketWorkspaceTripLink,
 )
-from app.models.trip import Trip
+from app.models.trip import Trip, Visit
 from app.models.workflow import Evidence
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
@@ -84,7 +86,40 @@ def create_trip(org_id: str, user_id: str, name: str) -> str:
         return str(trip.id)
 
 
-def cleanup(workspace_ids: list[str], trip_ids: list[str]) -> None:
+def create_visit(trip_id: str, *, title: str = "Buyer procurement meeting") -> tuple[str, str]:
+    with org_session(UUID(ORG_A)) as session:
+        place = Place(
+            organization_id=UUID(ORG_A),
+            name="Nairobi buyer office",
+            city="Nairobi",
+            country_code="KE",
+            timezone="Africa/Nairobi",
+            lat=-1.2864,
+            lon=36.8172,
+            geocode_status="RESOLVED",
+        )
+        session.add(place)
+        session.flush()
+        visit = Visit(
+            organization_id=UUID(ORG_A),
+            trip_id=UUID(trip_id),
+            place_id=place.id,
+            title=title,
+            objective="Discuss buyer requirements and next steps.",
+            service_minutes=60,
+            priority=1,
+            business_value=125000,
+            movement_mode="GROUND",
+            status="PLANNED",
+        )
+        session.add(visit)
+        session.flush()
+        return str(visit.id), str(place.id)
+
+
+def cleanup(
+    workspace_ids: list[str], trip_ids: list[str], place_ids: list[str] | None = None
+) -> None:
     with org_session(UUID(ORG_A)) as session:
         if workspace_ids:
             workspace_uuids = [UUID(item) for item in workspace_ids]
@@ -108,6 +143,13 @@ def cleanup(workspace_ids: list[str], trip_ids: list[str]) -> None:
                 delete(Trip).where(
                     Trip.organization_id == UUID(ORG_A),
                     Trip.id.in_([UUID(item) for item in trip_ids]),
+                )
+            )
+        if place_ids:
+            session.execute(
+                delete(Place).where(
+                    Place.organization_id == UUID(ORG_A),
+                    Place.id.in_([UUID(item) for item in place_ids]),
                 )
             )
     if trip_ids:
@@ -311,10 +353,16 @@ def test_opportunity_contradiction_blocks_qualification(client: TestClient) -> N
     try:
         workspace_id = create_workspace(client, "Opportunity conflict")
         support = create_evidence(
-            client, workspace_id, "https://example.com/buyer-intent", "Buyer has a signed procurement request."
+            client,
+            workspace_id,
+            "https://example.com/buyer-intent",
+            "Buyer has a signed procurement request.",
         )
         contradiction = create_evidence(
-            client, workspace_id, "https://example.org/budget-freeze", "Buyer publicly paused this category's budget."
+            client,
+            workspace_id,
+            "https://example.org/budget-freeze",
+            "Buyer publicly paused this category's budget.",
         )
         created = client.post(
             f"/v1/market/workspaces/{workspace_id}/opportunities",
@@ -422,6 +470,214 @@ def test_workspace_trip_link_is_reversible_and_keeps_trip(client: TestClient) ->
         cleanup([workspace_id] if workspace_id else [], [trip_id] if trip_id else [])
 
 
+def test_opportunity_execution_links_trip_visits_with_reversible_audit(client: TestClient) -> None:
+    workspace_id: str | None = None
+    trip_id: str | None = None
+    visit_id: str | None = None
+    place_id: str | None = None
+    try:
+        workspace_id = create_workspace(client, "Opportunity execution")
+        trip_id = create_trip(ORG_A, ADMIN_A, "East Africa customer visits")
+        visit_id, place_id = create_visit(trip_id)
+        opportunity_response = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities",
+            headers=headers(),
+            json={
+                "title": "Verified buyer procurement opportunity",
+                "description": "A user-reviewed market opportunity.",
+                "next_action": "Arrange an in-person buyer meeting.",
+            },
+        )
+        assert opportunity_response.status_code == 201, opportunity_response.text
+        opportunity_id = opportunity_response.json()["id"]
+
+        # A Trip must belong to the Workspace before its visits can be offered as candidates.
+        trip_link = client.post(
+            f"/v1/market/workspaces/{workspace_id}/trips",
+            headers=headers(),
+            json={"trip_id": trip_id, "link_note": "Field execution for this research."},
+        )
+        assert trip_link.status_code == 201, trip_link.text
+
+        before_qualification = client.get(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/execution",
+            headers=headers(),
+        )
+        assert before_qualification.status_code == 200, before_qualification.text
+        assert before_qualification.json()["can_link_visits"] is False
+        assert "ACTION_PLANNED" in before_qualification.json()["blocked_reason"]
+        candidate_ids = [item["visit_id"] for item in before_qualification.json()["candidates"]]
+        assert candidate_ids == [visit_id]
+
+        premature = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits",
+            headers=headers(),
+            json={"trip_id": trip_id, "visit_id": visit_id},
+        )
+        assert premature.status_code == 409, premature.text
+
+        evidence = create_evidence(
+            client,
+            workspace_id,
+            "https://buyer.example.test/procurement-plan",
+            "The buyer confirms an active supplier procurement programme.",
+        )
+        evidence_link = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/evidence",
+            headers=headers(),
+            json={"evidence_id": evidence["id"], "relation_type": "SUPPORTS"},
+        )
+        assert evidence_link.status_code == 201, evidence_link.text
+
+        for target in ("RESEARCHING", "EVIDENCE_READY", "QUALIFICATION_PENDING"):
+            transitioned = client.post(
+                f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:transition",
+                headers=headers(),
+                json={"target_status": target},
+            )
+            assert transitioned.status_code == 200, transitioned.text
+        qualified = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:qualify",
+            headers=headers(),
+            json={"qualification_reason": "The evidence and buyer identity were reviewed."},
+        )
+        assert qualified.status_code == 200, qualified.text
+        planned = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}:transition",
+            headers=headers(),
+            json={"target_status": "ACTION_PLANNED"},
+        )
+        assert planned.status_code == 200, planned.text
+
+        execution = client.get(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/execution",
+            headers=headers(),
+        )
+        assert execution.status_code == 200, execution.text
+        assert execution.json()["can_link_visits"] is True
+        assert execution.json()["blocked_reason"] is None
+        assert execution.json()["candidates"][0]["customer_id"] is None
+        assert execution.json()["candidates"][0]["place_name"] == "Nairobi buyer office"
+
+        with org_session(UUID(ORG_A)) as session:
+            trip_version_before = session.get(Trip, UUID(trip_id)).version
+
+        payload = {
+            "trip_id": trip_id,
+            "visit_id": visit_id,
+            "link_note": "Buyer meeting scheduled to validate procurement timing.",
+        }
+        key = str(uuid.uuid4())
+        linked = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits",
+            headers=headers(key=key),
+            json=payload,
+        )
+        assert linked.status_code == 201, linked.text
+        link_id = linked.json()["id"]
+        assert linked.json()["link_status"] == "LINKED"
+        assert linked.json()["visit_status"] == "PLANNED"
+        assert linked.json()["trip_name"] == "East Africa customer visits"
+        assert linked.json()["linked_by_user_id"] == ADMIN_A
+
+        replay = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits",
+            headers=headers(key=key),
+            json=payload,
+        )
+        assert replay.status_code == 201, replay.text
+        assert replay.json()["id"] == link_id
+
+        # A semantic duplicate under a new idempotency key reuses the same link row.
+        duplicate = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits",
+            headers=headers(),
+            json=payload,
+        )
+        assert duplicate.status_code == 201, duplicate.text
+        assert duplicate.json()["id"] == link_id
+
+        after_link = client.get(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/execution",
+            headers=headers(),
+        )
+        assert after_link.status_code == 200, after_link.text
+        assert after_link.json()["candidates"] == []
+        assert len(after_link.json()["links"]) == 1
+        assert after_link.json()["links"][0]["link_status"] == "LINKED"
+
+        # Workspace Trip unlink is blocked until its active Opportunity/Visit child is unlinked.
+        blocked_trip_unlink = client.delete(
+            f"/v1/market/workspaces/{workspace_id}/trips/{trip_id}",
+            headers=headers(),
+        )
+        assert blocked_trip_unlink.status_code == 409, blocked_trip_unlink.text
+
+        unlink_key = str(uuid.uuid4())
+        unlinked = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/"
+            f"{opportunity_id}/visits/{visit_id}:unlink",
+            headers=headers(key=unlink_key),
+            json={"unlink_note": "Meeting moved to a different trip."},
+        )
+        assert unlinked.status_code == 200, unlinked.text
+        assert unlinked.json()["id"] == link_id
+        assert unlinked.json()["link_status"] == "UNLINKED"
+        assert unlinked.json()["unlinked_by_user_id"] == ADMIN_A
+        assert unlinked.json()["unlink_note"] == "Meeting moved to a different trip."
+
+        history = client.get(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/execution",
+            headers=headers(),
+        )
+        assert history.status_code == 200, history.text
+        assert history.json()["links"][0]["link_status"] == "UNLINKED"
+        assert history.json()["candidates"][0]["visit_id"] == visit_id
+
+        relinked = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/{opportunity_id}/visits",
+            headers=headers(),
+            json=payload,
+        )
+        assert relinked.status_code == 201, relinked.text
+        assert relinked.json()["id"] == link_id
+        assert relinked.json()["link_status"] == "LINKED"
+
+        final_unlink = client.post(
+            f"/v1/market/workspaces/{workspace_id}/opportunities/"
+            f"{opportunity_id}/visits/{visit_id}:unlink",
+            headers=headers(),
+            json={"unlink_note": "Execution handoff test complete."},
+        )
+        assert final_unlink.status_code == 200, final_unlink.text
+        trip_unlink = client.delete(
+            f"/v1/market/workspaces/{workspace_id}/trips/{trip_id}",
+            headers=headers(),
+        )
+        assert trip_unlink.status_code == 200, trip_unlink.text
+        assert trip_unlink.json()["link_status"] == "UNLINKED"
+
+        with org_session(UUID(ORG_A)) as session:
+            assert session.get(Trip, UUID(trip_id)).version == trip_version_before
+            stored_link = session.get(MarketOpportunityVisitLink, UUID(link_id))
+            assert stored_link is not None and stored_link.link_status == "UNLINKED"
+            event_count = session.scalar(
+                select(func.count()).select_from(MarketActivityEvent).where(
+                    MarketActivityEvent.organization_id == UUID(ORG_A),
+                    MarketActivityEvent.workspace_id == UUID(workspace_id),
+                    MarketActivityEvent.aggregate_id == UUID(opportunity_id),
+                    MarketActivityEvent.event_type.like("MARKET_OPPORTUNITY_VISIT_%"),
+                )
+            )
+            assert event_count == 4
+    finally:
+        cleanup(
+            [workspace_id] if workspace_id else [],
+            [trip_id] if trip_id else [],
+            [place_id] if place_id else [],
+        )
+
+
 def test_cross_tenant_trip_link_rejected_by_database_fk(client: TestClient) -> None:
     workspace_id: str | None = None
     foreign_trip_id: str | None = None
@@ -452,4 +708,7 @@ def test_cross_tenant_trip_link_rejected_by_database_fk(client: TestClient) -> N
                     )
                     session.flush()
     finally:
-        cleanup([workspace_id] if workspace_id else [], [foreign_trip_id] if foreign_trip_id else [])
+        cleanup(
+            [workspace_id] if workspace_id else [],
+            [foreign_trip_id] if foreign_trip_id else [],
+        )
