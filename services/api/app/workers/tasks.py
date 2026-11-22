@@ -1056,15 +1056,6 @@ def handle_market_claim_verification(
     if response.degraded:
         limitations.extend(fallback["limitations"])
 
-    host_counts: dict[str, int] = {}
-    hash_counts: dict[str, int] = {}
-    for row in content_evidence:
-        host = _claim_source_host(row)
-        if host:
-            host_counts[host] = host_counts.get(host, 0) + 1
-        digest = _claim_evidence_digest(row)
-        hash_counts[digest] = hash_counts.get(digest, 0) + 1
-
     created_claims: list[MarketClaim] = []
     seen_claim_keys: set[str] = set()
     excluded_claim_count = 0
@@ -1136,10 +1127,22 @@ def handle_market_claim_verification(
             support_rows = [item[0] for item in valid_assessments if item[1] == "SUPPORTS"]
             contradict_rows = [item[0] for item in valid_assessments if item[1] == "CONTRADICTS"]
             linked_rows = [item[0] for item in valid_assessments]
+            linked_hosts = {
+                host for host in (_claim_source_host(row) for row in linked_rows) if host
+            }
             support_hosts = {
                 host for host in (_claim_source_host(row) for row in support_rows) if host
             }
+            linked_distinct_hosts = len(linked_hosts)
             distinct_hosts = len(support_hosts)
+            claim_host_counts: dict[str, int] = {}
+            claim_hash_counts: dict[str, int] = {}
+            for evidence_row in linked_rows:
+                linked_host = _claim_source_host(evidence_row)
+                if linked_host:
+                    claim_host_counts[linked_host] = claim_host_counts.get(linked_host, 0) + 1
+                linked_digest = _claim_evidence_digest(evidence_row)
+                claim_hash_counts[linked_digest] = claim_hash_counts.get(linked_digest, 0) + 1
             verified_support_count = sum(
                 1 for row in support_rows if row.verification_status == "VERIFIED"
             )
@@ -1177,7 +1180,7 @@ def handle_market_claim_verification(
                 claim_limitations.append(
                     f"{unverified_count} 条关联 Evidence 尚未达到 VERIFIED 状态。"
                 )
-            if distinct_hosts > 1:
+            if linked_distinct_hosts > 1:
                 claim_limitations.append(
                     "检测到多个来源主机，但主机不同不能证明出版方或来源彼此独立。"
                 )
@@ -1241,11 +1244,11 @@ def handle_market_claim_verification(
             for evidence_row, relation, rationale in valid_assessments:
                 host = _claim_source_host(evidence_row)
                 digest = _claim_evidence_digest(evidence_row)
-                if digest and hash_counts.get(digest, 0) > 1:
+                if claim_hash_counts.get(digest, 0) > 1:
                     origin_assessment = "DUPLICATE_CONTENT"
-                elif host and host_counts.get(host, 0) > 1:
+                elif host and claim_host_counts.get(host, 0) > 1:
                     origin_assessment = "SAME_HOST"
-                elif distinct_hosts > 1:
+                elif linked_distinct_hosts > 1:
                     origin_assessment = "DISTINCT_HOST_UNCONFIRMED"
                 else:
                     origin_assessment = "SINGLE_SOURCE"
