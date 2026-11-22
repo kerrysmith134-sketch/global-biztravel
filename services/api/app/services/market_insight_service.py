@@ -24,7 +24,7 @@ from app.models.market import (
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
-from app.models.workflow import AgentRun, Evidence
+from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 
 
 def canonicalize_source_ref(value: str) -> str:
@@ -197,14 +197,25 @@ def question_evidence_scope(
             and_(not_(links_for_evidence), not_(scope_managed)),
         ),
     )
-    scopes = [workspace_evidence]
-    if workflow_ids:
-        scopes.append(
-            and_(
-                Evidence.subject_type == "RESEARCH_PLAN",
-                Evidence.subject_id.in_(workflow_ids),
-            )
-        )
+    # Legacy ResearchPlans that predate question targeting are shared for
+    # backwards compatibility. Once a plan has target_question_id, its subject-scoped
+    # Evidence must stay inside that exact question.
+    legacy_or_matching_plan_ids = select(WorkflowInstance.id).where(
+        WorkflowInstance.organization_id == organization_id,
+        WorkflowInstance.id.in_(workflow_ids) if workflow_ids else WorkflowInstance.id.is_(None),
+        WorkflowInstance.workflow_type == "research_plan",
+        or_(
+            WorkflowInstance.payload["target_question_id"].as_string().is_(None),
+            WorkflowInstance.payload["target_question_id"].as_string() == str(question_id),
+        ),
+    )
+    scopes = [
+        workspace_evidence,
+        and_(
+            Evidence.subject_type == "RESEARCH_PLAN",
+            Evidence.subject_id.in_(legacy_or_matching_plan_ids),
+        ),
+    ]
     return and_(Evidence.organization_id == organization_id, or_(*scopes))
 
 
