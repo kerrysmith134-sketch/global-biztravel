@@ -822,8 +822,6 @@ def _claim_evidence_digest(row: Evidence) -> str:
         return row.content_hash.casefold()
     content = str((row.payload or {}).get("content") or "")
     return sha256(content.encode("utf-8")).hexdigest()
-
-
 def handle_market_claim_verification(
     session: Session, job: BackgroundJob
 ) -> dict[str, Any]:
