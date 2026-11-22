@@ -318,6 +318,7 @@ enum ContractSamples {
   "duplicate_content_evidence_count": 1,
   "duplicate_content_group_count": 1,
   "generated_at": "2026-11-09T09:00:00+00:00",
+  "is_truncated": true,
   "items": [
     {
       "age_days": 1,
@@ -359,11 +360,9 @@ enum ContractSamples {
   "unextracted_search_result_count": 1,
   "unverified_count": 1,
   "verified_count": 1,
-  "workspace_id": "11111111-1111-1111-1111-111111111111",
-  "is_truncated": true
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
 }
 """;
-    static let minutesDraft = """
 {
   "decisions": [
     "1"
