@@ -432,7 +432,6 @@ def _serialize_execution(
 ) -> dict[str, Any]:
     payload = workflow.payload or {}
     node_states, counts = _node_statuses(session, organization_id, workspace_id, workflow)
-    now = datetime.now(UTC)
     if workflow.status == "COMPLETED":
         state = "COMPLETED"
     elif workflow.status == "FAILED":
@@ -827,9 +826,9 @@ def run_scheduler(
             )
             slots -= 1
             remaining_budget -= 1
-            dispatched_question_ids = set(
+            dispatched_question_ids = {
                 str(item) for item in payload.get("dispatched_question_ids", [])
-            )
+            }
             if not result.get("reused") and question_id not in dispatched_question_ids:
                 dispatched_question_ids.add(question_id)
                 payload["dispatched_question_ids"] = sorted(dispatched_question_ids)
@@ -975,9 +974,9 @@ def retry_question(
     ):
         raise Conflict("本次执行已达到成本预算，请创建新的执行批次")
 
-    dispatched_ids = set(
+    dispatched_ids = {
         str(item) for item in payload.get("dispatched_question_ids", [])
-    )
+    }
     if str(question_id) not in dispatched_ids and len(dispatched_ids) >= int(payload["max_questions"]):
         raise Conflict("本次执行已达到问题数上限，请创建新的执行批次")
 
