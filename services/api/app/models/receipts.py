@@ -88,7 +88,7 @@ class ReceiptOcrRun(Base):
         ForeignKeyConstraint(
             ["organization_id", "receipt_asset_id"],
             ["receipt_assets.organization_id", "receipt_assets.id"],
-            ondelete="RESTRICT",
+            ondelete="CASCADE",
             name="fk_receipt_ocr_runs_asset_same_org",
         ),
         ForeignKeyConstraint(
@@ -136,7 +136,7 @@ class ReceiptOcrReview(Base):
         ForeignKeyConstraint(
             ["organization_id", "receipt_ocr_run_id"],
             ["receipt_ocr_runs.organization_id", "receipt_ocr_runs.id"],
-            ondelete="RESTRICT",
+            ondelete="CASCADE",
             name="fk_receipt_ocr_reviews_run_same_org",
         ),
         UniqueConstraint("organization_id", "id", name="uq_receipt_ocr_reviews_org_id"),
