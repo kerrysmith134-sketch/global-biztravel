@@ -20,6 +20,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 ORG_A = "11111111-1111-1111-1111-111111111111"
 ORG_B = "33333333-3333-3333-3333-333333333333"
 ADMIN_A = "55555555-5555-5555-5555-555555555555"
+USER_B = "44444444-4444-4444-4444-444444444444"
 
 
 @pytest.fixture(scope="module")
@@ -27,10 +28,14 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def headers(key: str | None = None, org: str = ORG_A) -> dict[str, str]:
+def headers(
+    key: str | None = None,
+    org: str = ORG_A,
+    user: str = ADMIN_A,
+) -> dict[str, str]:
     return {
         "X-Org-Id": org,
-        "X-User-Id": ADMIN_A,
+        "X-User-Id": user,
         "Idempotency-Key": key or str(uuid.uuid4()),
     }
 
@@ -439,7 +444,7 @@ def test_evidence_intelligence_report_detects_duplicate_and_source_versions(
         # The same report cannot be used to enumerate another tenant's workspace.
         denied = client.get(
             f"/v1/market/workspaces/{workspace_id}/evidence-intelligence",
-            headers=headers(org=ORG_B),
+            headers=headers(org=ORG_B, user=USER_B),
         )
         assert denied.status_code == 404, denied.text
     finally:
