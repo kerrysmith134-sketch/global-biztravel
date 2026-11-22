@@ -351,3 +351,83 @@ def test_question_answer_rejects_cross_workspace_evidence(client: TestClient) ->
                             Evidence.subject_id == UUID(workspace_id),
                         )
                     )
+
+
+def test_duplicate_publications_across_hosts_count_as_one_candidate_source_group(
+    client: TestClient,
+) -> None:
+    workspace_id: str | None = None
+    try:
+        workspace_id = create_workspace(client)
+        question = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions",
+            headers=headers(),
+            json={
+                "question": "Is there independently corroborated demand?",
+                "acceptance_criteria": [
+                    {"kind": "independent_sources", "minimum": 2}
+                ],
+            },
+        )
+        assert question.status_code == 201, question.text
+        question_id = question.json()["id"]
+
+        duplicated_text = "A buyer announced a procurement programme for the target category."
+        first = create_evidence(
+            client,
+            workspace_id,
+            "https://publisher-a.example.test/procurement",
+            duplicated_text,
+        )
+        republished = create_evidence(
+            client,
+            workspace_id,
+            "https://publisher-b.example.org/republication",
+            duplicated_text,
+        )
+        answer = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers",
+            headers=headers(),
+            json={
+                "answer_summary": "Two URLs repeat the same procurement announcement.",
+                "assumptions": [],
+                "unknowns": [],
+                "confidence_level": "LOW",
+                "evidence": [
+                    {"evidence_id": first, "relation_type": "SUPPORTS"},
+                    {"evidence_id": republished, "relation_type": "SUPPORTS"},
+                ],
+            },
+        )
+        assert answer.status_code == 201, answer.text
+
+        accepted = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers/{answer.json()['id']}:accept",
+            headers=headers(),
+            json={
+                "review_note": "Both URLs contain the exact same syndicated publication."
+            },
+        )
+        assert accepted.status_code == 409, accepted.text
+        assert accepted.json()["error"]["details"] == {
+            "required_sources": 2,
+            "actual_sources": 1,
+            "source_count_basis": "distinct_host_and_content_groups",
+            "independence_confirmed_by_system": False,
+        }
+    finally:
+        if workspace_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == UUID(workspace_id),
+                    )
+                )
+                session.execute(
+                    delete(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.subject_type == "market_workspace",
+                        Evidence.subject_id == UUID(workspace_id),
+                    )
+                )
