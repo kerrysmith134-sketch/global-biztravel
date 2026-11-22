@@ -41,7 +41,7 @@ struct MarketClaimImpactSection: View {
                     .foregroundStyle(DS.ColorToken.textSecondary)
                 } else {
                     ForEach(visibleImpacts) { impact in
-                        impactRow(impact, report: report)
+                        impactRow(impact)
                         if impact.id != visibleImpacts.last?.id {
                             Divider()
                         }
@@ -70,10 +70,7 @@ struct MarketClaimImpactSection: View {
         }
     }
 
-    private func impactRow(
-        _ impact: MarketClaimImpact,
-        report: MarketClaimImpactReport
-    ) -> some View {
+    private func impactRow(_ impact: MarketClaimImpact) -> some View {
         Button {
             onSelectImpact(impact)
         } label: {
