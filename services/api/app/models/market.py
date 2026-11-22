@@ -491,6 +491,16 @@ class MarketResearchPlanEvidence(Base):
             name="fk_market_research_plan_evidence_evidence_same_org",
         ),
         ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "question_id"],
+            [
+                "market_research_questions.organization_id",
+                "market_research_questions.workspace_id",
+                "market_research_questions.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_research_plan_evidence_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
             ["organization_id", "collected_by_run_id"],
             ["agent_runs.organization_id", "agent_runs.id"],
             ondelete="RESTRICT",
@@ -511,6 +521,10 @@ class MarketResearchPlanEvidence(Base):
             "ix_market_research_plan_evidence_org_evidence",
             "organization_id", "evidence_id",
         ),
+        Index(
+            "ix_market_research_plan_evidence_org_question",
+            "organization_id", "workspace_id", "question_id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -522,6 +536,7 @@ class MarketResearchPlanEvidence(Base):
     )
     workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     research_plan_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    question_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
     evidence_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     search_query: Mapped[str] = mapped_column(Text, nullable=False)
     query_sha256: Mapped[str] = mapped_column(Text, nullable=False)
