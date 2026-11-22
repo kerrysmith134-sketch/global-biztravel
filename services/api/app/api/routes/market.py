@@ -66,10 +66,10 @@ from app.api.schemas import (
     ResearchPlanRead,
 )
 from app.services import (
+    market_claim_verification_service,
     market_entity_service,
     market_insight_service,
     market_opportunity_service,
-    market_claim_verification_service,
     market_question_answer_agent_service,
     market_question_answer_service,
     market_source_extraction_service,
