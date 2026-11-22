@@ -37,6 +37,9 @@ class ReceiptAsset(Base):
         ),
         UniqueConstraint("organization_id", "id", name="uq_receipt_assets_org_id"),
         UniqueConstraint(
+            "storage_provider", "storage_key", name="uq_receipt_assets_storage_object"
+        ),
+        UniqueConstraint(
             "organization_id", "trip_id", "id", name="uq_receipt_assets_org_trip_id"
         ),
         CheckConstraint("byte_length > 0", name="byte_length_positive"),
