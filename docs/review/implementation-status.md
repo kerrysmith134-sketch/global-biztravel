@@ -119,6 +119,8 @@
 
 - **H2.13 票据资产与报销证据快照（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。新增迁移 `0047_receipt_ocr`：对已保存的图片 ReceiptAsset 执行 Tesseract OCR，保存 content hash、引擎版本、候选字段与 AgentRun 关联；不复制原始票据文本，不因识别结果创建/修改费用。用户可对一次 OCR 运行单独确认或驳回，确认字段写入只追加审阅记录，数据库撤销应用角色 UPDATE/DELETE。PDF 仍可保留与下载，但当前 OCR 明确只支持图片格式。仍待完成对象存储孤儿对账、Trip 结账就绪度与 iOS 离线票据入口；CI/真实数据库验收以本分支最新 Actions 为准。
 
+- **H2.13 Trip 结账就绪度（进行中）**：新增只读 `GET /v1/trips/{trip_id}/closeout-readiness`，对拜访结果、费用报销覆盖、票据原件与 OCR 人工确认、报销单状态进行证据化评估；以币种分别输出金额，不合并未知汇率。未完成拜访、缺少已生效拜访结果、未进入报销快照、最新报销单驳回属于硬阻塞；缺票据、OCR 尚未确认、多币种复核与未完成商务跟进属于警告/例外，商务跟进不阻断财务结账。评估不修改 Trip/Visit/Expense/Report、不递增 Trip 计划版本；Action Center 仅聚合硬阻塞，并回链到 Trip 与来源对象。
+
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
 - **签证案件与入境评估**：`visa_cases`（NEW→PREPARING→SUBMITTED→APPROVED/REJECTED，材料清单、
