@@ -802,6 +802,81 @@ class VisitRecordRead(BaseModel):
     created_at: datetime
 
 
+
+# --------------------------------------------------------- visit follow-ups
+VisitFollowUpSource = Literal["RECORD", "MINUTES_DRAFT", "MANUAL"]
+VisitFollowUpDecision = Literal["ACCEPT", "DISMISS", "CREATE"]
+VisitFollowUpStatus = Literal["OPEN", "IN_PROGRESS", "COMPLETED", "DISMISSED"]
+
+
+class VisitFollowUpEventRead(BaseModel):
+    id: UUID
+    event_type: str
+    from_status: str | None = None
+    to_status: str
+    actor_user_id: UUID | None = None
+    note: str | None = None
+    created_at: datetime
+
+
+class VisitFollowUpRead(ORMModel):
+    id: UUID
+    visit_id: UUID
+    trip_id: UUID
+    source_type: VisitFollowUpSource
+    source_record_id: UUID | None = None
+    source_agent_run_id: UUID | None = None
+    source_index: int | None = None
+    source_title: str | None = None
+    source_due_date: str | None = None
+    title: str
+    due_date: str | None = None
+    status: VisitFollowUpStatus
+    created_by_user_id: UUID | None = None
+    confirmed_by_user_id: UUID | None = None
+    confirmed_at: datetime | None = None
+    completed_by_user_id: UUID | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    events: list[VisitFollowUpEventRead] = Field(default_factory=list)
+
+
+class VisitFollowUpSuggestionRead(BaseModel):
+    source_type: Literal["RECORD", "MINUTES_DRAFT"]
+    source_record_id: UUID | None = None
+    source_agent_run_id: UUID | None = None
+    source_index: int
+    title: str
+    due_date: str | None = None
+    source_created_at: datetime
+
+
+class VisitFollowUpFeedRead(BaseModel):
+    visit_id: UUID
+    trip_id: UUID
+    items: list[VisitFollowUpRead] = Field(default_factory=list)
+    suggestions: list[VisitFollowUpSuggestionRead] = Field(default_factory=list)
+
+
+class VisitFollowUpDecisionCreate(BaseModel):
+    source_type: VisitFollowUpSource
+    decision: VisitFollowUpDecision
+    source_record_id: UUID | None = None
+    source_agent_run_id: UUID | None = None
+    source_index: int | None = Field(default=None, ge=0)
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    due_date: str | None = Field(default=None, max_length=40)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class VisitFollowUpUpdate(BaseModel):
+    status: VisitFollowUpStatus | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    due_date: str | None = Field(default=None, max_length=40)
+    note: str | None = Field(default=None, max_length=2000)
+
+
 # ------------------------------------------------------------ offline sync
 SyncEntity = Literal["visit_record", "customer", "plan_stop"]
 SyncOperation = Literal["upsert", "delete"]
@@ -1704,7 +1779,7 @@ class TripOutcomeRead(BaseModel):
 ActionCategory = Literal[
     "DECISION", "APPROVAL", "RUNNING", "FAILED", "PREPARATION", "COMPLETED"
 ]
-ActionKind = Literal["SUGGESTION", "EXPENSE_REPORT", "JOB", "CRM_SYNC"]
+ActionKind = Literal["SUGGESTION", "EXPENSE_REPORT", "JOB", "CRM_SYNC", "VISIT_FOLLOW_UP"]
 
 
 class ActionItemRead(BaseModel):
