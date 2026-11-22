@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime
 from uuid import UUID
@@ -93,6 +94,12 @@ def read_receipt_content(
         content = get_receipt_storage(asset.storage_provider).get(asset.storage_key)
     except ReceiptStorageUnavailable as exc:
         raise ServiceUnavailable(str(exc)) from exc
+    actual_hash = hashlib.sha256(content).hexdigest()
+    if actual_hash != asset.sha256:
+        raise ServiceUnavailable(
+            "原始票据内容校验失败；该资产已被隔离，暂不可读取",
+            details={"receipt_asset_id": str(asset.id)},
+        )
     return asset, content
 
 
