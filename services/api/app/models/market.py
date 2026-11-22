@@ -1364,14 +1364,23 @@ class MarketClaim(Base):
             name="fk_market_claim_agent_run",
         ),
         ForeignKeyConstraint(
-            ["organization_id", "workspace_id", "supersedes_id"],
-            ["market_claims.organization_id", "market_claims.workspace_id", "market_claims.id"],
+            ["organization_id", "workspace_id", "answer_id", "supersedes_id"],
+            [
+                "market_claims.organization_id",
+                "market_claims.workspace_id",
+                "market_claims.answer_id",
+                "market_claims.id",
+            ],
             ondelete="NO ACTION",
-            name="fk_market_claim_supersedes_same_workspace",
+            name="fk_market_claim_supersedes_same_answer",
         ),
         UniqueConstraint(
             "organization_id", "workspace_id", "id",
             name="uq_market_claims_org_workspace_id",
+        ),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "answer_id", "id",
+            name="uq_market_claims_org_workspace_answer_id",
         ),
         UniqueConstraint(
             "organization_id", "workspace_id", "answer_id", "claim_key", "version",
