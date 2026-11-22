@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from hashlib import sha256
-from urllib.parse import urlsplit
 from typing import Any
 from uuid import UUID
 
