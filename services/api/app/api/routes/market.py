@@ -172,26 +172,6 @@ def get_workspace(workspace_id: UUID, context: ContextDep, session: SessionDep):
 
 
 @router.get(
-    "/market/workspaces/{workspace_id}/research-plans",
-    response_model=list[ResearchPlanRead],
-    summary="读取 Workspace 下的研究计划（含问题级来源范围）",
-)
-def list_workspace_research_plans(
-    workspace_id: UUID,
-    context: ContextDep,
-    session: SessionDep,
-    target_question_id: UUID | None = Query(default=None),
-):
-    require_role(context, ROLE_VIEWER)
-    rows = research_service.list_research_plans_for_workspace(
-        session, context.organization_id, workspace_id
-    )
-    if target_question_id is not None:
-        rows = [row for row in rows if row.target_question_id == target_question_id]
-    return rows
-
-
-@router.get(
     "/market/workspaces/{workspace_id}/contexts",
     response_model=list[MarketContextRead],
     summary="工作空间上下文版本列表",
@@ -1886,17 +1866,21 @@ def unlink_trip_from_workspace(
 @router.get(
     "/market/workspaces/{workspace_id}/research-plans",
     response_model=list[ResearchPlanRead],
-    summary="读取工作空间关联的研究计划",
+    summary="读取工作空间关联的研究计划，可按目标问题筛选",
 )
 def list_workspace_research_plans(
     workspace_id: UUID,
     context: ContextDep,
     session: SessionDep,
+    target_question_id: UUID | None = Query(default=None),
 ):
     require_role(context, ROLE_VIEWER)
-    return research_service.list_research_plans_for_workspace(
+    rows = research_service.list_research_plans_for_workspace(
         session, context.organization_id, workspace_id
     )
+    if target_question_id is not None:
+        rows = [row for row in rows if row.target_question_id == target_question_id]
+    return rows
 
 
 @router.get(
