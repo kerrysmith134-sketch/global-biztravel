@@ -27613,7 +27613,8 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 200
+                "maxLength": 200,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -27703,7 +27704,8 @@
           },
           "confirmed_fields": {
             "type": "object",
-            "title": "Confirmed Fields"
+            "title": "Confirmed Fields",
+            "additionalProperties": true
           },
           "note": {
             "anyOf": [
@@ -27785,7 +27787,8 @@
           },
           "candidates": {
             "type": "object",
-            "title": "Candidates"
+            "title": "Candidates",
+            "additionalProperties": true
           },
           "error": {
             "anyOf": [
