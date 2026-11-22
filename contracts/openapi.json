@@ -10632,6 +10632,111 @@
           }
         }
       }
+    },
+    "/v1/trips/{trip_id}/receipt-assets": {
+      "post": {
+        "tags": [
+          "receipt-assets"
+        ],
+        "summary": "保存一份原始票据到私有资产库",
+        "operationId": "upload_receipt_asset_v1_trips__trip_id__receipt_assets_post",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_receipt_asset_v1_trips__trip_id__receipt_assets_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptAssetRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/receipt-assets/{asset_id}/content": {
+      "get": {
+        "tags": [
+          "receipt-assets"
+        ],
+        "summary": "鉴权读取原始票据（二进制不进入公开 URL）",
+        "operationId": "download_receipt_asset_v1_receipt_assets__asset_id__content_get",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13045,6 +13150,18 @@
               }
             ],
             "title": "Receipt Ref"
+          },
+          "receipt_asset_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Asset Id"
           }
         },
         "type": "object",
@@ -13117,6 +13234,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "receipt_asset_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Asset Id"
           }
         },
         "type": "object",
@@ -27125,6 +27254,76 @@
         },
         "type": "object",
         "title": "VisitFollowUpUpdate"
+      },
+      "ReceiptAssetRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename"
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type"
+          },
+          "byte_length": {
+            "type": "integer",
+            "title": "Byte Length"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "storage_status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "QUARANTINED",
+              "DELETE_PENDING"
+            ],
+            "title": "Storage Status"
+          },
+          "uploaded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Uploaded At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "trip_id",
+          "original_filename",
+          "mime_type",
+          "byte_length",
+          "sha256",
+          "storage_status",
+          "uploaded_at"
+        ],
+        "title": "ReceiptAssetRead"
+      },
+      "Body_upload_receipt_asset_v1_trips__trip_id__receipt_assets_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_receipt_asset_v1_trips__trip_id__receipt_assets_post"
       }
     }
   }
