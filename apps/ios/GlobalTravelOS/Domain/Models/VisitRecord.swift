@@ -318,4 +318,16 @@ struct VisitFollowUpUpdateRequest: Encodable, Equatable {
     var title: String?
     var dueDate: String?
     var note: String?
+
+    init(
+        status: String? = nil,
+        title: String? = nil,
+        dueDate: String? = nil,
+        note: String? = nil
+    ) {
+        self.status = status
+        self.title = title
+        self.dueDate = dueDate
+        self.note = note
+    }
 }
