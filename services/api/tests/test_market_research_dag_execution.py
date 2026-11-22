@@ -528,6 +528,21 @@ def test_question_scoped_evidence_does_not_leak_between_research_questions(
             assert q2_source.id not in q1_visible
             assert q1_source.id not in q2_visible
 
+            # The DAG scheduler uses the same question scope when deriving READY /
+            # WAITING_FOR_EVIDENCE, not a Workspace-wide evidence count.
+            q1_scheduler_evidence = set(
+                market_research_dag_service._content_evidence_ids(
+                    session, UUID(ORG_A), UUID(workspace_id), q1
+                )
+            )
+            q2_scheduler_evidence = set(
+                market_research_dag_service._content_evidence_ids(
+                    session, UUID(ORG_A), UUID(workspace_id), q2
+                )
+            )
+            assert q1_scheduler_evidence == q1_visible
+            assert q2_scheduler_evidence == q2_visible
+
             # A user-selected page extraction creates a new immutable Evidence
             # version and inherits the exact question/query provenance.
             extraction_workflow = WorkflowInstance(
