@@ -81,6 +81,7 @@ router = APIRouter(tags=["market intelligence"])
 
 WORKSPACES_ENDPOINT = "POST /v1/market/workspaces"
 OPPORTUNITY_STATUS_QUERY = Query(default=None, alias="status")
+ANSWER_ID_QUERY = Query(default=None)
 
 
 @router.get(
@@ -593,7 +594,7 @@ def list_market_claims(
     workspace_id: UUID,
     context: ContextDep,
     session: SessionDep,
-    answer_id: UUID | None = Query(default=None),
+    answer_id: UUID | None = ANSWER_ID_QUERY,
     limit: int | None = Query(default=None, ge=1),
     cursor: str | None = Query(default=None),
 ):
