@@ -322,7 +322,7 @@ final class LocalVisitRepository: VisitRepository {
             payload: try DateCoding.encoder().encode(record)
         )
         let taskData = try DateCoding.encoder().encode(request.followUpTasks)
-        database.setKeyValue(
+        try database.setKeyValue(
             "visit-follow-up-source:\(record.id)",
             value: String(decoding: taskData, as: UTF8.self)
         )
@@ -615,6 +615,20 @@ private extension LocalVisitRepository {
             "visit-follow-ups:\(visitId)",
             value: String(decoding: data, as: UTF8.self)
         )
+        for item in items {
+            try database.setKeyValue("visit-follow-up-visit:\(item.id)", value: visitId)
+        }
+    }
+
+    func localTripId(visitId: String) -> String {
+        guard let payload = try? database.loadPayloads(
+            table: "visits", where: "id = ?", bindings: [visitId]
+        ).first,
+              let payload,
+              let visit = try? DateCoding.decoder().decode(TripVisit.self, from: payload) else {
+            return ""
+        }
+        return visit.tripId
     }
 
     func localTaskList(_ raw: Any?) -> [FollowUpTask] {
@@ -714,7 +728,7 @@ extension LocalVisitRepository {
 
         return VisitFollowUpFeed(
             visitId: visitId,
-            tripId: items.first?.tripId ?? "",
+            tripId: localTripId(visitId: visitId),
             items: items.sorted { $0.createdAt > $1.createdAt },
             suggestions: suggestions
         )
@@ -772,7 +786,7 @@ extension LocalVisitRepository {
         let item = VisitFollowUp(
             id: UUID().uuidString.lowercased(),
             visitId: visitId,
-            tripId: items.first?.tripId ?? "",
+            tripId: localTripId(visitId: visitId),
             sourceType: request.sourceType,
             sourceRecordId: request.sourceRecordId,
             sourceAgentRunId: request.sourceAgentRunId,
@@ -812,18 +826,103 @@ extension LocalVisitRepository {
         id: String,
         request: VisitFollowUpUpdateRequest
     ) async throws -> VisitFollowUp {
-        guard let visitRows = try? database.loadPayloads(
-            table: "visits", where: "id = ?", bindings: [""]
-        ) else { _ = visitRows; throw APIError.serverError(
-            code: "NOT_FOUND", message: "拜访不存在", traceId: nil, details: [:]
-        ) }
-        _ = visitRows
-        throw APIError.serverError(
-            code: "LOCAL_FOLLOW_UP_LOOKUP_REQUIRED",
-            message: "本地跟进项状态更新暂不可用，请先连接网络。",
-            traceId: nil,
-            details: [:]
+        guard let visitId = database.keyValue("visit-follow-up-visit:\(id)") else {
+            throw APIError.serverError(
+                code: "NOT_FOUND", message: "本地拜访跟进项不存在",
+                traceId: nil, details: [:]
+            )
+        }
+        var items = storedFollowUpItems(visitId: visitId)
+        guard let index = items.firstIndex(where: { $0.id == id }) else {
+            throw APIError.serverError(
+                code: "NOT_FOUND", message: "本地拜访跟进项不存在",
+                traceId: nil, details: [:]
+            )
+        }
+
+        var item = items[index]
+        let oldStatus = item.status
+        let newStatus = request.status ?? oldStatus
+        if newStatus != oldStatus {
+            let allowed: [String: Set<String>] = [
+                "OPEN": ["IN_PROGRESS", "COMPLETED", "DISMISSED"],
+                "IN_PROGRESS": ["OPEN", "COMPLETED", "DISMISSED"],
+                "COMPLETED": ["OPEN"],
+                "DISMISSED": ["OPEN"],
+            ]
+            guard allowed[oldStatus, default: []].contains(newStatus) else {
+                throw APIError.serverError(
+                    code: "CONFLICT", message: "不允许该跟进状态转换",
+                    traceId: nil,
+                    details: ["from_status": oldStatus, "to_status": newStatus]
+                )
+            }
+            if (oldStatus == "COMPLETED" || oldStatus == "DISMISSED")
+                && newStatus == "OPEN"
+                && (request.note?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                throw APIError.serverError(
+                    code: "VALIDATION_ERROR", message: "重新打开事项时必须填写原因",
+                    traceId: nil, details: [:]
+                )
+            }
+            item.status = newStatus
+            if newStatus == "COMPLETED" {
+                item.completedAt = Date()
+            } else if newStatus == "OPEN" {
+                item.completedAt = nil
+                item.completedByUserId = nil
+            }
+        }
+
+        if let title = request.title {
+            let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty else {
+                throw APIError.serverError(
+                    code: "VALIDATION_ERROR", message: "跟进标题不能为空",
+                    traceId: nil, details: [:]
+                )
+            }
+            item.title = clean
+        }
+        if let dueDate = request.dueDate {
+            item.dueDate = dueDate
+        }
+
+        guard item.status != oldStatus || request.title != nil || request.dueDate != nil else {
+            throw APIError.serverError(
+                code: "VALIDATION_ERROR", message: "至少需要更新状态、标题或截止日期",
+                traceId: nil, details: [:]
+            )
+        }
+
+        let now = Date()
+        item.updatedAt = now
+        let eventType: String
+        if newStatus != oldStatus {
+            switch newStatus {
+            case "IN_PROGRESS": eventType = "STARTED"
+            case "COMPLETED": eventType = "COMPLETED"
+            case "DISMISSED": eventType = "DISMISSED"
+            case "OPEN": eventType = "REOPENED"
+            default: eventType = "UPDATED"
+            }
+        } else {
+            eventType = "UPDATED"
+        }
+        item.events.append(
+            VisitFollowUpEvent(
+                id: UUID().uuidString.lowercased(),
+                eventType: eventType,
+                fromStatus: oldStatus,
+                toStatus: item.status,
+                actorUserId: nil,
+                note: request.note,
+                createdAt: now
+            )
         )
+        items[index] = item
+        try saveFollowUpItems(items, visitId: visitId)
+        return item
     }
 }
 
