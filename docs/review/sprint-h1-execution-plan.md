@@ -444,7 +444,7 @@ MarketInsight 采用 `workspace_id + insight_key + version` 建立版本链；�
 
 问题不再只有 OPEN/IN_PROGRESS/ANSWERED/BLOCKED 状态及一个覆盖式 answer_summary。新增 MarketResearchQuestionAnswer 版本记录和 MarketResearchQuestionAnswerEvidence 显式证据关系。
 
-一次回答从 NEEDS_REVIEW 开始；存在支持与反驳时标记 CONFLICTED。只有 Admin 审核采纳后，Question 才更新为 ANSWERED。采纳必须有 SUPPORTS 且无 CONTRADICTS；independent_sources minimum 通过不同来源 host 数量校验；其他无法自动核验的 acceptance criteria 要求 review_note。修订答案追加版本并保留 supersedes 关系，同一 Question 只允许一个 ACCEPTED 版本。
+一次回答从 NEEDS_REVIEW 开始；存在支持与反驳时标记 CONFLICTED。只有 Admin 审核采纳后，Question 才更新为 ANSWERED。采纳必须有 SUPPORTS 且无 CONTRADICTS；independent_sources minimum 先按 host 与内容指纹合并为候选来源组，重复转载不重复计数；达到数量后仍要求 Admin 人工核查出版方归属/所有权/转载关系并填写 review_note，不把 host 数等同于独立来源确认；其他无法自动核验的 acceptance criteria 同样要求 review_note。修订答案追加版本并保留 supersedes 关系，同一 Question 只允许一个 ACCEPTED 版本。
 
 本切片提供答案版本创建/查询、采纳、驳回 API；它为未来 Research Answer Agent 提供持久化边界，但当前并未声称 LLM 自动综合、全文抓取或事实核验 Agent 已经完成。
 
