@@ -248,6 +248,21 @@ def link_research_plan_evidence(
     ).one_or_none()
     if workflow_link is None:
         raise Conflict("ResearchPlan 未关联到当前 Workspace")
+    research_plan = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == organization_id,
+            WorkflowInstance.id == research_plan_id,
+            WorkflowInstance.workflow_type == "research_plan",
+        )
+    ).one_or_none()
+    if research_plan is None:
+        raise Conflict("来源 Workflow 不是有效的 ResearchPlan")
+    target_question_id = (research_plan.payload or {}).get("target_question_id")
+    if target_question_id:
+        if question_id is None or str(target_question_id) != str(question_id):
+            raise Conflict("Evidence 的 question_id 必须与 ResearchPlan 的定向问题一致")
+    elif question_id is not None:
+        raise Conflict("未定向 ResearchPlan 不能写入问题级 Evidence 关联")
     if question_id is not None:
         target_question = session.scalars(
             select(MarketResearchQuestion).where(
