@@ -861,11 +861,13 @@ def handle_market_claim_verification(
         raise TaskFailed("主张核验运行记录不存在", retryable=False)
 
     answer = session.scalars(
-        select(MarketResearchQuestionAnswer).where(
+        select(MarketResearchQuestionAnswer)
+        .where(
             MarketResearchQuestionAnswer.organization_id == job.organization_id,
             MarketResearchQuestionAnswer.workspace_id == workspace_id,
             MarketResearchQuestionAnswer.id == answer_id,
         )
+        .with_for_update()
     ).one_or_none()
     if answer is None:
         raise TaskFailed("研究答案版本不存在", retryable=False)
@@ -1200,9 +1202,8 @@ def handle_market_claim_verification(
                 claim_limitations.append(
                     "支持该主张的 Evidence 存在相同内容指纹；重复内容不得作为额外佐证。"
                 )
-            if len(linked_rows) and len({row.content_hash for row in linked_rows if row.content_hash}) < len(
-                [row for row in linked_rows if row.content_hash]
-            ):
+            linked_hashes = [row.content_hash for row in linked_rows if row.content_hash]
+            if len(linked_hashes) != len(set(linked_hashes)):
                 claim_limitations.append("检测到内容哈希重复的来源，不能重复计为独立佐证。")
             if not valid_assessments:
                 claim_limitations.append("模型未能映射到任何可用的输入 Evidence。")
