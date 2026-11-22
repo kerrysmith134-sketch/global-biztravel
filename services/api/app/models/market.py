@@ -1281,6 +1281,86 @@ class MarketWorkspaceTripLink(Base):
 
 
 
+class MarketOpportunityVisitLink(Base):
+    """Reversible, auditable handoff from a qualified opportunity to a Trip visit."""
+
+    __tablename__ = "market_opportunity_visit_links"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "opportunity_id"],
+            [
+                "market_opportunities.organization_id",
+                "market_opportunities.workspace_id",
+                "market_opportunities.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_market_opp_visit_link_opportunity_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "trip_id"],
+            [
+                "market_workspace_trip_links.organization_id",
+                "market_workspace_trip_links.workspace_id",
+                "market_workspace_trip_links.trip_id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_market_opp_visit_link_workspace_trip",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "trip_id", "visit_id"],
+            ["visits.organization_id", "visits.trip_id", "visits.id"],
+            ondelete="RESTRICT",
+            name="fk_market_opp_visit_link_visit_same_trip",
+        ),
+        UniqueConstraint("organization_id", "id", name="uq_market_opp_visit_links_org_id"),
+        UniqueConstraint(
+            "organization_id", "workspace_id", "opportunity_id", "trip_id", "visit_id",
+            name="uq_market_opp_visit_link_target",
+        ),
+        CheckConstraint("link_status IN ('LINKED','UNLINKED')", name="link_status_allowed"),
+        CheckConstraint(
+            "link_status <> 'UNLINKED' OR "
+            "(unlinked_by_user_id IS NOT NULL AND unlinked_at IS NOT NULL)",
+            name="unlinked_has_actor_and_time",
+        ),
+        Index(
+            "ix_market_opp_visit_links_org_workspace_status",
+            "organization_id", "workspace_id", "opportunity_id", "link_status",
+        ),
+        Index(
+            "ix_market_opp_visit_links_org_trip_visit",
+            "organization_id", "trip_id", "visit_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    trip_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    visit_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    link_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="LINKED")
+    link_note: Mapped[str | None] = mapped_column(Text)
+    linked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    unlinked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    unlink_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
 class MarketClaimVerificationRun(Base):
     """One explicit, versioned claim-analysis run for a selected answer version."""
 
