@@ -210,6 +210,11 @@ def _node_statuses(
         data = workflow.payload or {}
         if workflow.workflow_type != ANSWER_WORKFLOW_TYPE:
             continue
+        child_execution_id = data.get("dag_execution_workflow_id")
+        if child_execution_id and str(child_execution_id) != str(execution.id):
+            # Completed/failed answer jobs from an older DAG batch must not poison
+            # the current batch's derived node state.
+            continue
         if not data.get("question_id"):
             continue
         try:
