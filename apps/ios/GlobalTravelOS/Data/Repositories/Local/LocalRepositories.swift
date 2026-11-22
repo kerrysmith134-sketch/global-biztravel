@@ -975,12 +975,66 @@ final class LocalActionCenterRepository: ActionCenterRepository {
                 )
             )
         }
+        let visitPayloads = (try? database.loadPayloads(table: "visits", order: "id")) ?? []
+        var activeFollowUps: [ActionItem] = []
+        var completedFollowUps: [ActionItem] = []
+        let completedSince = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+        for payload in visitPayloads {
+            guard let visit = try? DateCoding.decoder().decode(TripVisit.self, from: payload),
+                  tripId == nil || visit.tripId == tripId,
+                  let raw = database.keyValue("visit-follow-ups:\(visit.id)"),
+                  let data = raw.data(using: .utf8),
+                  let items = try? DateCoding.decoder().decode([VisitFollowUp].self, from: data) else {
+                continue
+            }
+            for item in items {
+                let isActive = item.status == "OPEN" || item.status == "IN_PROGRESS"
+                let isRecentCompletion = item.status == "COMPLETED"
+                    && (item.completedAt ?? item.updatedAt) >= completedSince
+                guard isActive || isRecentCompletion else { continue }
+                let state = item.status == "IN_PROGRESS" ? "进行中" : (
+                    item.status == "COMPLETED" ? "已完成" : "待开始"
+                )
+                let due = item.dueDate.map { " · 截止 \($0)" } ?? ""
+                let action = ActionItem(
+                    category: isActive ? "PREPARATION" : "COMPLETED",
+                    kind: "VISIT_FOLLOW_UP",
+                    entityId: item.id,
+                    title: item.title,
+                    detail: state + due,
+                    status: item.status,
+                    severity: "LOW",
+                    tripId: item.tripId,
+                    tripName: nil,
+                    actionHint: "打开对应行程，在拜访工作台更新进度",
+                    availableActions: ["OPEN_TRIP"],
+                    createdAt: item.createdAt,
+                    updatedAt: item.updatedAt
+                )
+                if isActive {
+                    activeFollowUps.append(action)
+                } else {
+                    completedFollowUps.append(action)
+                }
+            }
+        }
+
         var sections: [ActionSection] = []
         if !decisionItems.isEmpty {
             sections.append(ActionSection(key: "DECISION", title: "待决定", items: decisionItems))
         }
         if !approvalItems.isEmpty {
             sections.append(ActionSection(key: "APPROVAL", title: "待审批", items: approvalItems))
+        }
+        if !activeFollowUps.isEmpty {
+            sections.append(
+                ActionSection(key: "PREPARATION", title: "待跟进", items: activeFollowUps)
+            )
+        }
+        if !completedFollowUps.isEmpty {
+            sections.append(
+                ActionSection(key: "COMPLETED", title: "已完成", items: completedFollowUps)
+            )
         }
         let total = sections.reduce(0) { $0 + $1.items.count }
         return ActionCenter(generatedAt: Date(), total: total, counts: nil, sections: sections)
