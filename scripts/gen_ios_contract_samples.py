@@ -69,6 +69,7 @@ TARGETS: dict[str, str] = {
     "MarketEvidenceIntelligenceReport": "MarketEvidenceIntelligenceRead",
     "MarketSourceVerificationPlan": "MarketSourceVerificationPlanRead",
     "MarketSourceVerificationPlanApplication": "MarketSourceVerificationPlanApplicationRead",
+    "MarketClaimLineageHistory": "MarketClaimLineageRead",
 }
 
 SAMPLE_UUID = "11111111-1111-1111-1111-111111111111"

@@ -9146,6 +9146,59 @@
         }
       }
     },
+    "/v1/market/workspaces/{workspace_id}/claims/{claim_id}/history": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取同一原子主张跨答案版本的完整历史",
+        "operationId": "get_market_claim_history_v1_market_workspaces__workspace_id__claims__claim_id__history_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "claim_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Claim Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketClaimLineageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/market/workspaces/{workspace_id}/claims": {
       "get": {
         "tags": [
@@ -23157,6 +23210,11 @@
             "format": "uuid",
             "title": "Verification Run Id"
           },
+          "claim_lineage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Claim Lineage Id"
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -23324,6 +23382,7 @@
           "workspace_id",
           "answer_id",
           "verification_run_id",
+          "claim_lineage_id",
           "version",
           "claim_key",
           "statement",
@@ -24758,6 +24817,15 @@
             "format": "uuid",
             "title": "Claim Id"
           },
+          "claim_lineage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Claim Lineage Id"
+          },
+          "claim_version": {
+            "type": "integer",
+            "title": "Claim Version"
+          },
           "statement": {
             "type": "string",
             "title": "Statement"
@@ -24852,6 +24920,8 @@
         "type": "object",
         "required": [
           "claim_id",
+          "claim_lineage_id",
+          "claim_version",
           "statement",
           "claim_type",
           "claim_status",
@@ -25204,6 +25274,56 @@
           "dependency_count"
         ],
         "title": "MarketSourceVerificationPlanApplicationRead"
+      },
+      "MarketClaimLineageRead": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "claim_lineage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Claim Lineage Id"
+          },
+          "claim_key": {
+            "type": "string",
+            "title": "Claim Key"
+          },
+          "latest_version": {
+            "type": "integer",
+            "title": "Latest Version"
+          },
+          "current_accepted_claim_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Accepted Claim Id"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/MarketClaimRead"
+            },
+            "type": "array",
+            "title": "Versions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "claim_lineage_id",
+          "claim_key",
+          "latest_version",
+          "current_accepted_claim_id"
+        ],
+        "title": "MarketClaimLineageRead"
       }
     }
   }
