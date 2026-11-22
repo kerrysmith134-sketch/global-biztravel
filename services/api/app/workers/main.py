@@ -28,8 +28,8 @@ from app.models.identity import Organization
 from app.models.reliability import BackgroundJob
 from app.services import (
     job_service,
-    market_source_extraction_service,
     market_claim_verification_service,
+    market_source_extraction_service,
     memory_service,
     metrics_service,
     notification_service,
