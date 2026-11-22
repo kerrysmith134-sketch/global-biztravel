@@ -6673,6 +6673,229 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/questions/{question_id}/dependencies": {
+      "get": {
+        "tags": [
+          "market"
+        ],
+        "summary": "读取研究问题的前置依赖",
+        "operationId": "list_question_dependencies_v1_market_workspaces__workspace_id__questions__question_id__dependencies_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Question Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MarketQuestionDependencyRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Question Dependencies V1 Market Workspaces  Workspace Id  Questions  Question Id  Dependencies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "market"
+        ],
+        "summary": "新增研究问题依赖（服务端阻止循环依赖）",
+        "operationId": "create_question_dependency_v1_market_workspaces__workspace_id__questions__question_id__dependencies_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "title": "Idempotency-Key"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketQuestionDependencyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "依赖边已存在，未重复创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketQuestionDependencyRead"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketQuestionDependencyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/questions/{question_id}/dependencies/{dependency_id}": {
+      "delete": {
+        "tags": [
+          "market"
+        ],
+        "summary": "移除研究问题依赖",
+        "operationId": "delete_question_dependency_v1_market_workspaces__workspace_id__questions__question_id__dependencies__dependency_id__delete",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "dependency_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dependency Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "title": "Idempotency-Key"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketQuestionDependencyDeleted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -16170,6 +16393,97 @@
           "items"
         ],
         "title": "Page[MarketActivityEventRead]"
+      },
+      "MarketQuestionDependencyCreate": {
+        "properties": {
+          "depends_on_question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Depends On Question Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "depends_on_question_id"
+        ],
+        "title": "MarketQuestionDependencyCreate",
+        "additionalProperties": false
+      },
+      "MarketQuestionDependencyRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Question Id"
+          },
+          "depends_on_question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Depends On Question Id"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "title": "Created By User Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "workspace_id",
+          "question_id",
+          "depends_on_question_id",
+          "created_by_user_id",
+          "created_at"
+        ],
+        "title": "MarketQuestionDependencyRead"
+      },
+      "MarketQuestionDependencyDeleted": {
+        "properties": {
+          "dependency_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dependency Id"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dependency_id",
+          "deleted"
+        ],
+        "title": "MarketQuestionDependencyDeleted"
       }
     }
   }
