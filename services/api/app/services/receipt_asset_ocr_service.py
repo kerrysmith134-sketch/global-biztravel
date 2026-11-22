@@ -61,6 +61,7 @@ def create_receipt_ocr_run(
         status="RUNNING",
         input={
             "receipt_asset_id": str(asset.id),
+            "requested_by_user_id": str(actor_user_id),
             "content_sha256": asset.sha256,
             "mime_type": asset.mime_type,
             "byte_length": asset.byte_length,
