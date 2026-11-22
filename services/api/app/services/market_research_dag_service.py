@@ -754,8 +754,14 @@ def run_scheduler(
     if now >= deadline:
         return stop("TIMED_OUT", "执行时间预算已耗尽")
     max_cost = Decimal(str(payload["max_cost"])) if payload.get("max_cost") is not None else None
-    if max_cost is not None and counts["cost_estimate"] >= max_cost:
-        return stop("BUDGET_EXHAUSTED", "LLM 成本估算已达到金额预算")
+    if max_cost is not None and counts["cost_estimate"] is None:
+        return stop("BUDGET_EXHAUSTED", "部署的 LLM 成本计量已不可用，无法继续执行预算受限任务")
+    if (
+        max_cost is not None
+        and counts["cost_estimate"] is not None
+        and counts["cost_estimate"] >= max_cost
+    ):
+        return stop("BUDGET_EXHAUSTED", "LLM 成本估算已达到成本预算")
 
     if counts["all_answered"]:
         payload["execution_state"] = "COMPLETED"
@@ -939,7 +945,13 @@ def retry_question(
     if now >= deadline:
         raise Conflict("本次执行已超过时间预算，请创建新的执行批次")
     max_cost = Decimal(str(payload["max_cost"])) if payload.get("max_cost") is not None else None
-    if max_cost is not None and counts["cost_estimate"] >= max_cost:
+    if max_cost is not None and counts["cost_estimate"] is None:
+        raise Conflict("当前部署无法继续计量本次执行成本，请先恢复 LLM 成本计量")
+    if (
+        max_cost is not None
+        and counts["cost_estimate"] is not None
+        and counts["cost_estimate"] >= max_cost
+    ):
         raise Conflict("本次执行已达到成本预算，请创建新的执行批次")
 
     dispatched_ids = set(
