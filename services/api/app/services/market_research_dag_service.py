@@ -393,7 +393,26 @@ def _node_statuses(
         ).all()
     ) if invocation_ids else []
     settings = get_settings()
-    cost_metering_available = settings.llm_cost_per_1k_tokens > 0
+    loaded_invocation_ids = {row.id for row in invocations}
+    missing_invocation = invocation_ids - loaded_invocation_ids
+    # A configured per-token rate is not enough: real provider usage must be present.
+    # Cached invocations are explicitly zero-cost; non-cached calls with missing usage
+    # or a degraded response make the cumulative cost unknown, never silently zero.
+    unmetered_call = any(
+        row.degraded or (not row.cached and row.tokens_in + row.tokens_out <= 0)
+        for row in invocations
+    )
+    successful_runs_without_invocation = any(
+        run.status == "SUCCEEDED"
+        and not (run.output or {}).get("llm_invocation_id")
+        for run in agent_runs
+    )
+    cost_metering_available = (
+        settings.llm_cost_per_1k_tokens > 0
+        and not missing_invocation
+        and not unmetered_call
+        and not successful_runs_without_invocation
+    )
     total_cost = sum((row.cost_estimate for row in invocations), Decimal("0"))
     return node_states, {
         **counts,
