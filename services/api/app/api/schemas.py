@@ -2078,6 +2078,13 @@ class MarketResearchGraphExecutionCancelled(BaseModel):
     running_jobs: int
 
 
+class MarketResearchGraphQuestionRetryAccepted(BaseModel):
+    execution_id: UUID
+    question_id: UUID
+    job_id: UUID
+    reused: bool
+
+
 class MarketActivityEventRead(ORMModel):
     id: UUID
     workspace_id: UUID
