@@ -849,6 +849,133 @@ def settings_user_fallback() -> str:
     return str(get_settings().dev_user_id)
 
 
+def retry_question(
+    session: Session,
+    organization_id: UUID | str,
+    workspace_id: UUID,
+    execution_id: UUID,
+    question_id: UUID,
+    *,
+    actor_user_id: UUID,
+) -> dict[str, Any]:
+    """Explicitly retry a failed/rejected node without changing its dependency snapshot."""
+    workflow = _execution_workflow(
+        session, organization_id, workspace_id, execution_id, lock=True
+    )
+    if workflow.status == "REJECTED":
+        raise Conflict("已取消的研究图执行不能重试")
+    payload = dict(workflow.payload or {})
+    snapshot = payload.get("graph_snapshot") or {}
+    question_ids = {str(node.get("id")) for node in snapshot.get("nodes", [])}
+    if str(question_id) not in question_ids:
+        raise NotFound("研究问题不属于本次执行的图快照")
+
+    node_states, counts = _node_statuses(
+        session, organization_id, workspace_id, workflow
+    )
+    target = next(
+        (row for row in node_states if row["question_id"] == question_id),
+        None,
+    )
+    if target is None:
+        raise NotFound("研究问题不存在")
+    if target["state"] not in {"FAILED", "REJECTED"}:
+        raise Conflict(
+            "只有失败或被驳回的问题才允许手动重试",
+            details={"state": target["state"]},
+        )
+
+    dependency_ids = [
+        UUID(str(edge["depends_on_question_id"]))
+        for edge in snapshot.get("edges", [])
+        if str(edge.get("question_id")) == str(question_id)
+    ]
+    if dependency_ids:
+        dependencies = list(
+            session.scalars(
+                select(MarketResearchQuestion).where(
+                    MarketResearchQuestion.organization_id == organization_id,
+                    MarketResearchQuestion.workspace_id == workspace_id,
+                    MarketResearchQuestion.id.in_(dependency_ids),
+                )
+            ).all()
+        )
+        if len(dependencies) != len(dependency_ids) or any(
+            row.status != "ANSWERED" for row in dependencies
+        ):
+            raise Conflict("前置问题尚未全部通过人工审核，不能重试当前节点")
+
+    now = datetime.now(UTC)
+    deadline = datetime.fromisoformat(str(payload["deadline_at"]))
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=UTC)
+    if now >= deadline:
+        raise Conflict("本次执行已超过时间预算，请创建新的执行批次")
+    max_cost = Decimal(str(payload["max_cost_usd"])) if payload.get("max_cost_usd") is not None else None
+    if max_cost is not None and counts["cost_estimate_usd"] >= max_cost:
+        raise Conflict("本次执行已达到成本预算，请创建新的执行批次")
+
+    dispatched_ids = set(
+        str(item) for item in payload.get("dispatched_question_ids", [])
+    )
+    if str(question_id) not in dispatched_ids and len(dispatched_ids) >= int(payload["max_questions"]):
+        raise Conflict("本次执行已达到问题数上限，请创建新的执行批次")
+
+    if not counts["evidence_count"]:
+        raise Conflict(
+            "当前 Workspace 没有可分析的内容型 Evidence；补充证据后再重试",
+            code="MARKET_RESEARCH_EVIDENCE_REQUIRED",
+        )
+
+    result = market_question_answer_agent_service.enqueue_answer_draft(
+        session,
+        organization_id,
+        workspace_id,
+        question_id,
+        evidence_ids=None,
+        created_by_user_id=actor_user_id,
+        execution_id=execution_id,
+    )
+    if not result.get("reused"):
+        dispatched_ids.add(str(question_id))
+        payload["dispatched_question_ids"] = sorted(dispatched_ids)
+        payload["dispatched_count"] = len(dispatched_ids)
+
+    workflow.status = "RUNNING"
+    payload["execution_state"] = "QUEUED"
+    payload["stop_reason"] = None
+    payload["finished_at"] = None
+    workflow.payload = payload
+    schedule_job = _enqueue_schedule(
+        session, organization_id, execution_id, user_id=actor_user_id
+    )
+    workflow.job_id = schedule_job.id
+    session.add(
+        MarketActivityEvent(
+            organization_id=organization_id,
+            workspace_id=workspace_id,
+            actor_type="USER",
+            actor_user_id=actor_user_id,
+            aggregate_type="market_research_graph_execution",
+            aggregate_id=execution_id,
+            event_type="MARKET_RESEARCH_GRAPH_NODE_RETRY_REQUESTED",
+            payload={
+                "question_id": str(question_id),
+                "answer_workflow_id": result.get("workflow_id"),
+                "job_id": str(result["job_id"]),
+                "reused": bool(result.get("reused")),
+            },
+        )
+    )
+    session.flush()
+    return {
+        "execution_id": execution_id,
+        "question_id": question_id,
+        "job_id": result["job_id"],
+        "reused": bool(result.get("reused")),
+    }
+
+
 def get_execution(
     session: Session,
     organization_id: UUID | str,
@@ -936,5 +1063,6 @@ __all__ = [
     "get_execution",
     "run_scheduler",
     "start_execution",
+    "retry_question",
     "wake_workspace_executions",
 ]
