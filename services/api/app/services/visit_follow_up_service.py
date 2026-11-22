@@ -94,6 +94,7 @@ def _candidate_suggestions(
             AgentRun.organization_id == organization_id,
             AgentRun.agent_type == "MEETING_MINUTES_DRAFT",
             AgentRun.status == "SUCCEEDED",
+            AgentRun.input["visit_id"].as_string() == str(visit_id),
         )
         .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
         .limit(30)
@@ -360,6 +361,7 @@ def update_follow_up(
             VisitFollowUp.organization_id == org,
             VisitFollowUp.id == UUID(str(follow_up_id)),
         )
+        .with_for_update()
     ).one_or_none()
     if row is None:
         raise NotFound("拜访跟进项不存在")
