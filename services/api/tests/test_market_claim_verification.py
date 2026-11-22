@@ -412,7 +412,7 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
                     )
                 ).all()
             )
-            assert len(links) == 3
+            assert len(links) == 4
             assert all(link.verification_status_snapshot == "UNVERIFIED" for link in links)
     finally:
         cleanup(workspace_ids, workflow_ids, job_ids)
