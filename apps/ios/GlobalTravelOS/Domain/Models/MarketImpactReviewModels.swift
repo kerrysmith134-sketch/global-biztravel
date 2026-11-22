@@ -88,3 +88,118 @@ struct MarketOpportunityDetailRead: Decodable, Equatable {
     var entities: [JSONValue]
     var assessments: [JSONValue]
 }
+
+struct MarketOpportunityVisitCandidateRead: Decodable, Equatable, Identifiable {
+    var tripId: String
+    var tripName: String
+    var tripStatus: String
+    var tripWindowStart: Date
+    var tripWindowEnd: Date
+    var visitId: String
+    var visitTitle: String?
+    var visitObjective: String?
+    var visitStatus: String
+    var customerId: String?
+    var customerName: String?
+    var placeId: String
+    var placeName: String
+    var city: String?
+    var countryCode: String?
+    var latitude: Double?
+    var longitude: Double?
+    var timezone: String?
+    var timeWindowStart: Date?
+    var timeWindowEnd: Date?
+    var serviceMinutes: Int
+    var priority: Int
+    var businessValue: Decimal
+    var movementMode: String
+
+    var id: String { visitId }
+
+    var dateLabel: String {
+        ISO8601.dayString(from: tripWindowStart) + " – " + ISO8601.dayString(from: tripWindowEnd)
+    }
+
+    var visitStatusLabel: String {
+        switch visitStatus.uppercased() {
+        case "PLANNED": return "待排期"
+        case "SCHEDULED": return "已排期"
+        case "DONE": return "已完成"
+        case "MISSED": return "未会面"
+        case "CANCELLED": return "已取消"
+        default: return visitStatus
+        }
+    }
+
+    var locationLabel: String {
+        [city, countryCode].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
+struct MarketOpportunityVisitLinkRead: Decodable, Equatable, Identifiable {
+    var id: String
+    var workspaceId: String
+    var opportunityId: String
+    var linkStatus: String
+    var linkNote: String?
+    var linkedByUserId: String?
+    var linkedAt: Date
+    var unlinkedByUserId: String?
+    var unlinkedAt: Date?
+    var unlinkNote: String?
+    var tripId: String
+    var tripName: String
+    var tripStatus: String
+    var tripWindowStart: Date
+    var tripWindowEnd: Date
+    var visitId: String
+    var visitTitle: String?
+    var visitObjective: String?
+    var visitStatus: String
+    var customerId: String?
+    var customerName: String?
+    var placeId: String
+    var placeName: String
+    var city: String?
+    var countryCode: String?
+    var latitude: Double?
+    var longitude: Double?
+    var timezone: String?
+    var timeWindowStart: Date?
+    var timeWindowEnd: Date?
+    var serviceMinutes: Int
+    var priority: Int
+    var businessValue: Decimal
+    var movementMode: String
+
+    var isLinked: Bool { linkStatus.uppercased() == "LINKED" }
+
+    var statusLabel: String {
+        isLinked ? "已关联" : "已解除"
+    }
+
+    var dateLabel: String {
+        ISO8601.dayString(from: tripWindowStart) + " – " + ISO8601.dayString(from: tripWindowEnd)
+    }
+}
+
+struct MarketOpportunityVisitLinkCreate: Codable, Equatable {
+    var tripId: String
+    var visitId: String
+    var linkNote: String?
+}
+
+struct MarketOpportunityVisitUnlinkRequest: Codable, Equatable {
+    var unlinkNote: String?
+}
+
+struct MarketOpportunityExecutionRead: Decodable, Equatable {
+    var workspaceId: String
+    var opportunityId: String
+    var opportunityStatus: String
+    var canLinkVisits: Bool
+    var blockedReason: String?
+    var links: [MarketOpportunityVisitLinkRead]
+    var candidates: [MarketOpportunityVisitCandidateRead]
+}
