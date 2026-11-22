@@ -7,7 +7,8 @@ struct MarketClaimImpactSection: View {
     let onRetry: () -> Void
 
     private var visibleImpacts: [MarketClaimImpact] {
-        Array(report?.impacts.prefix(8) ?? [])
+        guard let report else { return [] }
+        return Array(report.impacts.prefix(8))
     }
 
     var body: some View {
