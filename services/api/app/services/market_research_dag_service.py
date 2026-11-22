@@ -580,6 +580,7 @@ def start_execution(
             "max_duration_minutes": max_duration_value,
             "max_cost_usd": str(max_cost_value) if max_cost_value is not None else None,
             "dispatched_count": 0,
+            "dispatched_question_ids": [],
             "execution_state": "QUEUED",
             "started_at": now.isoformat(),
             "deadline_at": deadline.isoformat(),
@@ -769,11 +770,18 @@ def run_scheduler(
                 UUID(question_id),
                 evidence_ids=None,
                 created_by_user_id=workflow.created_by_user_id or UUID(str(settings_user_fallback())),
+                execution_id=workflow.id,
             )
             slots -= 1
             remaining_budget -= 1
-            payload["dispatched_count"] = int(payload.get("dispatched_count") or 0) + (0 if result.get("reused") else 1)
-    elif remaining_budget == 0 and counts["ready_count"]:
+            dispatched_question_ids = set(
+                str(item) for item in payload.get("dispatched_question_ids", [])
+            )
+            if not result.get("reused") and question_id not in dispatched_question_ids:
+                dispatched_question_ids.add(question_id)
+                payload["dispatched_question_ids"] = sorted(dispatched_question_ids)
+                payload["dispatched_count"] = len(dispatched_question_ids)
+    elif remaining_budget == 0 and counts["ready_count"] and counts["active_count"] == 0:
         return stop("PARTIAL", "本次执行达到最大问题数预算")
 
     node_states, counts = _node_statuses(session, organization_id, workspace_id, workflow)
@@ -873,6 +881,8 @@ def cancel_execution(
     for child in linked:
         data = child.payload or {}
         if child.workflow_type != ANSWER_WORKFLOW_TYPE:
+            continue
+        if str(data.get("dag_execution_workflow_id") or "") != str(execution_id):
             continue
         question_id = str(data.get("question_id") or "")
         if question_id not in {str(item["id"]) for item in payload.get("graph_snapshot", {}).get("nodes", [])}:
