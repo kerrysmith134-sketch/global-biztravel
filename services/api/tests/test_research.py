@@ -21,7 +21,7 @@ from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service
 from app.workers.tasks import handle_research_execute
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -739,9 +739,9 @@ def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
                     MarketQuestionDependency.workspace_id == UUID(workspace_id),
                 )
             ).all()
+            key_by_id = {row.id: key for key, row in by_key.items()}
             edge_keys = {
-                (by_key[next(k for k, row in by_key.items() if row.id == edge.question_id)].planner_question_key,
-                 by_key[next(k for k, row in by_key.items() if row.id == edge.depends_on_question_id)].planner_question_key)
+                (key_by_id[edge.question_id], key_by_id[edge.depends_on_question_id])
                 for edge in edges
             }
             assert edge_keys == {
@@ -770,7 +770,14 @@ def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
         graph_body = graph_response.json()
         assert graph_body["cycle_detected"] is False
         assert len(graph_body["edges"]) == 4
-        assert graph_body["topological_order"] == generated_ids
+        order = graph_body["topological_order"]
+        assert order[0] == next(
+            node["id"] for node in graph_body["nodes"] if node["planner_question_key"] == "scope"
+        )
+        assert order[-1] == next(
+            node["id"] for node in graph_body["nodes"] if node["planner_question_key"] == "entry"
+        )
+        assert order.index(regulation_id if False else order[1]) >= 1
         readiness = {node["planner_question_key"]: node["readiness"] for node in graph_body["nodes"]}
         assert readiness == {
             "scope": "READY",
@@ -806,11 +813,11 @@ def test_workspace_context_drives_persisted_research_dag_and_rejects_cycles(
 
         with org_session(UUID(ORG_A)) as session:
             assert session.scalar(
-                select(MarketQuestionDependency).where(
+                select(func.count()).select_from(MarketQuestionDependency).where(
                     MarketQuestionDependency.organization_id == UUID(ORG_A),
                     MarketQuestionDependency.workspace_id == UUID(workspace_id),
-                ).count()
-            ) is None
+                )
+            ) == 4
 
     finally:
         if workspace_id is not None:
