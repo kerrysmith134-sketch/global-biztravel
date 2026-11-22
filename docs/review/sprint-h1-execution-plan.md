@@ -488,3 +488,10 @@ H1.7 把 H1.6 的版本化问题答案变成真正的 Agent 执行链：
 - 不将不同 host 视为来源独立；数据库固定 `confirmed_independent_source_count=0`；Agent 不会产生 VERIFIED，也不会输出 HIGH confidence。
 - 管理员只可人工采纳无反驳且有支持关系的暂定主张；人工采纳不等于事实认证，也不更改原答案版本。
 - 严格 CI 尚待执行，尤其 Alembic metadata drift、PostgreSQL RLS 与全量 pytest。
+
+
+### H1.9 质量修正补充
+
+在 H1.9 中同步修正 H1.6 的答案采纳规则：`independent_sources` 不再把不同 host 直接等同于独立出版方。服务端先按同 host 或相同内容指纹聚类候选来源组；达到数量门槛后，Admin 仍必须人工检查出版方归属、所有权和转载关系并写入审核说明。答案/主张采纳不是自动事实认证。
+
+主张表的 PostgreSQL CHECK 约束还要求 ACCEPTED 必须具备 PROVISIONAL_SUPPORT、至少一条支持 Evidence、零条反驳 Evidence，以及 reviewer/time/nonblank reason。应用角色只拥有审核字段的列级 UPDATE 权限。
