@@ -261,7 +261,7 @@ struct MarketResearchWorkspaceDetailView: View {
                 title: "业务上下文",
                 subtitle: "只整理本工作区的用户输入，不预设行业或市场"
             )
-            if let context = viewModel.contexts.first(where: \.isCurrent) ?? viewModel.contexts.first {
+            if let context = viewModel.contexts.first(where: { $0.isCurrent }) ?? viewModel.contexts.first {
                 DSCard {
                     VStack(alignment: .leading, spacing: DS.Spacing.sm) {
                         HStack {
@@ -306,7 +306,7 @@ struct MarketResearchWorkspaceDetailView: View {
                                 Text("待确认 / 信息缺口")
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(DS.ColorToken.textSecondary)
-                                ForEach(Array(context.unknowns.enumerated()), id: \.offset) { _, item in
+                                ForEach(context.unknowns, id: \.self) { item in
                                     Text("• \(item)")
                                         .font(.caption)
                                         .foregroundStyle(DS.ColorToken.textSecondary)
