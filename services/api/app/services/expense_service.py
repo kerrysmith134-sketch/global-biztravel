@@ -19,10 +19,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.errors import NotFound
+from app.api.errors import NotFound, Unprocessable
 from app.api.schemas import ExpenseCreate
 from app.models.expenses import TripExpense
 from app.models.planning import PlanVersion
+from app.models.receipts import ReceiptAsset
 from app.models.trip import Trip
 from app.services import fx_service, trip_service
 
@@ -56,6 +57,20 @@ def create_expense(
     actor_user_id: UUID | str | None = None,
 ) -> TripExpense:
     trip_service.require_trip(session, organization_id, trip_id)
+    if payload.receipt_asset_id is not None:
+        asset = session.scalars(
+            select(ReceiptAsset).where(
+                ReceiptAsset.organization_id == str(organization_id),
+                ReceiptAsset.trip_id == str(trip_id),
+                ReceiptAsset.id == str(payload.receipt_asset_id),
+                ReceiptAsset.storage_status == "AVAILABLE",
+            )
+        ).one_or_none()
+        if asset is None:
+            raise Unprocessable(
+                "票据资产不存在、不可用或不属于当前出行",
+                details={"receipt_asset_id": str(payload.receipt_asset_id)},
+            )
     expense = TripExpense(
         organization_id=str(organization_id),
         trip_id=str(trip_id),
@@ -65,6 +80,7 @@ def create_expense(
         occurred_on=payload.occurred_on,
         note=payload.note,
         receipt_ref=payload.receipt_ref,
+        receipt_asset_id=payload.receipt_asset_id,
         created_by_user_id=None if actor_user_id is None else str(actor_user_id),
     )
     session.add(expense)
