@@ -19,7 +19,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.errors import NotFound
+from app.api.errors import NotFound, Unprocessable
 from app.api.schemas import ExpenseCreate
 from app.models.expenses import TripExpense
 from app.models.planning import PlanVersion
@@ -67,8 +67,6 @@ def create_expense(
             )
         ).one_or_none()
         if asset is None:
-            from app.api.errors import Unprocessable
-
             raise Unprocessable(
                 "票据资产不存在、不可用或不属于当前出行",
                 details={"receipt_asset_id": str(payload.receipt_asset_id)},
