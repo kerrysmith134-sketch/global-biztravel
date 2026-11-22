@@ -14,6 +14,18 @@ protocol ResearchRepository {
     func applySourceVerificationPlan(workspaceId: String) async throws -> MarketSourceVerificationPlanApplication
     func claimHistory(workspaceId: String, claimId: String) async throws -> MarketClaimLineageHistory
     func claimImpactReport(workspaceId: String) async throws -> MarketClaimImpactReport
+    func marketInsight(workspaceId: String, insightId: String) async throws -> MarketInsightRead
+    func marketOpportunity(workspaceId: String, opportunityId: String) async throws -> MarketOpportunityDetailRead
+    func acceptMarketInsight(
+        workspaceId: String,
+        insightId: String,
+        reviewNote: String?
+    ) async throws -> MarketInsightRead
+    func rejectMarketInsight(
+        workspaceId: String,
+        insightId: String,
+        reviewNote: String?
+    ) async throws -> MarketInsightRead
     func listQuestions(workspaceId: String, page: PageRequest) async throws -> Page<MarketResearchQuestion>
     func createQuestion(
         workspaceId: String,
@@ -72,6 +84,33 @@ extension ResearchRepository {
 
     func claimImpactReport(workspaceId: String) async throws -> MarketClaimImpactReport {
         throw RepositoryError.requiresNetwork("当前研究仓库未实现主张影响分析")
+    }
+
+    func marketInsight(workspaceId: String, insightId: String) async throws -> MarketInsightRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现市场判断详情读取")
+    }
+
+    func marketOpportunity(
+        workspaceId: String,
+        opportunityId: String
+    ) async throws -> MarketOpportunityDetailRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现商业机会详情读取")
+    }
+
+    func acceptMarketInsight(
+        workspaceId: String,
+        insightId: String,
+        reviewNote: String?
+    ) async throws -> MarketInsightRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现市场判断采纳")
+    }
+
+    func rejectMarketInsight(
+        workspaceId: String,
+        insightId: String,
+        reviewNote: String?
+    ) async throws -> MarketInsightRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现市场判断驳回")
     }
 
     func claimHistory(
@@ -176,6 +215,68 @@ final class RemoteResearchRepository: ResearchRepository {
         try await client.send(
             Endpoints.marketClaimImpactReport(workspaceId: workspaceId),
             as: MarketClaimImpactReport.self
+        )
+    }
+
+    func marketInsight(workspaceId: String, insightId: String) async throws -> MarketInsightRead {
+        var cursor: String?
+        for _ in 0..<20 {
+            let page = try await client.send(
+                Endpoints.listMarketInsights(
+                    workspaceId: workspaceId,
+                    page: PageRequest(limit: 100, cursor: cursor)
+                ),
+                as: Page<MarketInsightRead>.self
+            )
+            if let insight = page.items.first(where: { $0.id == insightId }) {
+                return insight
+            }
+            guard let nextCursor = page.nextCursor, !nextCursor.isEmpty else { break }
+            cursor = nextCursor
+        }
+        throw APIError.invalidResponse("当前工作空间中未找到受影响的市场判断")
+    }
+
+    func marketOpportunity(
+        workspaceId: String,
+        opportunityId: String
+    ) async throws -> MarketOpportunityDetailRead {
+        try await client.send(
+            Endpoints.marketOpportunityDetail(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId
+            ),
+            as: MarketOpportunityDetailRead.self
+        )
+    }
+
+    func acceptMarketInsight(
+        workspaceId: String,
+        insightId: String,
+        reviewNote: String?
+    ) async throws -> MarketInsightRead {
+        try await client.send(
+            try Endpoints.acceptMarketInsight(
+                workspaceId: workspaceId,
+                insightId: insightId,
+                body: MarketQuestionAnswerReviewRequest(reviewNote: reviewNote)
+            ),
+            as: MarketInsightRead.self
+        )
+    }
+
+    func rejectMarketInsight(
+        workspaceId: String,
+        insightId: String,
+        reviewNote: String?
+    ) async throws -> MarketInsightRead {
+        try await client.send(
+            try Endpoints.rejectMarketInsight(
+                workspaceId: workspaceId,
+                insightId: insightId,
+                body: MarketQuestionAnswerReviewRequest(reviewNote: reviewNote)
+            ),
+            as: MarketInsightRead.self
         )
     }
 
