@@ -333,7 +333,9 @@ private struct MarketQuestionAnswerCard: View {
                 if !answer.evidence.isEmpty {
                     HStack(spacing: DS.Spacing.xs) {
                         DSEvidenceTag(title: "\(answer.evidence.count) 条关联证据")
-                        Text("\(answer.evidence.filter { $0.relationType == "SUPPORTS" }.count) 支持 · \(answer.evidence.filter { $0.relationType == "CONTRADICTS" }.count) 冲突")
+                        let supportCount = answer.evidence.filter { $0.relationType == "SUPPORTS" }.count
+                        let contradictCount = answer.evidence.filter { $0.relationType == "CONTRADICTS" }.count
+                        Text("\(supportCount) 支持 · \(contradictCount) 冲突")
                             .font(.caption2)
                             .foregroundStyle(DS.ColorToken.textSecondary)
                     }
