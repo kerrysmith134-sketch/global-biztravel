@@ -1411,7 +1411,7 @@ class ReceiptAssetRead(ORMModel):
 
 class ReceiptOcrReviewCreate(BaseModel):
     decision: Literal["CONFIRMED", "REJECTED"]
-    merchant: str | None = Field(default=None, max_length=200)
+    merchant: str | None = Field(default=None, min_length=1, max_length=200)
     amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
     currency: str | None = Field(default=None, min_length=3, max_length=3, pattern="^[A-Za-z]{3}$")
     occurred_on: date | None = None
@@ -1419,6 +1419,11 @@ class ReceiptOcrReviewCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_review(self) -> ReceiptOcrReviewCreate:
+        if self.merchant is not None:
+            merchant = self.merchant.strip()
+            if not merchant:
+                raise ValueError("商户名称不能为空白")
+            object.__setattr__(self, "merchant", merchant)
         if (self.amount is None) != (self.currency is None):
             raise ValueError("确认金额时必须同时确认币种")
         has_fields = any(
