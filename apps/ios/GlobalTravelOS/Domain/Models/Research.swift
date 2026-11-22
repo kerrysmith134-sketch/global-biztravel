@@ -120,6 +120,7 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
     var id: String
     var kind: String
     var ref: String
+    var url: String?
     var source: String?
     var title: String?
     var snippet: String?
@@ -145,6 +146,7 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
             ResearchEvidencePayload.self,
             forKey: .payload
         )
+        url = payload?.url
         title = payload?.title
         snippet = payload?.snippet
         engine = payload?.engine
@@ -153,11 +155,12 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
     }
 
     var sourceURL: URL? {
-        guard let url = URL(string: ref),
-              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+        guard let rawURL = url ?? ref,
+              let parsed = URL(string: rawURL),
+              ["http", "https"].contains(parsed.scheme?.lowercased() ?? "") else {
             return nil
         }
-        return url
+        return parsed
     }
 
     var isUnverifiedSearchResult: Bool {
