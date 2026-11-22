@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
-from app.models.market import MarketResearchQuestion, MarketWorkspace, MarketWorkspaceWorkflow
+from app.models.market import MarketWorkspace, MarketWorkspaceWorkflow
 from app.models.reliability import BackgroundJob
 from app.models.workflow import Evidence, WorkflowInstance
 from app.services import job_service, market_research_dag_service
@@ -40,7 +40,6 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
     workspace_id: str | None = None
     execution_id: str | None = None
     schedule_job_id: str | None = None
-    question_ids: list[str] = []
     answer_job_ids: list[str] = []
     try:
         workspace_response = client.post(
@@ -67,7 +66,6 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
         )
         assert root.status_code == 201, root.text
         root_id = root.json()["id"]
-        question_ids.append(root_id)
 
         downstream = client.post(
             f"/v1/market/workspaces/{workspace_id}/questions",
@@ -81,7 +79,6 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
         )
         assert downstream.status_code == 201, downstream.text
         downstream_id = downstream.json()["id"]
-        question_ids.append(downstream_id)
 
         edge = client.post(
             f"/v1/market/workspaces/{workspace_id}/questions/{downstream_id}/dependencies",
@@ -256,7 +253,8 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
                     ).all()
                 )
                 all_workflow_ids = set(linked_workflow_ids)
-                all_workflow_ids.add(UUID(execution_id)) if execution_id else None
+                if execution_id:
+                    all_workflow_ids.add(UUID(execution_id))
                 discovered_job_ids = list(
                     session.scalars(
                         select(WorkflowInstance.job_id).where(
