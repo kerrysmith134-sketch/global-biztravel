@@ -29,6 +29,23 @@ jobs:
           make contract-check
           make docs-check
           make ios-contract-check
+      # Produce downloadable generated contracts when any backend gate fails.
+      # This makes contract drift diagnosable without committing generated files blindly.
+      - name: Generate contract diagnostics after failure
+        if: failure()
+        run: |
+          make openapi || true
+          make ios-contract-samples || true
+      - name: Upload generated contract diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-contract-diagnostics
+          path: |
+            contracts/openapi.json
+            contracts/openapi.yaml
+            apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift
+          if-no-files-found: warn
       - name: Database
         run: |
           make db-up
