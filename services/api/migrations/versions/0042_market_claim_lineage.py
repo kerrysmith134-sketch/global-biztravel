@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "0042_market_claim_lineage"
-down_revision = "0041_market_question_evidence_scope"
+down_revision = "0041_market_qscope"
 branch_labels = None
 depends_on = None
 
