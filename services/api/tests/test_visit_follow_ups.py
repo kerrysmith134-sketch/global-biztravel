@@ -307,3 +307,57 @@ def test_minutes_agent_run_follow_up_is_bound_to_exact_visit(client: TestClient)
             from app.models.geo import Place
 
             session.execute(delete(Place).where(Place.id == UUID(place_id)))
+
+def test_manual_follow_up_has_origin_and_audited_edit(client: TestClient) -> None:
+    trip_id, visit_id, place_id = make_visit(client)
+    follow_up_id: UUID | None = None
+    try:
+        created = client.post(
+            f"/v1/visits/{visit_id}/follow-ups",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "source_type": "MANUAL",
+                "decision": "CREATE",
+                "title": "Prepare distributor pricing comparison",
+                "due_date": "2026-12-08",
+                "note": "Added after the customer discussion.",
+            },
+        )
+        assert created.status_code == 201, created.text
+        body = created.json()
+        follow_up_id = UUID(body["id"])
+        assert body["source_type"] == "MANUAL"
+        assert body["status"] == "OPEN"
+        assert body["created_by_user_id"] == ADMIN_A
+        assert body["confirmed_by_user_id"] is None
+        assert [event["event_type"] for event in body["events"]] == ["CREATED_MANUAL"]
+
+        updated = client.patch(
+            f"/v1/visit-follow-ups/{follow_up_id}",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "title": "Prepare revised distributor pricing comparison",
+                "due_date": "2026-12-10",
+                "note": "Updated after supplier feedback.",
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["title"] == "Prepare revised distributor pricing comparison"
+        assert updated.json()["due_date"] == "2026-12-10"
+        assert [event["event_type"] for event in updated.json()["events"]] == [
+            "CREATED_MANUAL", "UPDATED"
+        ]
+
+        feed = client.get(f"/v1/visits/{visit_id}/follow-ups", headers=headers())
+        assert feed.status_code == 200, feed.text
+        assert len(feed.json()["items"]) == 1
+        assert feed.json()["suggestions"] == []
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            if follow_up_id is not None:
+                session.execute(delete(VisitFollowUp).where(VisitFollowUp.id == follow_up_id))
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+            from app.models.geo import Place
+
+            session.execute(delete(Place).where(Place.id == UUID(place_id)))
+
