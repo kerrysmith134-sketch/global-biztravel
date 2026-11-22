@@ -1382,6 +1382,7 @@ class ExpenseCreate(BaseModel):
     occurred_on: date
     note: str | None = None
     receipt_ref: str | None = None
+    receipt_asset_id: UUID | None = None
 
 
 class ExpenseRead(ORMModel):
@@ -1393,7 +1394,19 @@ class ExpenseRead(ORMModel):
     occurred_on: date
     note: str | None = None
     receipt_ref: str | None = None
+    receipt_asset_id: UUID | None = None
     created_at: datetime
+
+
+class ReceiptAssetRead(ORMModel):
+    id: UUID
+    trip_id: UUID
+    original_filename: str
+    mime_type: str
+    byte_length: int
+    sha256: str
+    storage_status: Literal["AVAILABLE", "QUARANTINED", "DELETE_PENDING"]
+    uploaded_at: datetime
 
 
 class CurrencyTotalRead(BaseModel):
