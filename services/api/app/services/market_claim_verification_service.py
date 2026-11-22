@@ -205,6 +205,7 @@ def enqueue_claim_verification(
             MarketClaimVerificationRun.answer_id == answer_id,
             MarketClaimVerificationRun.input_digest == input_digest,
             MarketClaimVerificationRun.status == "COMPLETED",
+            MarketClaimVerificationRun.degraded.is_(False),
         )
         .order_by(MarketClaimVerificationRun.created_at.desc())
         .limit(1)
