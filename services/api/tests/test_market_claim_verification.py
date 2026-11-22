@@ -314,8 +314,20 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
             headers=headers(request_key),
         )
         assert replay.status_code == 202, replay.text
+        # HTTP idempotency replay returns the exact original response.
         assert replay.json()["workflow_id"] == accepted["workflow_id"]
-        assert replay.json()["reused"] is True
+        assert replay.json()["job_id"] == accepted["job_id"]
+        assert replay.json()["reused"] is False
+
+        # A new idempotency key exercises the domain-level in-flight job dedupe.
+        deduped = client.post(
+            f"/v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims",
+            headers=headers(),
+        )
+        assert deduped.status_code == 202, deduped.text
+        assert deduped.json()["workflow_id"] == accepted["workflow_id"]
+        assert deduped.json()["job_id"] == accepted["job_id"]
+        assert deduped.json()["reused"] is True
 
         result = execute_job(accepted["job_id"])
         assert result["claim_count"] == 2
