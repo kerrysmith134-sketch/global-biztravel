@@ -403,6 +403,7 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - **来源独立性**：记录精确 host、内容哈希、来源核验状态；同 host / 重复 hash 会标注；不同 host 只叫 DISTINCT_HOST_UNCONFIRMED。`confirmed_independent_source_count` 数据库约束固定为 0，Agent 不得自动声明来源独立。
 - **置信上限**：不输出 HIGH。默认 Evidence 未核验时为 LOW；只有所有支持 Evidence 已 VERIFIED 且存在多个 host 时才允许 MEDIUM，但仍明确说明 host 不等于独立出版方。
 - **人工审核**：管理员可采纳/驳回单条主张；只有没有反驳且有 SUPPORTS 关系的 PROVISIONAL_SUPPORT 可进入人工采纳。采纳状态不等于 VERIFIED，也不改写原答案版本或 Evidence 状态。
+- **数据库不可变性**：`gbt_app` 对 `market_claims` 只能 UPDATE 审核状态、人、时间、理由列；主张正文/范围/类型/核验结论/计数不可改。CHECK 约束要求 ACCEPTED 主张必须为 PROVISIONAL_SUPPORT、至少一条 SUPPORTS、零 CONTRADICTS，并具备非空审核理由；只追加 Evidence 关系仍禁止 UPDATE/DELETE/TRUNCATE。
 - **可靠性**：复用 BackgroundJob、WorkflowInstance、MarketWorkspaceWorkflow、AgentRun、LLMInvocation、幂等入队与 retry/DLQ；同一答案/提示版本/证据内容快照可复用完成的结果。
 - **新增验收测试**：覆盖支持与反驳冲突、不同 host 不能证明独立、UNVERIFIED 不升级、虚构 Evidence ID 排除、人工审核与原答案状态不变、无 Evidence 不可启动。
 
