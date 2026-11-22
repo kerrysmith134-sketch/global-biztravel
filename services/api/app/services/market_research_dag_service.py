@@ -455,7 +455,7 @@ def start_execution(
     max_cost_usd: Decimal | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
-    workspace = _workspace(session, organization_id, workspace_id, lock=True)
+    _workspace(session, organization_id, workspace_id, lock=True)
     graph = market_research_graph_service.get_research_graph(session, organization_id, workspace_id)
     if graph["cycle_detected"] or not graph["nodes"]:
         raise Unprocessable("研究图为空或存在循环，不能启动执行", code="RESEARCH_GRAPH_NOT_EXECUTABLE")
@@ -532,13 +532,15 @@ def start_execution(
     ))
     cost_metering_available = settings.llm_cost_per_1k_tokens > 0
     max_cost_value: Decimal | None = None
+    configured_cap = Decimal(str(settings.market_research_graph_max_cost_usd))
+    if cost_metering_available and configured_cap > 0:
+        max_cost_value = configured_cap
     if max_cost_usd is not None:
-        if not cost_metering_available:
+        if not cost_metering_available or configured_cap <= 0:
             raise Unprocessable(
-                "当前部署未配置 LLM 成本估算单价，无法执行金额预算限制",
+                "当前部署未配置 LLM 成本估算单价或金额 hard cap，无法执行金额预算限制",
                 code="MARKET_RESEARCH_COST_METERING_UNAVAILABLE",
             )
-        configured_cap = Decimal(str(settings.market_research_graph_max_cost_usd))
         if max_cost_usd <= 0 or max_cost_usd > configured_cap:
             raise Unprocessable(
                 "金额预算必须大于 0，且不能高于部署级 hard cap",
@@ -546,6 +548,8 @@ def start_execution(
                 details={"max_cost_usd": str(configured_cap)},
             )
         max_cost_value = max_cost_usd
+        # To enforce a strict cumulative budget without reserving speculative cost for
+        # concurrent calls, a user-specified monetary cap serializes this execution.
         max_concurrency_value = 1
 
     now = datetime.now(UTC)
