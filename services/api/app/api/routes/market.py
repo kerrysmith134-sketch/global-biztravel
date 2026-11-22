@@ -22,6 +22,7 @@ from app.api.pagination import next_cursor as page_cursor
 from app.api.schemas import (
     MarketActivityEventRead,
     MarketClaimRead,
+    MarketClaimLineageRead,
     MarketClaimReview,
     MarketClaimVerificationAccepted,
     MarketClaimVerificationRunRead,
