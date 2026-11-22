@@ -817,6 +817,13 @@ def _claim_source_host(row: Evidence) -> str | None:
     return host.casefold().rstrip(".") if host else None
 
 
+def _claim_evidence_digest(row: Evidence) -> str:
+    if row.content_hash:
+        return row.content_hash.casefold()
+    content = str((row.payload or {}).get("content") or "")
+    return sha256(content.encode("utf-8")).hexdigest()
+
+
 def handle_market_claim_verification(
     session: Session, job: BackgroundJob
 ) -> dict[str, Any]:
@@ -1055,9 +1062,8 @@ def handle_market_claim_verification(
         host = _claim_source_host(row)
         if host:
             host_counts[host] = host_counts.get(host, 0) + 1
-        if row.content_hash:
-            digest = row.content_hash.casefold()
-            hash_counts[digest] = hash_counts.get(digest, 0) + 1
+        digest = _claim_evidence_digest(row)
+        hash_counts[digest] = hash_counts.get(digest, 0) + 1
 
     created_claims: list[MarketClaim] = []
     seen_claim_keys: set[str] = set()
@@ -1234,7 +1240,7 @@ def handle_market_claim_verification(
 
             for evidence_row, relation, rationale in valid_assessments:
                 host = _claim_source_host(evidence_row)
-                digest = evidence_row.content_hash.casefold() if evidence_row.content_hash else None
+                digest = _claim_evidence_digest(evidence_row)
                 if digest and hash_counts.get(digest, 0) > 1:
                     origin_assessment = "DUPLICATE_CONTENT"
                 elif host and host_counts.get(host, 0) > 1:
@@ -1253,7 +1259,7 @@ def handle_market_claim_verification(
                         relation_type=relation,
                         rationale=rationale,
                         source_host=host,
-                        content_hash_snapshot=evidence_row.content_hash,
+                        content_hash_snapshot=digest,
                         verification_status_snapshot=evidence_row.verification_status or "UNVERIFIED",
                         origin_assessment=origin_assessment,
                     )
