@@ -35,7 +35,30 @@ def compute_input_digest(
     answer: MarketResearchQuestionAnswer,
     evidence_rows: list[Evidence],
 ) -> str:
-    """Hash the exact answer and ordered Evidence payload/status snapshot used by the agent."""
+    """Hash every material input sent to the agent plus the full source body fingerprint."""
+    evidence_material: list[dict[str, Any]] = []
+    for row in evidence_rows:
+        body = str((row.payload or {}).get("content") or "").strip()
+        reference = row.canonical_ref or row.ref
+        try:
+            host = urlsplit(reference).hostname
+        except ValueError:
+            host = None
+        evidence_material.append(
+            {
+                "id": str(row.id),
+                "kind": row.kind,
+                "source": row.source,
+                "source_ref": reference,
+                "source_host": host.casefold().rstrip(".") if host else None,
+                "published_at": row.published_at.isoformat() if row.published_at else None,
+                "content_hash": row.content_hash,
+                "verification_status": row.verification_status or "UNVERIFIED",
+                "content_sha256": sha256(body.encode("utf-8")).hexdigest(),
+                "agent_excerpt_sha256": sha256(body[:4000].encode("utf-8")).hexdigest(),
+                "content_truncated": len(body) > 4000,
+            }
+        )
     material = {
         "answer_id": str(answer.id),
         "answer_version": answer.version,
@@ -43,25 +66,7 @@ def compute_input_digest(
         "answer_assumptions": answer.assumptions or [],
         "answer_unknowns": answer.unknowns or [],
         "prompt_version": MARKET_CLAIM_VERIFY_PROMPT_VERSION,
-        "evidence": [
-            {
-                "id": str(row.id),
-                "kind": row.kind,
-                "source": row.source,
-                "canonical_ref": row.canonical_ref or row.ref,
-                "published_at": row.published_at.isoformat() if row.published_at else None,
-                "content_hash": row.content_hash,
-                "verification_status": row.verification_status or "UNVERIFIED",
-                "source_ref": row.canonical_ref or row.ref,
-                "source": row.source,
-                "kind": row.kind,
-                "published_at": row.published_at.isoformat() if row.published_at else None,
-                "content_sha256": sha256(
-                    str((row.payload or {}).get("content", "")).encode("utf-8")
-                ).hexdigest(),
-            }
-            for row in evidence_rows
-        ],
+        "evidence": evidence_material,
     }
     return sha256(
         json.dumps(
@@ -69,6 +74,7 @@ def compute_input_digest(
             sort_keys=True,
             ensure_ascii=False,
             separators=(",", ":"),
+            default=str,
         ).encode("utf-8")
     ).hexdigest()
 
