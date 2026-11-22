@@ -64,7 +64,7 @@ final class MarketResearchQuestionDetailViewModel: ObservableObject {
             let created = try await repository.createPlan(
                 ResearchPlanCreateRequest(
                     request: requestText,
-                    sourceScope: .externalOnly,
+                    sourceScope: .automatic,
                     workspaceId: workspaceId,
                     targetQuestionId: question.id
                 )
