@@ -118,6 +118,7 @@ def upgrade() -> None:
     )
     # Every organization-scoped table must enable and force tenant RLS at creation.
     helpers.enable_org_rls("market_opportunity_visit_links", force=True)
+    helpers.ensure_updated_at_trigger("market_opportunity_visit_links")
 
 
 def downgrade() -> None:
