@@ -869,16 +869,9 @@ def handle_market_claim_verification(
         )
     ).one_or_none()
     if answer is None:
-        verification_run.status = "FAILED"
-        verification_run.failure_reason = "研究答案版本不存在"
-        workflow.status = "FAILED"
-        workflow.payload = {
-            **(workflow.payload or {}),
-            "verification_status": "FAILED",
-            "failure_reason": verification_run.failure_reason,
-        }
-        session.flush()
         raise TaskFailed("研究答案版本不存在", retryable=False)
+    if answer.status in {"REJECTED", "SUPERSEDED"}:
+        raise TaskFailed("研究答案版本已驳回或已被替代，不能继续核验", retryable=False)
 
     answer_links = session.scalars(
         select(MarketResearchQuestionAnswerEvidence).where(
@@ -937,17 +930,10 @@ def handle_market_claim_verification(
         answer, content_evidence
     )
     if actual_digest != verification_run.input_digest:
-        verification_run.status = "FAILED"
-        verification_run.failure_reason = "入队后的答案或 Evidence 内容/状态发生变化，输入快照校验失败"
-        verification_run.completed_at = datetime.now(UTC)
-        workflow.status = "FAILED"
-        workflow.payload = {
-            **(workflow.payload or {}),
-            "verification_status": "FAILED",
-            "failure_reason": verification_run.failure_reason,
-        }
-        session.flush()
-        raise TaskFailed(verification_run.failure_reason, retryable=False)
+        raise TaskFailed(
+            "入队后的答案或 Evidence 内容/状态发生变化，输入快照校验失败",
+            retryable=False,
+        )
 
     now = datetime.now(UTC)
     verification_run.status = "RUNNING"
