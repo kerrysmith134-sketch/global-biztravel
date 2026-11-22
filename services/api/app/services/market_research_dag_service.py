@@ -291,10 +291,14 @@ def _node_statuses(
                 state = "BLOCKED"
             elif answer_status in {"NEEDS_REVIEW", "CONFLICTED"}:
                 state = "WAITING_FOR_REVIEW"
+            elif active_pairs:
+                # A user may explicitly retry a previously rejected/failed node.
+                # The active job takes precedence over the older terminal result.
+                state = "RUNNING" if any(job.status == "RUNNING" for _, job in active_pairs) else "QUEUED"
             elif answer_status == "REJECTED":
                 state = "REJECTED"
-            elif active_pairs:
-                state = "RUNNING" if any(job.status == "RUNNING" for _, job in active_pairs) else "QUEUED"
+            elif any(job is not None and job.status == "CANCELLED" for _, job in linked_jobs):
+                state = "CANCELLED"
             elif terminal_failed:
                 state = "FAILED"
                 error = (
@@ -327,7 +331,16 @@ def _node_statuses(
         changed = False
         for row in node_states:
             question_id = row["question_id"]
-            if row["state"] in {"ANSWERED", "QUEUED", "RUNNING", "WAITING_FOR_REVIEW", "FAILED", "REJECTED", "BLOCKED", "CANCELLED"}:
+            if row["state"] in {
+                "ANSWERED",
+                "QUEUED",
+                "RUNNING",
+                "WAITING_FOR_REVIEW",
+                "FAILED",
+                "REJECTED",
+                "BLOCKED",
+                "CANCELLED",
+            }:
                 continue
             if any(by_question.get(dep_id) != "ANSWERED" for dep_id in dependency_map.get(question_id, [])):
                 if row["state"] != "WAITING_FOR_EVIDENCE":
@@ -843,6 +856,8 @@ def cancel_execution(
     organization_id: UUID | str,
     workspace_id: UUID,
     execution_id: UUID,
+    *,
+    actor_user_id: UUID,
 ) -> dict[str, Any]:
     workflow = _execution_workflow(
         session, organization_id, workspace_id, execution_id, lock=True
@@ -889,7 +904,7 @@ def cancel_execution(
             organization_id=organization_id,
             workspace_id=workspace_id,
             actor_type="USER",
-            actor_user_id=workflow.created_by_user_id,
+            actor_user_id=actor_user_id,
             aggregate_type="market_research_graph_execution",
             aggregate_id=workflow.id,
             event_type="MARKET_RESEARCH_GRAPH_EXECUTION_CANCELLED",
