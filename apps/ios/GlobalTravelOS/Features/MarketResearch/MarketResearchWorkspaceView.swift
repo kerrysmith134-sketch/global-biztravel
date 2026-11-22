@@ -7,7 +7,7 @@ final class MarketResearchWorkspaceListViewModel: ObservableObject {
     @Published private(set) var isCreating = false
     @Published var errorMessage: String?
 
-    private let repository: ResearchRepository
+    let repository: ResearchRepository
 
     init(repository: ResearchRepository) {
         self.repository = repository
@@ -158,13 +158,9 @@ struct MarketResearchWorkspaceView: View {
                 Text("创建一个工作区，整理研究目标和问题，再让系统按依赖关系推进证据与答案。")
                     .font(.subheadline)
                     .foregroundStyle(DS.ColorToken.textSecondary)
-                Button {
-                    showsCreate = true
-                } label: {
-                    Label("创建工作区", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(DSPrimaryButtonStyle())
+                DSButton(title: "创建工作区", systemImage: "plus") {
+                showsCreate = true
+            }
             }
         }
     }
@@ -233,18 +229,13 @@ final class MarketResearchWorkspaceDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            async let workspaceTask = repository.workspace(id: workspace.id)
-            async let questionsTask = repository.listQuestions(
+            workspace = try await repository.workspace(id: workspace.id)
+            let questionPage = try await repository.listQuestions(
                 workspaceId: workspace.id,
                 page: PageRequest(limit: 100)
             )
-            async let graphTask = repository.graph(workspaceId: workspace.id)
-            let (loadedWorkspace, questionPage, loadedGraph) = try await (
-                workspaceTask, questionsTask, graphTask
-            )
-            workspace = loadedWorkspace
             questions = questionPage.items
-            graph = loadedGraph
+            graph = try await repository.graph(workspaceId: workspace.id)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -492,17 +483,14 @@ struct MarketResearchWorkspaceDetailView: View {
                         Text("每个节点只使用与该问题关联的证据。下游问题必须等待前置答案通过人工采纳。")
                             .font(.caption)
                             .foregroundStyle(DS.ColorToken.textSecondary)
-                        Button {
+                        DSButton(
+                            title: viewModel.isSubmitting ? "正在启动…" : "执行研究图",
+                            systemImage: "play.fill",
+                            isLoading: viewModel.isSubmitting,
+                            isDisabled: viewModel.graph?.readyQuestionIds.isEmpty != false
+                        ) {
                             Task { await viewModel.startExecution() }
-                        } label: {
-                            Label(
-                                viewModel.isSubmitting ? "正在启动…" : "执行研究图",
-                                systemImage: "play.fill"
-                            )
-                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(DSPrimaryButtonStyle())
-                        .disabled(viewModel.graph?.readyQuestionIds.isEmpty != false || viewModel.isSubmitting)
                     }
                 }
             }
@@ -656,16 +644,14 @@ final class MarketResearchQuestionDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            async let plansTask = repository.listWorkspacePlans(
+            let plans = try await repository.listWorkspacePlans(
                 workspaceId: workspaceId,
                 targetQuestionId: question.id
             )
-            async let answersTask = repository.answers(
+            answers = try await repository.answers(
                 workspaceId: workspaceId,
                 questionId: question.id
             )
-            let (plans, loadedAnswers) = try await (plansTask, answersTask)
-            answers = loadedAnswers
             if let latest = plans.first {
                 setPlan(latest)
             }
@@ -987,17 +973,13 @@ struct MarketResearchQuestionDetailView: View {
                         Text("Planner 只依据当前问题和 Workspace 上下文提出研究范围与查询，不会自动发起外部搜索。")
                             .font(.caption)
                             .foregroundStyle(DS.ColorToken.textSecondary)
-                        Button {
+                        DSButton(
+                            title: viewModel.isSubmitting ? "正在生成…" : "生成研究计划",
+                            systemImage: "sparkles",
+                            isLoading: viewModel.isSubmitting
+                        ) {
                             Task { await viewModel.createPlan() }
-                        } label: {
-                            Label(
-                                viewModel.isSubmitting ? "正在生成…" : "生成研究计划",
-                                systemImage: "sparkles"
-                            )
-                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(DSPrimaryButtonStyle())
-                        .disabled(viewModel.isSubmitting)
                     }
                 }
             }
@@ -1034,21 +1016,14 @@ struct MarketResearchQuestionDetailView: View {
                 title: "答案版本",
                 subtitle: "只有人工采纳的答案才会释放下游依赖"
             )
-            Button {
+            DSButton(
+                title: viewModel.isSubmitting ? "正在处理…" : "生成答案草稿",
+                systemImage: "text.badge.plus",
+                isLoading: viewModel.isSubmitting,
+                isDisabled: viewModel.plan?.evidence.isEmpty != false
+            ) {
                 Task { await viewModel.draftAnswer() }
-            } label: {
-                Label(
-                    viewModel.isSubmitting ? "正在处理…" : "生成答案草稿",
-                    systemImage: "text.badge.plus"
-                )
-                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(DS.ColorToken.brand)
-            .disabled(
-                viewModel.isSubmitting
-                    || (viewModel.plan?.evidence.isEmpty ?? true)
-            )
             ForEach(viewModel.answers) { answer in
                 MarketQuestionAnswerCard(
                     answer: answer,
@@ -1159,12 +1134,13 @@ private struct MarketQuestionAnswerCard: View {
                         .lineLimit(1...3)
                         .textFieldStyle(.roundedBorder)
                     HStack(spacing: DS.Spacing.sm) {
-                        Button(action: onAccept) {
-                            Label("采纳", systemImage: "checkmark")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(DSPrimaryButtonStyle())
-                        .disabled(isSubmitting)
+                        DSButton(
+                            title: isSubmitting ? "正在提交…" : "采纳",
+                            systemImage: "checkmark",
+                            isLoading: isSubmitting,
+                            isDisabled: isSubmitting,
+                            action: onAccept
+                        )
                         Button(role: .destructive, action: onReject) {
                             Label("驳回", systemImage: "xmark")
                                 .frame(maxWidth: .infinity)
