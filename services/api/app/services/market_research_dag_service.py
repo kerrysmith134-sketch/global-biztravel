@@ -657,7 +657,12 @@ def wake_workspace_executions(
     organization_id: UUID | str,
     workspace_id: UUID,
 ) -> int:
-    """Wake every active DAG execution when a node answer or new Evidence changes readiness."""
+    """Wake every active DAG execution when a node answer or new Evidence changes readiness.
+
+    Lock order is Workspace -> execution Workflow, matching start/cancel/retry/scheduler.
+    This prevents cross-request deadlocks when several workers touch one Workspace.
+    """
+    _workspace(session, organization_id, workspace_id, lock=True)
     executions = session.scalars(
         select(WorkflowInstance)
         .join(
@@ -687,6 +692,19 @@ def run_scheduler(
     organization_id: UUID | str,
     execution_id: UUID,
 ) -> dict[str, Any]:
+    # Read the immutable Workspace owner first, then take locks in the common
+    # Workspace -> execution Workflow order used by start/cancel/retry/wake.
+    candidate = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == organization_id,
+            WorkflowInstance.id == execution_id,
+            WorkflowInstance.workflow_type == WORKFLOW_TYPE,
+        )
+    ).one_or_none()
+    if candidate is None:
+        raise NotFound("研究图执行不存在", details={"execution_id": str(execution_id)})
+    workspace_id = UUID(str((candidate.payload or {}).get("workspace_id")))
+    _workspace(session, organization_id, workspace_id, lock=True)
     workflow = session.scalars(
         select(WorkflowInstance)
         .where(
@@ -699,11 +717,11 @@ def run_scheduler(
     if workflow is None:
         raise NotFound("研究图执行不存在", details={"execution_id": str(execution_id)})
     payload = dict(workflow.payload or {})
-    workspace_id = UUID(str(payload.get("workspace_id")))
+    if UUID(str(payload.get("workspace_id"))) != workspace_id:
+        raise Conflict("研究图执行的 Workspace 归属发生变化")
     if workflow.status != "RUNNING":
         return {"execution_id": str(execution_id), "state": payload.get("execution_state", workflow.status)}
 
-    workspace = _workspace(session, organization_id, workspace_id, lock=True)
     node_states, counts = _node_statuses(session, organization_id, workspace_id, workflow)
     now = datetime.now(UTC)
     deadline = datetime.fromisoformat(str(payload["deadline_at"]))
@@ -864,6 +882,8 @@ def retry_question(
     actor_user_id: UUID,
 ) -> dict[str, Any]:
     """Explicitly retry a failed/rejected node without changing its dependency snapshot."""
+    _workspace(session, organization_id, workspace_id, lock=True)
+    _workspace(session, organization_id, workspace_id, lock=True)
     workflow = _execution_workflow(
         session, organization_id, workspace_id, execution_id, lock=True
     )
