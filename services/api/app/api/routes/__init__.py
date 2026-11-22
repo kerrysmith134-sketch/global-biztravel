@@ -35,6 +35,7 @@ from app.api.routes import (
     policies,
     proactive,
     research,
+    receipts,
     sync,
     trips,
     visa,
@@ -66,6 +67,7 @@ api_router.include_router(plans.router)
 api_router.include_router(policies.router)
 api_router.include_router(proactive.router)
 api_router.include_router(research.router)
+api_router.include_router(receipts.router)
 api_router.include_router(market.router)
 api_router.include_router(memory.router)
 api_router.include_router(members.router)
