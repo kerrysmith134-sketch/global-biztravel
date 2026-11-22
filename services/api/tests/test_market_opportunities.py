@@ -9,6 +9,7 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.geo import Place
 from app.models.market import (
     MarketActivityEvent,
     MarketOpportunity,
@@ -17,7 +18,6 @@ from app.models.market import (
     MarketWorkspace,
     MarketWorkspaceTripLink,
 )
-from app.models.geo import Place
 from app.models.trip import Trip, Visit
 from app.models.workflow import Evidence
 from fastapi.testclient import TestClient
