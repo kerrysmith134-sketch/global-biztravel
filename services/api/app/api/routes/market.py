@@ -93,6 +93,7 @@ router = APIRouter(tags=["market intelligence"])
 WORKSPACES_ENDPOINT = "POST /v1/market/workspaces"
 OPPORTUNITY_STATUS_QUERY = Query(default=None, alias="status")
 ANSWER_ID_QUERY = Query(default=None)
+TARGET_QUESTION_ID_QUERY = Query(default=None)
 
 
 @router.get(
@@ -1872,7 +1873,7 @@ def list_workspace_research_plans(
     workspace_id: UUID,
     context: ContextDep,
     session: SessionDep,
-    target_question_id: UUID | None = Query(default=None),
+    target_question_id: UUID | None = TARGET_QUESTION_ID_QUERY,
 ):
     require_role(context, ROLE_VIEWER)
     rows = research_service.list_research_plans_for_workspace(
