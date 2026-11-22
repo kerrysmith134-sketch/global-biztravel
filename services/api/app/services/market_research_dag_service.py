@@ -913,7 +913,6 @@ def retry_question(
 ) -> dict[str, Any]:
     """Explicitly retry a failed/rejected node without changing its dependency snapshot."""
     _workspace(session, organization_id, workspace_id, lock=True)
-    _workspace(session, organization_id, workspace_id, lock=True)
     workflow = _execution_workflow(
         session, organization_id, workspace_id, execution_id, lock=True
     )
@@ -1055,6 +1054,7 @@ def cancel_execution(
     *,
     actor_user_id: UUID,
 ) -> dict[str, Any]:
+    _workspace(session, organization_id, workspace_id, lock=True)
     workflow = _execution_workflow(
         session, organization_id, workspace_id, execution_id, lock=True
     )
