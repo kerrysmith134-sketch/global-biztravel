@@ -595,17 +595,19 @@ def mark_job_failed(
     error: str,
 ) -> None:
     """Persist a terminal claim-verification failure after the shared retry policy."""
+    job_uuid = UUID(str(job_id))
     workflow = session.scalars(
         select(WorkflowInstance)
         .where(
             WorkflowInstance.organization_id == organization_id,
             WorkflowInstance.workflow_type == WORKFLOW_TYPE,
-            WorkflowInstance.job_id == job_id,
+            WorkflowInstance.job_id == job_uuid,
         )
         .with_for_update()
     ).one_or_none()
     if workflow is None:
         return
+    already_failed = workflow.status == "FAILED"
     payload = {
         **(workflow.payload or {}),
         "verification_status": "FAILED",
@@ -623,7 +625,7 @@ def mark_job_failed(
         )
         .with_for_update()
     ).one_or_none()
-    if workflow.status == "FAILED" and verification_run is not None and verification_run.status == "FAILED":
+    if already_failed and verification_run is not None and verification_run.status == "FAILED":
         return
     if verification_run is not None:
         verification_run.status = "FAILED"
@@ -637,7 +639,7 @@ def mark_job_failed(
             aggregate_type="market_claim_verification",
             aggregate_id=verification_run.id if verification_run is not None else workflow.id,
             event_type="MARKET_CLAIM_VERIFICATION_FAILED",
-            payload={"job_id": str(job_id), "failure_reason": error[:1000]},
+            payload={"job_id": str(job_uuid), "failure_reason": error[:1000]},
         )
     )
     session.flush()
