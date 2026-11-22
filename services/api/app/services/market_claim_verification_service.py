@@ -6,10 +6,10 @@ import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from urllib.parse import urlsplit
-from uuid import UUID
 from typing import Any
+from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, Unprocessable
@@ -45,6 +45,10 @@ def compute_input_digest(
         "evidence": [
             {
                 "id": str(row.id),
+                "kind": row.kind,
+                "source": row.source,
+                "canonical_ref": row.canonical_ref or row.ref,
+                "published_at": row.published_at.isoformat() if row.published_at else None,
                 "content_hash": row.content_hash,
                 "verification_status": row.verification_status or "UNVERIFIED",
                 "content_sha256": sha256(
@@ -141,6 +145,25 @@ def enqueue_claim_verification(
     by_id = {row.id: row for row in evidence_rows}
     if len(by_id) != len(evidence_ids):
         raise Conflict("答案关联的部分 Evidence 已删除或不再可用")
+    workflow_ids = set(
+        session.scalars(
+            select(MarketWorkspaceWorkflow.workflow_id).where(
+                MarketWorkspaceWorkflow.organization_id == organization_id,
+                MarketWorkspaceWorkflow.workspace_id == workspace_id,
+            )
+        ).all()
+    )
+    for row in by_id.values():
+        valid_scope = (
+            row.subject_type == "market_workspace" and row.subject_id == workspace_id
+        ) or (
+            row.subject_type == "RESEARCH_PLAN" and row.subject_id in workflow_ids
+        )
+        if not valid_scope:
+            raise Conflict(
+                "答案关联了不属于当前 Workspace 或其 ResearchPlan 的 Evidence",
+                details={"evidence_id": str(row.id)},
+            )
     ordered_rows = [by_id[item] for item in evidence_ids]
     content_rows = [
         row for row in ordered_rows
