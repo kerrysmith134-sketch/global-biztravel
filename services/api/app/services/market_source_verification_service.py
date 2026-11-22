@@ -350,7 +350,7 @@ def build_plan(
                 rationale="来源主机、发布日期或已存储内容指纹至少有一项缺失；补齐后才能更可靠地追踪来源与版本。",
             )
 
-    for _fingerprint, members in ids_by_fingerprint.items():
+    for members in ids_by_fingerprint.values():
         distinct_hosts = {hosts[item] for item in members if hosts[item]}
         if len(distinct_hosts) > 1:
             add_action(
@@ -430,10 +430,6 @@ def build_plan(
                 issue_codes.append("SEARCH_RESULT_NOT_PAGE_EXTRACTED")
             if not host or not evidence.published_at or not evidence.content_hash:
                 issue_codes.append("SOURCE_METADATA_INCOMPLETE")
-            duplicate_ids = [
-                item for item in ids_by_fingerprint.get(fingerprint or "", [])
-                if item != evidence.id
-            ] if fingerprint else []
             detail = {
                 "evidence_id": evidence.id,
                 "relation_type": link.relation_type,

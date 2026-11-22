@@ -199,6 +199,7 @@ def test_plan_flags_claim_when_new_source_version_appears(
                 "content": original_body,
                 "kind": "WEB_PAGE_EXTRACT",
                 "source": "Public authority",
+                "payload": {"content": original_body},
             },
         )
         assert original.status_code == 201, original.text
@@ -324,6 +325,9 @@ def test_plan_flags_claim_when_new_source_version_appears(
                 "content": "The authority amended the policy and postponed implementation.",
                 "kind": "WEB_PAGE_EXTRACT",
                 "source": "Public authority",
+                "payload": {
+                    "content": "The authority amended the policy and postponed implementation."
+                },
             },
         )
         assert revised.status_code == 201, revised.text
