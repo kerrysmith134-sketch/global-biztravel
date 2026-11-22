@@ -241,6 +241,23 @@ def _node_statuses(
     ) if job_ids else []
     job_by_id = {row.id: row for row in jobs}
 
+    def is_relevant_answer_workflow(workflow: WorkflowInstance) -> bool:
+        data = workflow.payload or {}
+        owner_execution_id = data.get("dag_execution_workflow_id")
+        if owner_execution_id:
+            return str(owner_execution_id) == str(execution.id)
+        # A legacy/manual answer task may be allowed to finish rather than starting
+        # a duplicate draft. Its historical terminal failure must not poison this DAG.
+        job = job_by_id.get(workflow.job_id) if workflow.job_id is not None else None
+        return job is not None and job.status in {"PENDING", "RUNNING"}
+
+    answer_workflows = {
+        question_id: [
+            workflow for workflow in rows if is_relevant_answer_workflow(workflow)
+        ]
+        for question_id, rows in answer_workflows.items()
+    }
+
     dependency_map: dict[UUID, list[UUID]] = {item: [] for item in question_ids}
     for edge in edges:
         try:
@@ -375,7 +392,10 @@ def _node_statuses(
     }
     invocation_ids: set[UUID] = set()
     answer_workflow_ids = [
-        workflow.id for rows in answer_workflows.values() for workflow in rows
+        workflow.id
+        for rows in answer_workflows.values()
+        for workflow in rows
+        if str((workflow.payload or {}).get("dag_execution_workflow_id") or "") == str(execution.id)
     ]
     agent_runs = list(
         session.scalars(
