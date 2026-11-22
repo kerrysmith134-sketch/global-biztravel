@@ -322,6 +322,151 @@ enum Endpoints {
         )
     }
 
+    // MARK: - Market research workspace
+
+    static func listMarketWorkspaces(page: PageRequest) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/market/workspaces", queryItems: page.queryItems)
+    }
+
+    static func createMarketWorkspace(_ body: MarketWorkspaceCreateRequest) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func marketWorkspace(id: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/market/workspaces/\(id)")
+    }
+
+    static func listMarketQuestions(workspaceId: String, page: PageRequest) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/questions",
+            queryItems: page.queryItems
+        )
+    }
+
+    static func createMarketQuestion(
+        workspaceId: String,
+        body: MarketResearchQuestionCreateRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/questions",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func marketResearchGraph(workspaceId: String) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/research-graph"
+        )
+    }
+
+    static func startMarketResearchGraphExecution(
+        workspaceId: String,
+        body: MarketResearchGraphExecutionCreate
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/research-graph/executions",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func marketResearchGraphExecution(
+        workspaceId: String,
+        executionId: String
+    ) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/research-graph/executions/\(executionId)"
+        )
+    }
+
+    static func cancelMarketResearchGraphExecution(
+        workspaceId: String,
+        executionId: String
+    ) -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/research-graph/executions/\(executionId):cancel",
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func listMarketResearchPlans(
+        workspaceId: String,
+        targetQuestionId: String?
+    ) -> APIRequest {
+        var queryItems: [URLQueryItem] = []
+        if let targetQuestionId {
+            queryItems.append(URLQueryItem(name: "target_question_id", value: targetQuestionId))
+        }
+        return APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/research-plans",
+            queryItems: queryItems
+        )
+    }
+
+    static func draftMarketQuestionAnswer(
+        workspaceId: String,
+        questionId: String,
+        body: MarketQuestionAnswerGenerationCreate
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/questions/\(questionId):draft-answer",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func listMarketQuestionAnswers(
+        workspaceId: String,
+        questionId: String
+    ) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/questions/\(questionId)/answers"
+        )
+    }
+
+    static func acceptMarketQuestionAnswer(
+        workspaceId: String,
+        questionId: String,
+        answerId: String,
+        body: MarketQuestionAnswerReviewRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/questions/\(questionId)/answers/\(answerId):accept",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func rejectMarketQuestionAnswer(
+        workspaceId: String,
+        questionId: String,
+        answerId: String,
+        body: MarketQuestionAnswerReviewRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/questions/\(questionId)/answers/\(answerId):reject",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     // MARK: - Traveler profile
 
     static func travelerProfile() -> APIRequest {
