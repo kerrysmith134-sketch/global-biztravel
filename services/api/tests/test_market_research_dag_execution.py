@@ -10,6 +10,7 @@ from app.db import org_session
 from app.main import app
 from app.models.market import (
     MarketEvidenceDerivation,
+    MarketResearchPlanEvidence,
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
@@ -620,6 +621,17 @@ def test_question_scoped_evidence_does_not_leak_between_research_questions(
                 extraction_agent_run_id=extraction_run.id,
             )
             assert copied == 1
+            inherited_link = session.scalars(
+                select(MarketResearchPlanEvidence).where(
+                    MarketResearchPlanEvidence.organization_id == UUID(ORG_A),
+                    MarketResearchPlanEvidence.workspace_id == UUID(workspace_id),
+                    MarketResearchPlanEvidence.research_plan_id == plan_workflows[q1].id,
+                    MarketResearchPlanEvidence.evidence_id == derived.id,
+                    MarketResearchPlanEvidence.question_id == q1,
+                )
+            ).one()
+            assert inherited_link.collected_by_run_id == plan_runs[q1].id
+            assert inherited_link.collected_by_run_id != extraction_run.id
 
             q1_after_extract = set(
                 session.scalars(
