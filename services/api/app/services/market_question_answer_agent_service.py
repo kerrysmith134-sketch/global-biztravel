@@ -124,6 +124,7 @@ def enqueue_answer_draft(
     *,
     evidence_ids: list[UUID] | None,
     created_by_user_id: UUID,
+    execution_id: UUID | None = None,
 ) -> dict[str, Any]:
     """Create a durable Agent workflow and enqueue one idempotent draft operation."""
     workspace = session.scalars(
@@ -205,9 +206,10 @@ def enqueue_answer_draft(
     evidence_digest = sha256(
         "|".join(str(item) for item in sorted(selected_ids)).encode("utf-8")
     ).hexdigest()
+    execution_suffix = f":execution:{execution_id}" if execution_id is not None else ""
     dedupe_key = (
         f"market_question_answer:{question_id}:{MARKET_QUESTION_ANSWER_PROMPT_VERSION}:"
-        f"{evidence_digest}"
+        f"{evidence_digest}{execution_suffix}"
     )
 
     existing = job_service.find_inflight(session, organization_id, dedupe_key)
@@ -233,6 +235,7 @@ def enqueue_answer_draft(
             "prompt_template_id": "market_question_answer",
             "prompt_version": MARKET_QUESTION_ANSWER_PROMPT_VERSION,
             "generation_status": "QUEUED",
+            "dag_execution_workflow_id": str(execution_id) if execution_id is not None else None,
         },
         created_by_user_id=created_by_user_id,
     )
@@ -255,6 +258,7 @@ def enqueue_answer_draft(
             "question_id": str(question_id),
             "workflow_id": str(workflow.id),
             "evidence_ids": [str(item) for item in selected_ids],
+            "dag_execution_workflow_id": str(execution_id) if execution_id is not None else None,
         },
         dedupe_key=dedupe_key,
         created_by_user_id=created_by_user_id,
