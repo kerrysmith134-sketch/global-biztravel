@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.errors import Conflict, NotFound, Unprocessable
+from app.api.errors import Conflict, NotFound
 from app.models.market import (
     MarketActivityEvent,
     MarketQuestionDependency,
@@ -36,6 +36,8 @@ def normalize_research_graph(
     """
     warnings: list[str] = []
     candidates = raw_graph if isinstance(raw_graph, list) else []
+    if len(candidates) > MAX_GRAPH_NODES:
+        warnings.append(f"研究节点超过 {MAX_GRAPH_NODES} 个，上限之外的节点已忽略")
     if not candidates:
         candidates = [
             {"question": value}
@@ -345,6 +347,12 @@ def create_question_dependency(
     actor_user_id: UUID,
 ) -> tuple[MarketQuestionDependency, bool]:
     _require_workspace(session, organization_id, workspace_id, lock=True)
+    if question_id == depends_on_question_id:
+        raise Conflict(
+            "研究问题不能依赖自身",
+            code="RESEARCH_DEPENDENCY_CYCLE",
+            details={"question_id": str(question_id)},
+        )
     ids = {question_id, depends_on_question_id}
     questions = session.scalars(
         select(MarketResearchQuestion).where(
