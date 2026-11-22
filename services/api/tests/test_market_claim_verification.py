@@ -442,6 +442,16 @@ def test_claim_agent_extracts_atomic_claims_and_keeps_independence_unconfirmed(
                 )
             session.rollback()
 
+        with org_session(UUID(ORG_A)) as session:
+            with pytest.raises(ProgrammingError):
+                session.execute(
+                    delete(MarketClaim).where(
+                        MarketClaim.organization_id == UUID(ORG_A),
+                        MarketClaim.id == UUID(provisional["id"]),
+                    )
+                )
+            session.rollback()
+
         # Column-level UPDATE permission is not enough to bypass the accepted-claim CHECK.
         with org_session(UUID(ORG_A)) as session:
             with pytest.raises(IntegrityError):
