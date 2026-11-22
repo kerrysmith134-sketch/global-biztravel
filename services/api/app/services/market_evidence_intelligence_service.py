@@ -167,19 +167,20 @@ def build_report(
     multi_version_source_count = 0
     multi_version_evidence_count = 0
     for canonical_ref, members in ids_by_canonical_ref.items():
+        versioned_members = [
+            evidence_id for evidence_id in members if fingerprints[evidence_id] is not None
+        ]
         distinct_fingerprints = {
-            fingerprints[evidence_id]
-            for evidence_id in members
-            if fingerprints[evidence_id] is not None
+            fingerprints[evidence_id] for evidence_id in versioned_members
         }
         if len(distinct_fingerprints) < 2:
             continue
         multi_version_source_count += 1
-        multi_version_evidence_count += len(members)
-        for evidence_id in members:
+        multi_version_evidence_count += len(versioned_members)
+        for evidence_id in versioned_members:
             version_ids_by_evidence[evidence_id] = [
                 other_id
-                for other_id in members
+                for other_id in versioned_members
                 if other_id != evidence_id
                 and fingerprints[other_id] != fingerprints[evidence_id]
             ]

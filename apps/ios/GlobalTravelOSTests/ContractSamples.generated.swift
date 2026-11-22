@@ -307,6 +307,62 @@ enum ContractSamples {
   ]
 }
 """
+    static let marketEvidenceIntelligenceReport = """
+{
+  "analyzed_evidence_count": 1,
+  "caveats": [
+    "1"
+  ],
+  "disputed_count": 1,
+  "distinct_host_count": 1,
+  "duplicate_content_evidence_count": 1,
+  "duplicate_content_group_count": 1,
+  "generated_at": "2026-11-09T09:00:00+00:00",
+  "items": [
+    {
+      "age_days": 1,
+      "canonical_ref": "1",
+      "content_fingerprint": "1",
+      "derived_page_evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "duplicate_content_evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "evidence_id": "11111111-1111-1111-1111-111111111111",
+      "fingerprint_source": "STORED_HASH",
+      "issues": [
+        "1"
+      ],
+      "kind": "1",
+      "origin_assessment": "DUPLICATE_CONTENT",
+      "published_at": "2026-11-09T09:00:00+00:00",
+      "retrieved_at": "2026-11-09T09:00:00+00:00",
+      "same_host_evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "same_source_version_evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "source": "1",
+      "source_host": "1",
+      "verification_status": "UNVERIFIED"
+    }
+  ],
+  "missing_content_hash_count": 1,
+  "missing_publication_date_count": 1,
+  "multi_version_evidence_count": 1,
+  "multi_version_source_count": 1,
+  "partially_verified_count": 1,
+  "rejected_count": 1,
+  "total_evidence_count": 1,
+  "unextracted_search_result_count": 1,
+  "unverified_count": 1,
+  "verified_count": 1,
+  "workspace_id": "11111111-1111-1111-1111-111111111111",
+  "is_truncated": true
+}
+""";
     static let minutesDraft = """
 {
   "decisions": [
