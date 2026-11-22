@@ -56,6 +56,11 @@ from app.api.schemas import (
     MarketQuestionDependencyDeleted,
     MarketQuestionDependencyRead,
     MarketResearchGraphRead,
+    MarketResearchGraphExecutionAccepted,
+    MarketResearchGraphExecutionCancelled,
+    MarketResearchGraphExecutionCreate,
+    MarketResearchGraphExecutionRead,
+    MarketResearchGraphQuestionRetryAccepted,
     MarketResearchQuestionCreate,
     MarketResearchQuestionRead,
     MarketSourceExtractionAccepted,
@@ -76,6 +81,7 @@ from app.services import (
     market_opportunity_service,
     market_question_answer_agent_service,
     market_question_answer_service,
+    market_research_dag_service,
     market_research_graph_service,
     market_source_extraction_service,
     market_workspace_service,
@@ -332,6 +338,149 @@ def get_market_research_graph(
         session, context.organization_id, workspace_id
     )
     return MarketResearchGraphRead.model_validate(result)
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/research-graph/executions",
+    response_model=MarketResearchGraphExecutionAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="启动持久化研究图执行",
+)
+def start_market_research_graph_execution(
+    workspace_id: UUID,
+    payload: MarketResearchGraphExecutionCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = f"POST /v1/market/workspaces/{workspace_id}/research-graph/executions"
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_research_dag_service.start_execution(
+        session,
+        context.organization_id,
+        workspace_id,
+        user_id=context.user_id,
+        max_concurrency=payload.max_concurrency,
+        max_questions=payload.max_questions,
+        max_duration_minutes=payload.max_duration_minutes,
+        max_cost_usd=payload.max_cost_usd,
+    )
+    return guard.finish(
+        status_code=status.HTTP_202_ACCEPTED,
+        body=MarketResearchGraphExecutionAccepted.model_validate(result),
+    )
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}",
+    response_model=MarketResearchGraphExecutionRead,
+    summary="读取研究图执行进度",
+)
+def get_market_research_graph_execution(
+    workspace_id: UUID,
+    execution_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    result = market_research_dag_service.get_execution(
+        session, context.organization_id, workspace_id, execution_id
+    )
+    return MarketResearchGraphExecutionRead.model_validate(result)
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}:cancel",
+    response_model=MarketResearchGraphExecutionCancelled,
+    summary="取消研究图执行",
+)
+def cancel_market_research_graph_execution(
+    workspace_id: UUID,
+    execution_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/research-graph/"
+        f"executions/{execution_id}:cancel"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={"workspace_id": str(workspace_id), "execution_id": str(execution_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_research_dag_service.cancel_execution(
+        session,
+        context.organization_id,
+        workspace_id,
+        execution_id,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_200_OK,
+        body=MarketResearchGraphExecutionCancelled.model_validate(result),
+    )
+
+
+@router.post(
+    "/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}/questions/{question_id}:retry",
+    response_model=MarketResearchGraphQuestionRetryAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="显式重试一个失败或被驳回的研究问题",
+)
+def retry_market_research_graph_question(
+    workspace_id: UUID,
+    execution_id: UUID,
+    question_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    endpoint = (
+        f"POST /v1/market/workspaces/{workspace_id}/research-graph/"
+        f"executions/{execution_id}/questions/{question_id}:retry"
+    )
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=endpoint,
+        key=idempotency_key,
+        payload={
+            "workspace_id": str(workspace_id),
+            "execution_id": str(execution_id),
+            "question_id": str(question_id),
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = market_research_dag_service.retry_question(
+        session,
+        context.organization_id,
+        workspace_id,
+        execution_id,
+        question_id,
+        actor_user_id=context.user_id,
+    )
+    return guard.finish(
+        status_code=status.HTTP_202_ACCEPTED,
+        body=MarketResearchGraphQuestionRetryAccepted.model_validate(result),
+    )
 
 
 @router.get(
@@ -1019,6 +1168,9 @@ def create_market_evidence(
         quality=None,
         payload=payload.payload,
         actor_user_id=context.user_id,
+    )
+    market_research_dag_service.wake_workspace_executions(
+        session, context.organization_id, workspace_id
     )
     return guard.finish(
         status_code=status.HTTP_201_CREATED,
