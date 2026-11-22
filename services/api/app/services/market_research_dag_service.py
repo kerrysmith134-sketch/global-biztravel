@@ -284,8 +284,17 @@ def _node_statuses(
                 if workflow.status == "FAILED"
                 or (job is not None and job.status in {"FAILED", "DEAD"})
             ]
-            job_id = active_pairs[-1][1].id if active_pairs else (
-                terminal_failed[-1][1].id if terminal_failed else None
+            terminal_failed_job = (
+                terminal_failed[-1][1]
+                if terminal_failed and terminal_failed[-1][1] is not None
+                else None
+            )
+            job_id = (
+                active_pairs[-1][1].id
+                if active_pairs
+                else terminal_failed_job.id
+                if terminal_failed_job is not None
+                else None
             )
             error = None
             if question.status == "ANSWERED" or answer_status == "ACCEPTED":
@@ -515,7 +524,10 @@ def start_execution(
         )
         .with_for_update()
     ).first()
-    graph_snapshot = {
+    graph_nodes: list[dict[str, Any]] = graph["nodes"]
+    graph_edges: list[dict[str, Any]] = graph["edges"]
+    topological_order: list[UUID] = graph["topological_order"]
+    graph_snapshot: dict[str, Any] = {
         "nodes": [
             {
                 "id": str(node["id"]),
@@ -523,16 +535,16 @@ def start_execution(
                 "priority": node["priority"],
                 "depends_on_question_ids": [str(item) for item in node["depends_on_question_ids"]],
             }
-            for node in graph["nodes"]
+            for node in graph_nodes
         ],
         "edges": [
             {
                 "question_id": str(edge["question_id"]),
                 "depends_on_question_id": str(edge["depends_on_question_id"]),
             }
-            for edge in graph["edges"]
+            for edge in graph_edges
         ],
-        "topological_order": [str(item) for item in graph["topological_order"]],
+        "topological_order": [str(item) for item in topological_order],
     }
     graph_digest = _digest(graph_snapshot)
     if active is not None:
@@ -562,7 +574,7 @@ def start_execution(
     max_questions_value = max(1, min(
         max_questions or settings.market_research_graph_max_questions,
         settings.market_research_graph_max_questions,
-        len(graph_snapshot["nodes"]),
+        len(graph_nodes),
     ))
     max_duration_value = max(1, min(
         max_duration_minutes or settings.market_research_graph_max_duration_minutes,
@@ -640,7 +652,7 @@ def start_execution(
             event_type="MARKET_RESEARCH_GRAPH_EXECUTION_STARTED",
             payload={
                 "graph_digest": graph_digest,
-                "node_count": len(graph_snapshot["nodes"]),
+                "node_count": len(graph_nodes),
                 "max_concurrency": max_concurrency_value,
                 "max_questions": max_questions_value,
                 "max_duration_minutes": max_duration_value,
