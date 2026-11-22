@@ -46,6 +46,32 @@ struct MarketResearchQuestion: Decodable, Equatable, Identifiable {
     var generatedByRunId: String?
     var plannerQuestionKey: String?
 
+    private enum CodingKeys: String, CodingKey {
+        case id, workspaceId, parentQuestionId, question, rationale, source, priority, status
+        case acceptanceCriteria, answerSummary, blockedReason, createdAt, updatedAt
+        case expectedEvidence, generatedByRunId, plannerQuestionKey
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        workspaceId = try values.decode(String.self, forKey: .workspaceId)
+        parentQuestionId = try values.decodeIfPresent(String.self, forKey: .parentQuestionId)
+        question = try values.decode(String.self, forKey: .question)
+        rationale = try values.decodeIfPresent(String.self, forKey: .rationale)
+        source = try values.decode(String.self, forKey: .source)
+        priority = try values.decode(Int.self, forKey: .priority)
+        status = try values.decode(String.self, forKey: .status)
+        acceptanceCriteria = try values.decodeIfPresent([String].self, forKey: .acceptanceCriteria) ?? []
+        answerSummary = try values.decodeIfPresent(String.self, forKey: .answerSummary)
+        blockedReason = try values.decodeIfPresent(String.self, forKey: .blockedReason)
+        createdAt = try values.decodeIfPresent(Date.self, forKey: .createdAt)
+        updatedAt = try values.decodeIfPresent(Date.self, forKey: .updatedAt)
+        expectedEvidence = try values.decodeIfPresent([String].self, forKey: .expectedEvidence) ?? []
+        generatedByRunId = try values.decodeIfPresent(String.self, forKey: .generatedByRunId)
+        plannerQuestionKey = try values.decodeIfPresent(String.self, forKey: .plannerQuestionKey)
+    }
+
     var statusLabel: String {
         switch status.uppercased() {
         case "OPEN": return "待研究"
