@@ -266,7 +266,7 @@ def test_current_context_pointer_is_enforced_by_postgresql(client: TestClient) -
                 session.execute(
                     text(
                         "UPDATE market_workspaces SET current_context_version = 999 "
-                        "WHERE organization_id = :org_id AND id = :workspace_id"
+                        "WHERE organization_id = CAST(:org_id AS uuid) AND id = CAST(:workspace_id AS uuid)"
                     ),
                     {"org_id": ORG_A, "workspace_id": workspace["id"]},
                 )
