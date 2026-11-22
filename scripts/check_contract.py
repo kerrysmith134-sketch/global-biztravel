@@ -83,6 +83,27 @@ def main() -> int:
                 problems.append(f"schema 内容漂移：{name}")
 
     if problems:
+        if os.getenv("GBT_DUMP_OPENAPI_DRIFT") == "1":
+            import base64
+            import zlib
+
+            diagnostic = {
+                "paths": {
+                    path: value
+                    for path, value in generated.get("paths", {}).items()
+                    if path.startswith("/v1/market/")
+                },
+                "schemas": {
+                    name: value
+                    for name, value in generated.get("components", {}).get("schemas", {}).items()
+                    if name.startswith("Market") or name.startswith("Page_Market")
+                },
+            }
+            packed = zlib.compress(
+                json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+                level=9,
+            )
+            print("OPENAPI_DRIFT_DATA_ZLIB_B64=" + base64.b64encode(packed).decode("ascii"))
         print("契约漂移：")
         for problem in problems:
             print("  -", problem)
