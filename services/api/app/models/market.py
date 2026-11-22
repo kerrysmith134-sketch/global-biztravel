@@ -32,6 +32,18 @@ class MarketWorkspace(Base):
             name="status_allowed",
         ),
         UniqueConstraint("organization_id", "id", name="uq_market_workspaces_org_id"),
+        ForeignKeyConstraint(
+            ["organization_id", "id", "current_context_version"],
+            [
+                "market_context_snapshots.organization_id",
+                "market_context_snapshots.workspace_id",
+                "market_context_snapshots.version",
+            ],
+            name="fk_market_workspaces_current_context_version",
+            use_alter=True,
+            deferrable=True,
+            initially="DEFERRED",
+        ),
         Index("ix_market_workspaces_org_status_updated", "organization_id", "status", "updated_at"),
     )
 
@@ -169,6 +181,80 @@ class MarketResearchQuestion(Base):
     )
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
+
+
+class MarketQuestionDependency(Base):
+    """显式研究依赖边；与问题的父子层级分离。"""
+
+    __tablename__ = "market_question_dependencies"
+    __table_args__ = (
+        CheckConstraint("question_id <> depends_on_question_id", name="not_self"),
+        UniqueConstraint(
+            "organization_id",
+            "workspace_id",
+            "question_id",
+            "depends_on_question_id",
+            name="uq_market_question_dependencies_edge",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["market_workspaces.organization_id", "market_workspaces.id"],
+            name="fk_market_question_dependencies_workspace_same_org",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "question_id"],
+            [
+                "market_research_questions.organization_id",
+                "market_research_questions.workspace_id",
+                "market_research_questions.id",
+            ],
+            name="fk_market_question_dependencies_question_same_workspace",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "depends_on_question_id"],
+            [
+                "market_research_questions.organization_id",
+                "market_research_questions.workspace_id",
+                "market_research_questions.id",
+            ],
+            name="fk_market_question_dependencies_prerequisite_same_workspace",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_market_question_dependencies_org_workspace_question",
+            "organization_id",
+            "workspace_id",
+            "question_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "organizations.id",
+            name="fk_market_question_dependencies_org",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    question_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    depends_on_question_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), nullable=False
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "users.id",
+            name="fk_market_question_dependencies_creator",
+            ondelete="SET NULL",
+        ),
+    )
+    created_at: Mapped[datetime] = created_at()
 
 
 class MarketActivityEvent(Base):
