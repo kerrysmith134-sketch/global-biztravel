@@ -340,7 +340,13 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
             ).with_for_update()
         ).one_or_none()
         if target_question is None or target_question.status in {"BLOCKED", "CANCELLED"}:
-            raise TaskFailed("目标研究问题已不存在、阻塞或取消", retryable=False)
+            reason = "目标研究问题已不存在、阻塞或取消，检索未启动"
+            payload["retrieval_status"] = "FAILED"
+            payload["retrieval_error"] = reason
+            workflow.payload = payload
+            workflow.status = "FAILED"
+            session.flush()
+            raise TaskFailed(reason, retryable=False)
     if not bool(plan.get("external_research_needed")):
         raise TaskFailed("研究计划没有外部检索意图", retryable=False)
     queries = payload.get("reviewed_search_queries")
@@ -415,7 +421,16 @@ def handle_research_execute(session: Session, job: BackgroundJob) -> dict[str, A
         if target_question is None or target_question.status in {"BLOCKED", "CANCELLED"}:
             # Provider work may already have completed, but a cancelled node must
             # not receive new Evidence after the user stopped that research target.
-            raise TaskFailed("目标研究问题在检索期间已阻塞或取消", retryable=False)
+            reason = "目标研究问题在检索期间已阻塞或取消；来源未写入 Workspace"
+            run.status = "FAILED"
+            run.error = reason
+            run.finished_at = datetime.now(UTC)
+            payload["retrieval_status"] = "FAILED"
+            payload["retrieval_error"] = reason
+            workflow.payload = payload
+            workflow.status = "FAILED"
+            session.flush()
+            raise TaskFailed(reason, retryable=False)
 
     collected_at = datetime.now(UTC)
     workspace_ids = list(
