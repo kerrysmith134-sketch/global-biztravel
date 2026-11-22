@@ -180,6 +180,23 @@ class MarketResearchQuestion(Base):
             "parent_question_id IS NULL OR parent_question_id <> id",
             name="parent_not_self",
         ),
+        CheckConstraint(
+            "(generated_by_run_id IS NULL) = (planner_question_key IS NULL)",
+            name="planner_provenance_pair",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "generated_by_run_id"],
+            ["agent_runs.organization_id", "agent_runs.id"],
+            ondelete="RESTRICT",
+            name="fk_market_question_planner_run_same_org",
+        ),
+        UniqueConstraint(
+            "organization_id",
+            "workspace_id",
+            "generated_by_run_id",
+            "planner_question_key",
+            name="uq_market_question_planner_node",
+        ),
         Index(
             "ix_market_questions_org_workspace_status_priority",
             "organization_id", "workspace_id", "status", "priority",
@@ -203,6 +220,9 @@ class MarketResearchQuestion(Base):
     acceptance_criteria: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, server_default="[]"
     )
+    expected_evidence: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    generated_by_run_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    planner_question_key: Mapped[str | None] = mapped_column(Text)
     answer_summary: Mapped[str | None] = mapped_column(Text)
     blocked_reason: Mapped[str | None] = mapped_column(Text)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

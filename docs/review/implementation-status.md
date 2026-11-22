@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0039`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0040`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -105,6 +105,7 @@
                            0037_market_question_answers
                             0038_market_evidence_derivations
                            0039_market_claim_verification
+                           0040_market_research_graph
 ```
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
@@ -408,3 +409,14 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - **新增验收测试**：覆盖支持与反驳冲突、不同 host 不能证明独立、UNVERIFIED 不升级、虚构 Evidence ID 排除、人工审核与原答案状态不变、无 Evidence 不可启动。
 
 **当前验证状态**：代码与迁移已提交至 `feat/sprint-h1.9-claim-verification-agent`，尚未完成最新 GitHub Actions；在 CI 全绿前不得声称 H1.9 已验收或迁移已部署。
+
+
+## 2026-11-22 市场情报引擎 H2.0 — Workspace context-aware Research DAG
+
+- 在现有 ResearchPlan Planner 输入中加入 Workspace 名称、目标和当前采纳的 ContextSnapshot；按 Workspace 行锁读取，确保规划输入与上下文版本一致。`EXTERNAL_ONLY` 仍然禁止读取 Trip / Customer 内部记录，但不丢弃用户主动提供的 Workspace 研究背景。
+- Planner context 不在 AgentRun 通用输入日志中复制原文；持久化 snapshot ID、版本和 SHA-256，并将上下文来源摘要记入 ResearchPlan Evidence。上下文指针无对应当前快照时，拒绝启动规划。
+- Research Planner Prompt 升级到 v2，结构化输出研究图节点（问题、优先级、验收标准、预期证据和依赖 key）。服务端对 LLM 输出进行数量、类型、key、边引用和 DAG 校验；循环边不写入数据库，并显式返回 planning warning。
+- 研究图节点物化为现有 `MarketResearchQuestion`，使用 `source=AGENT`、`generated_by_run_id` 和 `planner_question_key` 追溯生成运行；依赖写入现有 `MarketQuestionDependency`，不把依赖混同为 parent/child 层级。
+- 新增 `0040_market_research_graph`：为问题节点增加预期证据和 Planner 运行来源字段、同组织复合外键、节点 key 唯一约束及来源字段成对约束。
+- 新增 `GET /v1/market/workspaces/{workspace_id}/research-graph`，返回拓扑顺序、依赖边、就绪问题和阻塞状态；新增依赖 CRUD，服务端以 Workspace 行锁串行化写入并拒绝自依赖、跨 Workspace 引用和循环依赖。
+- **验证状态：** 已提交到 `feat/sprint-h2.0-research-dag-orchestrator`；真实 PostgreSQL 集成用例、OpenAPI / iOS 契约、Alembic drift、全量 Backend pytest 和 iOS 门禁须以该分支最新 CI 为准。当前不声称 H2.0 已验收或已部署。

@@ -9379,6 +9379,262 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/questions/{question_id}/dependencies": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取研究问题的前置依赖",
+        "operationId": "list_market_question_dependencies_v1_market_workspaces__workspace_id__questions__question_id__dependencies_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Question Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketQuestionDependencyRead"
+                  },
+                  "title": "Response List Market Question Dependencies V1 Market Workspaces  Workspace Id  Questions  Question Id  Dependencies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "新增研究问题依赖（服务端阻止循环依赖）",
+        "operationId": "create_market_question_dependency_v1_market_workspaces__workspace_id__questions__question_id__dependencies_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketQuestionDependencyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketQuestionDependencyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/questions/{question_id}/dependencies/{dependency_id}": {
+      "delete": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "移除研究问题依赖",
+        "operationId": "delete_market_question_dependency_v1_market_workspaces__workspace_id__questions__question_id__dependencies__dependency_id__delete",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "dependency_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dependency Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketQuestionDependencyDeleted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/market/workspaces/{workspace_id}/research-graph": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取研究问题依赖图与可执行状态",
+        "operationId": "get_market_research_graph_v1_market_workspaces__workspace_id__research_graph_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketResearchGraphRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -15726,6 +15982,34 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "expected_evidence": {
+            "items": {},
+            "type": "array",
+            "title": "Expected Evidence"
+          },
+          "generated_by_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated By Run Id"
+          },
+          "planner_question_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Question Key"
           }
         },
         "type": "object",
@@ -19243,6 +19527,20 @@
             "type": "boolean",
             "title": "External Research Needed",
             "default": false
+          },
+          "research_graph": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchPlanGraphNode"
+            },
+            "type": "array",
+            "title": "Research Graph"
+          },
+          "planning_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Planning Warnings"
           }
         },
         "type": "object",
@@ -19390,6 +19688,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "generated_question_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Generated Question Ids"
           }
         },
         "type": "object",
@@ -22771,6 +23077,338 @@
           "items"
         ],
         "title": "Page[MarketClaimRead]"
+      },
+      "MarketQuestionDependencyCreate": {
+        "properties": {
+          "depends_on_question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Depends On Question Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "depends_on_question_id"
+        ],
+        "title": "MarketQuestionDependencyCreate"
+      },
+      "MarketQuestionDependencyDeleted": {
+        "properties": {
+          "dependency_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dependency Id"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dependency_id",
+          "deleted"
+        ],
+        "title": "MarketQuestionDependencyDeleted"
+      },
+      "MarketQuestionDependencyRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Question Id"
+          },
+          "depends_on_question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Depends On Question Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "question_id",
+          "depends_on_question_id",
+          "created_at"
+        ],
+        "title": "MarketQuestionDependencyRead"
+      },
+      "MarketResearchGraphEdgeRead": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Question Id"
+          },
+          "depends_on_question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Depends On Question Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "depends_on_question_id"
+        ],
+        "title": "MarketResearchGraphEdgeRead"
+      },
+      "MarketResearchGraphNodeRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "IN_PROGRESS",
+              "ANSWERED",
+              "BLOCKED",
+              "CANCELLED"
+            ],
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "AGENT"
+            ],
+            "title": "Source"
+          },
+          "parent_question_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Question Id"
+          },
+          "generated_by_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated By Run Id"
+          },
+          "planner_question_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Question Key"
+          },
+          "acceptance_criteria": {
+            "items": {},
+            "type": "array",
+            "title": "Acceptance Criteria"
+          },
+          "expected_evidence": {
+            "items": {},
+            "type": "array",
+            "title": "Expected Evidence"
+          },
+          "depends_on_question_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Depends On Question Ids"
+          },
+          "waiting_on_question_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Waiting On Question Ids"
+          },
+          "readiness": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "WAITING",
+              "BLOCKED",
+              "ANSWERED",
+              "CANCELLED"
+            ],
+            "title": "Readiness"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "question",
+          "rationale",
+          "priority",
+          "status",
+          "source",
+          "parent_question_id",
+          "generated_by_run_id",
+          "planner_question_key",
+          "acceptance_criteria",
+          "expected_evidence",
+          "depends_on_question_ids",
+          "waiting_on_question_ids",
+          "readiness"
+        ],
+        "title": "MarketResearchGraphNodeRead"
+      },
+      "MarketResearchGraphRead": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/MarketResearchGraphNodeRead"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/MarketResearchGraphEdgeRead"
+            },
+            "type": "array",
+            "title": "Edges"
+          },
+          "topological_order": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Topological Order"
+          },
+          "ready_question_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Ready Question Ids"
+          },
+          "cycle_detected": {
+            "type": "boolean",
+            "title": "Cycle Detected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "nodes",
+          "edges",
+          "topological_order",
+          "ready_question_ids",
+          "cycle_detected"
+        ],
+        "title": "MarketResearchGraphRead"
+      },
+      "ResearchPlanGraphNode": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "priority": {
+            "type": "integer",
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Priority",
+            "default": 3
+          },
+          "acceptance_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Acceptance Criteria"
+          },
+          "expected_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expected Evidence"
+          },
+          "depends_on_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Depends On Keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "question"
+        ],
+        "title": "ResearchPlanGraphNode"
       }
     }
   }

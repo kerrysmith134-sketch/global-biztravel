@@ -1472,6 +1472,16 @@ class ResearchPlanCreate(BaseModel):
         return self
 
 
+class ResearchPlanGraphNode(BaseModel):
+    key: str
+    question: str
+    rationale: str | None = None
+    priority: int = Field(default=3, ge=1, le=5)
+    acceptance_criteria: list[str] = Field(default_factory=list)
+    expected_evidence: list[str] = Field(default_factory=list)
+    depends_on_keys: list[str] = Field(default_factory=list)
+
+
 class ResearchPlanIntentRead(BaseModel):
     """模型从本次用户输入中提取的任务范围，不内置任何行业。"""
 
@@ -1483,6 +1493,8 @@ class ResearchPlanIntentRead(BaseModel):
     entities: list[str] = Field(default_factory=list)
     time_scope: str | None = None
     research_questions: list[str] = Field(default_factory=list)
+    research_graph: list[ResearchPlanGraphNode] = Field(default_factory=list)
+    planning_warnings: list[str] = Field(default_factory=list)
     search_queries: list[str] = Field(default_factory=list)
     source_types: list[str] = Field(default_factory=list)
     deliverables: list[str] = Field(default_factory=list)
@@ -1547,6 +1559,7 @@ class ResearchPlanRead(BaseModel):
     trip_id: UUID | None = None
     customer_id: UUID | None = None
     workspace_id: UUID | None = None
+    generated_question_ids: list[UUID] = Field(default_factory=list)
     job_id: UUID | None = None
     retrieval_error: str | None = None
     results_count: int = 0
@@ -1913,11 +1926,61 @@ class MarketResearchQuestionRead(ORMModel):
     priority: int
     status: MarketQuestionStatus
     acceptance_criteria: list[Any]
+    expected_evidence: list[Any] = Field(default_factory=list)
+    generated_by_run_id: UUID | None = None
+    planner_question_key: str | None = None
     answer_summary: str | None
     blocked_reason: str | None
     created_by_user_id: UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+class MarketQuestionDependencyCreate(BaseModel):
+    depends_on_question_id: UUID
+
+
+class MarketQuestionDependencyRead(ORMModel):
+    id: UUID
+    question_id: UUID
+    depends_on_question_id: UUID
+    created_at: datetime
+
+
+class MarketQuestionDependencyDeleted(BaseModel):
+    dependency_id: UUID
+    deleted: bool
+
+
+class MarketResearchGraphNodeRead(BaseModel):
+    id: UUID
+    question: str
+    rationale: str | None
+    priority: int
+    status: MarketQuestionStatus
+    source: MarketQuestionSource
+    parent_question_id: UUID | None
+    generated_by_run_id: UUID | None
+    planner_question_key: str | None
+    acceptance_criteria: list[Any]
+    expected_evidence: list[Any]
+    depends_on_question_ids: list[UUID]
+    waiting_on_question_ids: list[UUID]
+    readiness: Literal["READY", "WAITING", "BLOCKED", "ANSWERED", "CANCELLED"]
+
+
+class MarketResearchGraphEdgeRead(BaseModel):
+    question_id: UUID
+    depends_on_question_id: UUID
+
+
+class MarketResearchGraphRead(BaseModel):
+    workspace_id: UUID
+    nodes: list[MarketResearchGraphNodeRead]
+    edges: list[MarketResearchGraphEdgeRead]
+    topological_order: list[UUID]
+    ready_question_ids: list[UUID]
+    cycle_detected: bool
 
 
 class MarketActivityEventRead(ORMModel):

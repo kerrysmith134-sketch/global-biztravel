@@ -6,6 +6,7 @@ against the same WorkflowInstance through the shared Evidence service.
 """
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
@@ -32,13 +33,19 @@ from app.llm.prompts import (
     RESEARCH_PLAN_SYSTEM,
     RESEARCH_PLAN_TEMPLATE_ID,
 )
-from app.models.market import MarketActivityEvent, MarketWorkspace, MarketWorkspaceWorkflow
+from app.models.market import (
+    MarketActivityEvent,
+    MarketContextSnapshot,
+    MarketWorkspace,
+    MarketWorkspaceWorkflow,
+)
 from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import (
     customer_service,
     evidence_service,
     job_service,
     market_insight_service,
+    market_research_graph_service,
     trip_service,
 )
 
@@ -118,6 +125,35 @@ def _fallback_plan(
             "哪些来源能够直接支持这些事实？",
             "现有信息中有哪些缺口、时效问题或相互矛盾之处？",
         ],
+        "research_graph": [
+            {
+                "key": "q-01",
+                "question": "哪些可核验事实是完成用户目标所必需的？",
+                "rationale": "先明确目标所需的事实范围",
+                "priority": 1,
+                "acceptance_criteria": ["问题范围与用户目标直接相关"],
+                "expected_evidence": ["与用户目标直接相关的可核验来源"],
+                "depends_on_keys": [],
+            },
+            {
+                "key": "q-02",
+                "question": "哪些来源能够直接支持这些事实？",
+                "rationale": "基于事实范围识别可用来源",
+                "priority": 2,
+                "acceptance_criteria": ["来源与待验证事实存在直接关联"],
+                "expected_evidence": ["可追溯的来源记录"],
+                "depends_on_keys": ["q-01"],
+            },
+            {
+                "key": "q-03",
+                "question": "现有信息中有哪些缺口、时效问题或相互矛盾之处？",
+                "rationale": "结合事实范围与来源检查未解决问题",
+                "priority": 2,
+                "acceptance_criteria": ["明确列出未知项和冲突项"],
+                "expected_evidence": ["支持与反驳材料"],
+                "depends_on_keys": ["q-01", "q-02"],
+            },
+        ],
         "search_queries": [request[:500]] if external else [],
         "source_types": sources,
         "deliverables": ["围绕用户指定目标形成有来源依据的结构化研究结果"],
@@ -165,6 +201,10 @@ def _normalise_plan(
         else None
     )
 
+    research_graph, graph_warnings = market_research_graph_service.normalize_research_graph(
+        raw.get("research_graph"),
+        raw.get("research_questions"),
+    )
     plan = {
         "intent_summary": str(raw.get("intent_summary") or request)[:1000],
         "objective": str(raw.get("objective") or request)[:1000],
@@ -173,9 +213,9 @@ def _normalise_plan(
         "geographies": _string_list(raw.get("geographies"), limit=MAX_LIST_ITEMS, item_limit=120),
         "entities": _string_list(raw.get("entities"), limit=MAX_LIST_ITEMS, item_limit=200),
         "time_scope": time_scope,
-        "research_questions": _string_list(
-            raw.get("research_questions"), limit=MAX_QUESTIONS, item_limit=1000
-        ),
+        "research_questions": [node["question"] for node in research_graph],
+        "research_graph": research_graph,
+        "planning_warnings": graph_warnings,
         "search_queries": queries,
         "source_types": _string_list(raw.get("source_types"), limit=MAX_LIST_ITEMS, item_limit=160),
         "deliverables": _string_list(raw.get("deliverables"), limit=MAX_LIST_ITEMS, item_limit=500),
@@ -265,21 +305,88 @@ def create_research_plan(
     requested_scope = payload.source_scope
     include_internal = requested_scope != "EXTERNAL_ONLY"
 
+    workspace: MarketWorkspace | None = None
+    workspace_context: dict[str, Any] = {}
+    workspace_context_ref: dict[str, Any] | None = None
+    workspace_context_evidence: dict[str, Any] | None = None
     if payload.workspace_id is not None:
+        # Serialize planning against context adoption so the selected snapshot cannot
+        # change between lookup, LLM input capture, and persisted provenance.
         workspace = session.scalars(
-            select(MarketWorkspace).where(
+            select(MarketWorkspace)
+            .where(
                 MarketWorkspace.organization_id == str(organization_id),
                 MarketWorkspace.id == payload.workspace_id,
             )
+            .with_for_update()
         ).one_or_none()
         if workspace is None:
             raise NotFound(
                 "市场工作空间不存在",
                 details={"workspace_id": str(payload.workspace_id)},
             )
+        workspace_context = {
+            "workspace_id": str(workspace.id),
+            "name": workspace.name,
+            "objective": workspace.objective,
+            "context_snapshot": None,
+        }
+        context_snapshot: MarketContextSnapshot | None = None
+        if workspace.current_context_version is not None:
+            context_snapshot = session.scalars(
+                select(MarketContextSnapshot).where(
+                    MarketContextSnapshot.organization_id == str(organization_id),
+                    MarketContextSnapshot.workspace_id == workspace.id,
+                    MarketContextSnapshot.version == workspace.current_context_version,
+                    MarketContextSnapshot.is_current.is_(True),
+                )
+            ).one_or_none()
+            if context_snapshot is None:
+                raise Conflict(
+                    "工作空间当前上下文指针与快照不一致，已拒绝启动研究",
+                    code="WORKSPACE_CONTEXT_POINTER_INVALID",
+                    details={
+                        "workspace_id": str(workspace.id),
+                        "current_context_version": workspace.current_context_version,
+                    },
+                )
+            workspace_context["context_snapshot"] = {
+                "id": str(context_snapshot.id),
+                "version": context_snapshot.version,
+                "raw_input": context_snapshot.raw_input,
+                "extracted_context": context_snapshot.extracted_context or {},
+                "user_overrides": context_snapshot.user_overrides or {},
+                "unknowns": context_snapshot.unknowns or [],
+                "provenance": context_snapshot.provenance or {},
+                "extraction_status": context_snapshot.extraction_status,
+                "extraction_prompt_id": context_snapshot.extraction_prompt_id,
+                "extraction_prompt_version": context_snapshot.extraction_prompt_version,
+            }
+        workspace_context_digest = _sha256(
+            json.dumps(workspace_context, ensure_ascii=False, sort_keys=True, default=str)
+        )
+        workspace_context_ref = {
+            "workspace_id": str(workspace.id),
+            "context_snapshot_id": str(context_snapshot.id) if context_snapshot else None,
+            "context_version": context_snapshot.version if context_snapshot else None,
+            "sha256": workspace_context_digest,
+        }
+        workspace_context_evidence = {
+            "kind": "WORKSPACE_CONTEXT_SNAPSHOT" if context_snapshot else "WORKSPACE_BRIEF",
+            "ref": f"workspace-context:{workspace.id}:{workspace_context_digest}",
+            "source": "market_workspace_context",
+            "payload": {
+                **workspace_context_ref,
+                "source": "user_adopted_workspace_context",
+            },
+            "retrieved_at": datetime.now(UTC).isoformat(),
+        }
+
     selected_context, context_evidence = _selected_context(
         session, organization_id, payload, include_internal=include_internal
     )
+    if workspace_context_evidence is not None:
+        context_evidence.append(workspace_context_evidence)
     # User-pasted material is a separate input source, not an internal CRM/Trip record.
     has_internal_context = bool(selected_context)
     fallback = _fallback_plan(
@@ -293,6 +400,7 @@ def create_research_plan(
         "requested_source_scope": requested_scope,
         "locale": payload.locale,
         "selected_context": selected_context,
+        "workspace_context": workspace_context,
         "user_provided_context": payload.context_text,
         "policy": {
             "industry_or_domain_defaults": "forbidden",
@@ -353,8 +461,12 @@ def create_research_plan(
     # Keep potentially sensitive pasted material out of generic JSONB run logs.
     # The LLM invocation hash and Evidence digest retain provenance without duplicating content.
     agent_input: dict[str, Any] = {
-        key: value for key, value in variables.items() if key != "user_provided_context"
+        key: value
+        for key, value in variables.items()
+        if key not in {"user_provided_context", "workspace_context"}
     }
+    if workspace_context_ref is not None:
+        agent_input["workspace_context_ref"] = workspace_context_ref
     if payload.context_text:
         agent_input["user_provided_context_sha256"] = _sha256(payload.context_text)
         agent_input["user_provided_context_character_count"] = len(payload.context_text)
@@ -403,9 +515,23 @@ def create_research_plan(
     agent_run.status = "SUCCEEDED"
     agent_run.finished_at = now
 
+    generated_question_ids: list[UUID] = []
+    if payload.workspace_id is not None:
+        generated_question_ids = market_research_graph_service.persist_planner_graph(
+            session,
+            organization_id,
+            payload.workspace_id,
+            workflow_id=workflow.id,
+            agent_run_id=agent_run.id,
+            created_by_user_id=UUID(str(user_id)),
+            nodes=plan["research_graph"],
+        )
+
     workflow.payload = {
         "request": payload.request,
         "workspace_id": str(payload.workspace_id) if payload.workspace_id else None,
+        "workspace_context_ref": workspace_context_ref,
+        "generated_question_ids": [str(item) for item in generated_question_ids],
         "requested_scope": requested_scope,
         "recommended_scope": recommended_scope,
         "locale": payload.locale,
@@ -513,6 +639,10 @@ def get_research_plan(
         id=workflow.id,
         trip_id=workflow.trip_id,
         workspace_id=(UUID(str(payload["workspace_id"])) if payload.get("workspace_id") else None),
+        generated_question_ids=[
+            UUID(str(item)) for item in payload.get("generated_question_ids", [])
+            if item
+        ],
         customer_id=(
             UUID(str(payload["customer_id"])) if payload.get("customer_id") else None
         ),
