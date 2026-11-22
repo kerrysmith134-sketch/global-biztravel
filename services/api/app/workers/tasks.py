@@ -56,10 +56,10 @@ from app.models.market import (
     MarketClaimEvidence,
     MarketClaimVerificationRun,
     MarketEvidenceDerivation,
-    MarketWorkspace,
     MarketResearchQuestion,
     MarketResearchQuestionAnswer,
     MarketResearchQuestionAnswerEvidence,
+    MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
 from app.models.reliability import BackgroundJob
