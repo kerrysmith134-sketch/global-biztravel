@@ -1894,6 +1894,11 @@ class ExpenseReportItemRead(ORMModel):
     occurred_on: date
     note: str | None = None
     receipt_ref: str | None = None
+    receipt_asset_id: UUID | None = None
+    receipt_sha256: str | None = None
+    receipt_original_filename: str | None = None
+    receipt_mime_type: str | None = None
+    receipt_byte_length: int | None = None
 
 
 class ExpenseReportRead(BaseModel):
