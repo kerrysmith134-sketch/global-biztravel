@@ -31,6 +31,7 @@ from app.api.schemas import (
     MarketEntityCustomerLinkRead,
     MarketEntityRead,
     MarketEvidenceCreate,
+    MarketEvidenceIntelligenceRead,
     MarketEvidenceRead,
     MarketInsightCreate,
     MarketInsightRead,
@@ -78,6 +79,7 @@ from app.services import (
     market_claim_verification_service,
     market_context_extraction_service,
     market_entity_service,
+    market_evidence_intelligence_service,
     market_insight_service,
     market_opportunity_service,
     market_question_answer_agent_service,
@@ -1239,6 +1241,23 @@ def list_market_evidence(
         next_cursor=page_cursor(rows, offset, page_size),
     )
 
+
+
+@router.get(
+    "/market/workspaces/{workspace_id}/evidence-intelligence",
+    response_model=MarketEvidenceIntelligenceRead,
+    summary="读取工作空间证据质量与来源关系报告",
+)
+def get_market_evidence_intelligence(
+    workspace_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+):
+    require_role(context, ROLE_VIEWER)
+    report = market_evidence_intelligence_service.build_report(
+        session, context.organization_id, workspace_id
+    )
+    return MarketEvidenceIntelligenceRead.model_validate(report)
 
 
 @router.post(

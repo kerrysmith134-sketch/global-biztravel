@@ -9991,6 +9991,49 @@
           }
         }
       }
+    },
+    "/v1/market/workspaces/{workspace_id}/evidence-intelligence": {
+      "get": {
+        "tags": [
+          "market intelligence"
+        ],
+        "summary": "读取工作空间证据质量与来源关系报告",
+        "operationId": "get_market_evidence_intelligence_v1_market_workspaces__workspace_id__evidence_intelligence_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketEvidenceIntelligenceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -24216,6 +24259,297 @@
           "reused"
         ],
         "title": "MarketResearchGraphQuestionRetryAccepted"
+      },
+      "MarketEvidenceIntelligenceItem": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "canonical_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Ref"
+          },
+          "source_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Host"
+          },
+          "content_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Fingerprint"
+          },
+          "fingerprint_source": {
+            "type": "string",
+            "enum": [
+              "STORED_HASH",
+              "BODY_SHA256",
+              "UNAVAILABLE"
+            ],
+            "title": "Fingerprint Source"
+          },
+          "verification_status": {
+            "type": "string",
+            "enum": [
+              "UNVERIFIED",
+              "PARTIALLY_VERIFIED",
+              "VERIFIED",
+              "DISPUTED",
+              "REJECTED"
+            ],
+            "title": "Verification Status"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "retrieved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieved At"
+          },
+          "age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Days"
+          },
+          "origin_assessment": {
+            "type": "string",
+            "enum": [
+              "DUPLICATE_CONTENT",
+              "SAME_HOST",
+              "HOST_IDENTIFIED",
+              "HOST_UNKNOWN"
+            ],
+            "title": "Origin Assessment"
+          },
+          "duplicate_content_evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Duplicate Content Evidence Ids"
+          },
+          "same_host_evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Same Host Evidence Ids"
+          },
+          "same_source_version_evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Same Source Version Evidence Ids"
+          },
+          "derived_page_evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Derived Page Evidence Ids"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "kind",
+          "source",
+          "canonical_ref",
+          "source_host",
+          "content_fingerprint",
+          "fingerprint_source",
+          "verification_status",
+          "published_at",
+          "retrieved_at",
+          "age_days",
+          "origin_assessment"
+        ],
+        "title": "MarketEvidenceIntelligenceItem"
+      },
+      "MarketEvidenceIntelligenceRead": {
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "total_evidence_count": {
+            "type": "integer",
+            "title": "Total Evidence Count"
+          },
+          "analyzed_evidence_count": {
+            "type": "integer",
+            "title": "Analyzed Evidence Count"
+          },
+          "is_truncated": {
+            "type": "boolean",
+            "title": "Is Truncated"
+          },
+          "distinct_host_count": {
+            "type": "integer",
+            "title": "Distinct Host Count"
+          },
+          "duplicate_content_group_count": {
+            "type": "integer",
+            "title": "Duplicate Content Group Count"
+          },
+          "duplicate_content_evidence_count": {
+            "type": "integer",
+            "title": "Duplicate Content Evidence Count"
+          },
+          "multi_version_source_count": {
+            "type": "integer",
+            "title": "Multi Version Source Count"
+          },
+          "multi_version_evidence_count": {
+            "type": "integer",
+            "title": "Multi Version Evidence Count"
+          },
+          "unverified_count": {
+            "type": "integer",
+            "title": "Unverified Count"
+          },
+          "partially_verified_count": {
+            "type": "integer",
+            "title": "Partially Verified Count"
+          },
+          "verified_count": {
+            "type": "integer",
+            "title": "Verified Count"
+          },
+          "disputed_count": {
+            "type": "integer",
+            "title": "Disputed Count"
+          },
+          "rejected_count": {
+            "type": "integer",
+            "title": "Rejected Count"
+          },
+          "missing_publication_date_count": {
+            "type": "integer",
+            "title": "Missing Publication Date Count"
+          },
+          "missing_content_hash_count": {
+            "type": "integer",
+            "title": "Missing Content Hash Count"
+          },
+          "unextracted_search_result_count": {
+            "type": "integer",
+            "title": "Unextracted Search Result Count"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketEvidenceIntelligenceItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "caveats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Caveats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "generated_at",
+          "total_evidence_count",
+          "analyzed_evidence_count",
+          "is_truncated",
+          "distinct_host_count",
+          "duplicate_content_group_count",
+          "duplicate_content_evidence_count",
+          "multi_version_source_count",
+          "multi_version_evidence_count",
+          "unverified_count",
+          "partially_verified_count",
+          "verified_count",
+          "disputed_count",
+          "rejected_count",
+          "missing_publication_date_count",
+          "missing_content_hash_count",
+          "unextracted_search_result_count"
+        ],
+        "title": "MarketEvidenceIntelligenceRead"
       }
     }
   }

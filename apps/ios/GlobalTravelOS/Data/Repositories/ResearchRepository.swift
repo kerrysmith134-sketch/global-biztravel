@@ -9,6 +9,7 @@ protocol ResearchRepository {
     func workspace(id: String) async throws -> MarketWorkspace
     func listContexts(workspaceId: String) async throws -> [MarketContextSnapshotRead]
     func extractContext(workspaceId: String, contextId: String) async throws -> MarketContextSnapshotRead
+    func evidenceIntelligence(workspaceId: String) async throws -> MarketEvidenceIntelligenceReport
     func listQuestions(workspaceId: String, page: PageRequest) async throws -> Page<MarketResearchQuestion>
     func createQuestion(
         workspaceId: String,
@@ -51,6 +52,10 @@ extension ResearchRepository {
         contextId: String
     ) async throws -> MarketContextSnapshotRead {
         throw RepositoryError.requiresNetwork("当前研究仓库未实现上下文提取")
+    }
+
+    func evidenceIntelligence(workspaceId: String) async throws -> MarketEvidenceIntelligenceReport {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现证据质量分析")
     }
 }
 
@@ -110,6 +115,13 @@ final class RemoteResearchRepository: ResearchRepository {
         try await client.send(
             Endpoints.extractMarketContext(workspaceId: workspaceId, contextId: contextId),
             as: MarketContextSnapshotRead.self
+        )
+    }
+
+    func evidenceIntelligence(workspaceId: String) async throws -> MarketEvidenceIntelligenceReport {
+        try await client.send(
+            Endpoints.marketEvidenceIntelligence(workspaceId: workspaceId),
+            as: MarketEvidenceIntelligenceReport.self
         )
     }
 

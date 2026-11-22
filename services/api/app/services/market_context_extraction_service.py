@@ -73,10 +73,17 @@ def _normalise_items(
             rejected += 1
             continue
         confidence = item.get("confidence")
-        try:
-            confidence_value = max(0.0, min(float(confidence), 1.0))
-        except (TypeError, ValueError):
-            confidence_value = 0.5
+        confidence_number: float
+        if isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
+            confidence_number = float(confidence)
+        elif isinstance(confidence, str):
+            try:
+                confidence_number = float(confidence)
+            except ValueError:
+                confidence_number = 0.5
+        else:
+            confidence_number = 0.5
+        confidence_value = max(0.0, min(confidence_number, 1.0))
         result.append(
             {
                 "label": label,
@@ -175,7 +182,6 @@ def extract_context_snapshot(
         raise Conflict("该上下文版本已有提取运行，暂时不能重复启动")
 
     input_digest = sha256(snapshot.raw_input.encode("utf-8")).hexdigest()
-    now = datetime.now(UTC)
     workflow = WorkflowInstance(
         organization_id=organization_id,
         workflow_type=WORKFLOW_TYPE,

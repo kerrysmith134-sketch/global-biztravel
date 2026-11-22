@@ -124,6 +124,15 @@ final class ContractSampleTests: XCTestCase {
         _ = try decode(NotificationPreferenceRead.self, ContractSamples.notificationPreferenceRead)
     }
 
+    func testMarketEvidenceIntelligenceContractSampleDecodes() throws {
+        let value = try decode(
+            MarketEvidenceIntelligenceReport.self,
+            ContractSamples.marketEvidenceIntelligenceReport
+        )
+        XCTAssertEqual(value.totalEvidenceCount, 1)
+        XCTAssertEqual(value.items.first?.originLabel, "内容重复")
+    }
+
     func testJobResultContractSampleDecodes() throws {
         _ = try decode(JobResult.self, ContractSamples.jobResult)
     }
