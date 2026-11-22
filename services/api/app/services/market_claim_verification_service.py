@@ -361,6 +361,25 @@ def _serialize_claims(
         else []
     )
     evidence_by_id = {row.id: row for row in evidence_rows}
+    workspace_id = claims[0].workspace_id
+    linked_workflow_ids = set(
+        session.scalars(
+            select(MarketWorkspaceWorkflow.workflow_id).where(
+                MarketWorkspaceWorkflow.organization_id == organization_id,
+                MarketWorkspaceWorkflow.workspace_id == workspace_id,
+            )
+        ).all()
+    )
+    for evidence in evidence_rows:
+        valid_scope = (
+            evidence.subject_type == "market_workspace"
+            and evidence.subject_id == workspace_id
+        ) or (
+            evidence.subject_type == "RESEARCH_PLAN"
+            and evidence.subject_id in linked_workflow_ids
+        )
+        if not valid_scope:
+            raise Conflict("主张证据关联包含不属于当前 Workspace 的 Evidence")
     links_by_claim: dict[UUID, list[dict[str, Any]]] = {}
     for link in links:
         evidence = evidence_by_id.get(link.evidence_id)
