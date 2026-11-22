@@ -25189,7 +25189,8 @@
           },
           "reused_application": {
             "type": "boolean",
-            "title": "Reused Application"
+            "title": "Reused Application",
+            "default": false
           }
         },
         "type": "object",
