@@ -129,6 +129,11 @@ class Settings(BaseSettings):
     research_search_timeout_seconds: float = 12.0
     research_search_max_queries: int = 12
     research_search_max_results: int = 8
+    # Market Intelligence DAG Runtime hard caps; tenant requests may only reduce these values.
+    market_research_graph_max_concurrency: int = 3
+    market_research_graph_max_questions: int = 12
+    market_research_graph_max_duration_minutes: int = 120
+    market_research_graph_max_cost_usd: float = 5.0
 
     # 公网研究来源正文提取（仅用户明确选中来源后执行；默认关闭）
     research_page_provider: str = "unavailable"  # unavailable | safe_http
