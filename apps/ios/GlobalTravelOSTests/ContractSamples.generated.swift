@@ -2,7 +2,7 @@
 // 数据源：contracts/openapi.json（S6 契约漂移门禁；make ios-contract-samples 重新生成）
 //
 // 这些样本让 ModelDecodingTests 之外再有一层“契约→解码”检查：
-// 后端改了字段名/类型/枚举，样本随之变化，这里立刻失败。
+// 后端 schema 改了字段名/类型，对应样本随之变化，解码测试会立刻失败。
 
 enum ContractSamples {
     static let actionCenter = """
