@@ -14,6 +14,9 @@ protocol VisitRepository {
     func crmSyncJob(id: String) async throws -> CrmSyncJob
     func briefing(visitId: String) async throws -> VisitBriefing
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit
+    func followUps(visitId: String) async throws -> VisitFollowUpFeed
+    func decideFollowUp(visitId: String, request: VisitFollowUpDecisionRequest) async throws -> VisitFollowUp
+    func updateFollowUp(id: String, request: VisitFollowUpUpdateRequest) async throws -> VisitFollowUp
 }
 
 final class RemoteVisitRepository: VisitRepository {
@@ -89,6 +92,31 @@ final class RemoteVisitRepository: VisitRepository {
 
     func briefing(visitId: String) async throws -> VisitBriefing {
         try await client.send(Endpoints.visitBriefing(visitId: visitId), as: VisitBriefing.self)
+    }
+
+
+    func followUps(visitId: String) async throws -> VisitFollowUpFeed {
+        try await client.send(Endpoints.visitFollowUps(visitId: visitId), as: VisitFollowUpFeed.self)
+    }
+
+    func decideFollowUp(
+        visitId: String,
+        request: VisitFollowUpDecisionRequest
+    ) async throws -> VisitFollowUp {
+        try await client.send(
+            try Endpoints.decideVisitFollowUp(visitId: visitId, request: request),
+            as: VisitFollowUp.self
+        )
+    }
+
+    func updateFollowUp(
+        id: String,
+        request: VisitFollowUpUpdateRequest
+    ) async throws -> VisitFollowUp {
+        try await client.send(
+            try Endpoints.updateVisitFollowUp(id: id, request: request),
+            as: VisitFollowUp.self
+        )
     }
 
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {
@@ -196,6 +224,25 @@ final class OfflineVisitRepository: VisitRepository {
 
     func briefing(visitId: String) async throws -> VisitBriefing {
         try await remote.briefing(visitId: visitId)
+    }
+
+
+    func followUps(visitId: String) async throws -> VisitFollowUpFeed {
+        try await remote.followUps(visitId: visitId)
+    }
+
+    func decideFollowUp(
+        visitId: String,
+        request: VisitFollowUpDecisionRequest
+    ) async throws -> VisitFollowUp {
+        try await remote.decideFollowUp(visitId: visitId, request: request)
+    }
+
+    func updateFollowUp(
+        id: String,
+        request: VisitFollowUpUpdateRequest
+    ) async throws -> VisitFollowUp {
+        try await remote.updateFollowUp(id: id, request: request)
     }
 
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {
