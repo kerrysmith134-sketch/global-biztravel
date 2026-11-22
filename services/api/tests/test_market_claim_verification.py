@@ -6,7 +6,7 @@ import uuid
 from uuid import UUID
 
 import pytest
-from app.db import org_session
+from app.db import org_session, owner_session
 from app.llm.contracts import LLMResponse
 from app.main import app
 from app.models.market import (
@@ -151,7 +151,7 @@ def cleanup(
     workflow_ids: list[str],
     job_ids: list[str],
 ) -> None:
-    with org_session(UUID(ORG_A)) as session:
+    with owner_session(UUID(ORG_A)) as session:
         workspace_uuids = [UUID(item) for item in workspace_ids]
         workflow_uuids = [UUID(item) for item in workflow_ids]
         if workspace_uuids:
