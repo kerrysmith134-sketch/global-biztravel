@@ -2,7 +2,8 @@ import SwiftUI
 
 struct MarketResearchQuestionDetailView: View {
     @StateObject private var viewModel: MarketResearchQuestionDetailViewModel
-    @State private var confirmsReject: MarketQuestionAnswer?
+    @State private var answerToReject: MarketQuestionAnswer?
+    @State private var showsRejectConfirmation = false
 
     init(
         workspaceId: String,
@@ -49,14 +50,18 @@ struct MarketResearchQuestionDetailView: View {
         .task { await viewModel.load() }
         .confirmationDialog(
             "驳回这版答案？",
-            item: $confirmsReject,
+            isPresented: $showsRejectConfirmation,
             titleVisibility: .visible
-        ) { answer in
+        ) {
             Button("确认驳回", role: .destructive) {
+                guard let answer = answerToReject else { return }
                 Task { await viewModel.review(answer, accept: false) }
+                answerToReject = nil
             }
-            Button("取消", role: .cancel) {}
-        } message: { _ in
+            Button("取消", role: .cancel) {
+                answerToReject = nil
+            }
+        } message: {
             Text("驳回不会释放下游研究问题。")
         }
     }
@@ -240,7 +245,10 @@ struct MarketResearchQuestionDetailView: View {
                     reviewNote: $viewModel.reviewNote,
                     isSubmitting: viewModel.isSubmitting,
                     onAccept: { Task { await viewModel.review(answer, accept: true) } },
-                    onReject: { confirmsReject = answer }
+                    onReject: {
+                        answerToReject = answer
+                        showsRejectConfirmation = true
+                    }
                 )
             }
             if viewModel.answers.isEmpty {
