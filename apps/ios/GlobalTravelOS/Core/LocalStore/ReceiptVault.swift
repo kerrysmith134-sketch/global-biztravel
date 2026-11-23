@@ -8,7 +8,7 @@ struct ReceiptDraft {
 }
 
 /// Receipt state is deliberately explicit: a local copy is not a server-confirmed asset.
-enum ReceiptUploadState: String, Codable {
+enum ReceiptUploadState: String, Codable, Equatable {
     case localOnly = "LOCAL_ONLY"
     case pendingUpload = "PENDING_UPLOAD"
     case uploaded = "UPLOADED"
@@ -177,10 +177,16 @@ final class ReceiptVault {
     }
 
     func upload(assetId: String) async throws -> LocalReceiptAsset {
-        guard uploadsEnabled, let client else {
+        guard uploadsEnabled else {
             throw ReceiptVaultError.uploadUnavailable
         }
         var asset = try requireAsset(assetId)
+        guard let client else {
+            asset.lastError = ReceiptVaultError.uploadUnavailable.localizedDescription
+            asset.updatedAt = Date()
+            try? save(asset)
+            throw ReceiptVaultError.uploadUnavailable
+        }
         if asset.uploadState == .uploaded, asset.serverAssetId != nil {
             return asset
         }
@@ -339,7 +345,7 @@ final class ReceiptVault {
     }
 }
 
-enum ReceiptVaultError: LocalizedError {
+enum ReceiptVaultError: LocalizedError, Equatable {
     case emptyFile
     case fileTooLarge(maximumBytes: Int)
     case unsupportedFileType
