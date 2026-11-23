@@ -100,6 +100,11 @@ final class TripDetailViewModel: ObservableObject {
             sectionErrors["budget"] = environment.errorMessage(error)
         }
         environment.refreshOfflineSummary()
+        if !environment.isLocalMode, let receiptVault = environment.receiptVault {
+            Task {
+                await receiptVault.retryPendingUploads(tripId: tripId)
+            }
+        }
     }
 
     /// 某区块的加载错误（nil 表示该域加载成功或无错误）。
@@ -484,11 +489,25 @@ struct TripDetailView: View {
                                 .foregroundStyle(budget.conversionComplete == true ? Color.secondary : Color.orange)
                         }
                         ForEach(viewModel.expenses) { expense in
-                            HStack {
-                                Text(expense.categoryLabel)
-                                Spacer()
-                                Text(expense.amountLabel)
-                                    .font(.caption.monospacedDigit())
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(expense.categoryLabel)
+                                    Spacer()
+                                    Text(expense.amountLabel)
+                                        .font(.caption.monospacedDigit())
+                                }
+                                if expense.receiptAssetId != nil {
+                                    Label(
+                                        environment.isLocalMode ? "原件保存在本机" : "原件已上传",
+                                        systemImage: "paperclip"
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                } else {
+                                    Label("未附原始票据", systemImage: "paperclip")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                         }
                         Button {
