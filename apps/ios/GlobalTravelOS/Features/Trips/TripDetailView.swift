@@ -112,19 +112,40 @@ final class TripDetailViewModel: ObservableObject {
         amountText: String,
         currency: String,
         occurredOn: Date,
-        note: String
+        note: String,
+        receiptDraft: ReceiptDraft?
     ) async -> Bool {
         let normalized = amountText.replacingOccurrences(of: ",", with: ".")
         guard let amount = Decimal(string: normalized), amount > 0 else {
             errorMessage = "费用金额必须是大于 0 的数字"
             return false
         }
+
+        var receiptAssetId: String?
+        if let receiptDraft {
+            guard let receiptVault = environment.receiptVault else {
+                errorMessage = "本地票据仓库不可用，费用未保存"
+                return false
+            }
+            do {
+                let asset = try await receiptVault.prepareForExpense(
+                    tripId: tripId,
+                    draft: receiptDraft
+                )
+                receiptAssetId = asset.expenseReceiptAssetId
+            } catch {
+                errorMessage = "\\(environment.errorMessage(error))。原始文件已保留在本机；联网后可重试。"
+                return false
+            }
+        }
+
         let body = TripExpenseCreateRequest(
             category: category,
             amount: amount,
             currency: currency.uppercased(),
             occurredOn: ISO8601.dayString(from: occurredOn),
-            note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+            receiptAssetId: receiptAssetId
         )
         do {
             _ = try await environment.tripRepository.createExpense(tripId: tripId, body: body)
@@ -615,7 +636,8 @@ struct TripDetailView: View {
                     amountText: amount,
                     currency: currency,
                     occurredOn: date,
-                    note: note
+                    note: note,
+                    receiptDraft: receiptDraft
                 )
             }
         }
