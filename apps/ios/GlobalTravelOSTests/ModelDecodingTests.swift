@@ -3,6 +3,33 @@ import XCTest
 
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
+    func testExpenseReceiptAssetIdDecodesAndEncodesOnTheWire() throws {
+        let json = """
+        {
+          "id": "expense-1",
+          "trip_id": "trip-1",
+          "category": "MEALS",
+          "amount": "12.30",
+          "currency": "EUR",
+          "receipt_asset_id": "receipt-asset-1"
+        }
+        """
+        let expense = try DateCoding.decode(TripExpense.self, fromJSON: json)
+        XCTAssertEqual(expense.receiptAssetId, "receipt-asset-1")
+
+        let request = TripExpenseCreateRequest(
+            category: .meals,
+            amount: Decimal(string: "12.30")!,
+            currency: "EUR",
+            occurredOn: "2026-11-23",
+            note: nil,
+            receiptAssetId: "receipt-asset-1"
+        )
+        let body = try DateCoding.encoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(object["receipt_asset_id"] as? String, "receipt-asset-1")
+    }
+
     func testTripPlaceDecodesNumericAndStringGeocodeConfidence() throws {
         let numericJSON = """
         {

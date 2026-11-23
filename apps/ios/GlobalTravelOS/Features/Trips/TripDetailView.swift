@@ -100,6 +100,11 @@ final class TripDetailViewModel: ObservableObject {
             sectionErrors["budget"] = environment.errorMessage(error)
         }
         environment.refreshOfflineSummary()
+        if !environment.isLocalMode, let receiptVault = environment.receiptVault {
+            Task {
+                await receiptVault.retryPendingUploads(tripId: tripId)
+            }
+        }
     }
 
     /// 某区块的加载错误（nil 表示该域加载成功或无错误）。
@@ -107,24 +112,49 @@ final class TripDetailViewModel: ObservableObject {
         sectionErrors[key]
     }
 
+    func storeReceiptDraft(_ draft: ReceiptDraft) throws -> LocalReceiptAsset {
+        guard let receiptVault = environment.receiptVault else {
+            throw ReceiptVaultError.originalFileUnavailable
+        }
+        return try receiptVault.capture(tripId: tripId, draft: draft)
+    }
+
     func addExpense(
         category: TripExpenseCategory,
         amountText: String,
         currency: String,
         occurredOn: Date,
-        note: String
+        note: String,
+        localReceiptAssetId: String?
     ) async -> Bool {
         let normalized = amountText.replacingOccurrences(of: ",", with: ".")
         guard let amount = Decimal(string: normalized), amount > 0 else {
             errorMessage = "费用金额必须是大于 0 的数字"
             return false
         }
+
+        var receiptAssetId: String?
+        if let localReceiptAssetId {
+            guard let receiptVault = environment.receiptVault else {
+                errorMessage = "本地票据仓库不可用，费用未保存"
+                return false
+            }
+            do {
+                let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
+                receiptAssetId = asset.expenseReceiptAssetId
+            } catch {
+                errorMessage = "\(environment.errorMessage(error))。原始文件已保留在本机；联网后可重试。"
+                return false
+            }
+        }
+
         let body = TripExpenseCreateRequest(
             category: category,
             amount: amount,
             currency: currency.uppercased(),
             occurredOn: ISO8601.dayString(from: occurredOn),
-            note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+            receiptAssetId: receiptAssetId
         )
         do {
             _ = try await environment.tripRepository.createExpense(tripId: tripId, body: body)
@@ -463,11 +493,25 @@ struct TripDetailView: View {
                                 .foregroundStyle(budget.conversionComplete == true ? Color.secondary : Color.orange)
                         }
                         ForEach(viewModel.expenses) { expense in
-                            HStack {
-                                Text(expense.categoryLabel)
-                                Spacer()
-                                Text(expense.amountLabel)
-                                    .font(.caption.monospacedDigit())
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(expense.categoryLabel)
+                                    Spacer()
+                                    Text(expense.amountLabel)
+                                        .font(.caption.monospacedDigit())
+                                }
+                                if expense.receiptAssetId != nil {
+                                    Label(
+                                        environment.isLocalMode ? "原件保存在本机" : "原件已上传",
+                                        systemImage: "paperclip"
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                } else {
+                                    Label("未附原始票据", systemImage: "paperclip")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                         }
                         Button {
@@ -608,16 +652,21 @@ struct TripDetailView: View {
         }
         .sheet(isPresented: $showsExpense) {
             ExpenseEntrySheet(
-                defaultCurrency: viewModel.trip?.currency ?? viewModel.budget?.budgetCurrency ?? "EUR"
-            ) { category, amount, currency, date, note in
-                await viewModel.addExpense(
-                    category: category,
-                    amountText: amount,
-                    currency: currency,
-                    occurredOn: date,
-                    note: note
-                )
-            }
+                defaultCurrency: viewModel.trip?.currency ?? viewModel.budget?.budgetCurrency ?? "EUR",
+                onCaptureReceipt: { draft in
+                    try viewModel.storeReceiptDraft(draft)
+                },
+                onSave: { category, amount, currency, date, note, localReceiptAssetId in
+                    await viewModel.addExpense(
+                        category: category,
+                        amountText: amount,
+                        currency: currency,
+                        occurredOn: date,
+                        note: note,
+                        localReceiptAssetId: localReceiptAssetId
+                    )
+                }
+            )
         }
     }
 }

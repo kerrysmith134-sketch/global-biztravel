@@ -18,6 +18,7 @@ final class AppEnvironment: ObservableObject {
     private(set) var localDatabase: LocalDatabase?
 
     private(set) var apiClient: APIClient
+    private(set) var receiptVault: ReceiptVault?
     private(set) var tripRepository: TripRepository
     private(set) var planRepository: PlanRepository
     private(set) var visitRepository: VisitRepository
@@ -72,6 +73,9 @@ final class AppEnvironment: ObservableObject {
         self.indicator = indicator
         self.offlineStore = offline
         self.apiClient = client
+        self.receiptVault = Self.makeReceiptVault(
+            directory: directory, client: client, uploadsEnabled: loaded.runMode != "local"
+        )
         self.localDatabase = nil
 
         let bundle = Self.makeBundle(
@@ -224,6 +228,19 @@ final class AppEnvironment: ObservableObject {
         )
     }
 
+    private static func makeReceiptVault(
+        directory: URL,
+        client: APIClient,
+        uploadsEnabled: Bool
+    ) -> ReceiptVault? {
+        let vaultDirectory = directory.appendingPathComponent("receipts", isDirectory: true)
+        return try? ReceiptVault.open(
+            directory: vaultDirectory,
+            client: client,
+            uploadsEnabled: uploadsEnabled
+        )
+    }
+
     /// 本地模式（ADR-0036）：仓储全部落在 App 内 SQLite。
     var isLocalMode: Bool { settings.runMode == "local" }
 
@@ -250,6 +267,9 @@ final class AppEnvironment: ObservableObject {
         let client = APIClient(configuration: next.apiConfiguration)
         apiClient = client
         directory = Self.accountDirectory(root: AppSettingsStore.defaultDirectory(), settings: next)
+        receiptVault = Self.makeReceiptVault(
+            directory: directory, client: client, uploadsEnabled: next.runMode != "local"
+        )
         offlineStore = OfflineStore(directory: directory)
         let bundle = Self.makeBundle(
             settings: next, client: client, directory: directory,
