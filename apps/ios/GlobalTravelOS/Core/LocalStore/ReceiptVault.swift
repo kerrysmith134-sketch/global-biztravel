@@ -164,10 +164,10 @@ final class ReceiptVault {
         return asset
     }
 
-    /// Returns an asset ID safe to attach to the expense. Cloud mode requires a server-issued ID;
-    /// local mode uses the local asset ID and never claims that a remote upload occurred.
-    func prepareForExpense(tripId: String, draft: ReceiptDraft) async throws -> LocalReceiptAsset {
-        let saved = try capture(tripId: tripId, draft: draft)
+    /// Returns an asset ID safe to attach to the expense. Capture is a separate, earlier action:
+    /// the original has already been persisted locally before the traveler submits the expense.
+    func prepareForExpense(assetId: String) async throws -> LocalReceiptAsset {
+        let saved = try requireAsset(assetId)
         guard uploadsEnabled else { return saved }
         let uploaded = try await upload(assetId: saved.id)
         guard uploaded.serverAssetId != nil else {
