@@ -139,7 +139,7 @@ final class TripDetailViewModel: ObservableObject {
                 )
                 receiptAssetId = asset.expenseReceiptAssetId
             } catch {
-                errorMessage = "\\(environment.errorMessage(error))。原始文件已保留在本机；联网后可重试。"
+                errorMessage = "\(environment.errorMessage(error))。原始文件已保留在本机；联网后可重试。"
                 return false
             }
         }
