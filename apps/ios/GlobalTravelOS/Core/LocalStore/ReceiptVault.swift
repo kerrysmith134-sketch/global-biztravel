@@ -293,6 +293,10 @@ final class ReceiptVault {
     }
 
     private func save(_ asset: LocalReceiptAsset) throws {
+        // 必须补齐所有 NOT NULL 列：SQLite 在 upsert 处理**之前**先校验 NOT NULL，
+        // 漏传 created_at 会直接 `NOT NULL constraint failed`，ON CONFLICT 根本没机会生效
+        // （表现为上传失败的 lastError 永远写不进库）。capture() 首次插入带 created_at，
+        // save() 只更新时也不能省——否则同 id 的二次写入会整行失败。
         try database.upsert(
             table: "receipt_assets",
             id: asset.id,
@@ -300,6 +304,7 @@ final class ReceiptVault {
                 "trip_id": asset.tripId,
                 "server_asset_id": asset.serverAssetId,
                 "upload_status": asset.uploadState.rawValue,
+                "created_at": SQLTimestamp.basics.string(from: asset.createdAt),
                 "updated_at": SQLTimestamp.basics.string(from: asset.updatedAt),
             ],
             payload: try DateCoding.encode(asset)

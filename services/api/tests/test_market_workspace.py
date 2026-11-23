@@ -408,6 +408,10 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
     entity_id: str | None = None
     customer_a_id = uuid.uuid4()
     customer_b_id = uuid.uuid4()
+    # 去重检测是组织级：用一次性唯一域名/名称，保证复跑不读到上一轮残留实体。
+    suffix = uuid.uuid4().hex[:8]
+    unique_domain = f"example-{suffix}.test"
+    unique_name = f"Example East Africa Group {suffix}"
     try:
         workspace = create_workspace(client, f"Entity discovery·{uuid.uuid4().hex[:8]}")
         workspace_id = workspace["id"]
@@ -452,9 +456,9 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
             headers=headers(),
             json={
                 "entity_kind": "Distributor / Channel Partner",
-                "display_name": "Example East Africa Group",
+                "display_name": unique_name,
                 "description": "Candidate found during a user-directed market exploration.",
-                "canonical_domain": "https://www.example.test/company/",
+                "canonical_domain": f"https://www.{unique_domain}/company/",
                 "country_code": "ke",
                 "attributes": {"employee_band": "UNKNOWN", "custom_taxonomy": "channel"},
                 "discovery_reason": "Mentioned in the user's market brief.",
@@ -466,7 +470,7 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
         entity_id = entity_body["id"]
         assert entity_body["status"] == "CANDIDATE"
         assert entity_body["entity_kind"] == "Distributor / Channel Partner"
-        assert entity_body["canonical_domain"] == "example.test"
+        assert entity_body["canonical_domain"] == unique_domain
         assert {item["alias_type"] for item in entity_body["aliases"]} == {"NAME", "DOMAIN"}
         assert created.json()["possible_duplicate_entity_ids"] == []
 
@@ -476,8 +480,8 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
             headers=headers(),
             json={
                 "entity_kind": "Organization",
-                "display_name": "Example East Africa Group - alternate label",
-                "canonical_domain": "example.test",
+                "display_name": f"{unique_name} - alternate label",
+                "canonical_domain": unique_domain,
                 "country_code": "KE",
             },
         )
@@ -504,7 +508,7 @@ def test_market_entity_is_candidate_and_customer_link_requires_explicit_confirma
             headers=headers(),
             json={
                 "entity_kind": "Organization",
-                "display_name": "  EXAMPLE East Africa Group ",
+                "display_name": f"  {unique_name.upper()} ",
                 "country_code": "KE",
             },
         )

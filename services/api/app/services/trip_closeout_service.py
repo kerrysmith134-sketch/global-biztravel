@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select

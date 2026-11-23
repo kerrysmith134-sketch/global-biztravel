@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fixtures import CITIES, make_problem, make_stop
-from travel_planner.contracts import ProblemWindow, TimeWindow
+from travel_planner.contracts import ProblemWindow, SolverKind, TimeWindow
 from travel_planner.days import enumerate_days
 from travel_planner.pipeline import plan_trip
 from travel_planner.scheduling import build_schedule
@@ -91,7 +91,7 @@ def test_service_duration_uses_elapsed_time_across_spring_gap() -> None:
         (stop,), start=start, end=end, timezone_home=TZ_HOME, origin=CITIES["berlin"]
     )
 
-    result = plan_trip(problem, solver="heuristic")
+    result = plan_trip(problem, solver=SolverKind.HEURISTIC)
     assert result.validation.feasible
     placed = result.days[0].stops[0]
     assert placed.arrive.hour == 1 and placed.arrive.minute == 30
@@ -109,7 +109,7 @@ def test_service_duration_uses_elapsed_time_across_fall_overlap() -> None:
         (stop,), start=start, end=end, timezone_home=TZ_HOME, origin=CITIES["berlin"]
     )
 
-    result = plan_trip(problem, solver="heuristic")
+    result = plan_trip(problem, solver=SolverKind.HEURISTIC)
     assert result.validation.feasible
     placed = result.days[0].stops[0]
     assert placed.arrive.hour == 2 and placed.arrive.minute == 30
