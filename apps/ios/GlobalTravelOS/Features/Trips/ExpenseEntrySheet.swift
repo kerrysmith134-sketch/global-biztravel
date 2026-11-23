@@ -6,7 +6,8 @@ struct ExpenseEntrySheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let defaultCurrency: String
-    let onSave: (TripExpenseCategory, String, String, Date, String, ReceiptDraft?) async -> Bool
+    let onCaptureReceipt: (ReceiptDraft) throws -> LocalReceiptAsset
+    let onSave: (TripExpenseCategory, String, String, Date, String, String?) async -> Bool
 
     @State private var category: TripExpenseCategory = .meals
     @State private var amount = ""
@@ -17,15 +18,17 @@ struct ExpenseEntrySheet: View {
     @State private var isLoadingReceipt = false
     @State private var showsFileImporter = false
     @State private var selectedPhoto: PhotosPickerItem?
-    @State private var receiptDraft: ReceiptDraft?
+    @State private var localReceiptAsset: LocalReceiptAsset?
     @State private var receiptError: String?
     @State private var saveError: String?
 
     init(
         defaultCurrency: String,
-        onSave: @escaping (TripExpenseCategory, String, String, Date, String, ReceiptDraft?) async -> Bool
+        onCaptureReceipt: @escaping (ReceiptDraft) throws -> LocalReceiptAsset,
+        onSave: @escaping (TripExpenseCategory, String, String, Date, String, String?) async -> Bool
     ) {
         self.defaultCurrency = defaultCurrency
+        self.onCaptureReceipt = onCaptureReceipt
         self.onSave = onSave
         _currency = State(initialValue: defaultCurrency.uppercased())
     }
@@ -49,21 +52,22 @@ struct ExpenseEntrySheet: View {
                 }
 
                 Section("原始票据") {
-                    if let receiptDraft {
+                    if let localReceiptAsset {
                         HStack(spacing: 12) {
                             Image(systemName: "doc.text.image")
                                 .font(.title2)
                                 .foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(receiptDraft.filename)
+                                Text(localReceiptAsset.originalFilename)
                                     .lineLimit(1)
-                                Text("\(ByteCountFormatter.string(fromByteCount: Int64(receiptDraft.data.count), countStyle: .file)) · 原件待保存")
+                                Text("\(ByteCountFormatter.string(fromByteCount: Int64(localReceiptAsset.byteLength), countStyle: .file)) · \(receiptStateLabel(localReceiptAsset))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
                             Button("移除", role: .destructive) {
-                                self.receiptDraft = nil
+                                self.localReceiptAsset = nil
+                                selectedPhoto = nil
                                 receiptError = nil
                             }
                             .font(.caption)
@@ -81,7 +85,7 @@ struct ExpenseEntrySheet: View {
                             }
                         }
                         if isLoadingReceipt {
-                            ProgressView("正在读取原始文件…")
+                            ProgressView("正在安全保存原件…")
                         }
                     }
 
@@ -90,7 +94,7 @@ struct ExpenseEntrySheet: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
-                    Text("票据原件会先保存在本机私有目录；云端模式只有收到服务端资产 ID 后才会关联到费用。")
+                    Text("选择后立即将原件写入本机私有票据仓。云端模式在费用提交前上传并核对原件哈希。")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -113,7 +117,14 @@ struct ExpenseEntrySheet: View {
                         saving = true
                         saveError = nil
                         Task {
-                            let ok = await onSave(category, amount, currency, occurredOn, note, receiptDraft)
+                            let ok = await onSave(
+                                category,
+                                amount,
+                                currency,
+                                occurredOn,
+                                note,
+                                localReceiptAsset?.id
+                            )
                             saving = false
                             if ok {
                                 dismiss()
@@ -145,10 +156,11 @@ struct ExpenseEntrySheet: View {
                     }
                     do {
                         let data = try Data(contentsOf: url, options: .mappedIfSafe)
-                        receiptDraft = ReceiptDraft(filename: url.lastPathComponent, data: data)
+                        let draft = ReceiptDraft(filename: url.lastPathComponent, data: data)
+                        localReceiptAsset = try onCaptureReceipt(draft)
                         receiptError = nil
                     } catch {
-                        receiptError = "无法读取所选票据：\(error.localizedDescription)"
+                        receiptError = "无法保存所选票据：\(error.localizedDescription)"
                     }
                 case .failure(let error):
                     receiptError = "选择票据失败：\(error.localizedDescription)"
@@ -159,18 +171,30 @@ struct ExpenseEntrySheet: View {
                 isLoadingReceipt = true
                 receiptError = nil
                 Task {
-                    defer { isLoadingReceipt = false }
+                    defer {
+                        isLoadingReceipt = false
+                        selectedPhoto = nil
+                    }
                     do {
                         guard let data = try await newItem.loadTransferable(type: Data.self) else {
                             receiptError = "无法读取照片原件"
                             return
                         }
-                        receiptDraft = ReceiptDraft(filename: "receipt-photo", data: data)
+                        let draft = ReceiptDraft(filename: "receipt-photo", data: data)
+                        localReceiptAsset = try onCaptureReceipt(draft)
                     } catch {
-                        receiptError = "读取照片失败：\(error.localizedDescription)"
+                        receiptError = "读取或保存照片失败：\(error.localizedDescription)"
                     }
                 }
             }
+        }
+    }
+
+    private func receiptStateLabel(_ asset: LocalReceiptAsset) -> String {
+        switch asset.uploadState {
+        case .localOnly: return "仅保存在本机"
+        case .pendingUpload: return "本机已保存 · 云端待上传"
+        case .uploaded: return "云端已确认"
         }
     }
 }
