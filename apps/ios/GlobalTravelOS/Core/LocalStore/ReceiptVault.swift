@@ -106,7 +106,7 @@ final class ReceiptVault {
         guard draft.data.count <= Self.maximumBytes else {
             throw ReceiptVaultError.fileTooLarge(maximumBytes: Self.maximumBytes)
         }
-        let detected = Self.detectType(draft.data)
+        let detected = try Self.detectType(draft.data)
         let digest = Self.sha256(draft.data)
 
         let existing = try database.loadPayloads(
@@ -298,7 +298,7 @@ final class ReceiptVault {
         )
     }
 
-    private static func detectType(_ data: Data) -> (mimeType: String, fileExtension: String) {
+    private static func detectType(_ data: Data) throws -> (mimeType: String, fileExtension: String) {
         let bytes = [UInt8](data.prefix(12))
         if bytes.starts(with: [0xFF, 0xD8, 0xFF]) { return ("image/jpeg", "jpg") }
         if bytes.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
