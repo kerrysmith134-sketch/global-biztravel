@@ -192,6 +192,22 @@ struct LocalDatabase {
             ON customer_places (customer_id)
             WHERE is_primary = 1;
         """),
+        ("0007_receipt_assets", """
+        CREATE TABLE IF NOT EXISTS receipt_assets (
+            id              TEXT PRIMARY KEY,
+            trip_id         TEXT NOT NULL,
+            server_asset_id TEXT,
+            upload_status   TEXT NOT NULL,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            payload         TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_receipt_assets_trip_created
+            ON receipt_assets (trip_id, created_at DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_receipt_assets_server_id
+            ON receipt_assets (server_asset_id)
+            WHERE server_asset_id IS NOT NULL;
+        """),
     ]
 
     func migrate() throws {
