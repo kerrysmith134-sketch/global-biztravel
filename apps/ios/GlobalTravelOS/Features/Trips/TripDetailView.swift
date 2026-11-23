@@ -112,13 +112,20 @@ final class TripDetailViewModel: ObservableObject {
         sectionErrors[key]
     }
 
+    func storeReceiptDraft(_ draft: ReceiptDraft) throws -> LocalReceiptAsset {
+        guard let receiptVault = environment.receiptVault else {
+            throw ReceiptVaultError.originalFileUnavailable
+        }
+        return try receiptVault.capture(tripId: tripId, draft: draft)
+    }
+
     func addExpense(
         category: TripExpenseCategory,
         amountText: String,
         currency: String,
         occurredOn: Date,
         note: String,
-        receiptDraft: ReceiptDraft?
+        localReceiptAssetId: String?
     ) async -> Bool {
         let normalized = amountText.replacingOccurrences(of: ",", with: ".")
         guard let amount = Decimal(string: normalized), amount > 0 else {
@@ -127,16 +134,13 @@ final class TripDetailViewModel: ObservableObject {
         }
 
         var receiptAssetId: String?
-        if let receiptDraft {
+        if let localReceiptAssetId {
             guard let receiptVault = environment.receiptVault else {
                 errorMessage = "本地票据仓库不可用，费用未保存"
                 return false
             }
             do {
-                let asset = try await receiptVault.prepareForExpense(
-                    tripId: tripId,
-                    draft: receiptDraft
-                )
+                let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
                 receiptAssetId = asset.expenseReceiptAssetId
             } catch {
                 errorMessage = "\(environment.errorMessage(error))。原始文件已保留在本机；联网后可重试。"
