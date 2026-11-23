@@ -652,17 +652,21 @@ struct TripDetailView: View {
         }
         .sheet(isPresented: $showsExpense) {
             ExpenseEntrySheet(
-                defaultCurrency: viewModel.trip?.currency ?? viewModel.budget?.budgetCurrency ?? "EUR"
-            ) { category, amount, currency, date, note, receiptDraft in
-                await viewModel.addExpense(
-                    category: category,
-                    amountText: amount,
-                    currency: currency,
-                    occurredOn: date,
-                    note: note,
-                    receiptDraft: receiptDraft
-                )
-            }
+                defaultCurrency: viewModel.trip?.currency ?? viewModel.budget?.budgetCurrency ?? "EUR",
+                onCaptureReceipt: { draft in
+                    try viewModel.storeReceiptDraft(draft)
+                },
+                onSave: { category, amount, currency, date, note, localReceiptAssetId in
+                    await viewModel.addExpense(
+                        category: category,
+                        amountText: amount,
+                        currency: currency,
+                        occurredOn: date,
+                        note: note,
+                        localReceiptAssetId: localReceiptAssetId
+                    )
+                }
+            )
         }
     }
 }
