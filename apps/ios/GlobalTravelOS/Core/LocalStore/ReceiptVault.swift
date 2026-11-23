@@ -117,7 +117,9 @@ final class ReceiptVault {
         )
         for payload in existing {
             let asset = try DateCoding.decode(LocalReceiptAsset.self, from: payload)
-            if asset.sha256 == digest {
+            if asset.sha256 == digest,
+               let storedBytes = try? originalData(assetId: asset.id),
+               storedBytes == draft.data {
                 return asset
             }
         }
