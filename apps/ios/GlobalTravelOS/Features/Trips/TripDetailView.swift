@@ -649,7 +649,7 @@ struct TripDetailView: View {
         .sheet(isPresented: $showsExpense) {
             ExpenseEntrySheet(
                 defaultCurrency: viewModel.trip?.currency ?? viewModel.budget?.budgetCurrency ?? "EUR"
-            ) { category, amount, currency, date, note in
+            ) { category, amount, currency, date, note, receiptDraft in
                 await viewModel.addExpense(
                     category: category,
                     amountText: amount,
