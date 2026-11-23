@@ -21,9 +21,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-import uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from urllib import request as urlrequest
 
 ORG = "11111111-1111-1111-1111-111111111111"
@@ -157,7 +155,7 @@ def main() -> int:
         "新加坡星展银行洽谈（即将出发）", 2, 5, ["SG"],
         [("星展银行 SMB 产品推介", "Singapore")],
     )
-    trip_jp = ensure_trip(
+    ensure_trip(
         "东京三菱 UFJ 年度会谈（即将出发）", 3, 6, ["JP"],
         [("三菱 UFJ 合作框架会谈", "Tokyo")],
     )
@@ -197,7 +195,7 @@ def main() -> int:
         ("MET", "产线自动化程度高于预期，列入年度合作白名单。", "产线评估报告"),
         ("RESCHEDULED", "采购部流程调整，专题会改到下月；拿到对接人名单。", "采购对接人清单"),
     ]
-    for visit, (outcome, notes, follow) in zip(done_visits[:3], outcomes):
+    for visit, (outcome, notes, follow) in zip(done_visits[:3], outcomes, strict=False):
         v_id = visit["id"]
         try:
             r_status, record = http("POST", f"/v1/visits/{v_id}/records", {

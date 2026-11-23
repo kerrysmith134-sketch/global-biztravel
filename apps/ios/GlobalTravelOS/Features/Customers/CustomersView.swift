@@ -126,30 +126,65 @@ final class CustomersViewModel: ObservableObject {
 }
 
 struct CustomerDetailView: View {
+    @EnvironmentObject private var environment: AppEnvironment
+
     let customer: Customer
+
+    @State private var refreshedCustomer: Customer?
+    @State private var loadError: String?
+
+    private var displayedCustomer: Customer { refreshedCustomer ?? customer }
 
     var body: some View {
         List {
+            if let loadError {
+                Section {
+                    Text("客户完整档案暂时无法刷新：\(loadError)")
+                        .font(.caption)
+                        .foregroundStyle(DS.ColorToken.warning)
+                }
+            }
             Section("基本信息") {
-                LabeledContent("名称", value: customer.name)
-                LabeledContent("分级", value: customer.tierLabel)
-                if let industry = customer.industry { LabeledContent("行业", value: industry) }
-                if let country = customer.countryCode { LabeledContent("国家", value: country) }
-                if let ref = customer.externalRef { LabeledContent("外部编号", value: ref) }
-                LabeledContent("状态", value: customer.isActive ? "活跃" : "停用")
+                LabeledContent("名称", value: displayedCustomer.name)
+                LabeledContent("分级", value: displayedCustomer.tierLabel)
+                if let industry = displayedCustomer.industry {
+                    LabeledContent("行业", value: industry)
+                }
+                if let country = displayedCustomer.countryCode {
+                    LabeledContent("国家", value: country)
+                }
+                if let ref = displayedCustomer.externalRef {
+                    LabeledContent("外部编号", value: ref)
+                }
+                LabeledContent("状态", value: displayedCustomer.isActive ? "活跃" : "停用")
             }
             Section("主要联系人") {
-                if let name = customer.primaryContactName { LabeledContent("姓名", value: name) }
-                if let email = customer.primaryContactEmail { LabeledContent("邮箱", value: email) }
-                if let phone = customer.primaryContactPhone { LabeledContent("电话", value: phone) }
-                if customer.primaryContactName == nil,
-                   customer.primaryContactEmail == nil,
-                   customer.primaryContactPhone == nil {
+                if let name = displayedCustomer.primaryContactName {
+                    LabeledContent("姓名", value: name)
+                }
+                if let email = displayedCustomer.primaryContactEmail {
+                    LabeledContent("邮箱", value: email)
+                }
+                if let phone = displayedCustomer.primaryContactPhone {
+                    LabeledContent("电话", value: phone)
+                }
+                if displayedCustomer.primaryContactName == nil,
+                   displayedCustomer.primaryContactEmail == nil,
+                   displayedCustomer.primaryContactPhone == nil {
                     Text("未登记联系人").foregroundStyle(.secondary)
                 }
             }
+            CustomerAddressBookSection(customerId: displayedCustomer.id)
         }
-        .navigationTitle(customer.name)
+        .navigationTitle(displayedCustomer.name)
+        .task(id: customer.id) {
+            do {
+                refreshedCustomer = try await environment.customerRepository.customer(id: customer.id)
+                loadError = nil
+            } catch {
+                loadError = environment.errorMessage(error)
+            }
+        }
     }
 }
 

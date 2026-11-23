@@ -124,6 +124,51 @@ final class ContractSampleTests: XCTestCase {
         _ = try decode(NotificationPreferenceRead.self, ContractSamples.notificationPreferenceRead)
     }
 
+    func testMarketEvidenceIntelligenceContractSampleDecodes() throws {
+        let value = try decode(
+            MarketEvidenceIntelligenceReport.self,
+            ContractSamples.marketEvidenceIntelligenceReport
+        )
+        XCTAssertEqual(value.totalEvidenceCount, 1)
+        XCTAssertEqual(value.items.first?.originLabel, "内容重复")
+    }
+
+    func testMarketSourceVerificationPlanContractSampleDecodes() throws {
+        let value = try decode(
+            MarketSourceVerificationPlan.self,
+            ContractSamples.marketSourceVerificationPlan
+        )
+        XCTAssertEqual(value.workspaceId, "11111111-1111-1111-1111-111111111111")
+        XCTAssertEqual(value.actions.first?.priority, "HIGH")
+    }
+
+    func testMarketSourceVerificationPlanApplicationContractSampleDecodes() throws {
+        let value = try decode(
+            MarketSourceVerificationPlanApplication.self,
+            ContractSamples.marketSourceVerificationPlanApplication
+        )
+        XCTAssertFalse(value.planDigest.isEmpty)
+        XCTAssertEqual(value.tasks.first?.questionStatus, "OPEN")
+    }
+
+    func testMarketClaimImpactReportContractSampleDecodes() throws {
+        let value = try decode(
+            MarketClaimImpactReport.self,
+            ContractSamples.marketClaimImpactReport
+        )
+        XCTAssertEqual(value.impactCount, 1)
+        XCTAssertEqual(value.impacts.first?.severity, "HIGH")
+    }
+
+    func testMarketClaimLineageHistoryContractSampleDecodes() throws {
+        let value = try decode(
+            MarketClaimLineageHistory.self,
+            ContractSamples.marketClaimLineageHistory
+        )
+        XCTAssertGreaterThanOrEqual(value.latestVersion, 1)
+        XCTAssertEqual(value.versions.first?.claimLineageId, value.claimLineageId)
+    }
+
     func testJobResultContractSampleDecodes() throws {
         _ = try decode(JobResult.self, ContractSamples.jobResult)
     }

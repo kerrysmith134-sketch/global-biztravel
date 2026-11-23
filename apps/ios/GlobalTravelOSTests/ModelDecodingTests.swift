@@ -3,6 +3,197 @@ import XCTest
 
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
+    func testExpenseReceiptAssetIdDecodesAndEncodesOnTheWire() throws {
+        let json = """
+        {
+          "id": "expense-1",
+          "trip_id": "trip-1",
+          "category": "MEALS",
+          "amount": "12.30",
+          "currency": "EUR",
+          "receipt_asset_id": "receipt-asset-1"
+        }
+        """
+        let expense = try DateCoding.decode(TripExpense.self, fromJSON: json)
+        XCTAssertEqual(expense.receiptAssetId, "receipt-asset-1")
+
+        let request = TripExpenseCreateRequest(
+            category: .meals,
+            amount: Decimal(string: "12.30")!,
+            currency: "EUR",
+            occurredOn: "2026-11-23",
+            note: nil,
+            receiptAssetId: "receipt-asset-1"
+        )
+        let body = try DateCoding.encoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(object["receipt_asset_id"] as? String, "receipt-asset-1")
+    }
+
+    func testTripPlaceDecodesNumericAndStringGeocodeConfidence() throws {
+        let numericJSON = """
+        {
+          "id": "place-numeric",
+          "name": "Berlin HQ",
+          "country_code": "DE",
+          "latitude": 52.52,
+          "longitude": 13.405,
+          "geocode_status": "RESOLVED",
+          "geocode_source": "client",
+          "geocode_confidence": 0.98
+        }
+        """
+        let numeric = try DateCoding.decode(Place.self, fromJSON: numericJSON)
+        XCTAssertEqual(numeric.geocodeConfidence, Decimal(string: "0.98"))
+        XCTAssertEqual(numeric.geocodeSource, "client")
+
+        let stringJSON = """
+        {
+          "id": "place-string",
+          "name": "Amsterdam Office",
+          "geocode_confidence": "0.82"
+        }
+        """
+        let string = try DateCoding.decode(Place.self, fromJSON: stringJSON)
+        XCTAssertEqual(string.geocodeConfidence, Decimal(string: "0.82"))
+    }
+
+    func testGlobalCustomerMapResponseDecodesNestedCustomerPlaceAndSummary() throws {
+        let json = """
+        {
+          "items": [{
+            "customer": {
+              "id": "customer-1", "name": "ACME Energy", "tier": "A",
+              "country_code": "DE", "industry": "Energy", "status": "ACTIVE"
+            },
+            "place": {
+              "id": "place-1", "label": "Headquarters", "is_primary": true,
+              "name": "Berlin HQ", "address_line": "Industriestrasse 12",
+              "city": "Berlin", "region": "Berlin", "country_code": "DE",
+              "timezone": "Europe/Berlin", "lat": 52.52, "lon": 13.405,
+              "geocode_status": "RESOLVED", "geocode_source": "client",
+              "geocode_confidence": "0.98"
+            }
+          }],
+          "summary": {
+            "customers_with_locations": 1, "customers_without_locations": 2,
+            "locations_total": 3, "locations_mapped": 2,
+            "locations_missing_coordinates": 1, "countries": {"DE": 2, "NL": 1},
+            "country_stats": [{
+              "country_code": "DE", "customers_total": 2,
+              "tier_a_customers": 1, "tier_b_customers": 0, "tier_c_customers": 1,
+              "active_customers": 2, "prospect_customers": 0, "inactive_customers": 0,
+              "locations_total": 2, "locations_mapped": 2
+            }]
+          },
+          "next_cursor": "200"
+        }
+        """
+        let value = try DateCoding.decode(GlobalCustomerMapResponse.self, fromJSON: json)
+        XCTAssertEqual(value.items.count, 1)
+        XCTAssertEqual(value.items[0].customer.name, "ACME Energy")
+        XCTAssertEqual(value.items[0].place.displayAddress, "Industriestrasse 12 · Berlin · DE")
+        XCTAssertTrue(value.items[0].place.hasValidCoordinates)
+        XCTAssertEqual(value.items[0].place.geocodeConfidence, Decimal(string: "0.98"))
+        XCTAssertEqual(value.summary.locationsMissingCoordinates, 1)
+        XCTAssertEqual(value.summary.countries["DE"], 2)
+        XCTAssertEqual(value.summary.countryStats.first?.customersTotal, 2)
+        XCTAssertEqual(value.summary.countryStats.first?.tierACustomers, 1)
+        XCTAssertEqual(value.summary.countryStats.first?.locationsTotal, 2)
+        XCTAssertEqual(value.nextCursor, "200")
+    }
+
+    func testCustomerPlaceDecodesAddressAndGeocodeProvenance() throws {
+        let json = """
+        {
+          "place_id": "place-1",
+          "label": "工厂",
+          "is_primary": true,
+          "name": "ACME Berlin Factory",
+          "address_line": "Industriestrasse 12",
+          "city": "Berlin",
+          "region": "Berlin",
+          "country_code": "DE",
+          "lat": 52.5200,
+          "lon": 13.4050,
+          "geocode_status": "RESOLVED",
+          "geocode_source": "google-maps",
+          "geocode_confidence": "0.82"
+        }
+        """
+        let place = try DateCoding.decode(CustomerPlace.self, fromJSON: json)
+
+        XCTAssertEqual(place.placeId, "place-1")
+        XCTAssertEqual(place.label, "工厂")
+        XCTAssertTrue(place.isPrimary)
+        XCTAssertEqual(place.displayAddress, "Industriestrasse 12 · Berlin · DE")
+        XCTAssertTrue(place.hasValidCoordinates)
+        XCTAssertEqual(place.geocodeStatus, "RESOLVED")
+        XCTAssertEqual(place.geocodeSource, "google-maps")
+        XCTAssertEqual(place.geocodeConfidence, Decimal(string: "0.82"))
+        XCTAssertEqual(place.confidenceLabel, "82%")
+    }
+
+    func testCustomerPlaceRejectsOutOfRangeCoordinatesForMap() throws {
+        let json = """
+        {
+          "place_id": "place-2",
+          "name": "Invalid location",
+          "geocode_status": "FAILED",
+          "lat": 95.0,
+          "lon": 200.0
+        }
+        """
+        let place = try DateCoding.decode(CustomerPlace.self, fromJSON: json)
+        XCTAssertFalse(place.hasValidCoordinates)
+        XCTAssertEqual(place.displayAddress, "")
+    }
+
+    func testCustomerPlaceLinkRequestUsesBackendSnakeCaseAndIdempotency() throws {
+        let request = try Endpoints.linkCustomerPlace(
+            customerId: "customer-1",
+            request: CustomerPlaceLinkRequest(
+                placeId: "place-1",
+                label: "拜访地址",
+                isPrimary: false
+            )
+        )
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/v1/customers/customer-1/places")
+        XCTAssertNotNil(request.idempotencyKey)
+
+        let data = try XCTUnwrap(request.body)
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertEqual(payload["place_id"] as? String, "place-1")
+        XCTAssertEqual(payload["label"] as? String, "拜访地址")
+        XCTAssertEqual(payload["is_primary"] as? Bool, false)
+    }
+
+    func testCreateVisitEndpointCarriesIdempotencyKey() throws {
+        let request = try Endpoints.createVisit(
+            tripId: "trip-1",
+            body: ["place_id": "place-1", "title": "客户拜访"]
+        )
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/v1/trips/trip-1/visits")
+        XCTAssertNotNil(request.idempotencyKey)
+    }
+
+    func testVisitCreateRequestEncodesCRMCustomerId() throws {
+        let request = VisitCreateRequest(
+            customerId: "customer-1",
+            placeName: "ACME Berlin Factory",
+            title: "年度复审"
+        )
+        let data = try DateCoding.encode(request)
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertEqual(payload["customer_id"] as? String, "customer-1")
+    }
+
     func testTripDecodesBackendFlatShape() throws {
         let json = """
         {
@@ -478,4 +669,374 @@ final class ModelDecodingTests: XCTestCase {
         let decoded = try DateCoding.decode(Trip.self, from: data)
         XCTAssertEqual(decoded.countries, ["DE", "NL"])
     }
+
+    func testResearchPlanRequestEncodesScopeAndLinkedContext() throws {
+        let request = try Endpoints.createResearchPlan(
+            ResearchPlanCreateRequest(
+                request: "研究目标企业背景",
+                sourceScope: .internalAndExternal,
+                tripId: "trip-1",
+                customerId: "customer-1",
+                contextText: "用户提供的补充材料",
+                locale: "zh-CN"
+            )
+        )
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/v1/research/plans")
+        XCTAssertNotNil(request.idempotencyKey)
+
+        let data = try XCTUnwrap(request.body)
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertEqual(payload["request"] as? String, "研究目标企业背景")
+        XCTAssertEqual(payload["source_scope"] as? String, "INTERNAL_AND_EXTERNAL")
+        XCTAssertEqual(payload["trip_id"] as? String, "trip-1")
+        XCTAssertEqual(payload["customer_id"] as? String, "customer-1")
+        XCTAssertEqual(payload["context_text"] as? String, "用户提供的补充材料")
+        XCTAssertEqual(payload["locale"] as? String, "zh-CN")
+
+        let detail = Endpoints.researchPlan(id: "plan-1")
+        XCTAssertEqual(detail.method, .get)
+        XCTAssertEqual(detail.path, "/v1/research/plans/plan-1")
+
+        let execute = try Endpoints.executeResearchPlan(
+            id: "plan-1",
+            body: ResearchExecutionRequest(
+                searchQueries: ["reviewed query one", "reviewed query two"]
+            )
+        )
+        XCTAssertEqual(execute.method, .post)
+        XCTAssertEqual(execute.path, "/v1/research/plans/plan-1:execute")
+        XCTAssertNotNil(execute.idempotencyKey)
+        let executeBody = try XCTUnwrap(execute.body)
+        let executePayload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: executeBody) as? [String: Any]
+        )
+        XCTAssertEqual(
+            executePayload["search_queries"] as? [String],
+            ["reviewed query one", "reviewed query two"]
+        )
+    }
+
+    func testResearchExecutionAcceptedDecodesQueuedJob() throws {
+        let json = """
+        {
+          "plan_id": "plan-1",
+          "job_id": "job-1",
+          "status": "PENDING",
+          "reused": false
+        }
+        """
+        let accepted = try DateCoding.decode(ResearchExecutionAccepted.self, fromJSON: json)
+        XCTAssertEqual(accepted.planId, "plan-1")
+        XCTAssertEqual(accepted.jobId, "job-1")
+        XCTAssertEqual(accepted.status, "PENDING")
+        XCTAssertFalse(accepted.reused)
+    }
+
+    func testResearchPlanDecodesIntentAuditAndEvidenceWithoutClaimingRetrieval() throws {
+        let json = """
+        {
+          "id": "plan-1",
+          "trip_id": "trip-1",
+          "customer_id": "customer-1",
+          "request": "研究目标企业背景",
+          "requested_scope": "INTERNAL_AND_EXTERNAL",
+          "recommended_scope": "INTERNAL_AND_EXTERNAL",
+          "status": "PLANNED",
+          "retrieval_status": "NOT_STARTED",
+          "job_id": null,
+          "retrieval_error": null,
+          "results_count": 0,
+          "reviewed_search_queries": [],
+          "plan": {
+            "intent_summary": "研究目标企业并准备拜访",
+            "objective": "为下周拜访准备事实与问题",
+            "subject": "ACME GmbH",
+            "domain": null,
+            "geographies": ["Germany"],
+            "entities": ["ACME GmbH"],
+            "time_scope": "最新公开信息",
+            "research_questions": ["公司业务与组织背景是什么？"],
+            "search_queries": ["ACME GmbH company background"],
+            "source_types": ["公司官网", "官方登记资料"],
+            "deliverables": ["拜访前研究简报"],
+            "missing_information": ["尚未提供客户联系人"],
+            "external_research_needed": true
+          },
+          "planner": {
+            "agent_run_id": "11111111-1111-1111-1111-111111111111",
+            "llm_invocation_id": "22222222-2222-2222-2222-222222222222",
+            "model": "test-model",
+            "degraded": false,
+            "error": null
+          },
+          "evidence": [
+            {
+              "id": "33333333-3333-3333-3333-333333333333",
+              "kind": "USER_REQUEST",
+              "ref": "request:sha256:abc",
+              "source": "user_input",
+              "payload": {"character_count": 9},
+              "retrieved_at": "2026-11-21T09:00:00+00:00",
+              "created_at": "2026-11-21T09:00:00+00:00"
+            },
+            {
+              "id": "44444444-4444-4444-4444-444444444444",
+              "kind": "WEB_SEARCH_RESULT",
+              "ref": "https://example.com/company",
+              "source": "searxng",
+              "payload": {
+                "url": "https://example.com/company",
+                "title": "Example company profile",
+                "snippet": "A company profile search snippet.",
+                "engine": "general",
+                "published_at": "2026-11-20",
+                "evidence_state": "UNVERIFIED_SEARCH_RESULT"
+              },
+              "retrieved_at": "2026-11-21T09:05:00+00:00",
+              "created_at": "2026-11-21T09:05:00+00:00"
+            }
+          ],
+          "created_at": "2026-11-21T09:00:00+00:00"
+        }
+        """
+        let plan = try DateCoding.decode(ResearchPlan.self, fromJSON: json)
+        XCTAssertEqual(plan.id, "plan-1")
+        XCTAssertEqual(plan.customerId, "customer-1")
+        XCTAssertEqual(plan.plan.domain, nil)
+        XCTAssertEqual(plan.plan.geographies, ["Germany"])
+        XCTAssertEqual(plan.plan.researchQuestions.count, 1)
+        XCTAssertEqual(plan.plan.searchQueries.first, "ACME GmbH company background")
+        XCTAssertEqual(plan.planner.model, "test-model")
+        XCTAssertEqual(plan.evidence.first?.kind, "USER_REQUEST")
+        let searchEvidence = try XCTUnwrap(
+            plan.evidence.first { $0.kind == "WEB_SEARCH_RESULT" }
+        )
+        XCTAssertEqual(searchEvidence.title, "Example company profile")
+        XCTAssertEqual(searchEvidence.snippet, "A company profile search snippet.")
+        XCTAssertEqual(searchEvidence.source, "searxng")
+        XCTAssertEqual(searchEvidence.engine, "general")
+        XCTAssertTrue(searchEvidence.isUnverifiedSearchResult)
+        XCTAssertEqual(searchEvidence.sourceURL?.absoluteString, "https://example.com/company")
+        XCTAssertEqual(plan.retrievalStatus, "NOT_STARTED")
+        XCTAssertEqual(plan.retrievalStatusLabel, "尚未采集外部证据")
+    }
+
+    func testMarketContextSnapshotDecodesProvenanceAndStructuredFields() throws {
+        let json = """
+        {
+          "id": "context-1",
+          "workspace_id": "workspace-1",
+          "version": 3,
+          "raw_input": "We provide design services to clinics in Kenya.",
+          "extracted_context": {
+            "offerings": [{
+              "label": "Design services",
+              "normalized_label": "design",
+              "description": "User-provided service",
+              "source_quote": "We provide design services",
+              "confidence": 0.95
+            }]
+          },
+          "user_overrides": {},
+          "unknowns": ["Customer size is not specified."],
+          "provenance": {
+            "offerings": {
+              "source": "MODEL",
+              "prompt_id": "market_context_extract",
+              "prompt_version": "v1"
+            }
+          },
+          "extraction_status": "COMPLETED",
+          "extraction_prompt_id": "market_context_extract",
+          "extraction_prompt_version": "v1",
+          "is_current": true,
+          "created_by_user_id": "user-1",
+          "created_at": "2026-11-22T08:00:00+00:00"
+        }
+        """
+        let context = try DateCoding.decode(
+            MarketContextSnapshotRead.self,
+            fromJSON: json
+        )
+
+        XCTAssertEqual(context.id, "context-1")
+        XCTAssertEqual(context.version, 3)
+        XCTAssertEqual(context.statusLabel, "已提取")
+        XCTAssertEqual(context.fieldSummaries.first?.value, "Design services")
+        XCTAssertEqual(context.unknowns, ["Customer size is not specified."])
+        XCTAssertTrue(context.isCurrent)
+    }
+
+
+    func testMarketEvidenceIntelligenceReportDecodesDuplicateAndVersionSignals() throws {
+        let json = """
+        {
+          "workspace_id": "workspace-1",
+          "generated_at": "2026-11-22T12:00:00+00:00",
+          "total_evidence_count": 2,
+          "analyzed_evidence_count": 2,
+          "is_truncated": false,
+          "distinct_host_count": 2,
+          "duplicate_content_group_count": 1,
+          "duplicate_content_evidence_count": 2,
+          "multi_version_source_count": 0,
+          "multi_version_evidence_count": 0,
+          "unverified_count": 2,
+          "partially_verified_count": 0,
+          "verified_count": 0,
+          "disputed_count": 0,
+          "rejected_count": 0,
+          "missing_publication_date_count": 1,
+          "missing_content_hash_count": 0,
+          "unextracted_search_result_count": 1,
+          "items": [{
+            "evidence_id": "evidence-1",
+            "kind": "WEB_SEARCH_RESULT",
+            "source": "Publisher",
+            "canonical_ref": "https://example.com/report",
+            "source_host": "example.com",
+            "content_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "fingerprint_source": "STORED_HASH",
+            "verification_status": "UNVERIFIED",
+            "published_at": null,
+            "retrieved_at": "2026-11-22T11:00:00+00:00",
+            "age_days": null,
+            "origin_assessment": "DUPLICATE_CONTENT",
+            "duplicate_content_evidence_ids": ["evidence-2"],
+            "same_host_evidence_ids": [],
+            "same_source_version_evidence_ids": [],
+            "derived_page_evidence_ids": [],
+            "issues": ["UNVERIFIED_SOURCE", "MISSING_PUBLICATION_DATE", "DUPLICATE_CONTENT"]
+          }],
+          "caveats": ["不同 host 不能证明独立来源。"]
+        }
+        """
+        let report = try DateCoding.decode(
+            MarketEvidenceIntelligenceReport.self,
+            fromJSON: json
+        )
+
+        XCTAssertEqual(report.totalEvidenceCount, 2)
+        XCTAssertEqual(report.duplicateContentGroupCount, 1)
+        XCTAssertEqual(report.items.first?.originLabel, "内容重复")
+        XCTAssertEqual(report.items.first?.issueLabels.count, 3)
+        XCTAssertEqual(report.caveats.count, 1)
+    }
+
+
+    func testVisitFollowUpFeedDecodesSuggestionsItemsAndAuditHistory() throws {
+        let json = """
+        {
+          "visit_id": "visit-1",
+          "trip_id": "trip-1",
+          "suggestions": [{
+            "source_type": "MINUTES_DRAFT",
+            "source_record_id": null,
+            "source_agent_run_id": "agent-run-1",
+            "source_index": 0,
+            "title": "Send revised commercial offer",
+            "due_date": "2026-12-05",
+            "source_created_at": "2026-11-22T10:00:00+00:00"
+          }],
+          "items": [{
+            "id": "follow-up-1",
+            "visit_id": "visit-1",
+            "trip_id": "trip-1",
+            "source_type": "RECORD",
+            "source_record_id": "record-1",
+            "source_agent_run_id": null,
+            "source_index": 1,
+            "source_title": "Confirm warranty terms",
+            "source_due_date": "2026-12-03",
+            "title": "Confirm warranty terms",
+            "due_date": "2026-12-03",
+            "status": "IN_PROGRESS",
+            "created_by_user_id": "user-1",
+            "confirmed_by_user_id": "user-1",
+            "confirmed_at": "2026-11-22T10:05:00+00:00",
+            "completed_by_user_id": null,
+            "completed_at": null,
+            "created_at": "2026-11-22T10:05:00+00:00",
+            "updated_at": "2026-11-22T10:10:00+00:00",
+            "events": [{
+              "id": "event-1",
+              "event_type": "ACCEPTED",
+              "from_status": null,
+              "to_status": "OPEN",
+              "actor_user_id": "user-1",
+              "note": null,
+              "created_at": "2026-11-22T10:05:00+00:00"
+            }, {
+              "id": "event-2",
+              "event_type": "STARTED",
+              "from_status": "OPEN",
+              "to_status": "IN_PROGRESS",
+              "actor_user_id": "user-1",
+              "note": "开始跟进",
+              "created_at": "2026-11-22T10:10:00+00:00"
+            }]
+          }]
+        }
+        """
+        let feed = try DateCoding.decode(VisitFollowUpFeed.self, fromJSON: json)
+
+        XCTAssertEqual(feed.visitId, "visit-1")
+        XCTAssertEqual(feed.tripId, "trip-1")
+        XCTAssertEqual(feed.suggestions.count, 1)
+        XCTAssertEqual(feed.suggestions[0].sourceLabel, "来自 AI 会议纪要")
+        XCTAssertEqual(feed.suggestions[0].sourceAgentRunId, "agent-run-1")
+        XCTAssertEqual(feed.items.count, 1)
+        XCTAssertEqual(feed.items[0].statusLabel, "进行中")
+        XCTAssertEqual(feed.items[0].sourceLabel, "现场记录")
+        XCTAssertEqual(feed.items[0].events.map(\.eventType), ["ACCEPTED", "STARTED"])
+        XCTAssertEqual(feed.items[0].events.last?.note, "开始跟进")
+    }
+
+    func testVisitFollowUpEndpointsCarryExplicitDecisionAndIdempotency() throws {
+        let suggestion = VisitFollowUpSuggestion(
+            sourceType: "RECORD",
+            sourceRecordId: "record-1",
+            sourceAgentRunId: nil,
+            sourceIndex: 2,
+            title: "Send capacity evidence",
+            dueDate: "2026-12-01",
+            sourceCreatedAt: Date(timeIntervalSince1970: 1_795_000_000)
+        )
+        let accept = try Endpoints.decideVisitFollowUp(
+            visitId: "visit-1",
+            request: .accept(suggestion)
+        )
+        XCTAssertEqual(accept.method, .post)
+        XCTAssertEqual(accept.path, "/v1/visits/visit-1/follow-ups")
+        XCTAssertNotNil(accept.idempotencyKey)
+        let acceptBody = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(accept.body)) as? [String: Any]
+        )
+        XCTAssertEqual(acceptBody["source_type"] as? String, "RECORD")
+        XCTAssertEqual(acceptBody["decision"] as? String, "ACCEPT")
+        XCTAssertEqual(acceptBody["source_record_id"] as? String, "record-1")
+        XCTAssertEqual(acceptBody["source_index"] as? Int, 2)
+
+        let feed = Endpoints.visitFollowUps(visitId: "visit-1")
+        XCTAssertEqual(feed.method, .get)
+        XCTAssertEqual(feed.path, "/v1/visits/visit-1/follow-ups")
+
+        let update = try Endpoints.updateVisitFollowUp(
+            id: "follow-up-1",
+            request: VisitFollowUpUpdateRequest(
+                status: "COMPLETED",
+                title: nil,
+                dueDate: nil,
+                note: nil
+            )
+        )
+        XCTAssertEqual(update.method, .patch)
+        XCTAssertEqual(update.path, "/v1/visit-follow-ups/follow-up-1")
+        XCTAssertNotNil(update.idempotencyKey)
+    }
+
+
 }

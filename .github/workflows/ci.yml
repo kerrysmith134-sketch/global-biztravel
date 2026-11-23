@@ -1,5 +1,11 @@
 name: ci
 
+# Versioned concurrency key: release the superseded H2.11 runner while still
+# cancelling superseded runs for the same PR/ref on this validation lane.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-12-visit-follow-up
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -24,8 +30,28 @@ jobs:
           make contract-check
           make docs-check
           make ios-contract-check
+      # Produce downloadable generated contracts when any backend gate fails.
+      # This makes contract drift diagnosable without committing generated files blindly.
+      - name: Generate contract diagnostics after failure
+        if: failure()
+        run: |
+          make openapi || true
+          make ios-contract-samples || true
+      - name: Upload generated contract diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-contract-diagnostics
+          path: |
+            contracts/openapi.json
+            contracts/openapi.yaml
+            apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift
+          if-no-files-found: warn
       - name: Database
-        run: make db-up && make migrate
+        run: |
+          make db-up
+          make migrate
+          make check
       - name: Tests
         run: make test
 
@@ -35,6 +61,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: SwiftLint
         run: brew install swiftlint && make lint-ios
+      # Temporary migration step: capture current repository-wide findings as a reviewed baseline.
+      - name: Generate SwiftLint baseline artifact
+        run: swiftlint --lenient
+      - name: Verify baseline file
+        run: test -s swiftlint-baseline.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swiftlint-baseline
+          path: swiftlint-baseline.json
+          if-no-files-found: error
       - name: Build
         run: make ios-build
       - name: Unit tests

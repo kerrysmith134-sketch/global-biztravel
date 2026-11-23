@@ -27,6 +27,7 @@ struct PlanCalendarView: View {
             .padding()
         }
         .navigationTitle("行程日历")
+        .background(DS.ColorToken.canvas.ignoresSafeArea())
     }
 
     // MARK: - 单日时间轴
@@ -79,7 +80,7 @@ struct PlanCalendarView: View {
             }
         }
         .padding(12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(DS.ColorToken.surface, in: RoundedRectangle(cornerRadius: DS.Radius.card))
     }
 
     private func stopCard(_ stop: PlanStop, bounds: (start: Int, end: Int)) -> some View {
@@ -93,7 +94,7 @@ struct PlanCalendarView: View {
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 16, height: 16)
-                    .background(Circle().fill(.blue))
+                    .background(Circle().fill(DS.ColorToken.brand))
                 Text(stop.displayName)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
@@ -111,7 +112,7 @@ struct PlanCalendarView: View {
         .frame(maxWidth: .infinity, minHeight: max(height, 34), alignment: .topLeading)
         .background(.background.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
         .overlay(
-            RoundedRectangle(cornerRadius: 8).stroke(.blue.opacity(0.35), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8).stroke(DS.ColorToken.brand.opacity(0.35), lineWidth: 1)
         )
         .offset(x: 0)
         .padding(.leading, 4)

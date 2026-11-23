@@ -49,6 +49,7 @@ final class ActionCenterViewModel: ObservableObject {
 
 struct ActionCenterView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: ActionCenterViewModel
 
     init(environment: AppEnvironment) {
@@ -96,7 +97,14 @@ struct ActionCenterView: View {
             }
             .navigationTitle("行动中心")
             .toolbar {
-                // 行动中心已是标签页根视图：dismiss 在 TabView 根上无效果，不再放「关闭」。
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("关闭")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await viewModel.load() }
@@ -104,6 +112,7 @@ struct ActionCenterView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .disabled(viewModel.isLoading)
+                    .accessibilityLabel("刷新行动中心")
                 }
             }
             .refreshable { await viewModel.load() }

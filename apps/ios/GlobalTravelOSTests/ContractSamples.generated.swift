@@ -183,7 +183,12 @@ enum ContractSamples {
       "id": "11111111-1111-1111-1111-111111111111",
       "note": "1",
       "occurred_on": "2026-11-09",
+      "receipt_asset_id": "11111111-1111-1111-1111-111111111111",
+      "receipt_byte_length": 1,
+      "receipt_mime_type": "1",
+      "receipt_original_filename": "1",
       "receipt_ref": "1",
+      "receipt_sha256": "1",
       "report_id": "11111111-1111-1111-1111-111111111111"
     }
   ],
@@ -305,6 +310,261 @@ enum ContractSamples {
       "wind_kmh": 1.5
     }
   ]
+}
+"""
+    static let marketClaimImpactReport = """
+{
+  "affected_consumer_count": 1,
+  "analyzed_lineage_count": 1,
+  "generated_at": "2026-11-09T09:00:00+00:00",
+  "impact_count": 1,
+  "impacts": [
+    {
+      "claim_lineage_id": "11111111-1111-1111-1111-111111111111",
+      "consumer_id": "11111111-1111-1111-1111-111111111111",
+      "consumer_status": "1",
+      "consumer_title": "1",
+      "consumer_type": "INSIGHT",
+      "current_accepted_claim_id": "11111111-1111-1111-1111-111111111111",
+      "latest_claim_id": "11111111-1111-1111-1111-111111111111",
+      "latest_claim_status": "NEEDS_REVIEW",
+      "latest_claim_version": 1,
+      "latest_verification_verdict": "PROVISIONAL_SUPPORT",
+      "matched_evidence_count": 1,
+      "reason_code": "LATEST_VERSION_CONTRADICTORY",
+      "referenced_claim_versions": [
+        1
+      ],
+      "relation_types": [
+        "SUPPORTS"
+      ],
+      "severity": "HIGH",
+      "stale_evidence_count": 1
+    }
+  ],
+  "total_lineage_count": 1,
+  "truncated": true,
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let marketClaimLineageHistory = """
+{
+  "claim_key": "1",
+  "claim_lineage_id": "11111111-1111-1111-1111-111111111111",
+  "current_accepted_claim_id": "11111111-1111-1111-1111-111111111111",
+  "latest_version": 1,
+  "versions": [
+    {
+      "answer_id": "11111111-1111-1111-1111-111111111111",
+      "claim_key": "1",
+      "claim_lineage_id": "11111111-1111-1111-1111-111111111111",
+      "claim_type": "FACT",
+      "confidence_level": "MEDIUM",
+      "confirmed_independent_source_count": 1,
+      "contradicting_evidence_count": 1,
+      "created_at": "2026-11-09T09:00:00+00:00",
+      "distinct_host_count": 1,
+      "evidence": [
+        {
+          "content_hash_snapshot": "1",
+          "evidence": {
+            "canonical_ref": "1",
+            "content_hash": "1",
+            "created_at": "2026-11-09T09:00:00+00:00",
+            "id": "11111111-1111-1111-1111-111111111111",
+            "kind": "1",
+            "observation": "1",
+            "source": "1",
+            "verification_status": "1"
+          },
+          "evidence_id": "11111111-1111-1111-1111-111111111111",
+          "origin_assessment": "SINGLE_SOURCE",
+          "rationale": "1",
+          "relation_type": "SUPPORTS",
+          "source_host": "1",
+          "verification_status_snapshot": "1"
+        }
+      ],
+      "id": "11111111-1111-1111-1111-111111111111",
+      "limitations": [
+        "1"
+      ],
+      "reasoning": "1",
+      "review_note": "1",
+      "reviewed_at": "2026-11-09T09:00:00+00:00",
+      "reviewed_by_user_id": "11111111-1111-1111-1111-111111111111",
+      "scope": {},
+      "statement": "1",
+      "status": "NEEDS_REVIEW",
+      "supersedes_id": "11111111-1111-1111-1111-111111111111",
+      "supporting_evidence_count": 1,
+      "verification_run_id": "11111111-1111-1111-1111-111111111111",
+      "verification_verdict": "PROVISIONAL_SUPPORT",
+      "verified_contradiction_count": 1,
+      "verified_support_count": 1,
+      "version": 1,
+      "workspace_id": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let marketEvidenceIntelligenceReport = """
+{
+  "analyzed_evidence_count": 1,
+  "caveats": [
+    "1"
+  ],
+  "disputed_count": 1,
+  "distinct_host_count": 1,
+  "duplicate_content_evidence_count": 1,
+  "duplicate_content_group_count": 1,
+  "generated_at": "2026-11-09T09:00:00+00:00",
+  "is_truncated": true,
+  "items": [
+    {
+      "age_days": 1,
+      "canonical_ref": "1",
+      "content_fingerprint": "1",
+      "derived_page_evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "duplicate_content_evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "evidence_id": "11111111-1111-1111-1111-111111111111",
+      "fingerprint_source": "STORED_HASH",
+      "issues": [
+        "1"
+      ],
+      "kind": "1",
+      "origin_assessment": "DUPLICATE_CONTENT",
+      "published_at": "2026-11-09T09:00:00+00:00",
+      "retrieved_at": "2026-11-09T09:00:00+00:00",
+      "same_host_evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "same_source_version_evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "source": "1",
+      "source_host": "1",
+      "verification_status": "UNVERIFIED"
+    }
+  ],
+  "missing_content_hash_count": 1,
+  "missing_publication_date_count": 1,
+  "multi_version_evidence_count": 1,
+  "multi_version_source_count": 1,
+  "partially_verified_count": 1,
+  "rejected_count": 1,
+  "total_evidence_count": 1,
+  "unextracted_search_result_count": 1,
+  "unverified_count": 1,
+  "verified_count": 1,
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let marketSourceVerificationPlan = """
+{
+  "action_count": 1,
+  "actions": [
+    {
+      "action_id": "1",
+      "action_type": "EXTRACT_SOURCE_PAGE",
+      "claim_id": "11111111-1111-1111-1111-111111111111",
+      "evidence_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "priority": "HIGH",
+      "rationale": "1",
+      "research_question_id": "11111111-1111-1111-1111-111111111111",
+      "research_question_status": "OPEN",
+      "target_id": "11111111-1111-1111-1111-111111111111",
+      "target_type": "EVIDENCE",
+      "title": "1"
+    }
+  ],
+  "actions_truncated": true,
+  "analyzed_claim_count": 1,
+  "analyzed_evidence_count": 1,
+  "claims": [
+    {
+      "changed_source_count": 1,
+      "claim_id": "11111111-1111-1111-1111-111111111111",
+      "claim_lineage_id": "11111111-1111-1111-1111-111111111111",
+      "claim_status": "NEEDS_REVIEW",
+      "claim_type": "FACT",
+      "claim_version": 1,
+      "contradicting_evidence_count": 1,
+      "distinct_content_count": 1,
+      "distinct_host_count": 1,
+      "evidence": [
+        {
+          "content_changed_since_assessment": true,
+          "content_fingerprint": "1",
+          "evidence_id": "11111111-1111-1111-1111-111111111111",
+          "fingerprint_source": "STORED_HASH",
+          "issues": [
+            "1"
+          ],
+          "latest_source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "relation_type": "SUPPORTS",
+          "source_host": "1",
+          "source_version_changed": true,
+          "status_changed_since_assessment": true,
+          "unextracted": true
+        }
+      ],
+      "issues": [
+        "1"
+      ],
+      "source_origin_state": "NO_SUPPORTING_EVIDENCE",
+      "statement": "1",
+      "status_changed_source_count": 1,
+      "supporting_evidence_count": 1,
+      "unextracted_source_count": 1,
+      "verification_verdict": "PROVISIONAL_SUPPORT"
+    }
+  ],
+  "claims_needing_corroboration_count": 1,
+  "claims_truncated": true,
+  "claims_with_changed_sources_count": 1,
+  "claims_with_contradictions_count": 1,
+  "evidence_truncated": true,
+  "generated_at": "2026-11-09T09:00:00+00:00",
+  "limitations": [
+    "1"
+  ],
+  "total_claim_count": 1,
+  "total_evidence_count": 1,
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let marketSourceVerificationPlanApplication = """
+{
+  "action_count": 1,
+  "applied_at": "2026-11-09T09:00:00+00:00",
+  "created_question_count": 1,
+  "dependency_count": 1,
+  "plan_digest": "1",
+  "reused_application": true,
+  "reused_question_count": 1,
+  "tasks": [
+    {
+      "action_id": "1",
+      "action_type": "EXTRACT_SOURCE_PAGE",
+      "depends_on_question_ids": [
+        "11111111-1111-1111-1111-111111111111"
+      ],
+      "priority": "HIGH",
+      "question": "1",
+      "question_id": "11111111-1111-1111-1111-111111111111",
+      "question_status": "OPEN",
+      "reused": true
+    }
+  ],
+  "workspace_id": "11111111-1111-1111-1111-111111111111"
 }
 """
     static let minutesDraft = """
@@ -639,6 +899,7 @@ enum ContractSamples {
   "id": "11111111-1111-1111-1111-111111111111",
   "note": "1",
   "occurred_on": "2026-11-09",
+  "receipt_asset_id": "11111111-1111-1111-1111-111111111111",
   "receipt_ref": "1",
   "trip_id": "11111111-1111-1111-1111-111111111111"
 }

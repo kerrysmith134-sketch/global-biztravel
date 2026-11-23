@@ -40,6 +40,59 @@ def _diff_keys(label: str, committed: set[str], generated: set[str]) -> list[str
     return lines
 
 
+def _value_preview(value: object) -> str:
+    rendered = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    return rendered if len(rendered) <= 240 else rendered[:237] + "..."
+
+
+def _describe_differences(
+    label: str,
+    committed: object,
+    generated: object,
+    *,
+    path: str = "$",
+    limit: int = 30,
+) -> list[str]:
+    """Show exact JSON paths and values, keeping CI contract failures actionable."""
+    if committed == generated:
+        return []
+    if isinstance(committed, dict) and isinstance(generated, dict):
+        result: list[str] = []
+        for key in sorted(set(committed) | set(generated)):
+            child = f"{path}.{key}"
+            if key not in committed:
+                result.append(f"{label} {child}: 仅生成契约有 {_value_preview(generated[key])}")
+            elif key not in generated:
+                result.append(f"{label} {child}: 仅提交契约有 {_value_preview(committed[key])}")
+            else:
+                result.extend(
+                    _describe_differences(
+                        label, committed[key], generated[key], path=child, limit=limit
+                    )
+                )
+            if len(result) >= limit:
+                return result[:limit]
+        return result
+    if isinstance(committed, list) and isinstance(generated, list):
+        if len(committed) != len(generated):
+            return [
+                f"{label} {path}: 数组长度提交={len(committed)} / 生成={len(generated)}"
+            ]
+        result = []
+        for index, (left, right) in enumerate(zip(committed, generated, strict=False)):
+            result.extend(
+                _describe_differences(
+                    label, left, right, path=f"{path}[{index}]", limit=limit
+                )
+            )
+            if len(result) >= limit:
+                return result[:limit]
+        return result
+    return [
+        f"{label} {path}: 提交={_value_preview(committed)} / 生成={_value_preview(generated)}"
+    ]
+
+
 def main() -> int:
     if not COMMITTED.exists():
         print(f"缺少 {COMMITTED}，请先运行 make openapi")
@@ -68,19 +121,25 @@ def main() -> int:
     )
 
     if not problems and committed != generated:
-        # 路径与 schema 名称一致但内容变了：定位到具体路径/schema。
+        # 路径与 schema 名称一致但内容变了：输出最小 JSON 路径差异和具体值。
         for path in sorted(set(committed.get("paths", {})) & set(generated.get("paths", {}))):
-            if committed["paths"][path] != generated["paths"][path]:
-                problems.append(f"路径内容漂移：{path}")
-        for name in sorted(
-            set(committed.get("components", {}).get("schemas", {}))
-            & set(generated.get("components", {}).get("schemas", {}))
-        ):
-            if (
-                committed["components"]["schemas"][name]
-                != generated["components"]["schemas"][name]
-            ):
-                problems.append(f"schema 内容漂移：{name}")
+            problems.extend(
+                _describe_differences(
+                    f"路径 {path}",
+                    committed["paths"][path],
+                    generated["paths"][path],
+                )
+            )
+        committed_schemas = committed.get("components", {}).get("schemas", {})
+        generated_schemas = generated.get("components", {}).get("schemas", {})
+        for name in sorted(set(committed_schemas) & set(generated_schemas)):
+            problems.extend(
+                _describe_differences(
+                    f"schema {name}",
+                    committed_schemas[name],
+                    generated_schemas[name],
+                )
+            )
 
     if problems:
         print("契约漂移：")

@@ -47,6 +47,7 @@ IMPORT_ROW_STATUSES = ("VALID", "INVALID", "DUPLICATE", "ACCEPTED", "REJECTED", 
 class Trip(Base):
     __tablename__ = "trips"
     __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_trips_org_id"),
         CheckConstraint("window_end > window_start", name="window_order"),
         CheckConstraint(
             "status IN ('DRAFT','PLANNING','READY','ACTIVE','HOLD','COMPLETED','CANCELLED')",
@@ -93,6 +94,10 @@ class Trip(Base):
 class Visit(Base):
     __tablename__ = "visits"
     __table_args__ = (
+        UniqueConstraint(
+            "organization_id", "trip_id", "id",
+            name="uq_visits_org_trip_id",
+        ),
         CheckConstraint("service_minutes > 0", name="service_minutes_positive"),
         CheckConstraint("priority BETWEEN 1 AND 3", name="priority_range"),
         CheckConstraint("business_value >= 0", name="business_value_non_negative"),

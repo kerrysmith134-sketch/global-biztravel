@@ -23,9 +23,32 @@ final class LocalModeUITests: XCTestCase {
         app.tap() // 触发中断监视器（若有系统弹窗在此关闭）。
     }
 
+    func testFivePrimaryWorkspacesAreReachable() throws {
+        let mapTab = app.buttons["地图"]
+        XCTAssertTrue(mapTab.waitForExistence(timeout: 10), "缺少地图一级入口")
+        mapTab.tap()
+        XCTAssertTrue(app.navigationBars["地图"].waitForExistence(timeout: 10), "地图工作区未打开")
+
+        let briefTab = app.buttons["简报"]
+        XCTAssertTrue(briefTab.waitForExistence(timeout: 10), "缺少目的地简报一级入口")
+        briefTab.tap()
+        XCTAssertTrue(
+            app.navigationBars["目的地简报"].waitForExistence(timeout: 10),
+            "目的地简报工作区未打开"
+        )
+
+        let customersTab = app.buttons["客户"]
+        XCTAssertTrue(customersTab.waitForExistence(timeout: 10), "缺少客户一级入口")
+        customersTab.tap()
+        XCTAssertTrue(app.navigationBars["客户"].waitForExistence(timeout: 10), "客户工作区未打开")
+
+        XCTAssertTrue(app.buttons["任务"].exists, "缺少 Mission 一级入口")
+        XCTAssertTrue(app.buttons["我的"].exists, "缺少个人设置一级入口")
+    }
+
     func testLocalModeSeededTripSections() throws {
         XCTAssertTrue(
-            app.navigationBars["今日"].waitForExistence(timeout: 20),
+            app.navigationBars["任务"].waitForExistence(timeout: 20),
             "本地模式首屏未出现"
         )
         // 本地模式标识（不是"数据来自服务端"）。
@@ -36,15 +59,16 @@ final class LocalModeUITests: XCTestCase {
             "首屏未显示本地模式标识"
         )
 
-        // 差旅驾驶舱（审计 5.1）：英雄卡倒计时 + 今日分区 + 待处理风险。
+        // Mission 首页：主任务、关键指标、今日安排与 AI 决策队列。
         XCTAssertTrue(
-            app.staticTexts.matching(
+            app.buttons.matching(
                 NSPredicate(format: "label CONTAINS '出发' OR label CONTAINS '第 '")
             ).firstMatch.waitForExistence(timeout: 15),
             "驾驶舱缺少倒计时/进度"
         )
-        XCTAssertTrue(app.staticTexts["今天"].waitForExistence(timeout: 10), "驾驶舱缺少今日分区")
-        XCTAssertTrue(app.staticTexts["待处理"].waitForExistence(timeout: 10), "驾驶舱缺少待处理分区")
+        XCTAssertTrue(app.staticTexts["今日安排"].waitForExistence(timeout: 10), "Mission 首页缺少日程区")
+        XCTAssertTrue(app.staticTexts["拜访时间轴"].waitForExistence(timeout: 10), "Mission 首页缺少拜访时间轴")
+        XCTAssertTrue(app.staticTexts["AI 洞察与待决策"].waitForExistence(timeout: 10), "Mission 首页缺少待决策区")
         XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS '签证' OR label CONTAINS '计划'")

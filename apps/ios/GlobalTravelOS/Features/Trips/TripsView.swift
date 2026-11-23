@@ -78,6 +78,7 @@ final class TripsViewModel: ObservableObject {
 
 struct TripsView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: TripsViewModel
 
     init(environment: AppEnvironment) {
@@ -124,6 +125,14 @@ struct TripsView: View {
             }
             .navigationTitle("出行")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("关闭")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         viewModel.showsCreate = true

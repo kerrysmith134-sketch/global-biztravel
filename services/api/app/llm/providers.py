@@ -149,6 +149,9 @@ class StubProvider:
                 str(variables.get("message") or ""),
                 today=_parse_today(variables.get("today")),
             )
+        elif request.task == "research_intent_plan":
+            # The stub returns the caller's generic fallback and never invents a domain.
+            output = dict(request.fallback or {})
         elif request.task == "assistant_reply":
             trip = str(variables.get("trip_name") or "未命名出行")
             counts = variables.get("action_counts") or {}

@@ -48,6 +48,9 @@ class WorkflowInstance(Base):
             "status IN ('ACCEPTED','RUNNING','COMPLETED','FAILED','REJECTED')",
             name="status_allowed",
         ),
+        UniqueConstraint(
+            "organization_id", "id", name="uq_workflow_instances_org_id"
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -76,6 +79,7 @@ class WorkflowInstance(Base):
 class AgentRun(Base):
     __tablename__ = "agent_runs"
     __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_agent_runs_org_id"),
         CheckConstraint(
             "status IN ('RUNNING','SUCCEEDED','FAILED')", name="status_allowed"
         ),
@@ -106,11 +110,18 @@ class AgentRun(Base):
 class Evidence(Base):
     __tablename__ = "evidence"
     __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_evidence_org_id"),
         UniqueConstraint(
             "organization_id", "subject_type", "subject_id", "kind", "ref",
             name="uq_evidence_org_subject_kind_ref",
         ),
         Index("ix_evidence_org_subject", "organization_id", "subject_type", "subject_id"),
+        Index("ix_evidence_org_canonical_ref", "organization_id", "canonical_ref"),
+        CheckConstraint(
+            "verification_status IS NULL OR verification_status IN "
+            "('UNVERIFIED','PARTIALLY_VERIFIED','VERIFIED','DISPUTED','REJECTED')",
+            name="verification_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -127,6 +138,12 @@ class Evidence(Base):
     source: Mapped[str | None] = mapped_column(Text)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    canonical_ref: Mapped[str | None] = mapped_column(Text)
+    content_hash: Mapped[str | None] = mapped_column(Text)
+    observation: Mapped[str | None] = mapped_column(Text)
+    verification_status: Mapped[str | None] = mapped_column(Text)
+    quality: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at()
 
 

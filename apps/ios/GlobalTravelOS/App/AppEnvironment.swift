@@ -18,6 +18,7 @@ final class AppEnvironment: ObservableObject {
     private(set) var localDatabase: LocalDatabase?
 
     private(set) var apiClient: APIClient
+    private(set) var receiptVault: ReceiptVault?
     private(set) var tripRepository: TripRepository
     private(set) var planRepository: PlanRepository
     private(set) var visitRepository: VisitRepository
@@ -26,6 +27,7 @@ final class AppEnvironment: ObservableObject {
     private(set) var actionCenterRepository: ActionCenterRepository
     private(set) var notificationRepository: NotificationRepository
     private(set) var assistantRepository: AssistantRepository
+    private(set) var researchRepository: ResearchRepository
     private(set) var customerRepository: CustomerRepository
 
     private(set) var tripListUseCase: TripListUseCase
@@ -71,6 +73,9 @@ final class AppEnvironment: ObservableObject {
         self.indicator = indicator
         self.offlineStore = offline
         self.apiClient = client
+        self.receiptVault = Self.makeReceiptVault(
+            directory: directory, client: client, uploadsEnabled: loaded.runMode != "local"
+        )
         self.localDatabase = nil
 
         let bundle = Self.makeBundle(
@@ -85,6 +90,7 @@ final class AppEnvironment: ObservableObject {
         self.actionCenterRepository = bundle.actionCenter
         self.notificationRepository = bundle.notifications
         self.assistantRepository = bundle.assistant
+        self.researchRepository = bundle.research
         self.customerRepository = bundle.customers
         self.tripListUseCase = bundle.tripList
         self.createTripUseCase = bundle.createTrip
@@ -110,6 +116,7 @@ final class AppEnvironment: ObservableObject {
         actionCenterRepository = bundle.actionCenter
         notificationRepository = bundle.notifications
         assistantRepository = bundle.assistant
+        researchRepository = bundle.research
         customerRepository = bundle.customers
         tripListUseCase = bundle.tripList
         createTripUseCase = bundle.createTrip
@@ -142,6 +149,7 @@ final class AppEnvironment: ObservableObject {
         let actionCenter: ActionCenterRepository
         let notifications: NotificationRepository
         let assistant: AssistantRepository
+        let research: ResearchRepository
         let customers: CustomerRepository
         let tripList: TripListUseCase
         let createTrip: CreateTripUseCase
@@ -173,6 +181,7 @@ final class AppEnvironment: ObservableObject {
                     actionCenter: LocalActionCenterRepository(database: database),
                     notifications: RemoteNotificationRepository(client: client),
                     assistant: RemoteAssistantRepository(client: client),
+                    research: RemoteResearchRepository(client: client),
                     customers: LocalCustomerRepository(database: database),
                     tripList: TripListUseCase(repository: trips),
                     createTrip: CreateTripUseCase(repository: trips),
@@ -208,6 +217,7 @@ final class AppEnvironment: ObservableObject {
             actionCenter: RemoteActionCenterRepository(client: client),
             notifications: RemoteNotificationRepository(client: client),
             assistant: RemoteAssistantRepository(client: client),
+            research: RemoteResearchRepository(client: client),
             customers: RemoteCustomerRepository(client: client),
             tripList: TripListUseCase(repository: trips),
             createTrip: CreateTripUseCase(repository: trips),
@@ -215,6 +225,19 @@ final class AppEnvironment: ObservableObject {
             activatePlan: ActivatePlanUseCase(planRepository: plans, tripRepository: trips),
             submitRecord: SubmitVisitRecordUseCase(repository: visits, store: offlineStore),
             syncPush: SyncPushUseCase(store: offlineStore, transport: RemoteSyncTransport(client: client))
+        )
+    }
+
+    private static func makeReceiptVault(
+        directory: URL,
+        client: APIClient,
+        uploadsEnabled: Bool
+    ) -> ReceiptVault? {
+        let vaultDirectory = directory.appendingPathComponent("receipts", isDirectory: true)
+        return try? ReceiptVault.open(
+            directory: vaultDirectory,
+            client: client,
+            uploadsEnabled: uploadsEnabled
         )
     }
 
@@ -244,6 +267,9 @@ final class AppEnvironment: ObservableObject {
         let client = APIClient(configuration: next.apiConfiguration)
         apiClient = client
         directory = Self.accountDirectory(root: AppSettingsStore.defaultDirectory(), settings: next)
+        receiptVault = Self.makeReceiptVault(
+            directory: directory, client: client, uploadsEnabled: next.runMode != "local"
+        )
         offlineStore = OfflineStore(directory: directory)
         let bundle = Self.makeBundle(
             settings: next, client: client, directory: directory,

@@ -18,6 +18,22 @@ x-app-env: &app-env
   GBT_DEV_USER_ID: "22222222-2222-2222-2222-222222222222"
   GBT_PLANNING_SOLVER: ortools
   GBT_LLM_PROVIDER: stub
+  # Generic research search is disabled unless explicitly configured. API and Worker share the same provider.
+  GBT_RESEARCH_SEARCH_PROVIDER: ${GBT_RESEARCH_SEARCH_PROVIDER:-unavailable}
+  GBT_RESEARCH_SEARCH_BASE_URL: ${GBT_RESEARCH_SEARCH_BASE_URL:-}
+  GBT_RESEARCH_SEARCH_TIMEOUT_SECONDS: ${GBT_RESEARCH_SEARCH_TIMEOUT_SECONDS:-12}
+  GBT_RESEARCH_SEARCH_MAX_QUERIES: ${GBT_RESEARCH_SEARCH_MAX_QUERIES:-12}
+  GBT_RESEARCH_SEARCH_MAX_RESULTS: ${GBT_RESEARCH_SEARCH_MAX_RESULTS:-8}
+  # Receipt originals use a shared persistent volume in the Docker test stack.
+  # Set GBT_RECEIPT_STORAGE_PROVIDER=s3 and credentials for an external S3-compatible private bucket.
+  GBT_RECEIPT_STORAGE_PROVIDER: ${GBT_RECEIPT_STORAGE_PROVIDER:-filesystem}
+  GBT_RECEIPT_STORAGE_ROOT: /app/services/api/var/receipts
+  GBT_RECEIPT_MAX_UPLOAD_BYTES: ${GBT_RECEIPT_MAX_UPLOAD_BYTES:-10485760}
+  GBT_RECEIPT_S3_ENDPOINT_URL: ${GBT_RECEIPT_S3_ENDPOINT_URL:-}
+  GBT_RECEIPT_S3_BUCKET: ${GBT_RECEIPT_S3_BUCKET:-}
+  GBT_RECEIPT_S3_REGION: ${GBT_RECEIPT_S3_REGION:-us-east-1}
+  GBT_RECEIPT_S3_ACCESS_KEY: ${GBT_RECEIPT_S3_ACCESS_KEY:-}
+  GBT_RECEIPT_S3_SECRET_KEY: ${GBT_RECEIPT_S3_SECRET_KEY:-}
   GBT_PUSH_PROVIDER: inapp
   # 免钥公开源全开（ADR-0033/0034，2026-11-12 TestFlight 测试栈）
   GBT_FX_PROVIDER: frankfurter        # FX 行情同步（ECB 免钥）
@@ -69,6 +85,8 @@ services:
     environment: *app-env
     ports:
       - "8080:8080"
+    volumes:
+      - gbt_receipt_data:/app/services/api/var/receipts
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/health', timeout=3)"]
       interval: 10s
@@ -84,6 +102,8 @@ services:
       api:
         condition: service_healthy
     environment: *app-env
+    volumes:
+      - gbt_receipt_data:/app/services/api/var/receipts
     command: ["python", "-m", "app.workers.main"]
 
   # 开发 SMTP 收件池（ADR-0034）：开源 MailPit，网页界面看信件
@@ -100,3 +120,5 @@ services:
 volumes:
   gbt_pg_data:
     name: gbt_os_pg_data
+  gbt_receipt_data:
+    name: gbt_os_receipt_data

@@ -1,22 +1,43 @@
 import SwiftUI
 
+private enum RootTab: Hashable {
+    case mission
+    case map
+    case customers
+    case brief
+    case profile
+}
+
 struct RootView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @State private var selection: RootTab = .mission
 
     var body: some View {
-        TabView {
+        TabView(selection: $selection) {
             TodayView(environment: environment)
-                .tabItem { Label("今日", systemImage: "sparkles") }
-            TripsView(environment: environment)
-                .tabItem { Label("出行", systemImage: "airplane") }
+                .tabItem { Label("任务", systemImage: DSIconCatalog.mission) }
+                .tag(RootTab.mission)
+
+            MapWorkspaceView(environment: environment)
+                .tabItem { Label("地图", systemImage: DSIconCatalog.map) }
+                .tag(RootTab.map)
+
             CustomersView(environment: environment)
-                .tabItem { Label("客户", systemImage: "person.2") }
-            ActionCenterView(environment: environment)
-                .tabItem { Label("行动中心", systemImage: "tray.full") }
+                .tabItem { Label("客户", systemImage: DSIconCatalog.customers) }
+                .tag(RootTab.customers)
+
+            DestinationBriefView(environment: environment)
+                .tabItem { Label("简报", systemImage: DSIconCatalog.brief) }
+                .tag(RootTab.brief)
+
             SettingsView()
-                .tabItem { Label("我的", systemImage: "person.crop.circle") }
+                .tabItem { Label("我的", systemImage: DSIconCatalog.profile) }
+                .tag(RootTab.profile)
         }
-        // 本地模式首启空库自动载入示例数据，保证打开就能测；只执行一次。
+        .tint(DS.ColorToken.brand)
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(DS.ColorToken.surface, for: .tabBar)
+        // Local mode first-run demo seed remains a one-time bootstrap for a fresh local store.
         .task { await environment.seedDemoIfNeeded() }
     }
 }

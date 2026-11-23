@@ -400,3 +400,77 @@ Evidence 的原始 payload 必须保留，版本化不能覆盖历史来源内�
 8. 执行项目门禁并将未执行项明确列出。
 
 **补充结论：**H1.0 的源码审查范围已覆盖后端核心模型、迁移 helper、API 权限与路由装配、Worker 双重注册、iOS Repository 组合根和导航接线。仍未完成的是本地/部署数据库状态检查以及实际测试运行；这些是工程验证项，不应以 GitHub 文件读取代替。
+
+
+---
+
+## 10. 与现有用户意图 ResearchPlan 的整合审查
+
+在审计后进一步检查尚未合并的 ui-foundation-2026-11 分支与 Draft PR #1。该分支已实现通用 ResearchPlan：
+- 用户自然语言请求驱动研究计划生成；
+- 内部/外部资料范围明确选择；
+- 规划与外部检索分离；
+- 搜索查询由用户审阅并确认后才执行；
+- SearXNG Provider 默认不可用，未配置时明确 503；
+- Worker 只执行确认过的查询，并把搜索结果以未核验状态写入现有 Evidence；
+- 复用 WorkflowInstance / AgentRun / BackgroundJob / Evidence，不另造研究执行表。
+
+关联决策见该分支 ADR-0035（研究由用户意图驱动）与 ADR-0037（只执行用户确认查询）。
+
+**整合结论：**ResearchPlan 与 MarketWorkspace 是不同层次，不是重复产品：
+- ResearchPlan = 一次研究意图、查询审阅与检索执行的 workflow；
+- MarketWorkspace = 持续的市场探索空间，保存上下文版本、研究问题和未来的市场实体/洞察/商机；
+- 一个 Workspace 可以包含多个 ResearchPlan Workflow；
+- ResearchPlan 允许不关联 Workspace，保留单次研究入口；
+- Workspace 不得创建第二套检索 Job、搜索 Provider 或 ResearchPlan 主表。
+
+为此 H1.2 采用 MarketWorkspaceWorkflow 作为显式关联表。它与现有 WorkflowInstance 建立 (organization_id, id) 复合唯一键及复合外键，数据库层保证跨租户关联不成立。Research API 增加可选 workspace_id，并在关联 Workspace 的事务中记录 RESEARCH_PLAN_LINKED 活动事件。新增 Workspace API 可读取其关联的 ResearchPlan 列表。
+
+iOS ResearchPlan 请求 DTO 与 ResearchWorkspaceView 增加可选 workspaceId，默认 nil，以维持原有调用兼容。完整 Workspace 原生列表/详情/Context Review UI 仍属于 H1.3，不能把当前单次 ResearchWorkspaceView 描述成已完成的长期工作空间 UI。
+
+### 10.1 本轮整合的代码文件
+
+- services/api/app/models/workflow.py：增加 (organization_id, id) 复合唯一约束，与迁移保持一致。
+- services/api/app/models/market.py：增加 MarketWorkspaceWorkflow。
+- services/api/migrations/versions/0032_market_workspace_foundation.py：增加 tenant-safe workflow link 表与约束。
+- services/api/app/services/research_service.py：校验 workspace 所属组织、关联 ResearchPlan Workflow、写活动事件、按 Workspace 列出研究计划。
+- services/api/app/api/schemas.py / services/api/app/api/routes/market.py：ResearchPlan Create/Read 支持 workspace_id；增加 Workspace ResearchPlan 列表 API。
+- apps/ios/GlobalTravelOS/Domain/Models/Research.swift：请求与响应增加可选 workspaceId。
+- apps/ios/GlobalTravelOS/Features/Assistant/ResearchWorkspaceView.swift：支持可选传入 workspaceId。
+- services/api/tests/test_market_workspace.py：覆盖 Workspace 包含既有 ResearchPlan、external-only 边界、活动事件与直接 RLS 隔离。
+
+### 10.2 仍未验证
+
+本轮仍未在本地 checkout、真实 PostgreSQL 或 Xcode 环境执行命令。未运行迁移、pytest、MyPy、Ruff、OpenAPI contract-check、E2E 或 iOS build/test。文件审查不能替代运行时验证。Draft PR 需以仓库 CI 与真实 PostgreSQL 门禁为准。
+
+---
+
+## 11. H1.2 首批工程实现补充（2026-11-21）
+
+在 H1.0 审计与 H1.1 契约之后，PR #3 已在现有 user-intent ResearchPlan 基线上落地两个纵向切片：
+
+### 11.1 Workspace 基础
+- ORM：MarketWorkspace、MarketContextSnapshot、MarketResearchQuestion、MarketQuestionDependency、MarketActivityEvent、MarketWorkspaceWorkflow。
+- 迁移：0032_market_workspace_foundation；从 0031_visa_catalog_overrides 向前。
+- API：Workspace 列表/详情/创建、Context 版本创建/采纳、研究问题创建/列表、活动时间线和 Workspace 关联 ResearchPlan 列表。
+- ResearchPlan 继续复用 WorkflowInstance / AgentRun / BackgroundJob / Evidence；不新增 ResearchPlan 表或搜索 Worker。
+
+### 11.2 候选实体与 Customer 匹配边界
+- ORM：MarketEntity、MarketEntityAlias、MarketWorkspaceEntity、MarketEntityCustomerLink。
+- 迁移：0033_market_entities；对 customers / evidence 增加 (organization_id,id) 复合唯一键，使关联由数据库强制同租户。
+- 实体类型 entity_kind 为开放文本；规范化名称使用 NFKC + casefold + whitespace folding；原始显示名与别名保留。
+- canonical_domain 不是唯一键；相同域名只形成可能重复提示。品牌、母子公司、区域网站或共享官网不能仅凭域名合并。
+- 一个 Workspace 跨空间复用候选实体，必须显式选择 existing_entity_id；没有自动按名称或域名复用。
+- Customer 匹配先建立 MATCH_CANDIDATE；只有 ADMIN 显式确认才成为 USER_CONFIRMED，不修改 Customer 主档。
+- Workspace Entity 列表采用分页与批量别名加载，避免 N+1 查询。
+
+### 11.3 本次 GitHub CI 已获得的验证
+- CI #196：Ruff passed；MyPy passed（156 source files）；OpenAPI 107 paths / 182 schemas 导出并提交；contract-check passed；docs-check 因 0032/0033 尚未列入迁移清单而失败。
+- 迁移清单现已增加 0032_market_workspace_foundation 和 0033_market_entities；新的严格 CI #206 正在执行。
+- PostgreSQL migration、Alembic drift check、全量 pytest、E2E 与最新 iOS build/test 必须以 CI #206 最终结论为准；在结果出来前不得标记通过。
+
+### 11.4 当前仍未实现
+- MarketInsight、MarketOpportunity、Evidence 内容版本化与显式 SUPPORTS / CONTRADICTS 关联。
+- Agent 驱动的自动实体发现/解析、实体合并审批工作流。
+- 原生 iOS Market Workspace 列表、详情、Context Review、Entity/Opportunity 体验。
+- 真实部署数据库的 alembic current 尚未读取；源码迁移 head 0033 不代表生产库已升级。

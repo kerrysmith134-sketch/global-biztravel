@@ -13,6 +13,31 @@ struct Place: Codable, Equatable, Identifiable {
     var longitude: Double?
     var city: String?
     var address: String?
+    var region: String?
+    var geocodeStatus: String?
+    var geocodeSource: String?
+    var geocodeConfidence: Decimal?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, countryCode, timezone, latitude, longitude, city, address
+        case region, geocodeStatus, geocodeSource, geocodeConfidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        countryCode = try container.decodeIfPresent(String.self, forKey: .countryCode)
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
+        latitude = try container.decodeIfPresent(Double.self, forKey: .latitude)
+        longitude = try container.decodeIfPresent(Double.self, forKey: .longitude)
+        city = try container.decodeIfPresent(String.self, forKey: .city)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        region = try container.decodeIfPresent(String.self, forKey: .region)
+        geocodeStatus = try container.decodeIfPresent(String.self, forKey: .geocodeStatus)
+        geocodeSource = try container.decodeIfPresent(String.self, forKey: .geocodeSource)
+        geocodeConfidence = try container.decodeDecimalIfPresent(forKey: .geocodeConfidence)
+    }
 
     init(
         id: String? = nil,
@@ -22,7 +47,11 @@ struct Place: Codable, Equatable, Identifiable {
         latitude: Double? = nil,
         longitude: Double? = nil,
         city: String? = nil,
-        address: String? = nil
+        address: String? = nil,
+        region: String? = nil,
+        geocodeStatus: String? = nil,
+        geocodeSource: String? = nil,
+        geocodeConfidence: Decimal? = nil
     ) {
         self.id = id
         self.name = name
@@ -32,6 +61,10 @@ struct Place: Codable, Equatable, Identifiable {
         self.longitude = longitude
         self.city = city
         self.address = address
+        self.region = region
+        self.geocodeStatus = geocodeStatus
+        self.geocodeSource = geocodeSource
+        self.geocodeConfidence = geocodeConfidence
     }
 
     var hasCoordinates: Bool {

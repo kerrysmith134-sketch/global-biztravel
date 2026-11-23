@@ -1,6 +1,6 @@
 # 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
-- 核对时间：2026-10-28
+- 核对时间：2026-11-22（市场情报 H1.9 增量更新）
 - 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
   规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
   后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前 head `0030`）
+## 5. 迁移清单（当前源码 head `0047`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -97,7 +97,27 @@
                            0029_assistant_msg_updated_at
                            0030_traveler_nationality
                            0031_visa_catalog_overrides
+                           0032_market_workspace_foundation
+                           0033_market_entities
+                           0034_market_insights_evidence_versions
+                           0035_market_opportunities
+                           0036_market_research_plan_evidence
+                           0037_market_question_answers
+                            0038_market_evidence_derivations
+                           0039_market_claim_verification
+                           0040_market_research_graph
+                           0041_market_question_evidence_scope
+                           0042_market_claim_lineage
+                           0043_market_opportunity_visit_links
+                           0044_visit_follow_up_lifecycle
+                           0045_receipt_assets
+                           0046_report_receipt_snapshot
+                           0047_receipt_ocr
 ```
+
+- **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
+
+- **H2.13 票据资产与报销证据快照（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。新增迁移 `0047_receipt_ocr`：对已保存的图片 ReceiptAsset 执行 Tesseract OCR，保存 content hash、引擎版本、候选字段与 AgentRun 关联；不复制原始票据文本，不因识别结果创建/修改费用。用户可对一次 OCR 运行单独确认或驳回，确认字段写入只追加审阅记录，数据库撤销应用角色 UPDATE/DELETE。PDF 仍可保留与下载，但当前 OCR 明确只支持图片格式。仍待完成对象存储孤儿对账、Trip 结账就绪度与 iOS 离线票据入口；CI/真实数据库验收以本分支最新 Actions 为准。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
@@ -257,3 +277,165 @@
   - `EngineMapping.makePlanDays` 用**设备时区**格式化计划日键 → 跨洲行程日整体偏移一天；
     改为按出发地时区格式化，并新增回归测试（上海 11/17 00:00 = 11/16T16:00Z）。
 - 验证：83 单测全绿；`LocalModeUITests` 增加驾驶舱断言与首启通知权限中断处理，通过并附截图。
+
+## 2026-11-21 市场情报引擎 H1 工程进展
+
+- **H1.0 源码审计**：已核对 Customer、Evidence、WorkflowInstance、AgentRun、BackgroundJob、Trip、Visit、Worker 注册、RLS helper、API 装配与 iOS Repository 组合根；详见 docs/review/sprint-h1-code-audit.md。
+- **H1.1 领域契约**：已冻结 Workspace、上下文快照、ResearchQuestion、MarketEntity、Insight、Opportunity 与证据关系边界；详见 docs/architecture/market-intelligence-domain-contract-v1.0.md。
+- **0032_market_workspace_foundation**：新增 MarketWorkspace、不可变 ContextSnapshot 版本、MarketResearchQuestion、依赖关系、MarketActivityEvent 和 MarketWorkspaceWorkflow；全部新组织表 FORCE RLS，并以 organization_id 复合关系限制跨组织关联。
+- **0033_market_entities**：新增 MarketEntity、Alias、WorkspaceEntity、EntityCustomerLink；候选实体与正式 Customer 分离，正式 Customer 只在 Admin 明确确认后关联；域名相同只提示可能重复，不自动合并，跨 Workspace 复用必须显式提供 entity_id。
+- **ResearchPlan 整合**：复用现有 ResearchPlan Workflow / AgentRun / BackgroundJob / Evidence，Workspace 可关联多个单次研究；不重复建设检索 Worker 和研究计划主表。
+- **API 契约**：已由仓库生成器导出 OpenAPI（107 paths / 182 schemas）并生成 28 份 iOS 契约样本；CI #196 的 Ruff、MyPy、contract-check 已通过。
+- **尚未通过的门禁**：CI #196 在 docs-check 阶段发现 0032/0033 未登记，本次已补齐本迁移清单；PostgreSQL migration、全量 pytest、Alembic drift check、E2E 与当前分支 iOS 完整验证仍以最新严格 CI 为准。不得将未执行项宣称为通过。
+
+
+## 10. 市场情报引擎 H1.3 — Evidence 版本化与 MarketInsight
+
+> 本节记录 `feat/sprint-h1.3-evidence-insights` 叠加分支中的工程实现；不覆盖上文原有 Trip MVP 验收记录。
+
+| 能力 | 实现 | 约束 |
+|---|---|---|
+| Evidence 兼容扩展 | 迁移 0034 为现有 evidence 增加 published_at、canonical_ref、content_hash、observation、verification_status、quality | 新字段允许 NULL；旧 record_many() 与原唯一约束保持不变 |
+| 来源内容版本化 | 新市场来源按规范化来源标识 + 原文 SHA-256 生成 version ref | 同来源同内容幂等；同来源内容改变生成新行；不同来源不会因内容相同被合并 |
+| MarketInsight | 组织级、Workspace 级版本化判断记录 | insight_key + version 唯一；生成来源 AgentRun 必须同组织；修订追加新版本 |
+| InsightEvidence | 显式 SUPPORTS / CONTRADICTS / CONTEXT 关联 | 同组织复合外键；Evidence 删除受保护；不使用多态 target_id |
+| 人工审核 | ACCEPTED / REJECTED 必须由用户动作记录 reviewer 和时间 | 采纳必须至少有一条支持证据，且不能有未解决反驳；同一 insight_key 同时只允许一个 ACCEPTED 版本 |
+| 证据不足 | 可通过 insufficient_evidence_reason 明确记录信息缺口 | 不允许将无证据判断采纳为已确认事实 |
+| 活动时间线 | 首次保存证据版本、Insight 创建/采纳/驳回追加 MarketActivityEvent | 幂等证据重放不重复产生事件；不提供普通修改/删除事件的 API |
+
+新增 API：
+- POST/GET /v1/market/workspaces/{workspace_id}/evidence
+- POST/GET /v1/market/workspaces/{workspace_id}/insights
+- POST .../insights/{insight_id}:accept
+- POST .../insights/{insight_id}:reject
+
+本节代码仍需在 PR #4 分支通过完整 CI 与 PostgreSQL 集成测试后，才能标记为验证完成。当前未声称 E2E、iOS UI 或生产数据库迁移已完成。MarketOpportunity、Trip 关联、iOS Workspace 原生 UI 与 Agent 自动化仍在后续切片。
+
+
+## 11. 市场情报引擎 H1.4 — Opportunity 与 Trip 行动关联
+
+> 本节记录 `feat/sprint-h1.4-opportunities-trip-links` 叠加分支的实现状态；以 PR #5 最新 CI 为最终验收依据。
+
+| 能力 | 实现 | 约束 |
+|---|---|---|
+| MarketOpportunity | Workspace 级机会候选、负责人、当前阶段及下一步动作 | 动态行业/机会类型；不替代 Customer 主档 |
+| Assessment 历史 | 每次评估写入 MarketOpportunityAssessment 不可变快照，Opportunity 行只保存当前投影 | 每维必须有 value 与 rationale；UNKNOWN 明确保留；证据引用必须属于该 Opportunity；不自动合成成交概率 |
+| 机会证据 | MarketOpportunityEvidence 显式 SUPPORTS / CONTRADICTS / CONTEXT | 必须引用当前 Workspace 或其 ResearchPlan Evidence；Evidence 删除受保护 |
+| 候选实体关联 | MarketOpportunityEntity 关联当前 Workspace 已纳入的 MarketEntity | 不能跨 Workspace 任意挂实体，不修改 Customer 主档 |
+| 人工资格确认 | QUALIFICATION_PENDING → QUALIFIED | 必须有支持证据、无未解决反驳，并记录确认人/时间/理由 |
+| 结果闭环 | ACTION_PLANNED → WON / LOST | 只允许人工记录且必须提供实际业务结果说明；DISQUALIFIED 必须提供理由 |
+| Workspace–Trip | MarketWorkspaceTripLink 多对多关联现有 Trip，允许解除和重新关联 | 复合组织外键；解除保留审计历史；Workspace 删除不级联删除 Trip |
+| 活动时间线 | 阶段变化、评估、机会证据/实体关联、Trip 关联/解除均写 MarketActivityEvent | 领域活动事件不替代 Outbox |
+
+新增 API 包括机会列表/创建/详情、证据关联、候选实体关联、评估、状态迁移、人工资格确认、结果记录，以及 Workspace Trip 列表/关联/解除。
+
+H1.4 当前代码 head 已通过 Backend 严格门禁：Ruff、MyPy、OpenAPI、文档、0035 PostgreSQL migration、Alembic drift 和全量 Backend pytest（416 passed / 1 skipped）。SwiftLint 与 Xcode Build 也已通过；iOS Unit Tests 正在对最新清理提交重新执行。PR #5 保持 Draft，尚未合并或部署。原生 iOS Opportunity UI 尚未实现。
+
+
+## 12. 市场情报引擎 H1.5 — Research Worker 版本化证据闭环
+
+新增迁移 `0036_market_research_plan_evidence.py`（revision `0036_market_plan_ev`，父 revision `0035_market_opps`），不新增 Evidence 主表、不新增搜索 Provider 或 Worker。
+
+| 能力 | 实现 | 约束 |
+|---|---|---|
+| Worker 版本化落证据 | Workspace 关联的 ResearchPlan Worker 将搜索标题/摘要写入既有 Evidence，并调用既有来源规范化与 SHA-256 版本键 | source + content 变化产生新 Evidence；同源同内容复用已有 Evidence |
+| ResearchPlan 来源归属 | MarketResearchPlanEvidence 关联 Workspace、ResearchPlan Workflow、Evidence、采集 AgentRun、搜索查询与 query SHA-256 | 复合外键跨租户保护；ResearchPlan 必须已关联当前 Workspace |
+| 多查询归因 | 同一结果被多条已审阅 query 命中时，一条 Evidence 可以关联多个 query | 唯一键使相同 query 关联幂等 |
+| ResearchPlan 详情 | 详情接口合并传统 ResearchPlan subject Evidence 与 Workspace 版本化 Evidence | 旧独立 ResearchPlan 保留原兼容读取路径 |
+| 未核验边界 | SearXNG 搜索结果固定写为 UNVERIFIED，保留 snippet、发布日期原值、Provider、Engine、query 与 AgentRun | 不把搜索摘要伪装为全文或已核验事实 |
+| 活动审计 | 新 Evidence 版本记录 MARKET_EVIDENCE_RECORDED；每个新 Plan/query 关联记录 MARKET_RESEARCH_EVIDENCE_LINKED | 同内容重放不重复创建 Evidence 事件或关系事件 |
+
+新增集成验收覆盖：相同 Workspace、相同 URL、相同内容跨 ResearchPlan 只形成一条 Evidence；查询归属分别保存；同 URL 内容变化追加新版本；ResearchPlan 详情和 Workspace Evidence 列表均可读取；未核验状态不被抬高。
+
+该切片仍不负责自动抓取全文、事实核验、LLM 综合结论或自动采纳 Insight；这些需要后续 Research Agent/Verification Agent 阶段。
+
+
+## 13. 市场情报引擎 H1.6 — ResearchQuestion 答案版本与证据审阅
+
+新增迁移 `0037_market_question_answers.py`（revision `0037_market_q_answers`，父 revision `0036_market_plan_ev`），增加：
+- MarketResearchQuestionAnswer：每个问题的不可变答案版本、假设、未知项、置信度、证据缺口、来源 AgentRun 与审核记录；
+- MarketResearchQuestionAnswerEvidence：明确 SUPPORTS / CONTRADICTS / CONTEXT 关系，引用同组织 Evidence；
+- 人工审核接口：答案默认 NEEDS_REVIEW；支持、反驳并存标记 CONFLICTED；只有人工 Admin 接受后，ResearchQuestion 才变为 ANSWERED；
+- 版本修订追加写入；新版本被采纳时旧 ACCEPTED 版本转 SUPERSEDED，同一问题至多一个 ACCEPTED；
+- acceptance_criteria 中的 independent_sources 在采纳前由后端检查独立来源 host 数量；其它未实现自动判定的标准要求审核说明，不伪装成机器验证；
+- 答案 Evidence 只允许来自当前 Workspace 或其关联 ResearchPlan；Service 校验 Workspace 来源范围，数据库复合外键确保答案/问题的组织与 Workspace 归属，以及 Evidence 同组织；
+- 创建、采纳、驳回事件进入 MarketActivityEvent。
+
+新增 API：
+- POST/GET /v1/market/workspaces/{workspace_id}/questions/{question_id}/answers
+- POST .../answers/{answer_id}:accept
+- POST .../answers/{answer_id}:reject
+
+该切片只建立证据驱动、可审核的答案工作流；尚未实现 LLM 自动回答/事实核验 Agent，也不自动将 ResearchPlan 产出的摘要采纳为答案。需要最新 CI 的 PostgreSQL 迁移、Alembic drift、全量 Backend pytest 和 iOS 门禁通过后才能验收。
+
+
+## 14. 市场情报引擎 H1.7 — Research Answer Agent
+
+新增异步答案草拟 Agent，完整复用现有组件：
+- API：`POST /v1/market/workspaces/{workspace_id}/questions/{question_id}:draft-answer`；
+- BackgroundJob job_type：`market_question_answer_draft`，注册于现有 `KNOWN_JOB_TYPES` 与 `TASK_HANDLERS`；
+- WorkflowInstance workflow_type：`market_question_answer`，通过 MarketWorkspaceWorkflow 归属 Workspace；
+- AgentRun 记录输入证据 ID 快照、Prompt 版本和最终答案版本；
+- 唯一模型入口为既有 LLMGateway；输出有版本化 Prompt/Schema，并记录 LLMInvocation；
+- 默认最多选择 24 条当前 Workspace 或关联 ResearchPlan Evidence；支持用户显式限定 evidence_ids；
+- 模型只能引用输入证据快照中的 ID，越权/虚构引用由服务端排除；
+- 未核验来源不能输出 HIGH confidence；缺少 SUPPORTS 时置信度降为 INSUFFICIENT；
+- LLM 降级、输出不可用或无来源内容时产生明确 evidence_gap，不编造事实；
+- 生成的答案版本始终 NEEDS_REVIEW / CONFLICTED，不自动采纳，不把问题标记为 ANSWERED；
+- 相同问题、Prompt 版本、Evidence 快照的在途任务使用 dedupe key 复用。
+
+新增 PostgreSQL 集成测试覆盖任务排队与去重、LLM Gateway 输入契约、来源 ID 白名单、未核验来源置信度上限、AgentRun/LLMInvocation 追溯、问题不被自动采纳及无证据时的显式缺口。
+
+H1.7 不新增迁移和 Evidence 主表；也未实现全文网页抓取、独立来源核验 Agent、Research Plan 自动扩展或 iOS 原生 Agent 状态/审核界面。必须在本分支完整 CI 通过后才可验收。
+
+
+## 15. 市场情报引擎 H1.8 — 用户选定来源的全文提取与派生证据链
+
+H1.8 在 H1.7 Research Answer Agent 的基础上补齐一段严格受控的“搜索摘要 → 原始网页提取”链路，但**不把网页抓取视为事实核验**。
+
+- **用户意图边界**：只有用户明确对 Workspace 中某条 `WEB_SEARCH_RESULT` 调用 `POST /v1/market/workspaces/{workspace_id}/evidence/{evidence_id}:extract`，才创建异步任务。搜索 Worker 不会自动抓取所有结果；其他 Evidence 类型、被驳回来源、跨 Workspace 来源均不能触发。
+- **安全 Provider**：新增 `SafeHttpResearchPageProvider`，默认 `unavailable`（关闭）。显式设置 `GBT_RESEARCH_PAGE_PROVIDER=safe_http` 后才开放；只允许 HTTP 80 / HTTPS 443，禁止 URL 凭证；每一跳重定向都重新校验 URL 与 DNS；DNS 返回的全部地址都必须是公网地址，socket 直接连接已校验 IP，TLS 仍用原域名验证证书/SNI；最多 3 次重定向并禁止 HTTPS 降级；最大读取 2 MiB（配置上限 4 MiB）、只接受 HTML/XHTML/纯文本、10 秒默认超时。
+- **数据留存**：不保存整页 HTML 或全文副本。提取后仅保存受限正文摘录（默认 12,000 字符，上限 20,000）以及规范化全文的 SHA-256 和字符数；来源元数据、抓取时间、最终 URL、提取器版本独立保留。全文哈希不是内容正确性证明。
+- **版本与血缘**：新增 `MarketEvidenceDerivation` / 迁移 `0038_market_evidence_derivations`，通过 organization + workspace + workflow + AgentRun + source Evidence + derived Evidence 复合外键保存只追加的派生关系；FORCE RLS；应用角色不能 UPDATE/DELETE/TRUNCATE。
+- **执行可靠性**：复用既有 WorkflowInstance、MarketWorkspaceWorkflow、BackgroundJob、AgentRun、TASK_HANDLERS、Job retry/DLQ。成功、失败、重试耗尽进入 MarketActivityEvent；API 可读取任务状态；相同来源内容与提取器版本使用 dedupe key。
+- **事实状态不升级**：抓取结果固定写入新的 `WEB_PAGE_EXTRACT` Evidence，`verification_status=UNVERIFIED`；原始搜索摘要 Evidence 不被覆盖。后续独立来源比对与事实核验属于 H1.9，不在 H1.8 的完成范围。
+- **新增测试**：纯离线 Provider 测试覆盖 URL/DNS/重定向 SSRF、安全端口、HTTP 429 可重试、404 终态、媒体类型/响应大小、隐藏内容剔除、正文截断与全文哈希；PostgreSQL 集成测试覆盖用户触发、Evidence 原文保留、异步任务执行、派生关系及状态读取。
+
+**当前验证限制**：本次代码已提交到 `feat/sprint-h1.8-source-page-extraction`，新增数据库迁移 `0038`、API、Worker 与测试；还未在当前执行环境运行 Python/真实 PostgreSQL，也未完成本分支 GitHub Actions。不得将本切片标记为已通过 CI 或已部署。生产环境默认关闭网页抓取 Provider。
+
+
+## 17. 市场情报 H1.9 — Claim-level Verification Agent
+
+H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张核验，不把“LLM 认为有支持”当作事实认证。
+
+- **显式运行边界**：用户对某一答案版本显式触发 `POST /v1/market/workspaces/{workspace_id}/answers/{answer_id}:verify-claims`。任务只读取该答案版本已关联的 Evidence 快照；不会自动搜索、抓取或扩展来源范围。
+- **领域对象**：新增 `MarketClaimVerificationRun`、`MarketClaim`、`MarketClaimEvidence` 与迁移 `0039_market_claim_verification`。保存答案版本、Workflow、AgentRun、输入摘要、原子主张版本、每条主张与 Evidence 的关系、来源 host/content hash/verification status 快照。
+- **Agent 职责**：拆分 FACT / ESTIMATE / OPINION / FORECAST / INFERENCE；逐条输出 SUPPORTS / CONTRADICTS / CONTEXT；必须引用输入 Evidence ID。服务端丢弃虚构 ID、重复 ID、非法关系和空白主张。
+- **确定性重算**：程序重新计算 PROVISIONAL_SUPPORT / POTENTIAL_CONTRADICTION / CONFLICTED / INSUFFICIENT，不直接采用模型置信度。只出现支持关系也仅是待审核的暂定支持。
+- **来源独立性**：记录精确 host、内容哈希、来源核验状态；同 host / 重复 hash 会标注；不同 host 只叫 DISTINCT_HOST_UNCONFIRMED。`confirmed_independent_source_count` 数据库约束固定为 0，Agent 不得自动声明来源独立。并同步修正 H1.6：答案级 `independent_sources` 先按 host + 内容指纹聚类为候选来源组，达到数量仍必须管理员人工核查出版方所有权/转载关系并填写审核说明；不会自动通过独立性。
+- **置信上限**：不输出 HIGH。默认 Evidence 未核验时为 LOW；只有所有支持 Evidence 已 VERIFIED 且存在多个 host 时才允许 MEDIUM，但仍明确说明 host 不等于独立出版方。
+- **人工审核**：管理员可采纳/驳回单条主张；只有没有反驳且有 SUPPORTS 关系的 PROVISIONAL_SUPPORT 可进入人工采纳。数据库 CHECK 与列级权限共同禁止直接修改主张正文、范围和证据映射；接受状态必须有 reviewer/time/reason 且无反驳支持。采纳状态不等于 VERIFIED，也不改写原答案版本或 Evidence 状态。
+- **数据库不可变性**：`gbt_app` 对 `market_claims` 只能 UPDATE 审核状态、人、时间、理由列；主张正文/范围/类型/核验结论/计数不可改。CHECK 约束要求 ACCEPTED 主张必须为 PROVISIONAL_SUPPORT、至少一条 SUPPORTS、零 CONTRADICTS，并具备非空审核理由；只追加 Evidence 关系仍禁止 UPDATE/DELETE/TRUNCATE。
+- **可靠性**：复用 BackgroundJob、WorkflowInstance、MarketWorkspaceWorkflow、AgentRun、LLMInvocation、幂等入队与 retry/DLQ；同一答案/提示版本/证据内容快照可复用完成的结果。
+- **新增验收测试**：覆盖支持与反驳冲突、不同 host 不能证明独立、UNVERIFIED 不升级、虚构 Evidence ID 排除、人工审核与原答案状态不变、无 Evidence 不可启动。
+
+**当前验证状态**：代码与迁移已提交至 `feat/sprint-h1.9-claim-verification-agent`，尚未完成最新 GitHub Actions；在 CI 全绿前不得声称 H1.9 已验收或迁移已部署。
+
+
+## 2026-11-22 市场情报引擎 H2.0 — Workspace context-aware Research DAG
+
+- 在现有 ResearchPlan Planner 输入中加入 Workspace 名称、目标和当前采纳的 ContextSnapshot；按 Workspace 行锁读取，确保规划输入与上下文版本一致。`EXTERNAL_ONLY` 仍然禁止读取 Trip / Customer 内部记录，但不丢弃用户主动提供的 Workspace 研究背景。
+- Planner context 不在 AgentRun 通用输入日志中复制原文；持久化 snapshot ID、版本和 SHA-256，并将上下文来源摘要记入 ResearchPlan Evidence。上下文指针无对应当前快照时，拒绝启动规划。
+- Research Planner Prompt 升级到 v2，结构化输出研究图节点（问题、优先级、验收标准、预期证据和依赖 key）。服务端对 LLM 输出进行数量、类型、key、边引用和 DAG 校验；循环边不写入数据库，并显式返回 planning warning。
+- 研究图节点物化为现有 `MarketResearchQuestion`，使用 `source=AGENT`、`generated_by_run_id` 和 `planner_question_key` 追溯生成运行；依赖写入现有 `MarketQuestionDependency`，不把依赖混同为 parent/child 层级。
+- 新增 `0040_market_research_graph`：为问题节点增加预期证据和 Planner 运行来源字段、同组织复合外键、节点 key 唯一约束及来源字段成对约束。
+- 新增 `GET /v1/market/workspaces/{workspace_id}/research-graph`，返回拓扑顺序、依赖边、就绪问题和阻塞状态；新增依赖 CRUD，服务端以 Workspace 行锁串行化写入并拒绝自依赖、跨 Workspace 引用和循环依赖。
+- **验证状态：** 已提交到 `feat/sprint-h2.0-research-dag-orchestrator`；真实 PostgreSQL 集成用例、OpenAPI / iOS 契约、Alembic drift、全量 Backend pytest 和 iOS 门禁须以该分支最新 CI 为准。当前不声称 H2.0 已验收或已部署。
+
+## 2026-11-22 市场情报引擎 H2.9 — Claim Impact Intelligence
+
+- 新增只读 `GET /v1/market/workspaces/{workspace_id}/claim-impact-report`，通过 `MarketClaimEvidence` 与 `MarketInsightEvidence` / `MarketOpportunityEvidence` 的精确 Evidence ID 关联识别可能受影响的下游市场判断与商业机会。
+- 最新主张仍待审核、存在冲突/证据不足时，报告提示关联消费者复核；新主张已采纳但消费者仍引用不在最新版本内的旧 Evidence 时，标记旧证据快照。
+- 报告不修改任何 Insight / Opportunity / Claim 状态，不推进或回退商机阶段，不自动撤销人工决策；不使用语义相似度推断依赖。
+- 查询按 organization + Workspace 隔离，并设置 200 条主张谱系、5000 条历史主张和 250 条影响关系的上限；截断时返回标记。
+- **验证状态：** 代码和集成测试已提交至 `feat/sprint-h2.9-claim-impact-intelligence`；最新 GitHub Actions 为最终验收依据。该分支保持 Draft PR，不代表已合并或已部署。

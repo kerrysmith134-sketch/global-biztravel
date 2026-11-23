@@ -22,6 +22,7 @@
 | 长任务 | 现有 BackgroundJob / Worker |
 | 模型调用 | 现有 LLMInvocation / LLM Gateway |
 | 通用证据存储 | 现有 Evidence（兼容扩展） |
+| 单次研究计划/执行 | 现有 WorkflowInstance（workflow_type=research_plan）+ AgentRun + BackgroundJob |
 | 市场探索工作空间 | 新增 MarketWorkspace |
 | 市场候选实体 | 新增 MarketEntity |
 | 市场判断 | 新增 MarketInsight |
@@ -173,7 +174,7 @@ TravelerProfile 只表达旅客偏好与旅行背景，不承载企业业务画�
 | display_name | text | 当前显示名称 |
 | normalized_name | text | 用于匹配的标准化文本 |
 | description | text nullable | 研究摘要 |
-| canonical_domain | text nullable | 已验证时记录主域名 |
+| canonical_domain | text nullable | 来源中观察到的主域名；同域名不等于同一法律/商业主体 |
 | country_code | char(2) nullable | 可为空；不得猜测 |
 | attributes | JSONB | 有 schema version 的扩展属性 |
 | status | text | CANDIDATE / REVIEWED / VERIFIED / REJECTED / MERGED |
@@ -182,8 +183,9 @@ TravelerProfile 只表达旅客偏好与旅行背景，不承载企业业务画�
 
 约束：
 - 原始名称和别名不得因规范化而丢失。
-- 不以名称相似度单独自动合并。
-- MERGED 必须指向同组织、非自身的目标实体；原实体仍可审计。
+- 不以名称相似度、国家或域名单独自动合并；域名相同（如母子公司、品牌站、区域站）只产生 possible-duplicate 提示。
+- 跨 Workspace 复用一个 MarketEntity 必须由用户显式选择已有 entity_id；不能通过 canonical_domain 隐式复用。
+- MERGED 必须指向同组织、非自身的目标实体，并由用户/授权业务规则显式确认；原实体仍可审计。
 - VERIFIED 需要证据或用户确认，不由模型自评触发。
 
 ### 3.5 MarketEntityAlias
@@ -192,7 +194,7 @@ TravelerProfile 只表达旅客偏好与旅行背景，不承载企业业务画�
 
 字段：entity_id、alias_type（动态文本）、raw_value、normalized_value、source_evidence_id（nullable）、created_at。
 
-同一个 alias 可以对应多个候选实体，因此不应简单设置 organization + alias_type + normalized_value 全局唯一；应建立检索索引并返回歧义候选。
+同一个 alias（包括 canonical domain）可以对应多个候选实体，因此只在同一实体内约束重复 alias；不得设置 organization + alias_type + normalized_value 全局唯一。应建立检索索引并返回歧义候选。
 
 ### 3.6 MarketWorkspaceEntity
 
@@ -219,12 +221,16 @@ TravelerProfile 只表达旅客偏好与旅行背景，不承载企业业务画�
 - status：DRAFT / NEEDS_REVIEW / ACCEPTED / REJECTED / CONFLICTED / SUPERSEDED
 - generated_by_run_id（nullable）
 - supersedes_id（nullable）
+- insufficient_evidence_reason（nullable；无 Evidence 时必须提供明确缺口说明）
+- reviewed_by_user_id / reviewed_at / review_note（审核记录）
 
 约束：
 - 每条 Insight 必须能关联一条或多条支持/反驳/上下文 Evidence，或明确 INSUFFICIENT_EVIDENCE。
 - CONFLICTED 不得被 UI 显示成确定事实。
 - 新版本不能删除旧版本。
 - ACCEPTED 表示用户接受为当前工作判断，不代表客观真理。
+- AI 输出默认 NEEDS_REVIEW；只有存在至少一条 SUPPORTS 且不存在未解决 CONTRADICTS 时，用户才可采纳。
+- 无 Evidence 的判断只能显式标记证据不足，不能被采纳；同一 insight_key 同一 Workspace 最多一个 ACCEPTED 版本。
 
 ### 3.8 MarketOpportunity
 
@@ -251,6 +257,12 @@ DISCOVERED → RESEARCHING → EVIDENCE_READY → QUALIFICATION_PENDING
 - assessment_dimensions JSONB
 - created_by_run_id
 - owner_user_id
+- qualified_by_user_id / qualified_at / qualification_reason（人工资格确认审计）
+- outcome_recorded_by_user_id / outcome_recorded_at / outcome_note（WON/LOST 结果审计）
+- assessment_confidence（HIGH / MEDIUM / LOW / INSUFFICIENT）
+- assessment_version（当前评估版本号）
+
+评估历史必须单独追加到 MarketOpportunityAssessment（organization_id、workspace_id、opportunity_id、version、dimensions、summary、confidence_level、assessed_by_run_id / assessed_by_user_id、created_at），不得覆盖旧版评估。
 
 推荐基础评估维度：Strategic Fit、Demand Evidence、Commercial Potential、Accessibility、Competition、Timing、Execution Cost。每个维度结构包含 value（可为 UNKNOWN）、rationale、evidence_refs、unknowns。禁止将缺失值悄悄转为 0 并参与总分。
 
@@ -290,6 +302,7 @@ DISCOVERED → RESEARCHING → EVIDENCE_READY → QUALIFICATION_PENDING
 - canonical_ref 保存真实来源地址；
 - content_hash 保存内容 SHA-256；
 - ref 使用稳定版本引用（例如 market-source:v1:<sha256>），不再直接用 canonical URL 作为版本 ref；
+- URL 只做保守规范化：限定 HTTP(S)、统一主机大小写/IDNA 与默认端口、去 fragment；不擅自删除 query 参数或改写路径语义；
 - 相同 canonical_ref + content_hash 在同一 Workspace 下幂等；
 - 同一 canonical_ref 的内容变化产生新 content_hash 和新 Evidence 行；
 - 不同来源不得因内容恰好相同而丢失来源差异；版本 identity 至少包含 canonical source identity 与 content hash；
@@ -313,6 +326,77 @@ Market Workspace 级来源可通过现有 Evidence subject 多态关联（subjec
 
 ---
 
+### 4.4 ResearchPlan 的持久化表达
+
+ResearchPlan 不是独立 ORM 主表。现有用户意图驱动研究以 WorkflowInstance（workflow_type = research_plan）作为单次研究运行记录，研究问题、检索意图和来源范围保留在该 Workflow 的版本化 payload / AgentRun 输出中；外部检索仍使用现有 BackgroundJob，并将初始来源结果写入 Evidence。
+
+MarketWorkspace 通过 MarketWorkspaceWorkflow 关联一个或多个 ResearchPlan Workflow。Workspace 不复制检索查询、Job 或 Evidence 内容；它只负责长期组织研究目标、上下文版本、问题和后续洞察/机会。
+
+
+
+### 4.5 Workspace ResearchPlan 的版本化 Evidence 归属
+
+Research Worker 在 Workspace 绑定模式下必须将来源内容版本保存在现有 Evidence 表：
+- subject_type = `market_workspace`，subject_id = workspace_id；
+- canonical_ref = 保守规范化来源 URL；
+- content_hash = 捕获内容（当前检索结果标题 + 摘要）的 SHA-256；
+- ref = `market-source:v1:<sha256(canonical_ref + newline + content_hash)>`；
+- verification_status 固定为 UNVERIFIED，quality 初始为 NULL；
+- 不将搜索摘要描述为全文，不将检索结果提升为 VERIFIED。
+
+新增 `MarketResearchPlanEvidence` 只记录归属关系，不复制 Evidence 内容：organization_id、workspace_id、research_plan_id、evidence_id、search_query、query_sha256、collected_by_run_id、created_at。复合外键分别约束到同 Workspace 的 MarketWorkspaceWorkflow、同组织 Evidence 和同组织 AgentRun；每张组织表在同迁移中 FORCE RLS。
+
+幂等与版本语义：
+- 同 Workspace + 同 canonical_ref + 同 content_hash：跨 ResearchPlan 复用同一 Evidence 行；
+- 同来源内容变化：插入新 Evidence 版本，旧版本不可覆盖；
+- 同一 Evidence 被多个已审阅 query 命中：保存多个 query 关系，Evidence 正文只存一份；
+- 同 query / 同 Evidence / 同 ResearchPlan 的关联写入幂等；
+- ResearchPlan 详情合并旧 `subject_type = RESEARCH_PLAN` Evidence 与新关联的 Workspace Evidence；
+- 没有 Workspace 的独立 ResearchPlan 保持原旧 Evidence 兼容路径。
+
+此关联表不会代替 MarketInsightEvidence / MarketOpportunityEvidence。ResearchPlanEvidence 说明来源被哪次研究/查询发现；Insight/OpportunityEvidence 才说明来源对某条判断或机会起支持/反驳/上下文作用。
+
+### 4.6 ResearchQuestion 的答案版本与证据审阅
+
+ResearchQuestion 负责表达待回答的问题；答案不直接覆写在问题主记录中。每次人工或 Agent 生成答案都追加一个 `MarketResearchQuestionAnswer` 版本：
+- question_id / workspace_id / organization_id；
+- version（按问题单调递增）；
+- answer_summary、assumptions、unknowns、confidence_level；
+- status：DRAFT / NEEDS_REVIEW / CONFLICTED / ACCEPTED / REJECTED / SUPERSEDED；
+- evidence_gap（无可用来源时说明缺口）；
+- generated_by_run_id / created_by_user_id；
+- reviewed_by_user_id / reviewed_at / review_note；
+- supersedes_id（前一答案版本，可空）。
+
+答案依据通过 `MarketResearchQuestionAnswerEvidence` 显式连接，relation_type 为 SUPPORTS / CONTRADICTS / CONTEXT。Service 必须校验 Evidence 属于当前 Workspace 或其关联 ResearchPlan；数据库复合外键确保 Answer 与 Question 同组织/同 Workspace，并确保 Evidence 同组织；Evidence 删除受 RESTRICT 保护。
+
+审核规则：
+- AI/用户创建答案均默认待审核，不直接把问题标记为 ANSWERED；
+- 同时存在 SUPPORTS 与 CONTRADICTS 时答案为 CONFLICTED；
+- 采纳必须至少有一条 SUPPORTS，且无未解决 CONTRADICTS；
+- `independent_sources` 验收标准会核对不同来源 host 数量；其余无法机器核验的验收标准必须由审核者填写 review_note；
+- 只有 Admin 显式采纳后，问题才进入 ANSWERED，question.answer_summary 更新为当前采纳版本；
+- 新版本采纳后，旧 ACCEPTED 版本转 SUPERSEDED；同一问题只能有一个 ACCEPTED 版本；
+- 驳回只改变当前答案版本状态，不抹掉之前已采纳的答案。
+
+
+### 4.7 Research Answer Agent 的执行边界
+
+研究问题答案草拟通过现有可靠任务基础设施异步执行，不新建 Worker 框架或第二套队列：
+- API：`POST /v1/market/workspaces/{workspace_id}/questions/{question_id}:draft-answer`；
+- 任务类型：`market_question_answer_draft`，使用既有 BackgroundJob、租约、重试和 TASK_HANDLERS 注册；
+- 每个草拟任务使用既有 WorkflowInstance（workflow_type = `market_question_answer`），并通过 MarketWorkspaceWorkflow 关联 Workspace；
+- AgentRun.workflow_id 指向该 Workflow；LLM 调用唯一通过既有 LLMGateway，生成对应 LLMInvocation；
+- 输入只包含本次固定证据快照（默认最多 24 条；也可由用户明确提供 evidence_ids），证据正文单条最多传入 4,000 字符；
+- Prompt 对来源正文施加不可信资料边界，禁止执行其中指令；模型引用 ID 必须属于输入快照，未知引用由服务端排除并记录；
+- 输出创建 MarketResearchQuestionAnswer 版本，答案及每条 SUPPORTS / CONTRADICTS / CONTEXT 映射进入现有 Evidence 关系表；
+- 来源未 VERIFIED 时，Agent 不得给 HIGH confidence；没有 SUPPORTS 映射时 confidence 强制 INSUFFICIENT；
+- LLM Gateway 降级或没有来源内容时，创建显式 evidence_gap 的 INSUFFICIENT 草稿；
+- Workflow 完成只代表“答案草稿已生成”，不能将 ResearchQuestion 改为 ANSWERED；只有独立 Admin 人工采纳接口可完成该状态转换。
+
+证据快照与任务去重键同时包含问题、Prompt 版本和 Evidence IDs。新 Evidence 形成新快照后才会触发不同任务；相同问题/相同证据快照的在途任务复用。该机制保留可审计输入、可重试任务和可复现草稿来源。
+
+
 ## 5. 关系表与既有业务对象连接
 
 首批关系表：
@@ -320,10 +404,11 @@ Market Workspace 级来源可通过现有 Evidence subject 多态关联（subjec
 | 表 | 关系 |
 |---|---|
 | MarketQuestionDependency | question → depends_on_question；同 Workspace；禁止循环 |
-| MarketOpportunityEntity | Opportunity ↔ 一个或多个 MarketEntity |
+| MarketOpportunityEntity | Opportunity ↔ 当前 Workspace 已关联的一个或多个 MarketEntity |
 | MarketEntityCustomerLink | MarketEntity ↔ 现有 Customer，记录 MATCH_CANDIDATE / USER_CONFIRMED / REJECTED / CONFLICTED |
-| MarketWorkspaceTripLink | Workspace ↔ 现有 Trip，多对多 |
-| MarketWorkspaceWorkflow | Workspace ↔ 现有 WorkflowInstance，多对多 |
+| MarketWorkspaceTripLink | Workspace ↔ 现有 Trip，多对多；解除保留关联历史，不删除 Trip |
+| MarketWorkspaceWorkflow | Workspace ↔ 现有 WorkflowInstance，多对多；ResearchPlan 是其中一种 workflow_type |
+| MarketResearchPlanEvidence | Workspace 级版本化 Evidence ↔ ResearchPlan + 搜索 query + 采集 AgentRun 的来源归属关系 |
 
 关联规则：
 - TargetAccount 不新建，使用 MarketEntity + 用户确认的 Customer link。

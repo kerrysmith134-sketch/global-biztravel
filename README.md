@@ -5,9 +5,15 @@
 多线事务"变成"系统主动推进、人只做决策"。
 
 设计文档：`docs/design/global-business-travel-os-design-v2.0.md`（v2.0，优化后正式版）
+<<<<<<< HEAD
 市场情报引擎：`docs/design/market-intelligence-engine-v1.0.md`（Sprint H，通用市场情报领域与 Agent 架构）
 H1 实施计划：`docs/review/sprint-h1-execution-plan.md`（领域基础、证据数据架构与工程验收）
 H1.0 源码审计：`docs/review/sprint-h1-code-audit.md`（真实模型复用矩阵、Evidence 缺口与安全发现）
+=======
+市场情报引擎：`docs/design/market-intelligence-engine-v1.0.md`（通用市场情报领域与 Agent 架构）
+H1 实施计划：`docs/review/sprint-h1-execution-plan.md`（领域基础、证据数据架构与工程验收）
+H1.0 源码审计：`docs/review/sprint-h1-code-audit.md`（模型复用矩阵、Evidence 缺口与安全发现）
+>>>>>>> github/feat/sprint-h2.13-ios-receipt-vault
 H1.1 领域契约：`docs/architecture/market-intelligence-domain-contract-v1.0.md`（实体、状态机、证据版本化与租户关系约束）
 评审报告：`docs/review/design-review-and-optimization-plan.md`
 实施进度：`docs/review/implementation-status.md`（按里程碑与批次逐项核对，含验证记录）
@@ -64,7 +70,11 @@ global-travel-os/                      # 本工作区
 ├── services/api/
 │   ├── app/                            # api / services / models / llm / workers / data
 │   │                                   # （业务规则在 services，路由只做 HTTP 语义）
+<<<<<<< HEAD
 │   ├── migrations/versions/            # 0001…0031（源码最新 revision：0031_visa_catalog_overrides；部署库以 alembic current 为准）
+=======
+│   ├── migrations/versions/            # 0001…0047（源码最新迁移：0047_receipt_ocr；部署库以 alembic current 为准）
+>>>>>>> github/feat/sprint-h2.13-ios-receipt-vault
 │   └── tests/                          # 单元 + 真实 PostgreSQL 集成 + 验收场景
 ├── packages/planning-engine/           # 纯计算规划引擎（无 IO、不碰数据库、不订票）
 ├── contracts/openapi.yaml              # 契约唯一真相源（由 make openapi 导出）

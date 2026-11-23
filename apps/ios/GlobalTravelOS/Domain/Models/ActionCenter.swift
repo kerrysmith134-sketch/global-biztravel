@@ -60,6 +60,7 @@ struct ActionItem: Codable, Equatable, Identifiable {
         case "EXPENSE_REPORT": return "报销单"
         case "JOB": return "后台任务"
         case "CRM_SYNC": return "CRM 同步"
+        case "VISIT_FOLLOW_UP": return "拜访跟进"
         default: return kind
         }
     }

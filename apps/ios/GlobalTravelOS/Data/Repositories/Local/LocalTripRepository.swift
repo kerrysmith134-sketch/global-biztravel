@@ -235,7 +235,8 @@ final class LocalTripRepository: TripRepository {
             currency: body.currency.uppercased(),
             occurredOn: occurredOn,
             note: body.note,
-            receiptRef: nil
+            receiptRef: nil,
+            receiptAssetId: body.receiptAssetId
         )
         try database.upsert(
             table: "trip_expenses", id: expense.id,

@@ -19,6 +19,7 @@ import logging
 import signal
 import time
 from types import FrameType
+from uuid import UUID
 
 from sqlalchemy import select
 
@@ -26,8 +27,12 @@ from app.config import get_settings
 from app.db import org_session, owner_session
 from app.models.identity import Organization
 from app.models.reliability import BackgroundJob
+from app.models.workflow import WorkflowInstance
 from app.services import (
     job_service,
+    market_claim_verification_service,
+    market_research_dag_service,
+    market_source_extraction_service,
     memory_service,
     metrics_service,
     notification_service,
@@ -105,6 +110,36 @@ def claim_one(org_id: str, *, worker_id: str, lease_seconds: int | None) -> str 
         return None if job is None else str(job.id)
 
 
+def _wake_research_graph_for_job(session, org_id: str, job: BackgroundJob) -> None:
+    """Wake active Workspace DAG executions after research inputs or an answer change."""
+    payload = job.payload or {}
+    workspace_id = payload.get("workspace_id")
+    if not workspace_id and job.job_type == job_service.JOB_TYPE_RESEARCH_EXECUTE:
+        plan_id = payload.get("plan_id")
+        if plan_id:
+            plan = session.scalars(
+                select(WorkflowInstance).where(
+                    WorkflowInstance.organization_id == org_id,
+                    WorkflowInstance.id == str(plan_id),
+                    WorkflowInstance.workflow_type == "research_plan",
+                )
+            ).one_or_none()
+            if plan is not None:
+                workspace_id = (plan.payload or {}).get("workspace_id")
+    if not workspace_id:
+        return
+    try:
+        parsed_workspace_id = UUID(str(workspace_id))
+    except (TypeError, ValueError):
+        logger.warning("研究任务 %s 包含无效 workspace_id，未唤醒 DAG", job.id)
+        return
+    market_research_dag_service.wake_workspace_executions(
+        session,
+        org_id,
+        parsed_workspace_id,
+    )
+
+
 def execute_one(
     org_id: str, job_id: str, *, worker_id: str, lease_seconds: int | None
 ) -> bool:
@@ -126,7 +161,8 @@ def execute_one(
             logger.warning("任务 %s 已不在本 Worker 名下（status=%s），跳过", job_id, job.status)
             return False
 
-        handler = TASK_HANDLERS.get(job.job_type)
+        job_type = job.job_type
+        handler = TASK_HANDLERS.get(job_type)
         if handler is None:
             # 未注册的任务类型是配置问题，重试不会变好：直接终态失败，让它在运维界面上可见。
             job_service.fail(
@@ -137,20 +173,59 @@ def execute_one(
 
         try:
             result = handler(session, job)
+            if job_type in {
+                job_service.JOB_TYPE_MARKET_QUESTION_ANSWER,
+                job_service.JOB_TYPE_RESEARCH_EXECUTE,
+                job_service.JOB_TYPE_MARKET_PAGE_EXTRACT,
+            }:
+                _wake_research_graph_for_job(session, org_id, job)
         except TaskFailed as exc:
             if exc.retryable:
                 session.rollback()
-                job_service.fail(session, job_id, error=exc.message, retryable=True)
+                failed_job = job_service.fail(session, job_id, error=exc.message, retryable=True)
+                if (
+                    job_type == job_service.JOB_TYPE_MARKET_QUESTION_ANSWER
+                    and failed_job.status == "DEAD"
+                ):
+                    _wake_research_graph_for_job(session, org_id, job)
+                if job_type == job_service.JOB_TYPE_MARKET_PAGE_EXTRACT and failed_job.status == "DEAD":
+                    market_source_extraction_service.mark_retry_exhausted(
+                        session, org_id, failed_job.id, error=exc.message
+                    )
+                if job_type == job_service.JOB_TYPE_MARKET_CLAIM_VERIFY and failed_job.status == "DEAD":
+                    market_claim_verification_service.mark_job_failed(
+                        session, org_id, failed_job.id, error=exc.message
+                    )
                 logger.warning("任务 %s 失败（可重试）：%s", job_id, exc.message)
             else:
                 # 不可重试：保留处理器已经写入的副作用再结算。计划不可行时必须把
                 # plan.not_feasible 事件留下，否则出行会永远停在 PLANNING。
-                job_service.fail(session, job_id, error=exc.message, retryable=False)
+                failed_job = job_service.fail(session, job_id, error=exc.message, retryable=False)
+                if job_type == job_service.JOB_TYPE_MARKET_QUESTION_ANSWER:
+                    _wake_research_graph_for_job(session, org_id, job)
+                if job_type == job_service.JOB_TYPE_MARKET_CLAIM_VERIFY:
+                    market_claim_verification_service.mark_job_failed(
+                        session, org_id, job_id, error=exc.message
+                    )
                 logger.warning("任务 %s 失败（终态）：%s", job_id, exc.message)
             return False
         except Exception as exc:  # noqa: BLE001 —— 未预期异常按可重试处理，绝不能炸掉整个循环
             session.rollback()
-            job_service.fail(session, job_id, error=f"{type(exc).__name__}: {exc}", retryable=True)
+            error_message = f"{type(exc).__name__}: {exc}"
+            failed_job = job_service.fail(session, job_id, error=error_message, retryable=True)
+            if (
+                job_type == job_service.JOB_TYPE_MARKET_QUESTION_ANSWER
+                and failed_job.status == "DEAD"
+            ):
+                _wake_research_graph_for_job(session, org_id, job)
+            if job_type == job_service.JOB_TYPE_MARKET_PAGE_EXTRACT and failed_job.status == "DEAD":
+                market_source_extraction_service.mark_retry_exhausted(
+                    session, org_id, failed_job.id, error=error_message
+                )
+            if job_type == job_service.JOB_TYPE_MARKET_CLAIM_VERIFY and failed_job.status == "DEAD":
+                market_claim_verification_service.mark_job_failed(
+                    session, org_id, failed_job.id, error=error_message
+                )
             logger.exception("任务 %s 未预期异常，已回滚并排入重试", job_id)
             return False
 
@@ -160,9 +235,21 @@ def execute_one(
 
 
 def recover_leases(org_id: str, *, limit: int = 50) -> int:
-    """回收租约过期的任务，返回回收条数。"""
+    """回收租约过期的任务；答案 Agent 进入 DEAD 时唤醒父 DAG。"""
     with org_session(org_id) as session:
-        return len(job_service.recover_expired_leases(session, limit=limit))
+        recovered_ids = job_service.recover_expired_leases(session, limit=limit)
+        if recovered_ids:
+            dead_answer_jobs = session.scalars(
+                select(BackgroundJob).where(
+                    BackgroundJob.organization_id == org_id,
+                    BackgroundJob.id.in_(recovered_ids),
+                    BackgroundJob.job_type == job_service.JOB_TYPE_MARKET_QUESTION_ANSWER,
+                    BackgroundJob.status == "DEAD",
+                )
+            ).all()
+            for job in dead_answer_jobs:
+                _wake_research_graph_for_job(session, org_id, job)
+        return len(recovered_ids)
 
 
 def publish_outbox(org_id: str, *, batch_size: int | None) -> outbox_service.PublishReport:

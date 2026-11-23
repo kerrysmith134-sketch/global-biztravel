@@ -14,6 +14,9 @@ protocol VisitRepository {
     func crmSyncJob(id: String) async throws -> CrmSyncJob
     func briefing(visitId: String) async throws -> VisitBriefing
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit
+    func followUps(visitId: String) async throws -> VisitFollowUpFeed
+    func decideFollowUp(visitId: String, request: VisitFollowUpDecisionRequest) async throws -> VisitFollowUp
+    func updateFollowUp(id: String, request: VisitFollowUpUpdateRequest) async throws -> VisitFollowUp
 }
 
 final class RemoteVisitRepository: VisitRepository {
@@ -30,14 +33,24 @@ final class RemoteVisitRepository: VisitRepository {
     func createVisit(tripId: String, request: VisitCreateRequest) async throws -> TripVisit {
         var placeId = request.placeId
         if placeId == nil {
-            // 客户端没有独立地点 API 的公开模型——复用 BackendPlaceCreate（与建行程同路径）。
+            guard let latitude = request.latitude, let longitude = request.longitude,
+                  (-90.0...90.0).contains(latitude),
+                  (-180.0...180.0).contains(longitude) else {
+                throw APIError.serverError(
+                    code: "VALIDATION_ERROR",
+                    message: "新建拜访地点必须提供有效的纬度和经度",
+                    traceId: nil,
+                    details: [:]
+                )
+            }
+            // Location coordinates are explicit input; never substitute a city center or 0,0.
             let placeBody = BackendPlaceCreate(
                 name: request.placeName ?? request.title,
                 city: request.city,
                 countryCode: (request.countryCode ?? "").uppercased(),
                 timezone: request.timezone,
-                lat: request.latitude ?? 0,
-                lon: request.longitude ?? 0
+                lat: latitude,
+                lon: longitude
             )
             let place: PlaceCreated = try await client.send(
                 try Endpoints.createPlace(placeBody), as: PlaceCreated.self
@@ -51,6 +64,7 @@ final class RemoteVisitRepository: VisitRepository {
             "priority": request.priority,
             "movement_mode": request.movementMode,
         ]
+        if let customerId = request.customerId { body["customer_id"] = customerId }
         if let value = request.businessValue { body["business_value"] = value }
         return try await client.send(
             try Endpoints.createVisit(tripId: tripId, body: body), as: TripVisit.self
@@ -78,6 +92,31 @@ final class RemoteVisitRepository: VisitRepository {
 
     func briefing(visitId: String) async throws -> VisitBriefing {
         try await client.send(Endpoints.visitBriefing(visitId: visitId), as: VisitBriefing.self)
+    }
+
+
+    func followUps(visitId: String) async throws -> VisitFollowUpFeed {
+        try await client.send(Endpoints.visitFollowUps(visitId: visitId), as: VisitFollowUpFeed.self)
+    }
+
+    func decideFollowUp(
+        visitId: String,
+        request: VisitFollowUpDecisionRequest
+    ) async throws -> VisitFollowUp {
+        try await client.send(
+            try Endpoints.decideVisitFollowUp(visitId: visitId, request: request),
+            as: VisitFollowUp.self
+        )
+    }
+
+    func updateFollowUp(
+        id: String,
+        request: VisitFollowUpUpdateRequest
+    ) async throws -> VisitFollowUp {
+        try await client.send(
+            try Endpoints.updateVisitFollowUp(id: id, request: request),
+            as: VisitFollowUp.self
+        )
     }
 
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {
@@ -185,6 +224,25 @@ final class OfflineVisitRepository: VisitRepository {
 
     func briefing(visitId: String) async throws -> VisitBriefing {
         try await remote.briefing(visitId: visitId)
+    }
+
+
+    func followUps(visitId: String) async throws -> VisitFollowUpFeed {
+        try await remote.followUps(visitId: visitId)
+    }
+
+    func decideFollowUp(
+        visitId: String,
+        request: VisitFollowUpDecisionRequest
+    ) async throws -> VisitFollowUp {
+        try await remote.decideFollowUp(visitId: visitId, request: request)
+    }
+
+    func updateFollowUp(
+        id: String,
+        request: VisitFollowUpUpdateRequest
+    ) async throws -> VisitFollowUp {
+        try await remote.updateFollowUp(id: id, request: request)
     }
 
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {

@@ -18,6 +18,33 @@ from app.models.geo import Customer, CustomerPlace, Place
 from app.models.identity import Membership, Organization, User
 from app.models.integrations import ExternalSignal
 from app.models.llm import LLMInvocation
+from app.models.market import (
+    MarketActivityEvent,
+    MarketClaim,
+    MarketClaimEvidence,
+    MarketClaimVerificationRun,
+    MarketContextSnapshot,
+    MarketEntity,
+    MarketEntityAlias,
+    MarketEntityCustomerLink,
+    MarketEvidenceDerivation,
+    MarketInsight,
+    MarketInsightEvidence,
+    MarketOpportunity,
+    MarketOpportunityAssessment,
+    MarketOpportunityEntity,
+    MarketOpportunityEvidence,
+    MarketOpportunityVisitLink,
+    MarketQuestionDependency,
+    MarketResearchPlanEvidence,
+    MarketResearchQuestion,
+    MarketResearchQuestionAnswer,
+    MarketResearchQuestionAnswerEvidence,
+    MarketWorkspace,
+    MarketWorkspaceEntity,
+    MarketWorkspaceTripLink,
+    MarketWorkspaceWorkflow,
+)
 from app.models.memory import PlanAttemptLog, TravelerProfile, TripMemorySummary
 from app.models.metrics import MetricSnapshot
 from app.models.notification_preferences import NotificationPreference
@@ -30,7 +57,8 @@ from app.models.proactive import (
     ProactiveTrigger,
     SuggestionAudit,
 )
-from app.models.records import VisitRecord
+from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun
+from app.models.records import VisitFollowUp, VisitFollowUpEvent, VisitRecord
 from app.models.reliability import (
     BackgroundJob,
     IdempotencyRecord,
@@ -74,6 +102,31 @@ __all__ = [
     "ImportBatch",
     "ImportRow",
     "LLMInvocation",
+    "MarketActivityEvent",
+    "MarketClaim",
+    "MarketClaimEvidence",
+    "MarketClaimVerificationRun",
+    "MarketContextSnapshot",
+    "MarketEntity",
+    "MarketEntityAlias",
+    "MarketEntityCustomerLink",
+    "MarketEvidenceDerivation",
+    "MarketInsight",
+    "MarketInsightEvidence",
+    "MarketOpportunity",
+    "MarketOpportunityAssessment",
+    "MarketOpportunityEvidence",
+    "MarketOpportunityVisitLink",
+    "MarketOpportunityEntity",
+    "MarketWorkspaceTripLink",
+    "MarketQuestionDependency",
+    "MarketResearchQuestion",
+    "MarketResearchQuestionAnswer",
+    "MarketResearchQuestionAnswerEvidence",
+    "MarketResearchPlanEvidence",
+    "MarketWorkspace",
+    "MarketWorkspaceEntity",
+    "MarketWorkspaceWorkflow",
     "Membership",
     "MetricSnapshot",
     "Notification",
@@ -88,6 +141,11 @@ __all__ = [
     "PlanVersion",
     "ProactiveSuggestion",
     "ProactiveTrigger",
+    "ReceiptAsset",
+    "ReceiptOcrRun",
+    "ReceiptOcrReview",
+    "ReceiptOcrRun",
+    "ReceiptOcrReview",
     "SuggestionAudit",
     "SyncOperation",
     "TravelPolicy",
@@ -99,5 +157,7 @@ __all__ = [
     "Visit",
     "VisaCase",
     "VisitRecord",
+    "VisitFollowUp",
+    "VisitFollowUpEvent",
     "WorkflowInstance",
 ]

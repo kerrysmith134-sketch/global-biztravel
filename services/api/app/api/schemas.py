@@ -137,6 +137,70 @@ class CustomerRead(ORMModel):
     updated_at: datetime
 
 
+class CustomerMapCustomerRead(BaseModel):
+    """地图最小客户投影：不返回联系人等与地图无关的个人信息。"""
+
+    id: UUID
+    name: str
+    tier: Tier
+    country_code: str | None = None
+    industry: str | None = None
+    status: CustomerStatus
+
+
+class CustomerMapPlaceRead(BaseModel):
+    id: UUID
+    label: str | None = None
+    is_primary: bool = False
+    name: str
+    address_line: str | None = None
+    city: str | None = None
+    region: str | None = None
+    country_code: str | None = None
+    timezone: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    geocode_status: GeocodeStatus
+    geocode_source: str | None = None
+    geocode_confidence: Decimal | None = None
+
+
+class CustomerMapLocationRead(BaseModel):
+    customer: CustomerMapCustomerRead
+    place: CustomerMapPlaceRead
+
+
+class CustomerMapCountryCoverageRead(BaseModel):
+    """按实际关联地点归集的国家客户覆盖；客户按国家去重，不表示外部市场规模。"""
+
+    country_code: str
+    customers_total: int = 0
+    tier_a_customers: int = 0
+    tier_b_customers: int = 0
+    tier_c_customers: int = 0
+    active_customers: int = 0
+    prospect_customers: int = 0
+    inactive_customers: int = 0
+    locations_total: int = 0
+    locations_mapped: int = 0
+
+
+class CustomerMapSummaryRead(BaseModel):
+    customers_with_locations: int = 0
+    customers_without_locations: int = 0
+    locations_total: int = 0
+    locations_mapped: int = 0
+    locations_missing_coordinates: int = 0
+    countries: dict[str, int] = Field(default_factory=dict)
+    country_stats: list[CustomerMapCountryCoverageRead] = Field(default_factory=list)
+
+
+class CustomerMapLocationsRead(BaseModel):
+    items: list[CustomerMapLocationRead]
+    summary: CustomerMapSummaryRead
+    next_cursor: str | None = None
+
+
 # ------------------------------------------------------------------- trips
 class TripCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -375,7 +439,7 @@ class ImportConfirmRead(BaseModel):
 PlanVersionStatus = Literal["DRAFT", "ACTIVE", "SUPERSEDED"]
 PlanSolutionStatus = Literal["OPTIMAL", "FEASIBLE", "PARTIAL", "INFEASIBLE", "UNKNOWN", "ERROR"]
 PlanSolver = Literal["ortools", "heuristic"]
-JobType = Literal["plan_trip", "draft_minutes", "crm_sync", "fx_rate_sync"]
+JobType = Literal["plan_trip", "draft_minutes", "crm_sync", "fx_rate_sync", "research_execute"]
 JobStatus = Literal["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "DEAD", "CANCELLED"]
 
 
@@ -736,6 +800,81 @@ class VisitRecordRead(BaseModel):
     applied: bool
     conflict: ConflictRecordRead | None = None
     created_at: datetime
+
+
+
+# --------------------------------------------------------- visit follow-ups
+VisitFollowUpSource = Literal["RECORD", "MINUTES_DRAFT", "MANUAL"]
+VisitFollowUpDecision = Literal["ACCEPT", "DISMISS", "CREATE"]
+VisitFollowUpStatus = Literal["OPEN", "IN_PROGRESS", "COMPLETED", "DISMISSED"]
+
+
+class VisitFollowUpEventRead(BaseModel):
+    id: UUID
+    event_type: str
+    from_status: str | None = None
+    to_status: str
+    actor_user_id: UUID | None = None
+    note: str | None = None
+    created_at: datetime
+
+
+class VisitFollowUpRead(ORMModel):
+    id: UUID
+    visit_id: UUID
+    trip_id: UUID
+    source_type: VisitFollowUpSource
+    source_record_id: UUID | None = None
+    source_agent_run_id: UUID | None = None
+    source_index: int | None = None
+    source_title: str | None = None
+    source_due_date: str | None = None
+    title: str
+    due_date: str | None = None
+    status: VisitFollowUpStatus
+    created_by_user_id: UUID | None = None
+    confirmed_by_user_id: UUID | None = None
+    confirmed_at: datetime | None = None
+    completed_by_user_id: UUID | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    events: list[VisitFollowUpEventRead] = Field(default_factory=list)
+
+
+class VisitFollowUpSuggestionRead(BaseModel):
+    source_type: Literal["RECORD", "MINUTES_DRAFT"]
+    source_record_id: UUID | None = None
+    source_agent_run_id: UUID | None = None
+    source_index: int
+    title: str
+    due_date: str | None = None
+    source_created_at: datetime
+
+
+class VisitFollowUpFeedRead(BaseModel):
+    visit_id: UUID
+    trip_id: UUID
+    items: list[VisitFollowUpRead] = Field(default_factory=list)
+    suggestions: list[VisitFollowUpSuggestionRead] = Field(default_factory=list)
+
+
+class VisitFollowUpDecisionCreate(BaseModel):
+    source_type: VisitFollowUpSource
+    decision: VisitFollowUpDecision
+    source_record_id: UUID | None = None
+    source_agent_run_id: UUID | None = None
+    source_index: int | None = Field(default=None, ge=0)
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    due_date: str | None = Field(default=None, max_length=40)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class VisitFollowUpUpdate(BaseModel):
+    status: VisitFollowUpStatus | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    due_date: str | None = Field(default=None, max_length=40)
+    note: str | None = Field(default=None, max_length=2000)
 
 
 # ------------------------------------------------------------ offline sync
@@ -1243,6 +1382,7 @@ class ExpenseCreate(BaseModel):
     occurred_on: date
     note: str | None = None
     receipt_ref: str | None = None
+    receipt_asset_id: UUID | None = None
 
 
 class ExpenseRead(ORMModel):
@@ -1254,7 +1394,80 @@ class ExpenseRead(ORMModel):
     occurred_on: date
     note: str | None = None
     receipt_ref: str | None = None
+    receipt_asset_id: UUID | None = None
     created_at: datetime
+
+
+class ReceiptAssetRead(ORMModel):
+    id: UUID
+    trip_id: UUID
+    original_filename: str
+    mime_type: str
+    byte_length: int
+    sha256: str
+    storage_status: Literal["AVAILABLE", "QUARANTINED", "DELETE_PENDING"]
+    uploaded_at: datetime
+
+
+class ReceiptOcrReviewCreate(BaseModel):
+    decision: Literal["CONFIRMED", "REJECTED"]
+    merchant: str | None = Field(default=None, min_length=1, max_length=200)
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    currency: str | None = Field(default=None, min_length=3, max_length=3, pattern="^[A-Za-z]{3}$")
+    occurred_on: date | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _validate_review(self) -> ReceiptOcrReviewCreate:
+        if self.merchant is not None:
+            merchant = self.merchant.strip()
+            if not merchant:
+                raise ValueError("商户名称不能为空白")
+            object.__setattr__(self, "merchant", merchant)
+        if (self.amount is None) != (self.currency is None):
+            raise ValueError("确认金额时必须同时确认币种")
+        has_fields = any(
+            value is not None
+            for value in (self.merchant, self.amount, self.occurred_on)
+        )
+        if self.decision == "CONFIRMED" and not has_fields:
+            raise ValueError("确认 OCR 结果时至少需要确认一个字段")
+        if self.decision == "REJECTED" and not (self.note and self.note.strip()):
+            raise ValueError("驳回 OCR 结果必须填写原因")
+        if self.decision == "REJECTED" and has_fields:
+            raise ValueError("驳回 OCR 结果不能同时提交确认字段")
+        if self.note is not None:
+            note = self.note.strip()
+            object.__setattr__(self, "note", note or None)
+        if self.currency is not None:
+            object.__setattr__(self, "currency", self.currency.upper())
+        return self
+
+
+class ReceiptOcrReviewRead(ORMModel):
+    id: UUID
+    receipt_ocr_run_id: UUID
+    decision: Literal["CONFIRMED", "REJECTED"]
+    confirmed_fields: dict[str, Any]
+    note: str | None = None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime
+
+
+class ReceiptOcrRunRead(ORMModel):
+    id: UUID
+    receipt_asset_id: UUID
+    agent_run_id: UUID
+    content_sha256: str
+    engine: str
+    engine_version: str
+    status: Literal["RUNNING", "SUCCEEDED", "FAILED"]
+    candidates: dict[str, Any]
+    error: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+    created_at: datetime
+    review: ReceiptOcrReviewRead | None = None
 
 
 class CurrencyTotalRead(BaseModel):
@@ -1374,6 +1587,149 @@ class AssistantActionCreate(BaseModel):
         "create_trip_draft",
     ]
     subject_id: UUID
+
+
+# ------------------------------------------------------------ user-intent research
+ResearchSourceScope = Literal[
+    "AUTO",
+    "INTERNAL_ONLY",
+    "EXTERNAL_ONLY",
+    "INTERNAL_AND_EXTERNAL",
+]
+
+
+class ResearchPlanCreate(BaseModel):
+    """显式研究请求。上下文文本由用户主动提供或从用户材料中提取。"""
+
+    request: str = Field(min_length=3, max_length=6000)
+    source_scope: ResearchSourceScope = "AUTO"
+    trip_id: UUID | None = None
+    customer_id: UUID | None = None
+    workspace_id: UUID | None = None
+    target_question_id: UUID | None = None
+    context_text: str | None = Field(default=None, max_length=16000)
+    locale: str | None = Field(default=None, max_length=35)
+
+    @model_validator(mode="after")
+    def _normalise_request(self) -> ResearchPlanCreate:
+        self.request = self.request.strip()
+        if len(self.request) < 3:
+            raise ValueError("request 至少需要 3 个非空字符")
+        if self.target_question_id is not None and self.workspace_id is None:
+            raise ValueError("target_question_id 必须同时指定 workspace_id")
+        if self.context_text is not None:
+            self.context_text = self.context_text.strip() or None
+        if self.locale is not None:
+            self.locale = self.locale.strip() or None
+        return self
+
+
+class ResearchPlanGraphNode(BaseModel):
+    key: str
+    question: str
+    rationale: str | None = None
+    priority: int = Field(default=3, ge=1, le=5)
+    acceptance_criteria: list[str] = Field(default_factory=list)
+    expected_evidence: list[str] = Field(default_factory=list)
+    depends_on_keys: list[str] = Field(default_factory=list)
+
+
+class ResearchPlanIntentRead(BaseModel):
+    """模型从本次用户输入中提取的任务范围，不内置任何行业。"""
+
+    intent_summary: str
+    objective: str
+    subject: str
+    domain: str | None = None
+    geographies: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
+    time_scope: str | None = None
+    research_questions: list[str] = Field(default_factory=list)
+    research_graph: list[ResearchPlanGraphNode] = Field(default_factory=list)
+    planning_warnings: list[str] = Field(default_factory=list)
+    search_queries: list[str] = Field(default_factory=list)
+    source_types: list[str] = Field(default_factory=list)
+    deliverables: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    external_research_needed: bool = False
+
+
+class ResearchPlannerAuditRead(BaseModel):
+    agent_run_id: UUID
+    llm_invocation_id: UUID | None = None
+    model: str
+    degraded: bool = False
+    error: str | None = None
+
+
+class ResearchEvidenceRead(ORMModel):
+    id: UUID
+    kind: str
+    ref: str
+    source: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    retrieved_at: datetime | None = None
+    created_at: datetime
+
+
+class ResearchExecuteCreate(BaseModel):
+    """用户审阅后确认的查询。执行器只允许使用此列表。"""
+
+    search_queries: list[str] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def _normalise_queries(self) -> ResearchExecuteCreate:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in self.search_queries:
+            query = raw.strip()
+            if not query:
+                continue
+            if len(query) > 500:
+                raise ValueError("每条搜索查询不能超过 500 个字符")
+            key = query.casefold()
+            if key not in seen:
+                seen.add(key)
+                normalized.append(query)
+        if not normalized:
+            raise ValueError("至少需要一条非空搜索查询")
+        if len(normalized) > 12:
+            raise ValueError("搜索查询最多 12 条")
+        self.search_queries = normalized
+        return self
+
+
+class ResearchExecuteAccepted(BaseModel):
+    plan_id: UUID
+    job_id: UUID
+    status: JobStatus
+    reused: bool = False
+
+
+class ResearchPlanRead(BaseModel):
+    id: UUID
+    trip_id: UUID | None = None
+    customer_id: UUID | None = None
+    workspace_id: UUID | None = None
+    target_question_id: UUID | None = None
+    generated_question_ids: list[UUID] = Field(default_factory=list)
+    job_id: UUID | None = None
+    retrieval_error: str | None = None
+    results_count: int = 0
+    reviewed_search_queries: list[str] = Field(default_factory=list)
+    request: str
+    requested_scope: ResearchSourceScope
+    recommended_scope: Literal[
+        "INTERNAL_ONLY", "EXTERNAL_ONLY", "INTERNAL_AND_EXTERNAL"
+    ]
+    status: Literal["PLANNED"] = "PLANNED"
+    retrieval_status: Literal[
+        "NOT_STARTED", "QUEUED", "RUNNING", "COMPLETED", "FAILED"
+    ] = "NOT_STARTED"
+    plan: ResearchPlanIntentRead
+    planner: ResearchPlannerAuditRead
+    evidence: list[ResearchEvidenceRead] = Field(default_factory=list)
+    created_at: datetime
 
 
 # ------------------------------------------------------------ local guide
@@ -1497,7 +1853,7 @@ class TripOutcomeRead(BaseModel):
 ActionCategory = Literal[
     "DECISION", "APPROVAL", "RUNNING", "FAILED", "PREPARATION", "COMPLETED"
 ]
-ActionKind = Literal["SUGGESTION", "EXPENSE_REPORT", "JOB", "CRM_SYNC"]
+ActionKind = Literal["SUGGESTION", "EXPENSE_REPORT", "JOB", "CRM_SYNC", "VISIT_FOLLOW_UP", "TRIP_CLOSEOUT"]
 
 
 class ActionItemRead(BaseModel):
@@ -1599,6 +1955,11 @@ class ExpenseReportItemRead(ORMModel):
     occurred_on: date
     note: str | None = None
     receipt_ref: str | None = None
+    receipt_asset_id: UUID | None = None
+    receipt_sha256: str | None = None
+    receipt_original_filename: str | None = None
+    receipt_mime_type: str | None = None
+    receipt_byte_length: int | None = None
 
 
 class ExpenseReportRead(BaseModel):
@@ -1613,6 +1974,56 @@ class ExpenseReportRead(BaseModel):
     totals: list[CurrencyTotalRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+CloseoutReadinessStatus = Literal[
+    "BLOCKED",
+    "READY_FOR_REVIEW",
+    "REPORT_SUBMITTED",
+    "REPORT_APPROVED",
+    "READY_WITH_EXCEPTIONS",
+]
+CloseoutIssueSeverity = Literal["BLOCKER", "WARNING"]
+
+
+class TripCloseoutIssueRead(BaseModel):
+    id: str
+    code: str
+    severity: CloseoutIssueSeverity
+    title: str
+    detail: str
+    source_type: str
+    source_id: UUID
+    action_hint: str
+
+
+class TripCloseoutSummaryRead(BaseModel):
+    visit_count: int
+    visit_outcome_count: int
+    visits_open_count: int
+    visits_missing_outcome_count: int
+    expense_count: int
+    expenses_in_report_count: int
+    expenses_not_in_report_count: int
+    expenses_without_receipt_count: int
+    receipt_asset_count: int
+    receipt_asset_unavailable_count: int
+    ocr_needs_review_count: int
+    open_business_follow_up_count: int
+    latest_report_id: UUID | None = None
+    latest_report_status: ExpenseReportStatus | None = None
+    blocker_count: int
+    warning_count: int
+
+
+class TripCloseoutReadinessRead(BaseModel):
+    trip_id: UUID
+    status: CloseoutReadinessStatus
+    generated_at: datetime
+    summary: TripCloseoutSummaryRead
+    totals_by_currency: list[CurrencyTotalRead] = Field(default_factory=list)
+    blockers: list[TripCloseoutIssueRead] = Field(default_factory=list)
+    warnings: list[TripCloseoutIssueRead] = Field(default_factory=list)
 
 
 class ExpenseReportDecisionRequest(BaseModel):
@@ -1632,5 +2043,1090 @@ class CrmSyncJobRead(ORMModel):
     job_id: UUID | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ------------------------------------------------------ market workspaces
+MarketWorkspaceStatus = Literal["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "ARCHIVED"]
+MarketContextExtractionStatus = Literal["NOT_STARTED", "PENDING", "COMPLETED", "FAILED"]
+MarketQuestionSource = Literal["USER", "AGENT"]
+MarketQuestionStatus = Literal["OPEN", "IN_PROGRESS", "ANSWERED", "BLOCKED", "CANCELLED"]
+MarketActivityActor = Literal["USER", "SYSTEM"]
+
+
+class MarketWorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    objective: str | None = Field(default=None, max_length=4000)
+    initial_context: str | None = Field(default=None, max_length=20000)
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _non_blank_values(self) -> MarketWorkspaceCreate:
+        if not self.name.strip():
+            raise ValueError("工作空间名称不能为空")
+        if self.initial_context is not None and not self.initial_context.strip():
+            raise ValueError("初始业务背景不能为空白")
+        return self
+
+
+class MarketWorkspaceRead(ORMModel):
+    id: UUID
+    name: str
+    objective: str | None
+    status: MarketWorkspaceStatus
+    owner_user_id: UUID | None
+    current_context_version: int | None
+    settings: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketContextCreate(BaseModel):
+    raw_input: str = Field(min_length=1, max_length=20000)
+    adopt: bool = False
+
+    @model_validator(mode="after")
+    def _raw_input_not_blank(self) -> MarketContextCreate:
+        if not self.raw_input.strip():
+            raise ValueError("业务背景不能为空白")
+        return self
+
+
+class MarketContextRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    version: int
+    raw_input: str
+    extracted_context: dict[str, Any]
+    user_overrides: dict[str, Any]
+    unknowns: list[Any]
+    provenance: dict[str, Any]
+    extraction_status: MarketContextExtractionStatus
+    extraction_prompt_id: str | None
+    extraction_prompt_version: str | None
+    is_current: bool
+    created_by_user_id: UUID | None
+    created_at: datetime
+
+
+class MarketResearchQuestionCreate(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    rationale: str | None = Field(default=None, max_length=4000)
+    priority: int = Field(default=3, ge=1, le=5)
+    acceptance_criteria: list[Any] = Field(default_factory=list)
+    parent_question_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _question_not_blank(self) -> MarketResearchQuestionCreate:
+        if not self.question.strip():
+            raise ValueError("研究问题不能为空白")
+        return self
+
+
+class MarketResearchQuestionRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    parent_question_id: UUID | None
+    question: str
+    rationale: str | None
+    source: MarketQuestionSource
+    priority: int
+    status: MarketQuestionStatus
+    acceptance_criteria: list[Any]
+    expected_evidence: list[Any] = Field(default_factory=list)
+    generated_by_run_id: UUID | None = None
+    planner_question_key: str | None = None
+    answer_summary: str | None
+    blocked_reason: str | None
+    created_by_user_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketQuestionDependencyCreate(BaseModel):
+    depends_on_question_id: UUID
+
+
+class MarketQuestionDependencyRead(ORMModel):
+    id: UUID
+    question_id: UUID
+    depends_on_question_id: UUID
+    created_at: datetime
+
+
+class MarketQuestionDependencyDeleted(BaseModel):
+    dependency_id: UUID
+    deleted: bool
+
+
+class MarketResearchGraphNodeRead(BaseModel):
+    id: UUID
+    question: str
+    rationale: str | None
+    priority: int
+    status: MarketQuestionStatus
+    source: MarketQuestionSource
+    parent_question_id: UUID | None
+    generated_by_run_id: UUID | None
+    planner_question_key: str | None
+    acceptance_criteria: list[Any]
+    expected_evidence: list[Any]
+    depends_on_question_ids: list[UUID]
+    waiting_on_question_ids: list[UUID]
+    readiness: Literal[
+        "READY",
+        "WAITING",
+        "BLOCKED",
+        "ANSWERED",
+        "CANCELLED",
+        "QUEUED",
+        "RUNNING",
+        "WAITING_FOR_REVIEW",
+        "WAITING_FOR_EVIDENCE",
+        "WAITING_FOR_DEPENDENCY",
+        "FAILED",
+        "REJECTED",
+    ]
+
+
+class MarketResearchGraphEdgeRead(BaseModel):
+    question_id: UUID
+    depends_on_question_id: UUID
+
+
+class MarketResearchGraphRead(BaseModel):
+    workspace_id: UUID
+    nodes: list[MarketResearchGraphNodeRead]
+    edges: list[MarketResearchGraphEdgeRead]
+    topological_order: list[UUID]
+    ready_question_ids: list[UUID]
+    cycle_detected: bool
+
+
+class MarketResearchGraphExecutionCreate(BaseModel):
+    max_concurrency: int | None = Field(default=None, ge=1, le=4)
+    max_questions: int | None = Field(default=None, ge=1, le=12)
+    max_duration_minutes: int | None = Field(default=None, ge=1, le=180)
+    max_cost: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=4)
+
+
+class MarketResearchGraphExecutionNodeRead(BaseModel):
+    question_id: UUID
+    state: Literal[
+        "READY",
+        "QUEUED",
+        "RUNNING",
+        "WAITING_FOR_REVIEW",
+        "WAITING_FOR_EVIDENCE",
+        "WAITING_FOR_DEPENDENCY",
+        "ANSWERED",
+        "FAILED",
+        "REJECTED",
+        "BLOCKED",
+        "CANCELLED",
+    ]
+    latest_answer_id: UUID | None = None
+    latest_answer_status: str | None = None
+    job_id: UUID | None = None
+    error: str | None = None
+
+
+class MarketResearchGraphExecutionRead(BaseModel):
+    execution_id: UUID
+    workspace_id: UUID
+    workflow_status: Literal["RUNNING", "COMPLETED", "FAILED", "REJECTED"]
+    execution_state: Literal[
+        "QUEUED",
+        "READY",
+        "RUNNING",
+        "WAITING_FOR_REVIEW",
+        "WAITING_FOR_EVIDENCE",
+        "WAITING_FOR_DEPENDENCY",
+        "COMPLETED",
+        "PARTIAL",
+        "FAILED",
+        "CANCELLED",
+        "BUDGET_EXHAUSTED",
+        "TIMED_OUT",
+    ]
+    graph_digest: str
+    max_concurrency: int
+    max_questions: int
+    max_duration_minutes: int
+    max_cost: Decimal | None
+    cost_estimate: Decimal | None
+    cost_metering_available: bool
+    dispatched_count: int
+    completed_count: int
+    active_count: int
+    ready_count: int
+    waiting_review_count: int
+    waiting_evidence_count: int
+    failed_count: int
+    node_states: list[MarketResearchGraphExecutionNodeRead]
+    stop_reason: str | None
+    created_at: datetime
+    started_at: datetime | None
+    deadline_at: datetime
+    finished_at: datetime | None
+
+
+class MarketResearchGraphExecutionAccepted(BaseModel):
+    execution_id: UUID
+    job_id: UUID
+    workflow_status: str
+    reused: bool
+
+
+class MarketResearchGraphExecutionCancelled(BaseModel):
+    execution_id: UUID
+    cancelled: bool
+    cancelled_jobs: int
+    running_jobs: int
+
+
+class MarketResearchGraphQuestionRetryAccepted(BaseModel):
+    execution_id: UUID
+    question_id: UUID
+    job_id: UUID
+    reused: bool
+
+
+class MarketActivityEventRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    actor_type: MarketActivityActor
+    actor_user_id: UUID | None
+    aggregate_type: str
+    aggregate_id: UUID
+    event_type: str
+    payload: dict[str, Any]
+    created_at: datetime
+
+
+# ----------------------------------------------------------- market entities
+MarketEntityStatus = Literal["CANDIDATE", "REVIEWED", "VERIFIED", "REJECTED", "MERGED"]
+MarketWorkspaceEntityStatus = Literal["DISCOVERED", "RESEARCHING", "INCLUDED", "EXCLUDED"]
+MarketEntityCustomerLinkStatus = Literal[
+    "MATCH_CANDIDATE", "USER_CONFIRMED", "REJECTED", "CONFLICTED"
+]
+
+
+class MarketWorkspaceEntityCreate(BaseModel):
+    existing_entity_id: UUID | None = None
+    entity_kind: str | None = Field(default=None, min_length=1, max_length=80)
+    display_name: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=5000)
+    canonical_domain: str | None = Field(default=None, max_length=500)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    discovery_reason: str | None = Field(default=None, max_length=2000)
+    relevance_note: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _entity_values_not_blank(self) -> MarketWorkspaceEntityCreate:
+        if self.existing_entity_id is not None:
+            if any(
+                value is not None
+                for value in (
+                    self.entity_kind,
+                    self.display_name,
+                    self.description,
+                    self.canonical_domain,
+                    self.country_code,
+                )
+            ) or self.attributes:
+                raise ValueError("关联已有实体时，不允许覆盖实体主档字段")
+        else:
+            if not self.entity_kind or not self.entity_kind.strip():
+                raise ValueError("新建实体必须提供实体类型")
+            if not self.display_name or not self.display_name.strip():
+                raise ValueError("新建实体必须提供实体名称")
+            if self.country_code is not None:
+                self.country_code = self.country_code.strip().upper()
+        return self
+
+
+class MarketEntityAliasRead(ORMModel):
+    id: UUID
+    alias_type: str
+    raw_value: str
+    normalized_value: str
+    source_evidence_id: UUID | None
+    created_at: datetime
+
+
+class MarketEntityRead(ORMModel):
+    id: UUID
+    entity_kind: str
+    display_name: str
+    normalized_name: str
+    description: str | None
+    canonical_domain: str | None
+    country_code: str | None
+    attributes: dict[str, Any]
+    status: MarketEntityStatus
+    created_at: datetime
+    updated_at: datetime
+    aliases: list[MarketEntityAliasRead] = Field(default_factory=list)
+
+
+class MarketWorkspaceEntityRead(BaseModel):
+    entity: MarketEntityRead
+    discovery_reason: str | None
+    relevance_note: str | None
+    status: MarketWorkspaceEntityStatus
+    first_seen_at: datetime
+    last_seen_at: datetime
+    possible_duplicate_entity_ids: list[UUID] = Field(default_factory=list)
+
+
+class MarketEntityCustomerLinkCreate(BaseModel):
+    customer_id: UUID
+    matching_basis: dict[str, Any] = Field(default_factory=dict)
+
+
+MarketInsightStatus = Literal["DRAFT", "NEEDS_REVIEW", "ACCEPTED", "REJECTED", "CONFLICTED", "SUPERSEDED"]
+MarketInsightConfidence = Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
+MarketEvidenceVerification = Literal["UNVERIFIED", "PARTIALLY_VERIFIED", "VERIFIED", "DISPUTED", "REJECTED"]
+MarketEvidenceRelation = Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"]
+
+
+class MarketEvidenceCreate(BaseModel):
+    canonical_ref: str = Field(min_length=8, max_length=2000)
+    content: str = Field(min_length=1, max_length=250000)
+    kind: str = Field(default="WEB_SOURCE", min_length=1, max_length=80)
+    source: str | None = Field(default=None, max_length=300)
+    published_at: datetime | None = None
+    observation: str | None = Field(default=None, max_length=10000)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _non_blank_source_content(self) -> MarketEvidenceCreate:
+        if not self.content.strip():
+            raise ValueError("Evidence 原文内容不能为空")
+        if not self.kind.strip():
+            raise ValueError("Evidence kind 不能为空")
+        return self
+
+
+class MarketEvidenceRead(ORMModel):
+    id: UUID
+    subject_type: str
+    subject_id: UUID
+    kind: str
+    ref: str
+    source: str | None
+    payload: dict[str, Any]
+    retrieved_at: datetime | None
+    published_at: datetime | None
+    canonical_ref: str | None
+    content_hash: str | None
+    observation: str | None
+    verification_status: MarketEvidenceVerification | None
+    quality: dict[str, Any] | None
+    created_at: datetime
+
+
+class MarketEvidenceIntelligenceItem(BaseModel):
+    evidence_id: UUID
+    kind: str
+    source: str | None
+    canonical_ref: str | None
+    source_host: str | None
+    content_fingerprint: str | None
+    fingerprint_source: Literal["STORED_HASH", "BODY_SHA256", "UNAVAILABLE"]
+    verification_status: MarketEvidenceVerification
+    published_at: datetime | None
+    retrieved_at: datetime | None
+    age_days: int | None
+    origin_assessment: Literal[
+        "DUPLICATE_CONTENT", "SAME_HOST", "HOST_IDENTIFIED", "HOST_UNKNOWN"
+    ]
+    duplicate_content_evidence_ids: list[UUID] = Field(default_factory=list)
+    same_host_evidence_ids: list[UUID] = Field(default_factory=list)
+    same_source_version_evidence_ids: list[UUID] = Field(default_factory=list)
+    derived_page_evidence_ids: list[UUID] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+
+
+class MarketEvidenceIntelligenceRead(BaseModel):
+    workspace_id: UUID
+    generated_at: datetime
+    total_evidence_count: int
+    analyzed_evidence_count: int
+    is_truncated: bool
+    distinct_host_count: int
+    duplicate_content_group_count: int
+    duplicate_content_evidence_count: int
+    multi_version_source_count: int
+    multi_version_evidence_count: int
+    unverified_count: int
+    partially_verified_count: int
+    verified_count: int
+    disputed_count: int
+    rejected_count: int
+    missing_publication_date_count: int
+    missing_content_hash_count: int
+    unextracted_search_result_count: int
+    items: list[MarketEvidenceIntelligenceItem] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+
+
+class MarketSourceVerificationEvidenceRead(BaseModel):
+    evidence_id: UUID
+    relation_type: Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"]
+    source_host: str | None
+    content_fingerprint: str | None
+    fingerprint_source: Literal["STORED_HASH", "BODY_SHA256", "UNAVAILABLE"]
+    content_changed_since_assessment: bool
+    status_changed_since_assessment: bool
+    source_version_changed: bool
+    latest_source_evidence_id: UUID | None
+    unextracted: bool
+    issues: list[str] = Field(default_factory=list)
+
+
+class MarketSourceVerificationClaimRead(BaseModel):
+    claim_id: UUID
+    claim_lineage_id: UUID
+    claim_version: int
+    statement: str
+    claim_type: Literal["FACT", "ESTIMATE", "OPINION", "FORECAST", "INFERENCE"]
+    claim_status: Literal[
+        "NEEDS_REVIEW", "CONFLICTED", "INSUFFICIENT", "ACCEPTED", "REJECTED"
+    ]
+    verification_verdict: Literal[
+        "PROVISIONAL_SUPPORT", "POTENTIAL_CONTRADICTION", "CONFLICTED", "INSUFFICIENT"
+    ]
+    supporting_evidence_count: int
+    contradicting_evidence_count: int
+    distinct_host_count: int
+    distinct_content_count: int
+    source_origin_state: Literal[
+        "NO_SUPPORTING_EVIDENCE",
+        "SINGLE_SOURCE_ONLY",
+        "SAME_HOST_ONLY",
+        "POSSIBLE_SYNDICATION",
+        "MULTIPLE_HOSTS_UNCONFIRMED",
+        "CONFLICTING_SIGNALS",
+    ]
+    changed_source_count: int
+    status_changed_source_count: int
+    unextracted_source_count: int
+    evidence: list[MarketSourceVerificationEvidenceRead] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+
+
+class MarketSourceVerificationActionRead(BaseModel):
+    action_id: str
+    action_type: Literal[
+        "EXTRACT_SOURCE_PAGE",
+        "COMPLETE_SOURCE_METADATA",
+        "INVESTIGATE_POSSIBLE_SYNDICATION",
+        "REVIEW_SOURCE_VERSION_DRIFT",
+        "REVERIFY_CLAIM_AFTER_SOURCE_CHANGE",
+        "REVIEW_CONTRADICTORY_EVIDENCE",
+        "SEEK_SEPARATELY_ORIGINATED_CORROBORATION",
+    ]
+    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    target_type: Literal["EVIDENCE", "CLAIM"]
+    target_id: UUID
+    evidence_ids: list[UUID] = Field(default_factory=list)
+    claim_id: UUID | None = None
+    title: str
+    rationale: str
+    research_question_id: UUID | None = None
+    research_question_status: MarketQuestionStatus | None = None
+
+
+class MarketSourceVerificationPlanRead(BaseModel):
+    workspace_id: UUID
+    generated_at: datetime
+    total_evidence_count: int
+    analyzed_evidence_count: int
+    evidence_truncated: bool
+    total_claim_count: int
+    analyzed_claim_count: int
+    claims_truncated: bool
+    claims_needing_corroboration_count: int
+    claims_with_contradictions_count: int
+    claims_with_changed_sources_count: int
+    action_count: int
+    actions_truncated: bool
+    claims: list[MarketSourceVerificationClaimRead] = Field(default_factory=list)
+    actions: list[MarketSourceVerificationActionRead] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
+class MarketSourceVerificationTaskRead(BaseModel):
+    action_id: str
+    action_type: Literal[
+        "EXTRACT_SOURCE_PAGE",
+        "COMPLETE_SOURCE_METADATA",
+        "INVESTIGATE_POSSIBLE_SYNDICATION",
+        "REVIEW_SOURCE_VERSION_DRIFT",
+        "REVERIFY_CLAIM_AFTER_SOURCE_CHANGE",
+        "REVIEW_CONTRADICTORY_EVIDENCE",
+        "SEEK_SEPARATELY_ORIGINATED_CORROBORATION",
+    ]
+    question_id: UUID
+    question: str
+    question_status: MarketQuestionStatus
+    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    reused: bool
+    depends_on_question_ids: list[UUID] = Field(default_factory=list)
+
+
+class MarketSourceVerificationPlanApplicationRead(BaseModel):
+    workspace_id: UUID
+    plan_digest: str
+    applied_at: datetime
+    action_count: int
+    created_question_count: int
+    reused_question_count: int
+    dependency_count: int
+    tasks: list[MarketSourceVerificationTaskRead] = Field(default_factory=list)
+    reused_application: bool = False
+
+
+class MarketInsightEvidenceInput(BaseModel):
+    evidence_id: UUID
+    relation_type: MarketEvidenceRelation
+    rationale: str | None = Field(default=None, max_length=2000)
+
+
+class MarketInsightCreate(BaseModel):
+    insight_key: str = Field(min_length=1, max_length=160)
+    insight_type: str = Field(min_length=1, max_length=100)
+    statement: str = Field(min_length=1, max_length=10000)
+    assumptions: list[Any] = Field(default_factory=list)
+    unknowns: list[Any] = Field(default_factory=list)
+    implications: list[Any] = Field(default_factory=list)
+    confidence_level: MarketInsightConfidence = "INSUFFICIENT"
+    generated_by_run_id: UUID | None = None
+    evidence: list[MarketInsightEvidenceInput] = Field(default_factory=list, max_length=100)
+    insufficient_evidence_reason: str | None = Field(default=None, max_length=3000)
+
+    @model_validator(mode="after")
+    def _evidence_or_gap_reason(self) -> MarketInsightCreate:
+        if not self.evidence and not (self.insufficient_evidence_reason or "").strip():
+            raise ValueError("Insight 必须关联证据，或明确说明证据不足")
+        evidence_ids = [item.evidence_id for item in self.evidence]
+        if len(evidence_ids) != len(set(evidence_ids)):
+            raise ValueError("同一 Insight 不得重复关联相同 Evidence")
+        if not self.insight_key.strip() or not self.insight_type.strip() or not self.statement.strip():
+            raise ValueError("Insight key、类型和判断内容不能为空")
+        return self
+
+
+class MarketInsightEvidenceRead(BaseModel):
+    relation_type: MarketEvidenceRelation
+    rationale: str | None
+    evidence: MarketEvidenceRead
+
+
+class MarketInsightRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    version: int
+    insight_key: str
+    insight_type: str
+    statement: str
+    assumptions: list[Any]
+    unknowns: list[Any]
+    implications: list[Any]
+    confidence_level: MarketInsightConfidence
+    status: MarketInsightStatus
+    generated_by_run_id: UUID | None
+    supersedes_id: UUID | None
+    insufficient_evidence_reason: str | None
+    created_by_user_id: UUID | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
+    review_note: str | None
+    created_at: datetime
+    updated_at: datetime
+    evidence: list[MarketInsightEvidenceRead] = Field(default_factory=list)
+
+
+class MarketInsightReview(BaseModel):
+    review_note: str | None = Field(default=None, max_length=3000)
+
+MarketQuestionAnswerStatus = Literal[
+    "DRAFT", "NEEDS_REVIEW", "CONFLICTED", "ACCEPTED", "REJECTED", "SUPERSEDED"
+]
+
+
+class MarketQuestionAnswerEvidenceInput(BaseModel):
+    evidence_id: UUID
+    relation_type: MarketEvidenceRelation
+    rationale: str | None = Field(default=None, max_length=2000)
+
+
+class MarketQuestionAnswerCreate(BaseModel):
+    answer_summary: str = Field(min_length=1, max_length=12000)
+    assumptions: list[Any] = Field(default_factory=list)
+    unknowns: list[Any] = Field(default_factory=list)
+    confidence_level: MarketInsightConfidence = "INSUFFICIENT"
+    generated_by_run_id: UUID | None = None
+    evidence: list[MarketQuestionAnswerEvidenceInput] = Field(default_factory=list, max_length=100)
+    evidence_gap: str | None = Field(default=None, max_length=3000)
+
+    @model_validator(mode="after")
+    def _answer_has_evidence_or_gap(self) -> MarketQuestionAnswerCreate:
+        if not self.answer_summary.strip():
+            raise ValueError("答案内容不能为空白")
+        if not self.evidence and not (self.evidence_gap or "").strip():
+            raise ValueError("答案必须关联证据，或明确说明证据缺口")
+        relations = [(item.evidence_id, item.relation_type) for item in self.evidence]
+        if len(relations) != len(set(relations)):
+            raise ValueError("答案中不得重复添加相同的 Evidence 关系")
+        return self
+
+
+class MarketQuestionAnswerEvidenceRead(BaseModel):
+    relation_type: MarketEvidenceRelation
+    rationale: str | None
+    evidence: MarketEvidenceRead
+
+
+class MarketQuestionAnswerRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    question_id: UUID
+    version: int
+    answer_summary: str
+    assumptions: list[Any]
+    unknowns: list[Any]
+    confidence_level: MarketInsightConfidence
+    status: MarketQuestionAnswerStatus
+    evidence_gap: str | None
+    generated_by_run_id: UUID | None
+    supersedes_id: UUID | None
+    created_by_user_id: UUID | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
+    review_note: str | None
+    created_at: datetime
+    evidence: list[MarketQuestionAnswerEvidenceRead] = Field(default_factory=list)
+
+
+class MarketQuestionAnswerReview(BaseModel):
+    review_note: str | None = Field(default=None, max_length=3000)
+
+class MarketSourceExtractionAccepted(BaseModel):
+    workspace_id: UUID
+    source_evidence_id: UUID
+    workflow_id: UUID
+    job_id: UUID
+    status: Literal["PENDING", "RUNNING", "COMPLETED"]
+    reused: bool
+
+
+class MarketSourceExtractionRead(BaseModel):
+    workspace_id: UUID
+    source_evidence_id: UUID
+    workflow_id: UUID
+    job_id: UUID | None
+    job_status: str | None
+    extraction_status: Literal["QUEUED", "RUNNING", "COMPLETED", "FAILED"]
+    extracted_evidence_id: UUID | None
+    agent_run_id: UUID | None
+    failure_code: str | None
+    failure_reason: str | None
+    source_url: str | None
+    extractor_version: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketClaimEvidenceSourceRead(BaseModel):
+    id: UUID
+    kind: str
+    source: str | None
+    canonical_ref: str | None
+    verification_status: str
+    content_hash: str | None
+    observation: str | None
+    created_at: datetime
+
+
+class MarketClaimEvidenceRead(BaseModel):
+    evidence_id: UUID
+    relation_type: Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"]
+    rationale: str | None
+    source_host: str | None
+    content_hash_snapshot: str | None
+    verification_status_snapshot: str
+    origin_assessment: Literal[
+        "SINGLE_SOURCE",
+        "SAME_HOST",
+        "DUPLICATE_CONTENT",
+        "DISTINCT_HOST_UNCONFIRMED",
+    ]
+    evidence: MarketClaimEvidenceSourceRead
+
+
+class MarketClaimRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    answer_id: UUID
+    verification_run_id: UUID
+    claim_lineage_id: UUID
+    version: int
+    claim_key: str
+    statement: str
+    claim_type: Literal["FACT", "ESTIMATE", "OPINION", "FORECAST", "INFERENCE"]
+    scope: dict[str, Any]
+    reasoning: str | None
+    verification_verdict: Literal[
+        "PROVISIONAL_SUPPORT",
+        "POTENTIAL_CONTRADICTION",
+        "CONFLICTED",
+        "INSUFFICIENT",
+    ]
+    confidence_level: Literal["MEDIUM", "LOW", "INSUFFICIENT"]
+    status: Literal[
+        "NEEDS_REVIEW", "CONFLICTED", "INSUFFICIENT", "ACCEPTED", "REJECTED", "SUPERSEDED"
+    ]
+    supporting_evidence_count: int
+    contradicting_evidence_count: int
+    verified_support_count: int
+    verified_contradiction_count: int
+    distinct_host_count: int
+    confirmed_independent_source_count: int
+    limitations: list[str]
+    supersedes_id: UUID | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
+    review_note: str | None
+    created_at: datetime
+    evidence: list[MarketClaimEvidenceRead] = Field(default_factory=list)
+
+
+class MarketClaimLineageRead(BaseModel):
+    workspace_id: UUID
+    claim_lineage_id: UUID
+    claim_key: str
+    latest_version: int
+    current_accepted_claim_id: UUID | None
+    versions: list[MarketClaimRead] = Field(default_factory=list)
+
+class MarketClaimImpactRead(BaseModel):
+    claim_lineage_id: UUID
+    latest_claim_id: UUID
+    latest_claim_version: int
+    latest_claim_status: Literal[
+        "NEEDS_REVIEW", "CONFLICTED", "INSUFFICIENT", "ACCEPTED", "REJECTED", "SUPERSEDED"
+    ]
+    latest_verification_verdict: Literal[
+        "PROVISIONAL_SUPPORT", "POTENTIAL_CONTRADICTION", "CONFLICTED", "INSUFFICIENT"
+    ]
+    current_accepted_claim_id: UUID | None
+    consumer_type: Literal["INSIGHT", "OPPORTUNITY"]
+    consumer_id: UUID
+    consumer_title: str
+    consumer_status: str
+    relation_types: list[MarketEvidenceRelation]
+    matched_evidence_count: int
+    stale_evidence_count: int
+    referenced_claim_versions: list[int]
+    severity: Literal["HIGH", "MEDIUM"]
+    reason_code: Literal[
+        "LATEST_VERSION_CONTRADICTORY",
+        "LATEST_VERSION_INSUFFICIENT",
+        "LATEST_VERSION_PENDING_REVIEW",
+        "CONSUMER_USES_OLDER_EVIDENCE_SNAPSHOT",
+        "NO_ACCEPTED_CLAIM_VERSION",
+    ]
+
+
+class MarketClaimImpactReportRead(BaseModel):
+    workspace_id: UUID
+    generated_at: datetime
+    analyzed_lineage_count: int
+    total_lineage_count: int
+    affected_consumer_count: int
+    impact_count: int
+    truncated: bool
+    impacts: list[MarketClaimImpactRead] = Field(default_factory=list)
+
+
+class MarketClaimVerificationAccepted(BaseModel):
+    job_id: UUID | None
+    workflow_id: UUID
+    verification_run_id: UUID
+    status: Literal["PENDING", "RUNNING", "COMPLETED"]
+    evidence_count: int
+    reused: bool
+
+
+class MarketClaimVerificationRunRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    answer_id: UUID
+    workflow_id: UUID
+    agent_run_id: UUID | None
+    job_id: UUID | None
+    job_status: str | None
+    status: Literal["QUEUED", "RUNNING", "COMPLETED", "FAILED"]
+    prompt_version: str
+    input_digest: str
+    claim_count: int
+    degraded: bool
+    limitations: list[str]
+    failure_reason: str | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+    claims: list[MarketClaimRead] = Field(default_factory=list)
+
+
+class MarketClaimReview(BaseModel):
+    review_note: str = Field(min_length=1, max_length=3000)
+
+    @model_validator(mode="after")
+    def _review_note_not_blank(self) -> MarketClaimReview:
+        if not self.review_note.strip():
+            raise ValueError("人工审核主张必须填写审核说明")
+        return self
+
+
+class MarketQuestionAnswerGenerationCreate(BaseModel):
+    evidence_ids: list[UUID] | None = Field(default=None, max_length=24)
+
+    @model_validator(mode="after")
+    def _unique_evidence_ids(self) -> MarketQuestionAnswerGenerationCreate:
+        if self.evidence_ids is not None and len(self.evidence_ids) != len(set(self.evidence_ids)):
+            raise ValueError("证据列表中存在重复 ID")
+        return self
+
+
+class MarketQuestionAnswerGenerationAccepted(BaseModel):
+    job_id: UUID
+    workflow_id: UUID
+    status: Literal["PENDING", "RUNNING"]
+    evidence_count: int
+    reused: bool
+
+
+
+
+MarketOpportunityStatus = Literal[
+    "DISCOVERED", "RESEARCHING", "EVIDENCE_READY", "QUALIFICATION_PENDING",
+    "QUALIFIED", "ACTION_PLANNED", "WON", "LOST", "DISQUALIFIED", "ON_HOLD",
+]
+MarketAssessmentConfidence = Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
+
+
+class MarketOpportunityCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=10000)
+    next_action: str | None = Field(default=None, max_length=2000)
+    owner_user_id: UUID | None = None
+    created_by_run_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _title_not_blank(self) -> MarketOpportunityCreate:
+        if not self.title.strip():
+            raise ValueError("机会标题不能为空白")
+        return self
+
+
+class MarketOpportunityRead(ORMModel):
+    id: UUID
+    workspace_id: UUID
+    title: str
+    description: str | None
+    status: MarketOpportunityStatus
+    next_action: str | None
+    qualification_reason: str | None
+    disqualification_reason: str | None
+    assessment_version: int
+    assessment_dimensions: dict[str, Any]
+    assessment_summary: str | None
+    assessment_confidence: MarketAssessmentConfidence
+    created_by_run_id: UUID | None
+    owner_user_id: UUID | None
+    created_by_user_id: UUID | None
+    qualified_by_user_id: UUID | None
+    qualified_at: datetime | None
+    outcome_recorded_by_user_id: UUID | None
+    outcome_recorded_at: datetime | None
+    outcome_note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketOpportunityEvidenceCreate(BaseModel):
+    evidence_id: UUID
+    relation_type: MarketEvidenceRelation
+    rationale: str | None = Field(default=None, max_length=2000)
+
+
+class MarketOpportunityEvidenceRead(BaseModel):
+    relation_type: MarketEvidenceRelation
+    rationale: str | None
+    evidence: MarketEvidenceRead
+
+
+class MarketOpportunityEntitiesAttach(BaseModel):
+    entity_ids: list[UUID] = Field(min_length=1, max_length=100)
+    relationship_note: str | None = Field(default=None, max_length=2000)
+
+
+class MarketOpportunityAssessmentCreate(BaseModel):
+    dimensions: dict[str, dict[str, Any]]
+    summary: str | None = Field(default=None, max_length=5000)
+    confidence_level: MarketAssessmentConfidence = "INSUFFICIENT"
+    assessed_by_run_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _dimensions_present(self) -> MarketOpportunityAssessmentCreate:
+        if not self.dimensions:
+            raise ValueError("评估至少需要一个维度")
+        return self
+
+
+class MarketOpportunityAssessmentRead(ORMModel):
+    id: UUID
+    opportunity_id: UUID
+    version: int
+    dimensions: dict[str, Any]
+    summary: str | None
+    confidence_level: MarketAssessmentConfidence
+    assessed_by_run_id: UUID | None
+    assessed_by_user_id: UUID | None
+    created_at: datetime
+
+
+class MarketOpportunityDetailRead(BaseModel):
+    opportunity: MarketOpportunityRead
+    evidence: list[MarketOpportunityEvidenceRead]
+    entities: list[MarketEntityRead]
+    assessments: list[MarketOpportunityAssessmentRead]
+
+
+class MarketOpportunityTransition(BaseModel):
+    target_status: Literal[
+        "RESEARCHING", "EVIDENCE_READY", "QUALIFICATION_PENDING",
+        "ACTION_PLANNED", "ON_HOLD", "DISQUALIFIED",
+    ]
+    note: str | None = Field(default=None, max_length=3000)
+
+
+class MarketOpportunityQualify(BaseModel):
+    qualification_reason: str = Field(min_length=1, max_length=3000)
+
+    @model_validator(mode="after")
+    def _reason_not_blank(self) -> MarketOpportunityQualify:
+        if not self.qualification_reason.strip():
+            raise ValueError("确认机会资格必须提供理由")
+        return self
+
+
+class MarketOpportunityOutcome(BaseModel):
+    outcome: Literal["WON", "LOST"]
+    outcome_note: str = Field(min_length=1, max_length=5000)
+
+    @model_validator(mode="after")
+    def _note_not_blank(self) -> MarketOpportunityOutcome:
+        if not self.outcome_note.strip():
+            raise ValueError("记录结果必须提供业务事件或结果说明")
+        return self
+
+
+class MarketWorkspaceTripLinkCreate(BaseModel):
+    trip_id: UUID
+    link_note: str | None = Field(default=None, max_length=2000)
+
+
+class MarketWorkspaceTripLinkRead(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    trip_id: UUID
+    link_status: Literal["LINKED", "UNLINKED"]
+    link_note: str | None
+    linked_by_user_id: UUID | None
+    linked_at: datetime
+    unlinked_by_user_id: UUID | None
+    unlinked_at: datetime | None
+    trip_name: str | None
+    trip_status: TripStatus | None
+    window_start: datetime | None
+    window_end: datetime | None
+    countries: list[str]
+
+
+class MarketOpportunityVisitLinkCreate(BaseModel):
+    trip_id: UUID
+    visit_id: UUID
+    link_note: str | None = Field(default=None, max_length=2000)
+
+
+class MarketOpportunityVisitUnlink(BaseModel):
+    unlink_note: str | None = Field(default=None, max_length=2000)
+
+
+class MarketOpportunityVisitCandidateRead(BaseModel):
+    trip_id: UUID
+    trip_name: str
+    trip_status: str
+    trip_window_start: datetime
+    trip_window_end: datetime
+    visit_id: UUID
+    visit_title: str | None
+    visit_objective: str | None
+    visit_status: str
+    customer_id: UUID | None
+    customer_name: str | None
+    place_id: UUID
+    place_name: str
+    city: str | None
+    country_code: str | None
+    latitude: float | None
+    longitude: float | None
+    timezone: str | None
+    time_window_start: datetime | None
+    time_window_end: datetime | None
+    service_minutes: int
+    priority: int
+    business_value: Decimal
+    movement_mode: str
+
+
+class MarketOpportunityVisitLinkRead(MarketOpportunityVisitCandidateRead):
+    id: UUID
+    workspace_id: UUID
+    opportunity_id: UUID
+    link_status: Literal["LINKED", "UNLINKED"]
+    link_note: str | None
+    linked_by_user_id: UUID | None
+    linked_at: datetime
+    unlinked_by_user_id: UUID | None
+    unlinked_at: datetime | None
+    unlink_note: str | None
+
+
+class MarketOpportunityExecutionRead(BaseModel):
+    workspace_id: UUID
+    opportunity_id: UUID
+    opportunity_status: MarketOpportunityStatus
+    can_link_visits: bool
+    blocked_reason: str | None
+    links: list[MarketOpportunityVisitLinkRead] = Field(default_factory=list)
+    candidates: list[MarketOpportunityVisitCandidateRead] = Field(default_factory=list)
+
+
+class MarketEntityCustomerLinkRead(ORMModel):
+    id: UUID
+    entity_id: UUID
+    customer_id: UUID
+    link_status: MarketEntityCustomerLinkStatus
+    matching_basis: dict[str, Any]
+    confirmed_by_user_id: UUID | None
+    confirmed_at: datetime | None
     created_at: datetime
     updated_at: datetime

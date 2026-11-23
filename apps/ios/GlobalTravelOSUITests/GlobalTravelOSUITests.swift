@@ -3,7 +3,7 @@ import XCTest
 
 // swiftlint:disable file_length
 
-// 真实后端 UI 冒烟：启动客户端 → Today 页加载 → 出行列表 → 打开种子出行 → 同步页。
+// 真实后端 UI 冒烟：启动客户端 → Mission → 全局行动中心/出行工作区 → 设置与同步页。
 //
 // 前置：`make api` 正在运行，且 `scripts/seed_dev.py` 已执行（种子出行存在）。
 // 身份通过启动环境覆盖，不读取/不修改本机设置。
@@ -37,7 +37,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
         // 触发一次中断监视器（若系统弹窗出现会在这里被关闭）。
@@ -96,8 +96,8 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.navigationBars["行动中心"].waitForExistence(timeout: 15),
             "行动中心未加载"
         )
-        // 行动中心是标签页（不是弹层），返回方式切回今日标签。
-        app.buttons["今日"].tap()
+        // 行动中心是从 Mission 打开的全屏工作区，关闭后回到任务页。
+        app.buttons["关闭"].tap()
 
         let tripsTab = app.buttons["出行"]
         XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")
@@ -113,6 +113,10 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15),
             "出行详情未加载"
         )
+        // 出行现在是 Mission 下的全屏工作区；返回列表后关闭工作区，再进入「我的」。
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout: 10), "出行工作区缺少关闭入口")
+        app.buttons["关闭"].tap()
 
         // 同步中心已从独立标签收进「我的 → 同步中心」（审计 5.4 信息架构调整）。
         let settingsTab = app.buttons["我的"]
@@ -136,7 +140,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
         XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10), "阶段失守：按钮 出行 未出现")
@@ -219,6 +223,8 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.swipeDown()
         }
         XCTAssertTrue(activated.exists, "计划未激活")
+
+        try performMapVisitCancellationFlow(app, tripName: setup.tripName)
     }
 
     // 单条链式验收（AT 主干）：新建 → Excel 导入 → 规划 → 激活 → 费用 → 现场记录 → 纪要。
@@ -236,7 +242,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
         app.launch()
         XCTAssertTrue(
-            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
             "阶段失守：启动（Today 页未出现）"
         )
 
@@ -389,6 +395,27 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.navigationBars["行程地图"].waitForExistence(timeout: 15),
             "AT-006：地图视图未打开"
         )
+        XCTAssertTrue(
+            app.buttons["全部"].waitForExistence(timeout: 10),
+            "AT-006：地图缺少「全部」日期筛选"
+        )
+        let dayOneFilter = app.buttons["第 1 天"]
+        XCTAssertTrue(dayOneFilter.waitForExistence(timeout: 10), "AT-006：地图缺少单日筛选")
+        dayOneFilter.tap()
+
+        let firstDayRoute = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS '第 1 天' AND label CONTAINS '选择首个拜访点'")
+        ).firstMatch
+        XCTAssertTrue(
+            firstDayRoute.waitForExistence(timeout: 10),
+            "AT-006：地图缺少可选择的每日路线卡"
+        )
+        firstDayRoute.tap()
+        XCTAssertTrue(
+            app.buttons["关闭拜访详情"].waitForExistence(timeout: 10),
+            "AT-006：点击地图路线后没有打开拜访详情抽屉"
+        )
+        app.buttons["关闭拜访详情"].tap()
         app.navigationBars["行程地图"].buttons.firstMatch.tap()
         XCTAssertTrue(
             app.navigationBars["计划详情"].waitForExistence(timeout: 10),
@@ -763,7 +790,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         try seedImportFixture()
         app.launch()
         XCTAssertTrue(
-            app.navigationBars["主动建议"].waitForExistence(timeout: 15),
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
 
@@ -896,6 +923,52 @@ extension GlobalTravelOSUITests {
         )
     }
 
+    /// Verifies that a map-originated visit cancellation creates a server-owned draft version.
+    func performMapVisitCancellationFlow(_ app: XCUIApplication, tripName: String) throws {
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars[tripName].waitForExistence(timeout: 15), "计划详情未能返回行程详情")
+        app.navigationBars[tripName].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["出行"].waitForExistence(timeout: 15), "未能返回行程列表")
+        XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout: 10), "出行工作区缺少关闭入口")
+        app.buttons["关闭"].tap()
+
+        let mapTab = app.buttons["地图"]
+        XCTAssertTrue(mapTab.waitForExistence(timeout: 10), "未找到地图 Tab")
+        mapTab.tap()
+        XCTAssertTrue(app.navigationBars["地图"].waitForExistence(timeout: 10), "地图工作区未打开")
+
+        let missionPicker = app.buttons["选择地图对应的商务行程"]
+        XCTAssertTrue(missionPicker.waitForExistence(timeout: 10), "地图没有 Mission 选择器")
+        missionPicker.tap()
+        let missionOption = app.buttons[tripName].firstMatch
+        XCTAssertTrue(missionOption.waitForExistence(timeout: 10), "地图列表中没有当前测试 Mission")
+        missionOption.tap()
+
+        let dayFilter = app.buttons["第 1 天"]
+        XCTAssertTrue(dayFilter.waitForExistence(timeout: 20), "地图没有第 1 天筛选")
+        dayFilter.tap()
+        let firstDayRoute = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS '第 1 天' AND label CONTAINS '选择首个拜访点'")
+        ).firstMatch
+        XCTAssertTrue(firstDayRoute.waitForExistence(timeout: 10), "地图没有首日路线卡")
+        firstDayRoute.tap()
+
+        let cancelVisit = app.buttons["取消此拜访并重新优化路线"]
+        XCTAssertTrue(cancelVisit.waitForExistence(timeout: 10), "激活计划的拜访详情没有取消入口")
+        cancelVisit.tap()
+        let confirmCancel = app.buttons["取消拜访并重新求解"]
+        XCTAssertTrue(confirmCancel.waitForExistence(timeout: 10), "地图取消操作没有二次确认")
+        confirmCancel.tap()
+
+        let draftProduced = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '新计划' AND label CONTAINS '已生成草稿'")
+        ).firstMatch
+        XCTAssertTrue(
+            draftProduced.waitForExistence(timeout: 70),
+            "服务端没有在预期时间内生成新的计划草稿版本"
+        )
+    }
+
     /// 阶段检查点：断言当前导航栏标题，定位长流程中页面上下文漂移的第一现场。
     func expectNav(_ app: XCUIApplication, _ title: String, stage: String) {
         XCTAssertTrue(
@@ -936,8 +1009,7 @@ extension GlobalTravelOSUITests {
                 app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
                     .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
             default:
-                // Tab 回根再进入。用 tabBars 限定：直接 app.buttons["出行"] 在详情页
-                // 会匹配到多个元素（Tab + 页内文本），XCUITest 因此拒绝点击。
+                // 出行工作区现在从 Mission 打开；在其详情页通过「出行」导航入口回到工作区列表。
                 let travelTab = app.tabBars.buttons["出行"].firstMatch
                 if travelTab.exists {
                     travelTab.tap()
