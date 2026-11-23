@@ -9,9 +9,10 @@ struct TripExpense: Codable, Equatable, Identifiable {
     var occurredOn: Date?
     var note: String?
     var receiptRef: String?
+    var receiptAssetId: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, tripId, category, amount, currency, occurredOn, note, receiptRef
+        case id, tripId, category, amount, currency, occurredOn, note, receiptRef, receiptAssetId
     }
 
     init(
@@ -22,7 +23,8 @@ struct TripExpense: Codable, Equatable, Identifiable {
         currency: String,
         occurredOn: Date? = nil,
         note: String? = nil,
-        receiptRef: String? = nil
+        receiptRef: String? = nil,
+        receiptAssetId: String? = nil
     ) {
         self.id = id
         self.tripId = tripId
@@ -32,6 +34,7 @@ struct TripExpense: Codable, Equatable, Identifiable {
         self.occurredOn = occurredOn
         self.note = note
         self.receiptRef = receiptRef
+        self.receiptAssetId = receiptAssetId
     }
 
     init(from decoder: Decoder) throws {
@@ -44,6 +47,7 @@ struct TripExpense: Codable, Equatable, Identifiable {
         occurredOn = try container.decodeIfPresent(Date.self, forKey: .occurredOn)
         note = try container.decodeIfPresent(String.self, forKey: .note)
         receiptRef = try container.decodeIfPresent(String.self, forKey: .receiptRef)
+        receiptAssetId = try container.decodeIfPresent(String.self, forKey: .receiptAssetId)
     }
 
     var categoryLabel: String {
@@ -84,9 +88,10 @@ struct TripExpenseCreateRequest: Encodable, Equatable {
     var currency: String
     var occurredOn: String
     var note: String?
+    var receiptAssetId: String?
 
     private enum CodingKeys: String, CodingKey {
-        case category, amount, currency, occurredOn, note
+        case category, amount, currency, occurredOn, note, receiptAssetId
     }
 
     func encode(to encoder: Encoder) throws {
@@ -96,6 +101,7 @@ struct TripExpenseCreateRequest: Encodable, Equatable {
         try container.encode(currency, forKey: .currency)
         try container.encode(occurredOn, forKey: .occurredOn)
         try container.encodeIfPresent(note, forKey: .note)
+        try container.encodeIfPresent(receiptAssetId, forKey: .receiptAssetId)
     }
 }
 
