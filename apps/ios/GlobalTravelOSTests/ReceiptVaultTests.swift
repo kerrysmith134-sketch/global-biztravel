@@ -103,7 +103,7 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertNil(localAsset.expenseReceiptAssetId)
 
         do {
-            _ = try await vault.prepareForExpense(tripId: "trip-cloud", draft: draft)
+            _ = try await vault.prepareForExpense(assetId: localAsset.id)
             XCTFail("Cloud expense attachment must require a server-issued Receipt Asset ID")
         } catch {
             XCTAssertEqual(error as? ReceiptVaultError, .uploadUnavailable)
