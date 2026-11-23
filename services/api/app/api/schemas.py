@@ -1853,7 +1853,7 @@ class TripOutcomeRead(BaseModel):
 ActionCategory = Literal[
     "DECISION", "APPROVAL", "RUNNING", "FAILED", "PREPARATION", "COMPLETED"
 ]
-ActionKind = Literal["SUGGESTION", "EXPENSE_REPORT", "JOB", "CRM_SYNC", "VISIT_FOLLOW_UP"]
+ActionKind = Literal["SUGGESTION", "EXPENSE_REPORT", "JOB", "CRM_SYNC", "VISIT_FOLLOW_UP", "TRIP_CLOSEOUT"]
 
 
 class ActionItemRead(BaseModel):
@@ -1974,6 +1974,56 @@ class ExpenseReportRead(BaseModel):
     totals: list[CurrencyTotalRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+CloseoutReadinessStatus = Literal[
+    "BLOCKED",
+    "READY_FOR_REVIEW",
+    "REPORT_SUBMITTED",
+    "REPORT_APPROVED",
+    "READY_WITH_EXCEPTIONS",
+]
+CloseoutIssueSeverity = Literal["BLOCKER", "WARNING"]
+
+
+class TripCloseoutIssueRead(BaseModel):
+    id: str
+    code: str
+    severity: CloseoutIssueSeverity
+    title: str
+    detail: str
+    source_type: str
+    source_id: UUID
+    action_hint: str
+
+
+class TripCloseoutSummaryRead(BaseModel):
+    visit_count: int
+    visit_outcome_count: int
+    visits_open_count: int
+    visits_missing_outcome_count: int
+    expense_count: int
+    expenses_in_report_count: int
+    expenses_not_in_report_count: int
+    expenses_without_receipt_count: int
+    receipt_asset_count: int
+    receipt_asset_unavailable_count: int
+    ocr_needs_review_count: int
+    open_business_follow_up_count: int
+    latest_report_id: UUID | None = None
+    latest_report_status: ExpenseReportStatus | None = None
+    blocker_count: int
+    warning_count: int
+
+
+class TripCloseoutReadinessRead(BaseModel):
+    trip_id: UUID
+    status: CloseoutReadinessStatus
+    generated_at: datetime
+    summary: TripCloseoutSummaryRead
+    totals_by_currency: list[CurrencyTotalRead] = Field(default_factory=list)
+    blockers: list[TripCloseoutIssueRead] = Field(default_factory=list)
+    warnings: list[TripCloseoutIssueRead] = Field(default_factory=list)
 
 
 class ExpenseReportDecisionRequest(BaseModel):
