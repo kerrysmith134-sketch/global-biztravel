@@ -235,7 +235,7 @@ def test_closeout_separates_currencies_and_flags_latest_rejected_report(
         assert submitted.status_code == 200, submitted.text
         rejected = client.post(
             f"/v1/expense-reports/{report_id}:reject",
-            headers=headers(USER_ADMIN, ORG_A, str(uuid.uuid4())),
+            headers=headers(org=ORG_A, user=USER_ADMIN, key=str(uuid.uuid4())),
             json={"note": "Receipt evidence needs correction"},
         )
         assert rejected.status_code == 200, rejected.text
