@@ -10,8 +10,8 @@ import pytest
 from app.db import org_session
 from app.main import app
 from app.models.expense_reports import ExpenseReport
-from app.models.proactive import Approval
 from app.models.geo import Place
+from app.models.proactive import Approval
 from app.models.records import VisitFollowUp, VisitRecord
 from app.models.trip import Trip, Visit
 from app.models.workflow import WorkflowInstance
