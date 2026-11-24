@@ -643,11 +643,12 @@ def test_idle_research_execution_is_stopped_by_persisted_deadline_job(
             assert abs((deadline_job.available_at - planned_deadline).total_seconds()) <= 1
 
             # Simulate the deadline passing while the execution is idle in WAITING_FOR_EVIDENCE.
+            database_now = session.scalar(select(func.clock_timestamp()))
             workflow.payload = {
                 **(workflow.payload or {}),
-                "deadline_at": (datetime.now(UTC) - timedelta(seconds=5)).isoformat(),
+                "deadline_at": (database_now - timedelta(seconds=5)).isoformat(),
             }
-            deadline_job.available_at = session.scalar(select(func.clock_timestamp()))
+            deadline_job.available_at = database_now
 
         assert _claim_and_execute(deadline_job_id, "dag-deadline-worker")
 
