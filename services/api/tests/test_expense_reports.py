@@ -171,6 +171,7 @@ def test_draft_report_can_be_cancelled_without_deleting_snapshot_or_expenses(
                     display_name="Other traveler",
                 )
             )
+            session.flush()
             session.add(
                 Membership(
                     organization_id=UUID(ORG_A),
