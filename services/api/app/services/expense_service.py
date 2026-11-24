@@ -59,14 +59,16 @@ def create_expense(
     trip_service.require_trip(session, organization_id, trip_id)
     # Serialize TripExpense membership changes with report creation/submission.
     # A report snapshot may only be submitted against the authoritative expense set.
-    session.execute(
+    locked_trip_id = session.execute(
         select(Trip.id)
         .where(
             Trip.organization_id == str(organization_id),
             Trip.id == str(trip_id),
         )
         .with_for_update()
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if locked_trip_id is None:
+        raise NotFound("行程不存在", details={"trip_id": str(trip_id)})
     if payload.receipt_asset_id is not None:
         asset = session.scalars(
             select(ReceiptAsset).where(
@@ -126,14 +128,16 @@ def delete_expense(
         raise NotFound("费用记录不存在", details={"expense_id": str(expense_id)})
 
     # Use the same parent-row lock as expense creation and report submission.
-    session.execute(
+    locked_trip_id = session.execute(
         select(Trip.id)
         .where(
             Trip.organization_id == str(organization_id),
             Trip.id == expense.trip_id,
         )
         .with_for_update()
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if locked_trip_id is None:
+        raise NotFound("费用记录不存在", details={"expense_id": str(expense_id)})
     # Re-read after acquiring the lock: another delete may have completed while waiting.
     expense = session.scalars(
         select(TripExpense).where(
