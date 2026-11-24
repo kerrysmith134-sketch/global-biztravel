@@ -6,7 +6,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0048_expense_report_draft_cancellation"
+revision = "0048_report_cancel"
 down_revision = "0047_receipt_ocr"
 branch_labels = None
 depends_on = None
