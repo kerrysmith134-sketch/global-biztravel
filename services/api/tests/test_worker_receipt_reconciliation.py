@@ -17,7 +17,7 @@ def test_receipt_reconciliation_failure_uses_short_retry_cooldown(monkeypatch: p
         receipt_orphan_grace_seconds=86_400,
     )
     attempts = {"count": 0}
-    expected_report = object()
+    expected_report = SimpleNamespace(failed_deletions=1)
 
     monkeypatch.setattr(worker, "get_settings", lambda: settings)
     monkeypatch.setattr(worker, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
@@ -52,6 +52,15 @@ def test_receipt_reconciliation_failure_uses_short_retry_cooldown(monkeypatch: p
         clock["now"] += 300
         assert worker.reconcile_receipt_orphans(organization_id) is expected_report
         assert attempts["count"] == 2
+
+        # A completed scan with failed object deletions is also a partial failure.
+        # It receives the same bounded cooldown rather than the full daily interval.
+        clock["now"] += 299
+        assert worker.reconcile_receipt_orphans(organization_id) is None
+        assert attempts["count"] == 2
+        clock["now"] += 1
+        assert worker.reconcile_receipt_orphans(organization_id) is expected_report
+        assert attempts["count"] == 3
     finally:
         worker._last_receipt_reconciliation.pop(organization_id, None)
         if previous_value is not None:
