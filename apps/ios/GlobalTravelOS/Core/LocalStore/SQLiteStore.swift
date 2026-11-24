@@ -43,10 +43,10 @@ final class SQLiteStore {
         var delay: TimeInterval = 0.025
 
         for attempt in 0..<maximumAttempts {
-            let currentMode = try query("PRAGMA journal_mode") { $0.string(0).lowercased() }.first
-            if currentMode == "wal" { return }
-
             do {
+                let currentMode = try query("PRAGMA journal_mode") { $0.string(0).lowercased() }.first
+                if currentMode == "wal" { return }
+
                 try run("PRAGMA journal_mode=WAL")
                 let confirmedMode = try query("PRAGMA journal_mode") { $0.string(0).lowercased() }.first
                 guard confirmedMode == "wal" else {
@@ -157,12 +157,13 @@ final class SQLiteStore {
     }
 
     /// 事务内执行多条变更；抛错则回滚。
-    func transaction(_ work: () throws -> Void) throws {
+    func transaction<T>(_ work: () throws -> T) throws -> T {
         try queue.sync {
             try runUnlocked("BEGIN IMMEDIATE")
             do {
-                try work()
+                let value = try work()
                 try runUnlocked("COMMIT")
+                return value
             } catch {
                 try? runUnlocked("ROLLBACK")
                 throw error
