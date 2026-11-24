@@ -394,6 +394,15 @@ final class ModelDecodingTests: XCTestCase {
             )
         )
     }
+    func testExpenseReportDecodesServerCancellationPermission() throws {
+        let report = try DateCoding.decode(
+            ExpenseReport.self,
+            fromJSON: ContractSamples.expenseReport
+        )
+        XCTAssertEqual(report.status, .draft)
+        XCTAssertEqual(report.canCancel, true)
+    }
+
     func testExpenseReportCancellationEndpointIsIdempotentPost() {
         let request = Endpoints.cancelExpenseReport(id: "report-1")
         XCTAssertEqual(request.method, .post)

@@ -188,6 +188,21 @@ def test_draft_report_can_be_cancelled_without_deleting_snapshot_or_expenses(
         report_id = created.json()["id"]
         assert len(created.json()["items"]) == 2
 
+        other_reports = client.get(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers=headers(str(other_user_id)),
+        )
+        assert other_reports.status_code == 200, other_reports.text
+        other_report = next(row for row in other_reports.json() if row["id"] == report_id)
+        assert other_report["can_cancel"] is False
+
+        owner_reports = client.get(
+            f"/v1/trips/{trip_id}/expense-reports", headers=headers()
+        )
+        assert owner_reports.status_code == 200, owner_reports.text
+        owner_report = next(row for row in owner_reports.json() if row["id"] == report_id)
+        assert owner_report["can_cancel"] is True
+
         denied = client.post(
             f"/v1/expense-reports/{report_id}:cancel",
             headers={
@@ -208,6 +223,7 @@ def test_draft_report_can_be_cancelled_without_deleting_snapshot_or_expenses(
         assert body["cancelled_at"] is not None
         assert body["cancelled_by_user_id"] == USER_A
         assert body["cancellation_reason"] == "USER_CANCELLED_DRAFT"
+        assert body["can_cancel"] is False
         assert len(body["items"]) == 2
 
         # The idempotency key replays the same response; a new key is also a safe

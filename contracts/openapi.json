@@ -13895,6 +13895,11 @@
               }
             ],
             "title": "Cancellation Reason"
+          },
+          "can_cancel": {
+            "type": "boolean",
+            "title": "Can Cancel",
+            "default": false
           }
         },
         "type": "object",

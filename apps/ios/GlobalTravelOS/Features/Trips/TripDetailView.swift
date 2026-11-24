@@ -874,7 +874,7 @@ struct TripDetailView: View {
                                 .font(.caption)
                                 .disabled(!viewModel.pendingExpenses.isEmpty)
                             }
-                            if report.canCancel {
+                            if report.canCancelInUI {
                                 Button(role: .destructive) {
                                     reportToCancel = report
                                 } label: {

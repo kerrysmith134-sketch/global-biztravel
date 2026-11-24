@@ -1973,6 +1973,7 @@ class ExpenseReportRead(BaseModel):
     cancelled_at: datetime | None = None
     cancelled_by_user_id: UUID | None = None
     cancellation_reason: str | None = None
+    can_cancel: bool = False
     items: list[ExpenseReportItemRead] = Field(default_factory=list)
     totals: list[CurrencyTotalRead] = Field(default_factory=list)
     created_at: datetime

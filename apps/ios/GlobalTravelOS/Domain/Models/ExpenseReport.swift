@@ -102,6 +102,7 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
     var cancelledAt: Date?
     var cancelledByUserId: String?
     var cancellationReason: String?
+    var canCancel: Bool?
     var items: [ExpenseReportItem]?
     var totals: [CurrencyTotal]?
     var createdAt: Date?
@@ -118,6 +119,7 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         cancelledAt: Date? = nil,
         cancelledByUserId: String? = nil,
         cancellationReason: String? = nil,
+        canCancel: Bool? = nil,
         items: [ExpenseReportItem]? = nil,
         totals: [CurrencyTotal]? = nil,
         createdAt: Date? = nil,
@@ -133,6 +135,7 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         self.cancelledAt = cancelledAt
         self.cancelledByUserId = cancelledByUserId
         self.cancellationReason = cancellationReason
+        self.canCancel = canCancel
         self.items = items
         self.totals = totals
         self.createdAt = createdAt
@@ -162,7 +165,8 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         return currentExpenseIDs.isSubset(of: snapshotIDs)
     }
     var canSubmit: Bool { status == .draft }
-    var canCancel: Bool { status == .draft }
+    /// Cancellation is only exposed when the server has confirmed caller authorization.
+    var canCancelInUI: Bool { canCancel ?? false }
 }
 
 struct ExpenseReportCreateRequest: Codable, Equatable {
