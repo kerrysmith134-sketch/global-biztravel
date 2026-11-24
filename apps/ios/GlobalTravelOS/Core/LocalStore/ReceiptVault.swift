@@ -131,7 +131,7 @@ final class ReceiptVault {
                 }
 
                 let id = UUID().uuidString.lowercased()
-                let storageKey = "\\(id).\\(detected.fileExtension)"
+                let storageKey = "\(id).\(detected.fileExtension)"
                 let destination = fileDirectory.appendingPathComponent(storageKey, isDirectory: false)
                 let now = Date()
                 let asset = LocalReceiptAsset(
