@@ -141,3 +141,22 @@ Do not turn every warning into a notification. Deduplicate by source entity and 
 ## Explicitly deferred
 
 Automatic payment, external accounting-system posting, automatic report approval, jurisdiction-specific tax-policy inference without configured rules, and autonomous customer communications are outside H2.13.
+
+## Implementation status — 2026-11-24
+
+The following H2.13 backend and client foundations now exist in the repository:
+
+- Private ReceiptAsset metadata, filesystem/S3 storage adapters, authenticated upload/download and same-Trip expense linkage are implemented in migrations `0045`–`0047`.
+- Expense-report rows pin the receipt asset ID, SHA-256 and original metadata; OCR is tied to a stored asset and AgentRun, and only append-only human review can confirm candidates.
+- iOS can select an image/PDF, persist the original in its private local vault, verify its SHA-256, upload it and mark it uploaded only after the server confirms a matching asset.
+- The read-only `GET /v1/trips/{trip_id}/closeout-readiness` assessment exists and has integration coverage for visit outcomes, unreported expenses, rejected reports, evidence warnings, currencies and tenant isolation.
+- **New in this slice:** filesystem and S3 adapters expose tenant-prefix object listing. A tenant-scoped reconciliation service identifies old storage objects without a matching `ReceiptAsset`; the Worker runs it once per configured interval. The default grace period and reconciliation interval are both 24 hours. Dry-run is supported by the service for controlled diagnostics.
+
+### Remaining product gaps
+
+1. **Offline expense commit is not yet a complete outbox flow.** In cloud mode, attaching a local receipt currently attempts to upload it before creating the expense. A network failure preserves the original and returns a visible error, but the expense itself is not durably queued with a local receipt reference. Do not describe this as full offline expense support until the expense command and receipt upload are linked by a durable, replay-safe local operation.
+2. **Closeout readiness is API-first.** The iOS Trip detail still needs a dedicated readiness panel with blocker/warning separation and source-linked navigation to the existing visit, expense, receipt and report workflows.
+3. **Object reconciliation is active-provider scoped.** When storage provider configuration changes, old objects in the previous provider are not scanned by the current Worker. Run the reconciliation against the previous provider before retiring it, or add an explicit multi-provider maintenance job.
+4. **Production S3 policy must allow prefix-scoped `s3:ListBucket` and object-scoped `s3:DeleteObject`** in addition to upload/read permissions. Keep the bucket private and constrain listing to `receipts/{organization_id}/`.
+
+The reconciliation integration test verifies that an old orphan is removed while recent objects, database-backed originals and another tenant's objects remain untouched. GitHub Actions for this branch remains the execution authority; code presence alone is not a green CI result.
