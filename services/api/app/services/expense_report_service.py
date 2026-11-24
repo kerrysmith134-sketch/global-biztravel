@@ -256,19 +256,26 @@ def submit_report(
             )
         )
     )
+    # A Trip may be reimbursed in multiple reports. Every current expense must be
+    # pinned by at least one non-rejected report snapshot, not necessarily this one.
     snapshot_expense_ids = set(
         session.scalars(
-            select(ExpenseReportItem.expense_id).where(
+            select(ExpenseReportItem.expense_id)
+            .join(ExpenseReport, ExpenseReport.id == ExpenseReportItem.report_id)
+            .where(
                 ExpenseReportItem.organization_id == str(organization_id),
-                ExpenseReportItem.report_id == report.id,
+                ExpenseReportItem.trip_id == report.trip_id,
                 ExpenseReportItem.expense_id.is_not(None),
+                ExpenseReport.organization_id == str(organization_id),
+                ExpenseReport.trip_id == report.trip_id,
+                ExpenseReport.status != STATUS_REJECTED,
             )
         )
     )
     missing_expense_ids = sorted(str(item) for item in current_expense_ids - snapshot_expense_ids)
     if missing_expense_ids:
         raise Conflict(
-            "报销单快照未包含该行程的全部当前费用，请重新生成草稿",
+            "该行程仍有费用未纳入任何有效报销草稿，请先补全报销草稿",
             details={
                 "report_id": str(report.id),
                 "missing_expense_ids": missing_expense_ids,
@@ -303,6 +310,27 @@ def decide_report(
     now: datetime | None = None,
 ) -> ReportDetail:
     report = require_report(session, organization_id, report_id)
+    # Rejection removes a report from expense coverage. Serialize report decisions
+    # with the same Trip lock used by expense mutations and report submission.
+    session.execute(
+        select(Trip.id)
+        .where(
+            Trip.organization_id == str(organization_id),
+            Trip.id == report.trip_id,
+        )
+        .with_for_update()
+    ).scalar_one()
+    report = session.scalars(
+        select(ExpenseReport)
+        .where(
+            ExpenseReport.organization_id == str(organization_id),
+            ExpenseReport.id == report_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if report is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
     target = STATUS_APPROVED if approve else STATUS_REJECTED
     if report.status == target:
         return _detail(session, report)
