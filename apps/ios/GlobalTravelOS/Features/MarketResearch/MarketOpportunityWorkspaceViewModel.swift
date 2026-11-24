@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 @MainActor
 final class MarketOpportunityWorkspaceViewModel: ObservableObject {
@@ -59,6 +59,7 @@ final class MarketOpportunityWorkspaceViewModel: ObservableObject {
         guard statusFilter != value else { return }
         statusFilter = value
         nextCursor = nil
+        opportunities = []
         await load()
     }
 
