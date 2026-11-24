@@ -637,9 +637,12 @@ def test_idle_research_execution_is_stopped_by_persisted_deadline_job(
             deadline_job_id = str(deadline_job.id)
             job_ids.append(deadline_job_id)
 
-            # Simulate the deadline passing while the execution is idle in WAITING_FOR_EVIDENCE.
             workflow = session.get(WorkflowInstance, UUID(execution_id))
             assert workflow is not None
+            planned_deadline = datetime.fromisoformat(str(workflow.payload["deadline_at"]))
+            assert abs((deadline_job.available_at - planned_deadline).total_seconds()) <= 1
+
+            # Simulate the deadline passing while the execution is idle in WAITING_FOR_EVIDENCE.
             workflow.payload = {
                 **(workflow.payload or {}),
                 "deadline_at": (datetime.now(UTC) - timedelta(seconds=5)).isoformat(),

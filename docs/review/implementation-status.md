@@ -454,7 +454,7 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 
 - 新增 DAG 专属 Worker 集成测试：通过真实 `workers_main.execute_one` 分别执行调度任务与 Answer Agent 任务；验证 Agent 生成的答案保持 `NEEDS_REVIEW`，Worker 完成后自动唤醒父 DAG，父执行进入 `WAITING_FOR_REVIEW`，且不会重复生成同一节点。
 - 该测试与现有依赖释放、取消及 Evidence 隔离测试组合，补齐了此前“直接调用 scheduler service、未实际跑 Worker”的验收缺口。
-- **仍未完整验收**：DAG 级多 Worker 并发上限、Answer job DEAD/租约恢复后的父图状态、成本/时间预算停止、执行快照冻结及并发启动竞争仍需专门测试。通用任务队列已有的可靠性测试不能替代这些 DAG 级测试。
+- **仍未完整验收**：DAG 级多 Worker 并发上限、Answer job DEAD/租约恢复后的父图状态、成本计量失效与成本上限竞态、执行快照冻结及并发启动竞争仍需专门测试。时间预算现已通过持久化 deadline Worker wakeup 测试覆盖，但仍需在长时运行部署中观测实际调度延迟。通用任务队列已有的可靠性测试不能替代这些 DAG 级测试。
 - 当前 PR #31 的最新 CI 必须完成后，才可确认 FIFO 变更；本次 Worker 测试加入后仍须以新提交的 Backend + iOS + 真实服务 UI 全绿为准。
 
 
