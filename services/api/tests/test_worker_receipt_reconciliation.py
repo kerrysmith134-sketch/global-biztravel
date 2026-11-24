@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
-
 from app.workers import main as worker
 
 
