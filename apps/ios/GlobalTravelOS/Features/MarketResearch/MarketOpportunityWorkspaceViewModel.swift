@@ -175,7 +175,8 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
             if errorMessage == nil { errorMessage = error.localizedDescription }
         }
         do {
-            workspaceEntities = try await entitiesRequest.items
+            let entityPage = try await entitiesRequest
+            workspaceEntities = entityPage.items
         } catch {
             if errorMessage == nil { errorMessage = error.localizedDescription }
         }
@@ -289,7 +290,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
 
     func attachEntity(_ candidate: MarketWorkspaceEntityRead, note: String) async -> Bool {
         guard !isSubmitting,
-              !detail?.entities.contains(where: { $0.id == candidate.entity.id })!
+              detail?.entities.contains(where: { $0.id == candidate.entity.id }) != true
         else { return false }
         isSubmitting = true
         errorMessage = nil

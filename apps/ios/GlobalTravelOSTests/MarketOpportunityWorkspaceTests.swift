@@ -171,7 +171,6 @@ final class MarketOpportunityWorkspaceTests: XCTestCase {
         XCTAssertEqual(evidence.canonicalRef, "https://example.gov/procurement")
     }
 
-
     func testWorkspaceEntityEndpointsAndEntityModelsUseTypedContracts() throws {
         let list = Endpoints.listMarketWorkspaceEntities(
             workspaceId: "workspace-1",
@@ -179,8 +178,8 @@ final class MarketOpportunityWorkspaceTests: XCTestCase {
         )
         XCTAssertEqual(list.method, .get)
         XCTAssertEqual(list.path, "/v1/market/workspaces/workspace-1/entities")
-        XCTAssertEqual(list.queryItems.map(\\.name), ["limit", "cursor"])
-        XCTAssertEqual(list.queryItems.map(\\.value), ["40", "entities-next"])
+        XCTAssertEqual(list.queryItems.map(\.name), ["limit", "cursor"])
+        XCTAssertEqual(list.queryItems.map(\.value), ["40", "entities-next"])
         XCTAssertNil(list.idempotencyKey)
 
         let create = try Endpoints.createMarketWorkspaceEntity(
