@@ -1,9 +1,9 @@
 name: ci
 
-# Versioned concurrency key: isolate this DAG deadline validation from a stalled
-# predecessor UI runner; subsequent runs of this lane still cancel superseded runs.
+# Versioned concurrency key: isolate opportunity-entity validation from a stalled
+# predecessor simulator runner; later runs of this lane still cancel superseded runs.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-14-research-deadline
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-15-opportunity-entities
   cancel-in-progress: true
 
 on:

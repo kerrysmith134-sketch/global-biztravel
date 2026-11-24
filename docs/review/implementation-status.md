@@ -468,4 +468,7 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 阶段动作严格映射现有后端状态机：DISCOVERED → RESEARCHING → EVIDENCE_READY → QUALIFICATION_PENDING → QUALIFIED → ACTION_PLANNED；资格确认要求人工理由，且 UI 在存在 CONTRADICTS 时阻止提交；ACTION_PLANNED 可记录有说明的 WON / LOST 或暂缓。
 - ACTION_PLANNED 复用既有机会—Trip 拜访关联面板；没有新增第二套客户、拜访或任务主数据。
 - 新增 iOS Repository / Endpoint / Codable 契约测试，验证请求路径、查询参数、snake_case 负载、幂等键、机会分页与 Evidence 核验状态解码。
-- **验收状态**：代码已接入，须以当前分支最新 iOS 构建、单测及真实服务 UI 验收为准；本条不代表已在真机验收或已部署。
+- **企业实体链路**：机会详情的 `entities` 从通用 JSONValue 改为 `MarketEntityRead` 强类型；接入 Workspace 候选实体分页读取、显式创建候选以及将已存在候选关联到机会的 API。UI 展示已关联企业、候选实体、状态和可能重复提示；关联说明写入既有关系表。创建/关联均为独立幂等写入，不自动合并实体，不创建或修改 CRM Customer。
+- **尚未完成的下游环节**：现有后端已有 MarketEntityCustomerLink 建议与管理员确认服务，但本轮 iOS 尚未接入候选 CRM 客户匹配的读取、显示与确认；因此当前不会把候选实体自动映射成正式客户。
+- 新增实体模型、候选创建、候选分页和机会实体关联的 iOS 契约/解码测试。
+- **验收状态**：代码已接入，须以最新提交 iOS 构建、单测及真实服务 UI 验收为准；本条不代表已在真机验收或已部署。
