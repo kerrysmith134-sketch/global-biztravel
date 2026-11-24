@@ -96,3 +96,10 @@ H2.1 不自动执行外部搜索、不自动选取新的网页来源、不自动
 - 通用任务可靠性集成测试覆盖：多线程 `SKIP LOCKED` 抢占、同 key 在途去重、租约过期回收、退避重试与 DEAD。它们证明共享队列原语，不等于证明每个 DAG 专属状态转换。
 
 仍需独立验收：两个真实 Worker 并发处理同一执行图时的 execution 级并发上限；Answer job 重试耗尽/租约回收为 DEAD 后父图的最终状态；成本计量缺失、成本预算耗尽和时间预算耗尽；图在执行中被修改时旧快照的稳定性；同 Workspace 并发启动的锁竞争与幂等。完成这些场景并通过当前提交的真实 PostgreSQL CI 后，才能把 H2.1 标为完整验收。
+
+
+### 9.1 自动 deadline wakeup
+
+每次新建 execution 时，除立即执行的调度任务外，还会持久化一条同类 scheduler BackgroundJob，使用独立 dedupe key `market_research_dag_deadline:{execution_id}`，其 `available_at` 固定为执行的 `deadline_at`。Worker 到达该时间后会运行既有 scheduler；若执行仍为 RUNNING 且时间预算已耗尽，就将其收敛为 TIMED_OUT。若执行提前完成或被取消，尚未开始的延迟任务会被安全取消；对 Worker 已经认领的任务不等待、不抢锁，它稍后会读取执行终态并无副作用退出。
+
+这使 WAITING_FOR_REVIEW / WAITING_FOR_EVIDENCE 不再依赖新 Evidence 或用户操作才能触发 deadline 检查。延迟任务仍受现有租约、重试与死信策略管理。

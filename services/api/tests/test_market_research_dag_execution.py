@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
@@ -307,6 +307,15 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
                 all_job_ids = set(discovered_job_ids)
                 if schedule_job_id:
                     all_job_ids.add(UUID(schedule_job_id))
+                if execution_id:
+                    all_job_ids.update(
+                        session.scalars(
+                            select(BackgroundJob.id).where(
+                                BackgroundJob.organization_id == UUID(ORG_A),
+                                BackgroundJob.dedupe_key == f"market_research_dag_deadline:{execution_id}",
+                            )
+                        ).all()
+                    )
                 all_job_ids.update(UUID(item) for item in answer_job_ids)
                 if all_job_ids:
                     session.execute(
@@ -518,6 +527,163 @@ def test_answer_worker_completion_wakes_dag_and_waits_for_human_review(
                 ) if all_workflow_ids else []
                 all_job_ids = set(discovered_job_ids)
                 all_job_ids.update(UUID(item) for item in job_ids)
+                if execution_id:
+                    all_job_ids.update(
+                        session.scalars(
+                            select(BackgroundJob.id).where(
+                                BackgroundJob.organization_id == UUID(ORG_A),
+                                BackgroundJob.dedupe_key == f"market_research_dag_deadline:{execution_id}",
+                            )
+                        ).all()
+                    )
+                if all_job_ids:
+                    session.execute(
+                        delete(BackgroundJob).where(
+                            BackgroundJob.organization_id == UUID(ORG_A),
+                            BackgroundJob.id.in_(all_job_ids),
+                        )
+                    )
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == UUID(workspace_id),
+                    )
+                )
+                session.execute(
+                    delete(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.subject_type == "market_workspace",
+                        Evidence.subject_id == UUID(workspace_id),
+                    )
+                )
+                if all_workflow_ids:
+                    session.execute(
+                        delete(AgentRun).where(
+                            AgentRun.organization_id == UUID(ORG_A),
+                            AgentRun.workflow_id.in_(all_workflow_ids),
+                        )
+                    )
+                    session.execute(
+                        delete(WorkflowInstance).where(
+                            WorkflowInstance.organization_id == UUID(ORG_A),
+                            WorkflowInstance.id.in_(all_workflow_ids),
+                        )
+                    )
+
+
+def test_idle_research_execution_is_stopped_by_persisted_deadline_job(
+    client: TestClient,
+) -> None:
+    workspace_id: str | None = None
+    execution_id: str | None = None
+    job_ids: list[str] = []
+    try:
+        workspace = client.post(
+            "/v1/market/workspaces",
+            headers=headers(),
+            json={
+                "name": f"Deadline wakeup {uuid.uuid4().hex[:8]}",
+                "objective": "An idle execution must expire without another user event.",
+            },
+        )
+        assert workspace.status_code == 201, workspace.text
+        workspace_id = workspace.json()["id"]
+
+        question = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions",
+            headers=headers(),
+            json={"question": "What public evidence is still needed to evaluate this market?"},
+        )
+        assert question.status_code == 201, question.text
+
+        started = client.post(
+            f"/v1/market/workspaces/{workspace_id}/research-graph/executions",
+            headers=headers(),
+            json={
+                "max_concurrency": 1,
+                "max_questions": 1,
+                "max_duration_minutes": 1,
+            },
+        )
+        assert started.status_code == 202, started.text
+        execution_id = started.json()["execution_id"]
+        job_ids.append(started.json()["job_id"])
+
+        with org_session(UUID(ORG_A)) as session:
+            deadline_job = session.scalars(
+                select(BackgroundJob).where(
+                    BackgroundJob.organization_id == UUID(ORG_A),
+                    BackgroundJob.job_type == job_service.JOB_TYPE_MARKET_RESEARCH_DAG_SCHEDULE,
+                    BackgroundJob.dedupe_key == f"market_research_dag_deadline:{execution_id}",
+                    BackgroundJob.status == "PENDING",
+                )
+            ).one()
+            deadline_job_id = str(deadline_job.id)
+            job_ids.append(deadline_job_id)
+
+            # Simulate the deadline passing while the execution is idle in WAITING_FOR_EVIDENCE.
+            workflow = session.get(WorkflowInstance, UUID(execution_id))
+            assert workflow is not None
+            workflow.payload = {
+                **(workflow.payload or {}),
+                "deadline_at": (datetime.now(UTC) - timedelta(seconds=5)).isoformat(),
+            }
+            deadline_job.available_at = session.scalar(select(func.clock_timestamp()))
+
+        assert _claim_and_execute(deadline_job_id, "dag-deadline-worker")
+
+        detail = client.get(
+            f"/v1/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}",
+            headers=headers(),
+        )
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["execution_state"] == "TIMED_OUT"
+        assert detail.json()["workflow_status"] == "FAILED"
+
+        with org_session(UUID(ORG_A)) as session:
+            child_workflows = session.scalars(
+                select(WorkflowInstance).where(
+                    WorkflowInstance.organization_id == UUID(ORG_A),
+                    WorkflowInstance.workflow_type == "market_question_answer",
+                    WorkflowInstance.payload["dag_execution_workflow_id"].as_string() == execution_id,
+                )
+            ).all()
+            assert child_workflows == []
+
+    finally:
+        if workspace_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                linked_workflow_ids = list(
+                    session.scalars(
+                        select(MarketWorkspaceWorkflow.workflow_id).where(
+                            MarketWorkspaceWorkflow.organization_id == UUID(ORG_A),
+                            MarketWorkspaceWorkflow.workspace_id == UUID(workspace_id),
+                        )
+                    ).all()
+                )
+                all_workflow_ids = set(linked_workflow_ids)
+                if execution_id:
+                    all_workflow_ids.add(UUID(execution_id))
+                discovered_job_ids = list(
+                    session.scalars(
+                        select(WorkflowInstance.job_id).where(
+                            WorkflowInstance.organization_id == UUID(ORG_A),
+                            WorkflowInstance.id.in_(all_workflow_ids),
+                            WorkflowInstance.job_id.is_not(None),
+                        )
+                    ).all()
+                ) if all_workflow_ids else []
+                all_job_ids = set(discovered_job_ids)
+                all_job_ids.update(UUID(item) for item in job_ids)
+                if execution_id:
+                    all_job_ids.update(
+                        session.scalars(
+                            select(BackgroundJob.id).where(
+                                BackgroundJob.organization_id == UUID(ORG_A),
+                                BackgroundJob.dedupe_key == f"market_research_dag_deadline:{execution_id}",
+                            )
+                        ).all()
+                    )
                 if all_job_ids:
                     session.execute(
                         delete(BackgroundJob).where(

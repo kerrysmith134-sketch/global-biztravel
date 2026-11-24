@@ -456,3 +456,6 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 该测试与现有依赖释放、取消及 Evidence 隔离测试组合，补齐了此前“直接调用 scheduler service、未实际跑 Worker”的验收缺口。
 - **仍未完整验收**：DAG 级多 Worker 并发上限、Answer job DEAD/租约恢复后的父图状态、成本/时间预算停止、执行快照冻结及并发启动竞争仍需专门测试。通用任务队列已有的可靠性测试不能替代这些 DAG 级测试。
 - 当前 PR #31 的最新 CI 必须完成后，才可确认 FIFO 变更；本次 Worker 测试加入后仍须以新提交的 Backend + iOS + 真实服务 UI 全绿为准。
+
+
+- **H2.1 deadline enforcement**：每个 Research DAG execution 额外持久化一条 `available_at=deadline_at` 的延迟 scheduler BackgroundJob。即使 Workspace 长期处于 `WAITING_FOR_REVIEW` 或 `WAITING_FOR_EVIDENCE`，Worker 也会在截止时间自动唤醒执行器；提前完成/取消时会安全撤销未认领的延迟任务。新增真实 Worker 集成测试，模拟 idle execution 到期后被认领并验证进入 `TIMED_OUT`，且不会创建 Answer Agent 子任务。该实现仍以本次最新 CI 全绿作为接受门槛。
