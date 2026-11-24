@@ -135,28 +135,30 @@ struct MapVisitDetailDrawer: View {
     }
 
     private var travelContext: some View {
-        HStack(alignment: .center, spacing: DS.Spacing.sm) {
-            if let travel = stop.travelMinutes {
-                Label("路程 \(duration(travel))", systemImage: "car")
-                    .font(.caption)
-                    .foregroundStyle(DS.ColorToken.textSecondary)
-            }
-            if stop.distanceKm != nil {
-                Text(stop.distanceLabel)
-                    .font(.caption2)
-                    .foregroundStyle(DS.ColorToken.textSecondary)
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            HStack(alignment: .center, spacing: DS.Spacing.sm) {
+                if let travel = stop.travelMinutes {
+                    Label("路程 \(duration(travel))", systemImage: "car")
+                        .font(.caption)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+                if stop.distanceKm != nil {
+                    Text(stop.distanceLabel)
+                        .font(.caption2)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+                Spacer(minLength: 0)
+                if let cost = stop.costAmount {
+                    Text("\(stop.costCurrency ?? "") \(String(format: "%.2f", cost))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(DS.ColorToken.textPrimary)
+                }
             }
             if stop.travelSource != nil || stop.travelIsStale {
                 DSDataQualityTag(
                     kind: stop.travelIsStale ? .stale : .estimate,
                     text: stop.travelSourceLabel
                 )
-            }
-            Spacer(minLength: 0)
-            if let cost = stop.costAmount {
-                Text("\(stop.costCurrency ?? "") \(String(format: "%.2f", cost))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(DS.ColorToken.textPrimary)
             }
         }
     }
