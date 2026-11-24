@@ -1995,6 +1995,7 @@ class TripCloseoutIssueRead(BaseModel):
     source_type: str
     source_id: UUID
     action_hint: str
+    source_visit_id: UUID | None = None
 
 
 class TripCloseoutSummaryRead(BaseModel):

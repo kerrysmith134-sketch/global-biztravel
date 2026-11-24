@@ -454,6 +454,7 @@ struct TripDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: TripDetailViewModel
     @State private var selectedVisit: TripVisit?
+    @State private var selectedFollowUpId: String?
     @State private var briefingVisit: TripVisit?
     @State private var showsImport = false
     @State private var showsAddVisit = false
@@ -581,8 +582,11 @@ struct TripDetailView: View {
                             Spacer()
                             Button("简报") { briefingVisit = visit }
                                 .buttonStyle(.bordered)
-                            Button("记录") { selectedVisit = visit }
-                                .buttonStyle(.bordered)
+                            Button("记录") {
+                                selectedFollowUpId = nil
+                                selectedVisit = visit
+                            }
+                            .buttonStyle(.bordered)
                         }
                         .id("closeout-visit-\(visit.id)")
                     }
@@ -890,7 +894,7 @@ struct TripDetailView: View {
         .refreshable { await viewModel.load() }
         .task { await viewModel.load() }
         .sheet(item: $selectedVisit) { visit in
-            VisitRecordSheet(visit: visit)
+            VisitRecordSheet(visit: visit, focusFollowUpId: selectedFollowUpId)
         }
         .sheet(item: $briefingVisit) { visit in
             VisitBriefingView(visitId: visit.id, environment: environment)
@@ -941,7 +945,7 @@ struct TripDetailView: View {
             anchor = "closeout-visit-\(issue.sourceId)"
         case "VISIT_FOLLOW_UP":
             destination = .schedule
-            anchor = "closeout-schedule"
+            anchor = issue.sourceVisitId.map { "closeout-visit-\($0)" } ?? "closeout-schedule"
         case "EXPENSE":
             destination = .money
             anchor = "closeout-expense-\(issue.sourceId)"
@@ -962,6 +966,12 @@ struct TripDetailView: View {
             await Task.yield()
             withAnimation(.easeInOut(duration: 0.25)) {
                 proxy.scrollTo(anchor, anchor: .center)
+            }
+            if sourceType == "VISIT_FOLLOW_UP",
+               let visitId = issue.sourceVisitId,
+               let visit = viewModel.visits.first(where: { $0.id == visitId }) {
+                selectedFollowUpId = issue.sourceId
+                selectedVisit = visit
             }
         }
     }

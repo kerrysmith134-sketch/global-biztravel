@@ -196,10 +196,12 @@ def test_business_follow_up_is_warning_not_financial_blocker(client: TestClient)
         assert body["blockers"] == []
         assert body["status"] == "READY_WITH_EXCEPTIONS"
         assert body["summary"]["open_business_follow_up_count"] == 1
-        assert any(
-            issue["code"] == "BUSINESS_FOLLOW_UP_OPEN"
+        follow_up_issue = next(
+            issue
             for issue in body["warnings"]
+            if issue["code"] == "BUSINESS_FOLLOW_UP_OPEN"
         )
+        assert follow_up_issue["source_visit_id"] == visit_id
     finally:
         cleanup(trip_id, place_id)
 

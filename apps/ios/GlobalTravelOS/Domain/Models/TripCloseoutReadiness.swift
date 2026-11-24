@@ -72,6 +72,7 @@ struct TripCloseoutIssue: Codable, Equatable, Identifiable {
     var sourceType: String
     var sourceId: String
     var actionHint: String
+    var sourceVisitId: String?
 
     var sourceLabel: String {
         switch sourceType.uppercased() {

@@ -30,6 +30,7 @@ class CloseoutIssue:
     source_type: str
     source_id: UUID
     action_hint: str
+    source_visit_id: UUID | None = None
 
     @property
     def stable_id(self) -> str:
@@ -44,6 +45,7 @@ def _issue(
     source_type: str,
     source_id: UUID,
     action_hint: str,
+    source_visit_id: UUID | None = None,
 ) -> CloseoutIssue:
     return CloseoutIssue(
         code=code,
@@ -53,6 +55,7 @@ def _issue(
         source_type=source_type,
         source_id=source_id,
         action_hint=action_hint,
+        source_visit_id=source_visit_id,
     )
 
 
@@ -348,6 +351,7 @@ def build_trip_closeout_readiness(
                 "VISIT_FOLLOW_UP",
                 follow_up.id,
                 "打开拜访记录更新商务跟进进度；该事项不会阻断财务结账",
+                source_visit_id=follow_up.visit_id,
             )
         )
 

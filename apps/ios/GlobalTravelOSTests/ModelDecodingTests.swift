@@ -263,7 +263,7 @@ final class ModelDecodingTests: XCTestCase {
             "latest_report_id": "report-1",
             "latest_report_status": "DRAFT",
             "blocker_count": 2,
-            "warning_count": 1
+            "warning_count": 2
           },
           "totals_by_currency": [
             {"currency": "EUR", "amount": 120.5, "count": 3},
@@ -293,6 +293,17 @@ final class ModelDecodingTests: XCTestCase {
           ],
           "warnings": [
             {
+              "id": "BUSINESS_FOLLOW_UP_OPEN:VISIT_FOLLOW_UP:follow-up-1",
+              "code": "BUSINESS_FOLLOW_UP_OPEN",
+              "severity": "WARNING",
+              "title": "仍有商务跟进事项未完成",
+              "detail": "Send revised proposal",
+              "source_type": "VISIT_FOLLOW_UP",
+              "source_id": "follow-up-1",
+              "source_visit_id": "visit-1",
+              "action_hint": "打开拜访记录更新商务跟进进度"
+            },
+            {
               "id": "RECEIPT_MISSING:EXPENSE:expense-2",
               "code": "RECEIPT_MISSING",
               "severity": "WARNING",
@@ -318,6 +329,10 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(readiness.totalsByCurrency.map(\.currency), ["EUR", "USD"])
         XCTAssertEqual(readiness.blockers.count, 2)
         XCTAssertEqual(readiness.warnings.first?.severity, .warning)
+        XCTAssertEqual(
+            readiness.warnings.first(where: { $0.sourceType == "VISIT_FOLLOW_UP" })?.sourceVisitId,
+            "visit-1"
+        )
         XCTAssertEqual(readiness.blockers.first?.sourceLabel, "拜访记录")
         XCTAssertEqual(readiness.blockers.last?.sourceLabel, "费用记录")
     }

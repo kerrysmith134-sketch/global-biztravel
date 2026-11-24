@@ -439,3 +439,12 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 报告不修改任何 Insight / Opportunity / Claim 状态，不推进或回退商机阶段，不自动撤销人工决策；不使用语义相似度推断依赖。
 - 查询按 organization + Workspace 隔离，并设置 200 条主张谱系、5000 条历史主张和 250 条影响关系的上限；截断时返回标记。
 - **验证状态：** 代码和集成测试已提交至 `feat/sprint-h2.9-claim-impact-intelligence`；最新 GitHub Actions 为最终验收依据。该分支保持 Draft PR，不代表已合并或已部署。
+
+
+## 2026-11-24 H2.13 closeout navigation refinement
+
+- Closeout API issue records now include optional `source_visit_id` for `VISIT_FOLLOW_UP` warnings, preserving the relationship between a follow-up task and its owning visit.
+- The iOS closeout panel opens the owning VisitRecordSheet and scrolls directly to the matching follow-up row; other source types retain their existing visit, expense, receipt and report navigation.
+- The OpenAPI JSON/YAML snapshots were regenerated for the optional response field.
+- The real-service UI CI previously compiled and passed the iOS build/unit-test jobs, but the UI runner was killed by the output-silence watchdog 298 seconds into a no-output XCTest phase. The test harness now preboots the target simulator, serializes UI test execution and uses a 900-second silence threshold (the app's XCTest per-test allowance is 600 seconds). This is a test-harness correction, not a relaxation of product assertions.
+- Production acceptance still requires the latest real-service UI suite to finish and pass; simulator/real-device offline expense failure-path testing remains outstanding.

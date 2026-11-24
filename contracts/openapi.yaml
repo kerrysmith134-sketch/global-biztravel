@@ -27931,6 +27931,18 @@
           "action_hint": {
             "type": "string",
             "title": "Action Hint"
+          },
+          "source_visit_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Visit Id"
           }
         },
         "type": "object",
