@@ -27,6 +27,12 @@ DECISIONS_INDEX = DECISIONS_DIR / "README.md"
 STATUS_DOC = ROOT / "docs" / "review" / "implementation-status.md"
 MIGRATIONS_DIR = ROOT / "services" / "api" / "migrations" / "versions"
 
+TEXT_SUFFIXES = {
+    ".md", ".py", ".swift", ".yml", ".yaml", ".json", ".toml",
+    ".sh", ".sql", ".plist", ".pbxproj", ".txt",
+}
+SKIPPED_PARTS = {".git", ".venv", "node_modules", "DerivedData"}
+
 ADR_FILE_RE = re.compile(r"ADR-(\d{4})-[a-z0-9-]+\.md$")
 ADR_INDEX_RE = re.compile(r"^\|\s*ADR-(\d{4})\s*\|", re.MULTILINE)
 
@@ -72,6 +78,50 @@ def _documented_migration_numbers() -> set[str]:
     return set(re.findall(r"\b(\d{4})_[a-z0-9_]+", section))
 
 
+def _merge_conflict_marker_problems() -> list[str]:
+    """Fail CI when an unresolved Git conflict block is committed to a text file."""
+    problems: list[str] = []
+    for path in ROOT.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
+            continue
+        if any(part in SKIPPED_PARTS for part in path.parts):
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (UnicodeDecodeError, OSError):
+            continue
+
+        opening_line: int | None = None
+        has_separator = False
+        for line_number, line in enumerate(lines, start=1):
+            if line.startswith("<<<<<<< "):
+                if opening_line is not None:
+                    problems.append(
+                        f"{path.relative_to(ROOT)}:{line_number}：检测到嵌套冲突标记"
+                    )
+                opening_line = line_number
+                has_separator = False
+            elif opening_line is not None and line.strip() == "=======":
+                has_separator = True
+            elif line.startswith(">>>>>>> "):
+                if opening_line is None or not has_separator:
+                    problems.append(
+                        f"{path.relative_to(ROOT)}:{line_number}：存在未配对的冲突结束标记"
+                    )
+                else:
+                    problems.append(
+                        f"{path.relative_to(ROOT)}:{opening_line}-{line_number}：存在未解决的 Git 合并冲突"
+                    )
+                opening_line = None
+                has_separator = False
+
+        if opening_line is not None:
+            problems.append(
+                f"{path.relative_to(ROOT)}:{opening_line}：冲突块未闭合"
+            )
+    return problems
+
+
 def _report(label: str, files: set[str], documented: set[str]) -> list[str]:
     problems: list[str] = []
     missing = sorted(files - documented)
@@ -87,6 +137,7 @@ def main() -> int:
     problems = [
         *_report("ADR 索引", _adr_file_numbers(), _adr_index_numbers()),
         *_report("迁移清单", _migration_file_numbers(), _documented_migration_numbers()),
+        *_merge_conflict_marker_problems(),
     ]
     if problems:
         print("[FAIL] 文档与代码不一致：")
