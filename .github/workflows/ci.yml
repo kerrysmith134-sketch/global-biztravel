@@ -1,9 +1,9 @@
 name: ci
 
-# Versioned concurrency key: release the superseded H2.11 runner while still
-# cancelling superseded runs for the same PR/ref on this validation lane.
+# Versioned concurrency key: isolate this DAG deadline validation from a stalled
+# predecessor UI runner; subsequent runs of this lane still cancel superseded runs.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-12-visit-follow-up
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-14-research-deadline
   cancel-in-progress: true
 
 on:
