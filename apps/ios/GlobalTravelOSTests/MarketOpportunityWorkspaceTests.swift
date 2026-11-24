@@ -170,4 +170,102 @@ final class MarketOpportunityWorkspaceTests: XCTestCase {
         XCTAssertEqual(evidence.verificationStatusLabel, "来源已核验")
         XCTAssertEqual(evidence.canonicalRef, "https://example.gov/procurement")
     }
+
+
+    func testWorkspaceEntityEndpointsAndEntityModelsUseTypedContracts() throws {
+        let list = Endpoints.listMarketWorkspaceEntities(
+            workspaceId: "workspace-1",
+            page: PageRequest(limit: 40, cursor: "entities-next")
+        )
+        XCTAssertEqual(list.method, .get)
+        XCTAssertEqual(list.path, "/v1/market/workspaces/workspace-1/entities")
+        XCTAssertEqual(list.queryItems.map(\\.name), ["limit", "cursor"])
+        XCTAssertEqual(list.queryItems.map(\\.value), ["40", "entities-next"])
+        XCTAssertNil(list.idempotencyKey)
+
+        let create = try Endpoints.createMarketWorkspaceEntity(
+            workspaceId: "workspace-1",
+            body: MarketWorkspaceEntityCreateRequest(
+                entityKind: "Distributor",
+                displayName: "East Africa Energy Group",
+                canonicalDomain: "example.test",
+                countryCode: "ke",
+                discoveryReason: "Found in market research."
+            )
+        )
+        XCTAssertEqual(create.method, .post)
+        XCTAssertEqual(create.path, "/v1/market/workspaces/workspace-1/entities")
+        XCTAssertNotNil(create.idempotencyKey)
+        let createBody = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(create.body)) as? [String: Any]
+        )
+        XCTAssertEqual(createBody["entity_kind"] as? String, "Distributor")
+        XCTAssertEqual(createBody["display_name"] as? String, "East Africa Energy Group")
+        XCTAssertEqual(createBody["country_code"] as? String, "KE")
+
+        let attach = try Endpoints.attachMarketOpportunityEntities(
+            workspaceId: "workspace-1",
+            opportunityId: "opportunity-1",
+            body: MarketOpportunityEntitiesAttachRequest(
+                entityIds: ["entity-1"],
+                relationshipNote: "Potential channel partner for this programme."
+            )
+        )
+        XCTAssertEqual(attach.method, .post)
+        XCTAssertEqual(
+            attach.path,
+            "/v1/market/workspaces/workspace-1/opportunities/opportunity-1/entities"
+        )
+        XCTAssertNotNil(attach.idempotencyKey)
+        let attachBody = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(attach.body)) as? [String: Any]
+        )
+        XCTAssertEqual(attachBody["entity_ids"] as? [String], ["entity-1"])
+        XCTAssertEqual(
+            attachBody["relationship_note"] as? String,
+            "Potential channel partner for this programme."
+        )
+
+        let entityJSON = """
+        {
+          "entity": {
+            "id": "entity-1",
+            "entity_kind": "Distributor",
+            "display_name": "East Africa Energy Group",
+            "normalized_name": "east africa energy group",
+            "description": "Regional energy distributor",
+            "canonical_domain": "example.test",
+            "country_code": "KE",
+            "attributes": {"employee_band": "UNKNOWN"},
+            "status": "CANDIDATE",
+            "created_at": "2026-11-24T08:00:00+00:00",
+            "updated_at": "2026-11-24T08:00:00+00:00",
+            "aliases": [{
+              "id": "alias-1",
+              "alias_type": "NAME",
+              "raw_value": "East Africa Energy Group",
+              "normalized_value": "east africa energy group",
+              "source_evidence_id": null,
+              "created_at": "2026-11-24T08:00:00+00:00"
+            }]
+          },
+          "discovery_reason": "Found during market research.",
+          "relevance_note": "Potential regional partner.",
+          "status": "DISCOVERED",
+          "first_seen_at": "2026-11-24T08:00:00+00:00",
+          "last_seen_at": "2026-11-24T08:00:00+00:00",
+          "possible_duplicate_entity_ids": []
+        }
+        """
+        let workspaceEntity = try DateCoding.decode(
+            MarketWorkspaceEntityRead.self,
+            fromJSON: entityJSON
+        )
+        XCTAssertEqual(workspaceEntity.entity.id, "entity-1")
+        XCTAssertEqual(workspaceEntity.entity.displayName, "East Africa Energy Group")
+        XCTAssertEqual(workspaceEntity.entity.aliases.first?.aliasType, "NAME")
+        XCTAssertEqual(workspaceEntity.workspaceStatusLabel, "已发现")
+        XCTAssertTrue(workspaceEntity.possibleDuplicateEntityIds.isEmpty)
+    }
+
 }

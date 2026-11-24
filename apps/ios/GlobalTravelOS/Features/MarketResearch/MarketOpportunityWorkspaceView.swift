@@ -260,6 +260,8 @@ struct MarketOpportunityDetailSheet: View {
     @State private var outcomeNote = ""
     @State private var evidenceRationale = ""
     @State private var visitLinkNote = ""
+    @State private var entityRelationshipNote = ""
+    @State private var showsCreateEntitySheet = false
 
     let onChanged: () async -> Void
 
@@ -288,6 +290,21 @@ struct MarketOpportunityDetailSheet: View {
                     }
                     if let detail = viewModel.detail {
                         opportunitySummary(detail.opportunity)
+                        MarketOpportunityEntitySection(
+                            entities: detail.entities,
+                            candidates: viewModel.availableWorkspaceEntities,
+                            relationshipNote: $entityRelationshipNote,
+                            isSubmitting: viewModel.isSubmitting,
+                            onCreate: { showsCreateEntitySheet = true },
+                            onAttach: { candidate, note in
+                                Task {
+                                    if await viewModel.attachEntity(candidate, note: note) {
+                                        entityRelationshipNote = ""
+                                        await onChanged()
+                                    }
+                                }
+                            }
+                        )
                         evidenceSection(detail)
                         statusActions(detail.opportunity)
                         if let execution = viewModel.execution,
@@ -341,6 +358,13 @@ struct MarketOpportunityDetailSheet: View {
             }
         }
         .presentationDetents([.large])
+        .sheet(isPresented: $showsCreateEntitySheet) {
+            MarketWorkspaceEntityCreateSheet { request in
+                let created = await viewModel.createWorkspaceCandidate(request)
+                if created { await onChanged() }
+                return created
+            }
+        }
         .task { await viewModel.load() }
     }
 

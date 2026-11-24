@@ -109,10 +109,109 @@ struct MarketOpportunityEvidenceRead: Decodable, Equatable, Identifiable {
     var id: String { "\(evidence.id):\(relationType)" }
 }
 
+struct MarketEntityAliasRead: Decodable, Equatable, Identifiable {
+    var id: String
+    var aliasType: String
+    var rawValue: String
+    var normalizedValue: String
+    var sourceEvidenceId: String?
+    var createdAt: Date
+}
+
+struct MarketEntityRead: Decodable, Equatable, Identifiable {
+    var id: String
+    var entityKind: String
+    var displayName: String
+    var normalizedName: String
+    var description: String?
+    var canonicalDomain: String?
+    var countryCode: String?
+    var attributes: [String: JSONValue]
+    var status: String
+    var createdAt: Date
+    var updatedAt: Date
+    var aliases: [MarketEntityAliasRead]
+
+    var statusLabel: String {
+        switch status.uppercased() {
+        case "CANDIDATE": return "候选"
+        case "REVIEWED": return "已审核"
+        case "VERIFIED": return "已核验"
+        case "REJECTED": return "已驳回"
+        case "MERGED": return "已合并"
+        default: return status
+        }
+    }
+
+    var locationLabel: String {
+        countryCode?.uppercased() ?? "国家未注明"
+    }
+}
+
+struct MarketWorkspaceEntityRead: Decodable, Equatable, Identifiable {
+    var entity: MarketEntityRead
+    var discoveryReason: String?
+    var relevanceNote: String?
+    var status: String
+    var firstSeenAt: Date
+    var lastSeenAt: Date
+    var possibleDuplicateEntityIds: [String]
+
+    var id: String { entity.id }
+
+    var workspaceStatusLabel: String {
+        switch status.uppercased() {
+        case "DISCOVERED": return "已发现"
+        case "RESEARCHING": return "研究中"
+        case "INCLUDED": return "已纳入"
+        case "EXCLUDED": return "已排除"
+        default: return status
+        }
+    }
+}
+
+struct MarketWorkspaceEntityCreateRequest: Codable, Equatable {
+    var existingEntityId: String?
+    var entityKind: String?
+    var displayName: String?
+    var description: String?
+    var canonicalDomain: String?
+    var countryCode: String?
+    var attributes: [String: JSONValue]
+    var discoveryReason: String?
+    var relevanceNote: String?
+
+    init(
+        entityKind: String,
+        displayName: String,
+        description: String? = nil,
+        canonicalDomain: String? = nil,
+        countryCode: String? = nil,
+        attributes: [String: JSONValue] = [:],
+        discoveryReason: String? = nil,
+        relevanceNote: String? = nil
+    ) {
+        self.existingEntityId = nil
+        self.entityKind = entityKind.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.description = description?.nilIfBlank
+        self.canonicalDomain = canonicalDomain?.nilIfBlank
+        self.countryCode = countryCode?.nilIfBlank?.uppercased()
+        self.attributes = attributes
+        self.discoveryReason = discoveryReason?.nilIfBlank
+        self.relevanceNote = relevanceNote?.nilIfBlank
+    }
+}
+
+struct MarketOpportunityEntitiesAttachRequest: Codable, Equatable {
+    var entityIds: [String]
+    var relationshipNote: String?
+}
+
 struct MarketOpportunityDetailRead: Decodable, Equatable {
     var opportunity: MarketOpportunitySummaryRead
     var evidence: [MarketOpportunityEvidenceRead]
-    var entities: [JSONValue]
+    var entities: [MarketEntityRead]
     var assessments: [JSONValue]
 }
 

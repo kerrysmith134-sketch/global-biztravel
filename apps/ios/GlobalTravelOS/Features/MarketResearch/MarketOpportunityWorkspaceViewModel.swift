@@ -99,6 +99,7 @@ final class MarketOpportunityWorkspaceViewModel: ObservableObject {
 final class MarketOpportunityDetailViewModel: ObservableObject {
     @Published private(set) var detail: MarketOpportunityDetailRead?
     @Published private(set) var workspaceEvidence: [ResearchEvidence] = []
+    @Published private(set) var workspaceEntities: [MarketWorkspaceEntityRead] = []
     @Published private(set) var execution: MarketOpportunityExecutionRead?
     @Published private(set) var isLoading = false
     @Published private(set) var isSubmitting = false
@@ -117,6 +118,13 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
     var availableEvidence: [ResearchEvidence] {
         let linked = Set(detail?.evidence.map { $0.evidence.id } ?? [])
         return workspaceEvidence.filter { !linked.contains($0.id) }
+    }
+
+    var availableWorkspaceEntities: [MarketWorkspaceEntityRead] {
+        let attachedIds = Set(detail?.entities.map(\.id) ?? [])
+        return workspaceEntities.filter {
+            !attachedIds.contains($0.entity.id) && $0.status.uppercased() != "EXCLUDED"
+        }
     }
 
     var hasSupportingEvidence: Bool {
@@ -145,6 +153,10 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
             workspaceId: workspaceId,
             opportunityId: opportunityId
         )
+        async let entitiesRequest = repository.listMarketWorkspaceEntities(
+            workspaceId: workspaceId,
+            page: PageRequest(limit: 60)
+        )
 
         do {
             detail = try await detailRequest
@@ -159,6 +171,11 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
         }
         do {
             execution = try await executionRequest
+        } catch {
+            if errorMessage == nil { errorMessage = error.localizedDescription }
+        }
+        do {
+            workspaceEntities = try await entitiesRequest.items
         } catch {
             if errorMessage == nil { errorMessage = error.localizedDescription }
         }
@@ -242,6 +259,48 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                 request: MarketOpportunityOutcomeRequest(
                     outcome: outcome,
                     outcomeNote: note.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            )
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func createWorkspaceCandidate(_ request: MarketWorkspaceEntityCreateRequest) async -> Bool {
+        guard !isSubmitting else { return false }
+        isSubmitting = true
+        errorMessage = nil
+        defer { isSubmitting = false }
+        do {
+            _ = try await repository.createMarketWorkspaceEntity(
+                workspaceId: workspaceId,
+                request: request
+            )
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func attachEntity(_ candidate: MarketWorkspaceEntityRead, note: String) async -> Bool {
+        guard !isSubmitting,
+              !detail?.entities.contains(where: { $0.id == candidate.entity.id })!
+        else { return false }
+        isSubmitting = true
+        errorMessage = nil
+        defer { isSubmitting = false }
+        do {
+            _ = try await repository.attachMarketOpportunityEntities(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId,
+                request: MarketOpportunityEntitiesAttachRequest(
+                    entityIds: [candidate.entity.id],
+                    relationshipNote: note.nilIfBlank
                 )
             )
             await load()

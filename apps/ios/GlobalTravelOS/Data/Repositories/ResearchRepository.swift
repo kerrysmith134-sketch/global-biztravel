@@ -24,6 +24,19 @@ protocol ResearchRepository {
         workspaceId: String,
         request: MarketOpportunityCreateRequest
     ) async throws -> MarketOpportunitySummaryRead
+    func listMarketWorkspaceEntities(
+        workspaceId: String,
+        page: PageRequest
+    ) async throws -> Page<MarketWorkspaceEntityRead>
+    func createMarketWorkspaceEntity(
+        workspaceId: String,
+        request: MarketWorkspaceEntityCreateRequest
+    ) async throws -> MarketWorkspaceEntityRead
+    func attachMarketOpportunityEntities(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityEntitiesAttachRequest
+    ) async throws -> [MarketEntityRead]
     func listMarketEvidence(workspaceId: String, page: PageRequest) async throws -> Page<ResearchEvidence>
     func addMarketOpportunityEvidence(
         workspaceId: String,
@@ -148,6 +161,28 @@ extension ResearchRepository {
         request: MarketOpportunityCreateRequest
     ) async throws -> MarketOpportunitySummaryRead {
         throw RepositoryError.requiresNetwork("当前研究仓库未实现商业机会创建")
+    }
+
+    func listMarketWorkspaceEntities(
+        workspaceId: String,
+        page: PageRequest
+    ) async throws -> Page<MarketWorkspaceEntityRead> {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现 Workspace 候选实体列表")
+    }
+
+    func createMarketWorkspaceEntity(
+        workspaceId: String,
+        request: MarketWorkspaceEntityCreateRequest
+    ) async throws -> MarketWorkspaceEntityRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现候选实体创建")
+    }
+
+    func attachMarketOpportunityEntities(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityEntitiesAttachRequest
+    ) async throws -> [MarketEntityRead] {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现候选实体与商业机会关联")
     }
 
     func listMarketEvidence(workspaceId: String, page: PageRequest) async throws -> Page<ResearchEvidence> {
@@ -379,6 +414,41 @@ final class RemoteResearchRepository: ResearchRepository {
         try await client.send(
             try Endpoints.createMarketOpportunity(workspaceId: workspaceId, body: request),
             as: MarketOpportunitySummaryRead.self
+        )
+    }
+
+    func listMarketWorkspaceEntities(
+        workspaceId: String,
+        page: PageRequest
+    ) async throws -> Page<MarketWorkspaceEntityRead> {
+        try await client.send(
+            Endpoints.listMarketWorkspaceEntities(workspaceId: workspaceId, page: page),
+            as: Page<MarketWorkspaceEntityRead>.self
+        )
+    }
+
+    func createMarketWorkspaceEntity(
+        workspaceId: String,
+        request: MarketWorkspaceEntityCreateRequest
+    ) async throws -> MarketWorkspaceEntityRead {
+        try await client.send(
+            try Endpoints.createMarketWorkspaceEntity(workspaceId: workspaceId, body: request),
+            as: MarketWorkspaceEntityRead.self
+        )
+    }
+
+    func attachMarketOpportunityEntities(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityEntitiesAttachRequest
+    ) async throws -> [MarketEntityRead] {
+        try await client.send(
+            try Endpoints.attachMarketOpportunityEntities(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId,
+                body: request
+            ),
+            as: [MarketEntityRead].self
         )
     }
 
