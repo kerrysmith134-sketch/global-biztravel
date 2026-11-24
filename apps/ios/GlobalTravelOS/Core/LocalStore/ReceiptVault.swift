@@ -109,59 +109,72 @@ final class ReceiptVault {
         let detected = try Self.detectType(draft.data)
         let digest = Self.sha256(draft.data)
 
-        let existing = try database.loadPayloads(
-            table: "receipt_assets",
-            where: "trip_id = ?",
-            bindings: [tripId],
-            order: "created_at DESC"
-        )
-        for payload in existing {
-            let asset = try DateCoding.decode(LocalReceiptAsset.self, from: payload)
-            if asset.sha256 == digest,
-               let storedBytes = try? originalData(assetId: asset.id),
-               storedBytes == draft.data {
+        // Check for an identical asset and insert its replacement under the same SQLite
+        // write transaction. Independent vault/database handles are serialized by
+        // BEGIN IMMEDIATE, so simultaneous selections cannot create duplicate receipt rows.
+        var newlyWrittenFile: URL?
+        do {
+            return try database.transaction {
+                let existing = try database.loadPayloads(
+                    table: "receipt_assets",
+                    where: "trip_id = ?",
+                    bindings: [tripId],
+                    order: "created_at DESC"
+                )
+                for payload in existing {
+                    let asset = try DateCoding.decode(LocalReceiptAsset.self, from: payload)
+                    if asset.sha256 == digest,
+                       let storedBytes = try? originalData(assetId: asset.id),
+                       storedBytes == draft.data {
+                        return asset
+                    }
+                }
+
+                let id = UUID().uuidString.lowercased()
+                let storageKey = "\\(id).\\(detected.fileExtension)"
+                let destination = fileDirectory.appendingPathComponent(storageKey, isDirectory: false)
+                let now = Date()
+                let asset = LocalReceiptAsset(
+                    id: id,
+                    tripId: tripId,
+                    serverAssetId: nil,
+                    originalFilename: Self.sanitizedDisplayName(
+                        draft.filename,
+                        fallbackExtension: detected.fileExtension
+                    ),
+                    mimeType: detected.mimeType,
+                    byteLength: draft.data.count,
+                    sha256: digest,
+                    storageKey: storageKey,
+                    uploadState: uploadsEnabled ? .pendingUpload : .localOnly,
+                    lastError: nil,
+                    createdAt: now,
+                    updatedAt: now
+                )
+
+                try draft.data.write(to: destination, options: [.atomic, .completeFileProtection])
+                newlyWrittenFile = destination
+                try database.upsert(
+                    table: "receipt_assets",
+                    id: asset.id,
+                    columns: [
+                        "trip_id": tripId,
+                        "server_asset_id": nil as String?,
+                        "upload_status": asset.uploadState.rawValue,
+                        "created_at": SQLTimestamp.basics.string(from: now),
+                        "updated_at": SQLTimestamp.basics.string(from: now),
+                    ],
+                    payload: try DateCoding.encode(asset)
+                )
                 return asset
             }
-        }
-
-        let id = UUID().uuidString.lowercased()
-        let storageKey = "\(id).\(detected.fileExtension)"
-        let destination = fileDirectory.appendingPathComponent(storageKey, isDirectory: false)
-        let now = Date()
-        let asset = LocalReceiptAsset(
-            id: id,
-            tripId: tripId,
-            serverAssetId: nil,
-            originalFilename: Self.sanitizedDisplayName(draft.filename, fallbackExtension: detected.fileExtension),
-            mimeType: detected.mimeType,
-            byteLength: draft.data.count,
-            sha256: digest,
-            storageKey: storageKey,
-            uploadState: uploadsEnabled ? .pendingUpload : .localOnly,
-            lastError: nil,
-            createdAt: now,
-            updatedAt: now
-        )
-
-        try draft.data.write(to: destination, options: [.atomic, .completeFileProtection])
-        do {
-            try database.upsert(
-                table: "receipt_assets",
-                id: asset.id,
-                columns: [
-                    "trip_id": tripId,
-                    "server_asset_id": nil as String?,
-                    "upload_status": asset.uploadState.rawValue,
-                    "created_at": SQLTimestamp.basics.string(from: now),
-                    "updated_at": SQLTimestamp.basics.string(from: now),
-                ],
-                payload: try DateCoding.encode(asset)
-            )
         } catch {
-            try? fileManager.removeItem(at: destination)
+            // Includes a COMMIT failure after the file and row were staged.
+            if let newlyWrittenFile {
+                try? fileManager.removeItem(at: newlyWrittenFile)
+            }
             throw error
         }
-        return asset
     }
 
     /// Returns an asset ID safe to attach to the expense. Capture is a separate, earlier action:
