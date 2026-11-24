@@ -17,6 +17,64 @@ final class ReceiptVaultTests: XCTestCase {
         try? FileManager.default.removeItem(at: temporaryDirectory)
     }
 
+    func testLocalMigrationDDLAndVersionMarkerRollbackTogether() throws {
+        let database = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("migration-atomic.sqlite3")
+        )
+        let migrationName = "test_atomic_failure"
+
+        XCTAssertThrowsError(
+            try database.applyMigration(
+                name: migrationName,
+                script: """
+                CREATE TABLE migration_atomic_probe (id TEXT PRIMARY KEY);
+                CREATE TABLE migration_atomic_probe (id TEXT PRIMARY KEY);
+                """
+            )
+        )
+
+        let createdTables = try database.store.query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            bindings: ["migration_atomic_probe"]
+        ) { $0.string(0) }
+        let appliedMarkers = try database.store.query(
+            "SELECT name FROM schema_migrations WHERE name = ?",
+            bindings: [migrationName]
+        ) { $0.string(0) }
+
+        XCTAssertTrue(createdTables.isEmpty, "DDL before a failed statement must roll back")
+        XCTAssertTrue(appliedMarkers.isEmpty, "A failed migration must not leave a success marker")
+    }
+
+    func testConcurrentOpenAppliesLocalMigrationsExactlyOnce() throws {
+        let path = temporaryDirectory.appendingPathComponent("concurrent-migrations.sqlite3")
+        let failures = MigrationFailureCollector()
+
+        DispatchQueue.concurrentPerform(iterations: 8) { _ in
+            do {
+                let database = try LocalDatabase.open(path: path)
+                let appliedCount = try database.count(table: "schema_migrations")
+                let pendingExpenseColumns = try database.store.query(
+                    "PRAGMA table_info(pending_trip_expenses)"
+                ) { $0.string(1) }
+
+                if appliedCount != 9 || !pendingExpenseColumns.contains("queue_order") {
+                    failures.append(
+                        "Expected 9 migrations and queue_order; got count=\(appliedCount), " +
+                            "columns=\(pendingExpenseColumns)"
+                    )
+                }
+            } catch {
+                failures.append(String(describing: error))
+            }
+        }
+
+        XCTAssertTrue(
+            failures.messages.isEmpty,
+            "Concurrent database open failed: \(failures.messages.joined(separator: "; "))"
+        )
+    }
+
     func testLocalReceiptPersistsExactOriginalAndPrivateMetadata() throws {
         let vault = try ReceiptVault.open(
             directory: temporaryDirectory,
@@ -220,5 +278,22 @@ final class ReceiptVaultTests: XCTestCase {
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
             0x00, 0x00, 0x00, 0x00
         ])
+    }
+}
+
+private final class MigrationFailureCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    func append(_ message: String) {
+        lock.lock()
+        storage.append(message)
+        lock.unlock()
+    }
+
+    var messages: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }
