@@ -749,6 +749,63 @@ final class GlobalTravelOSUITests: XCTestCase {
         XCTAssertTrue(sourceAmount.isHittable, "定位来源后没有滚动到对应的费用记录")
     }
 
+    func testSplitExpenseReportSubmissionRefreshesTripDetail() throws {
+        let setup = try makeBriefingTrip()
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let expense = try postJSON(
+            "http://127.0.0.1:8080/v1/trips/\(setup.tripId)/expenses",
+            body: [
+                "category": "MEALS",
+                "amount": "55.80",
+                "currency": "EUR",
+                "occurred_on": dateFormatter.string(from: Date()),
+                "note": "Expense report UI acceptance",
+            ]
+        )
+        XCTAssertNotNil(expense["id"] as? String)
+
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "出行 Tab 未出现")
+        app.buttons["出行"].tap()
+        let trip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
+        trip.tap()
+
+        let sectionPicker = app.segmentedControls["trip-section-picker"]
+        XCTAssertTrue(sectionPicker.waitForExistence(timeout: 10), "行程详情缺少分区切换器")
+        sectionPicker.buttons["费用"].tap()
+        XCTAssertTrue(
+            app.staticTexts["出差结账准备度"].waitForExistence(timeout: 20),
+            "费用分区未展示服务端结账评估"
+        )
+
+        let createReport = app.buttons["从费用记录生成报销单"]
+        XCTAssertTrue(revealAndTap(app, createReport), "未找到生成报销单入口")
+        let draft = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '草稿' AND label CONTAINS '1 项'")
+        ).firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 20), "服务端报销草稿未回显")
+
+        let submit = app.buttons["提交"].firstMatch
+        XCTAssertTrue(revealAndTap(app, submit), "报销草稿缺少提交操作")
+        let submitted = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '已提交' AND label CONTAINS '1 项'")
+        ).firstMatch
+        XCTAssertTrue(
+            submitted.waitForExistence(timeout: 20),
+            "提交成功后，行程详情没有刷新为服务端已提交状态"
+        )
+    }
+
     func testVisitRecordSubmissionFlow() throws {
         let setup = try makeBriefingTrip()
         let app = XCUIApplication()
