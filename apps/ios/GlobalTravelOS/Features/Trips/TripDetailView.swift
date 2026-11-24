@@ -12,6 +12,9 @@ final class TripDetailViewModel: ObservableObject {
     @Published private(set) var isSyncingPendingExpenses = false
     @Published private(set) var budget: BudgetSummary?
     @Published private(set) var expenseReports: [ExpenseReport] = []
+    @Published private(set) var closeoutReadiness: TripCloseoutReadiness?
+    @Published private(set) var isLoadingCloseout = false
+    @Published private(set) var closeoutError: String?
     @Published private(set) var isLoading = false
     @Published private(set) var generating = false
     @Published var errorMessage: String?
@@ -104,6 +107,7 @@ final class TripDetailViewModel: ObservableObject {
             sectionErrors["budget"] = environment.errorMessage(error)
         }
         refreshPendingExpenses()
+        await refreshCloseoutReadiness()
         environment.refreshOfflineSummary()
         if !environment.isLocalMode, let receiptVault = environment.receiptVault {
             let queuedReceiptIDs = Set(pendingExpenses.compactMap(\.localReceiptAssetId))
@@ -114,6 +118,24 @@ final class TripDetailViewModel: ObservableObject {
                 )
                 await retryPendingExpenses()
             }
+        }
+    }
+
+    func refreshCloseoutReadiness() async {
+        guard !environment.isLocalMode else {
+            closeoutReadiness = nil
+            closeoutError = nil
+            return
+        }
+        isLoadingCloseout = true
+        defer { isLoadingCloseout = false }
+        do {
+            closeoutReadiness = try await environment.tripRepository.closeoutReadiness(
+                tripId: tripId
+            )
+            closeoutError = nil
+        } catch {
+            closeoutError = environment.errorMessage(error)
         }
     }
 
@@ -203,6 +225,7 @@ final class TripDetailViewModel: ObservableObject {
             } catch {
                 sectionErrors["budget"] = environment.errorMessage(error)
             }
+            await refreshCloseoutReadiness()
         }
         if pendingExpenses.isEmpty {
             if syncedCount > 0 { statusMessage = "\(syncedCount) 笔费用已同步" }
@@ -311,6 +334,7 @@ final class TripDetailViewModel: ObservableObject {
         do {
             let report = try await environment.tripRepository.createExpenseReport(tripId: tripId)
             expenseReports.insert(report, at: 0)
+            await refreshCloseoutReadiness()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -321,6 +345,7 @@ final class TripDetailViewModel: ObservableObject {
         do {
             _ = try await environment.tripRepository.submitExpenseReport(id: report.id)
             expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
+            await refreshCloseoutReadiness()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -443,7 +468,8 @@ struct TripDetailView: View {
     }
 
     var body: some View {
-        List {
+        ScrollViewReader { proxy in
+            List {
             Section {
                 Picker("分区", selection: $section) {
                     ForEach(TripSection.allCases) { item in
@@ -528,6 +554,10 @@ struct TripDetailView: View {
             }
             if section == .schedule {
                 Section("拜访") {
+                    Text("拜访记录与现场结果")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .id("closeout-schedule")
                     if let error = viewModel.sectionError("visits") {
                         Text(error).font(.caption).foregroundStyle(.red)
                     }
@@ -554,6 +584,7 @@ struct TripDetailView: View {
                             Button("记录") { selectedVisit = visit }
                                 .buttonStyle(.bordered)
                         }
+                        .id("closeout-visit-\(visit.id)")
                     }
                 }
 
@@ -616,6 +647,19 @@ struct TripDetailView: View {
 
             }
             if section == .money {
+                TripCloseoutPanel(
+                    readiness: viewModel.closeoutReadiness,
+                    isLoading: viewModel.isLoadingCloseout,
+                    errorMessage: viewModel.closeoutError,
+                    isLocalMode: environment.isLocalMode,
+                    onRefresh: {
+                        Task { await viewModel.refreshCloseoutReadiness() }
+                    },
+                    onOpenSource: { issue in
+                        navigateToCloseoutSource(issue, proxy: proxy)
+                    }
+                )
+
                 Section("费用与预算") {
                     if let budget = viewModel.budget {
                         LabeledContent("预算", value: budget.budgetLabel)
@@ -667,19 +711,21 @@ struct TripDetailView: View {
                                 Text(expense.amountLabel)
                                     .font(.caption.monospacedDigit())
                             }
-                            if expense.receiptAssetId != nil {
+                            if let receiptAssetId = expense.receiptAssetId {
                                 Label(
                                     environment.isLocalMode ? "原件保存在本机" : "原件已上传",
                                     systemImage: "paperclip"
                                 )
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                                .id("closeout-receipt-\(receiptAssetId)")
                             } else {
                                 Label("未附原始票据", systemImage: "paperclip")
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
                             }
                         }
+                        .id("closeout-expense-\(expense.id)")
                     }
 
                     Button {
@@ -688,6 +734,7 @@ struct TripDetailView: View {
                         Label("记一笔费用", systemImage: "plus.circle")
                     }
                 }
+                .id("closeout-money-summary")
 
                 if !viewModel.pendingExpenses.isEmpty {
                     Section {
@@ -754,6 +801,7 @@ struct TripDetailView: View {
                                 .font(.caption)
                             }
                         }
+                        .id("closeout-report-\(report.id)")
                     }
                     Button {
                         Task { await viewModel.createExpenseReport() }
@@ -878,5 +926,44 @@ struct TripDetailView: View {
                 }
             )
         }
+        }
     }
+    private func navigateToCloseoutSource(
+        _ issue: TripCloseoutIssue,
+        proxy: ScrollViewProxy
+    ) {
+        let sourceType = issue.sourceType.uppercased()
+        let destination: TripSection
+        let anchor: String
+        switch sourceType {
+        case "VISIT":
+            destination = .schedule
+            anchor = "closeout-visit-\(issue.sourceId)"
+        case "VISIT_FOLLOW_UP":
+            destination = .schedule
+            anchor = "closeout-schedule"
+        case "EXPENSE":
+            destination = .money
+            anchor = "closeout-expense-\(issue.sourceId)"
+        case "RECEIPT_ASSET":
+            destination = .money
+            anchor = viewModel.expenses.contains(where: { $0.receiptAssetId == issue.sourceId })
+                ? "closeout-receipt-\(issue.sourceId)"
+                : "closeout-money-summary"
+        case "EXPENSE_REPORT":
+            destination = .money
+            anchor = "closeout-report-\(issue.sourceId)"
+        default:
+            destination = .money
+            anchor = "closeout-money-summary"
+        }
+        section = destination
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(anchor, anchor: .center)
+            }
+        }
+    }
+
 }

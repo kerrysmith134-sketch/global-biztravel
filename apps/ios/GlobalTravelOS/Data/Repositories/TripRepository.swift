@@ -46,6 +46,7 @@ protocol TripRepository {
         idempotencyKey: String?
     ) async throws -> TripExpense
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness
     func expenseReports(tripId: String) async throws -> [ExpenseReport]
     func createExpenseReport(tripId: String) async throws -> ExpenseReport
     func submitExpenseReport(id: String) async throws -> ExpenseReport
@@ -59,6 +60,16 @@ protocol TripRepository {
 }
 
 extension TripRepository {
+    /// Local-only repositories do not have a server evidence ledger to assess.
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        throw APIError.serverError(
+            code: "CLOSEOUT_UNAVAILABLE",
+            message: "本地模式没有服务端结账评估",
+            traceId: nil,
+            details: [:]
+        )
+    }
+
     /// Repositories without remote idempotency support keep their existing local write path.
     func createExpense(
         tripId: String,
@@ -145,6 +156,13 @@ final class RemoteTripRepository: TripRepository {
         try await client.send(
             Endpoints.tripBudget(tripId: tripId, baseCurrency: baseCurrency),
             as: BudgetSummary.self
+        )
+    }
+
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        try await client.send(
+            Endpoints.tripCloseoutReadiness(tripId: tripId),
+            as: TripCloseoutReadiness.self
         )
     }
 
@@ -345,6 +363,12 @@ final class OfflineTripRepository: TripRepository {
 
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary {
         try await remote.budgetSummary(tripId: tripId, baseCurrency: baseCurrency)
+    }
+
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        let readiness = try await remote.closeoutReadiness(tripId: tripId)
+        indicator.markServedFromServer()
+        return readiness
     }
 
     func localGuide(tripId: String) async throws -> LocalGuide {

@@ -49,6 +49,10 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(id)")
     }
 
+    static func tripCloseoutReadiness(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/closeout-readiness")
+    }
+
     static func holdTrip(id: String, version: Int) -> APIRequest {
         APIRequest(method: .post, path: "/v1/trips/\(id)/hold", ifMatch: String(version))
     }

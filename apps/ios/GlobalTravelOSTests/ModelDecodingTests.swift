@@ -241,6 +241,94 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(payload["customer_id"] as? String, "customer-1")
     }
 
+    func testTripCloseoutReadinessDecodesIssuesAndCurrencyTotals() throws {
+        let json = """
+        {
+          "trip_id": "trip-1",
+          "status": "BLOCKED",
+          "generated_at": "2026-11-24T10:30:00+00:00",
+          "summary": {
+            "visit_count": 4,
+            "visit_outcome_count": 3,
+            "visits_open_count": 1,
+            "visits_missing_outcome_count": 0,
+            "expense_count": 5,
+            "expenses_in_report_count": 4,
+            "expenses_not_in_report_count": 1,
+            "expenses_without_receipt_count": 2,
+            "receipt_asset_count": 3,
+            "receipt_asset_unavailable_count": 1,
+            "ocr_needs_review_count": 1,
+            "open_business_follow_up_count": 2,
+            "latest_report_id": "report-1",
+            "latest_report_status": "DRAFT",
+            "blocker_count": 2,
+            "warning_count": 1
+          },
+          "totals_by_currency": [
+            {"currency": "EUR", "amount": 120.5, "count": 3},
+            {"currency": "USD", "amount": 42.0, "count": 2}
+          ],
+          "blockers": [
+            {
+              "id": "VISIT_NOT_CLOSED:VISIT:visit-1",
+              "code": "VISIT_NOT_CLOSED",
+              "severity": "BLOCKER",
+              "title": "拜访尚未完成",
+              "detail": "拜访状态为 PLANNED",
+              "source_type": "VISIT",
+              "source_id": "visit-1",
+              "action_hint": "打开该拜访并记录真实结果"
+            },
+            {
+              "id": "EXPENSE_NOT_IN_REPORT:EXPENSE:expense-1",
+              "code": "EXPENSE_NOT_IN_REPORT",
+              "severity": "BLOCKER",
+              "title": "费用尚未纳入报销快照",
+              "detail": "MEALS · 18.50 EUR",
+              "source_type": "EXPENSE",
+              "source_id": "expense-1",
+              "action_hint": "将该费用加入报销单"
+            }
+          ],
+          "warnings": [
+            {
+              "id": "RECEIPT_MISSING:EXPENSE:expense-2",
+              "code": "RECEIPT_MISSING",
+              "severity": "WARNING",
+              "title": "费用缺少原始票据",
+              "detail": "TRANSPORT · 8.00 EUR",
+              "source_type": "EXPENSE",
+              "source_id": "expense-2",
+              "action_hint": "补充原始票据"
+            }
+          ]
+        }
+        """
+        let readiness = try DateCoding.decode(
+            TripCloseoutReadiness.self,
+            fromJSON: json
+        )
+
+        XCTAssertEqual(readiness.tripId, "trip-1")
+        XCTAssertEqual(readiness.status, .blocked)
+        XCTAssertEqual(readiness.summary.visitOutcomeCount, 3)
+        XCTAssertEqual(readiness.summary.expensesNotInReportCount, 1)
+        XCTAssertEqual(readiness.summary.latestReportId, "report-1")
+        XCTAssertEqual(readiness.totalsByCurrency.map(\.currency), ["EUR", "USD"])
+        XCTAssertEqual(readiness.blockers.count, 2)
+        XCTAssertEqual(readiness.warnings.first?.severity, .warning)
+        XCTAssertEqual(readiness.blockers.first?.sourceLabel, "拜访记录")
+        XCTAssertEqual(readiness.blockers.last?.sourceLabel, "费用记录")
+    }
+
+    func testTripCloseoutEndpointUsesReadOnlyTripRoute() {
+        let request = Endpoints.tripCloseoutReadiness(tripId: "trip-1")
+        XCTAssertEqual(request.method, .get)
+        XCTAssertEqual(request.path, "/v1/trips/trip-1/closeout-readiness")
+        XCTAssertNil(request.idempotencyKey)
+    }
+
     func testTripDecodesBackendFlatShape() throws {
         let json = """
         {
