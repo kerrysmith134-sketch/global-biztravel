@@ -143,8 +143,14 @@ def build_trip_closeout_readiness(
             )
         )
 
+    # A rejected report is an audit snapshot, not evidence that an expense is
+    # currently included in a valid reimbursement workflow. A newer partial draft
+    # must not let an older rejected snapshot hide omitted expenses.
+    eligible_report_ids = {row.id for row in reports if row.status != "REJECTED"}
     snapshotted_expense_ids = {
-        row.expense_id for row in report_items if row.expense_id is not None
+        row.expense_id
+        for row in report_items
+        if row.expense_id is not None and row.report_id in eligible_report_ids
     }
     unreported_expenses = [
         row for row in expenses if row.id not in snapshotted_expense_ids
