@@ -337,6 +337,27 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(readiness.blockers.last?.sourceLabel, "费用记录")
     }
 
+    func testExpenseReportSnapshotMustCoverEveryCurrentTripExpense() {
+        let report = ExpenseReport(
+            id: "report-1",
+            tripId: "trip-1",
+            items: [
+                ExpenseReportItem(
+                    id: "item-1",
+                    reportId: "report-1",
+                    expenseId: "expense-1",
+                    category: "MEALS",
+                    amount: Decimal(string: "12.50") ?? .zero,
+                    currency: "EUR"
+                )
+            ]
+        )
+
+        XCTAssertTrue(report.coversCurrentExpenses(["expense-1"]))
+        XCTAssertFalse(report.coversCurrentExpenses(["expense-1", "expense-2"]))
+        XCTAssertTrue(report.coversCurrentExpenses([]))
+    }
+
     func testTripCloseoutEndpointUsesReadOnlyTripRoute() {
         let request = Endpoints.tripCloseoutReadiness(tripId: "trip-1")
         XCTAssertEqual(request.method, .get)
