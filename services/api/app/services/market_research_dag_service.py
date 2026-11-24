@@ -649,7 +649,9 @@ def start_execution(
     if max_cost_value is not None:
         max_concurrency_value = 1
 
-    now = datetime.now(UTC)
+    # The delayed BackgroundJob is claimed against PostgreSQL clock_timestamp();
+    # derive the execution deadline from the same clock to avoid host/database skew.
+    now = session.scalar(select(func.clock_timestamp()))
     deadline = now + timedelta(minutes=max_duration_value)
     workflow = WorkflowInstance(
         organization_id=organization_id,
@@ -1085,7 +1087,7 @@ def retry_question(
         ):
             raise Conflict("前置问题尚未全部通过人工审核，不能重试当前节点")
 
-    now = datetime.now(UTC)
+    now = session.scalar(select(func.clock_timestamp()))
     deadline = datetime.fromisoformat(str(payload["deadline_at"]))
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=UTC)
