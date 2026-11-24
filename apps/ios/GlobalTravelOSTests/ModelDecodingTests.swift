@@ -49,6 +49,7 @@ final class ModelDecodingTests: XCTestCase {
             "降级直线估算 · 需要复核"
         )
     }
+
     func testExpenseReceiptAssetIdDecodesAndEncodesOnTheWire() throws {
         let json = """
         {
