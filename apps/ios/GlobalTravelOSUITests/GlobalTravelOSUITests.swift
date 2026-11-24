@@ -413,6 +413,10 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.buttons["关闭拜访详情"].waitForExistence(timeout: 10),
             "AT-006：点击地图路线后没有打开拜访详情抽屉"
         )
+        XCTAssertTrue(
+            app.buttons["map-visit-open-in-maps"].waitForExistence(timeout: 10),
+            "AT-006：有效坐标的拜访点缺少 Apple 地图交接入口"
+        )
         app.buttons["关闭拜访详情"].tap()
         app.navigationBars["行程地图"].buttons.firstMatch.tap()
         XCTAssertTrue(
