@@ -212,6 +212,10 @@ class S3ReceiptStorage:
                         _validate_key(key)
                     except ValueError:
                         continue
+                    # S3 may return an out-of-prefix object due to provider quirks or a faulty
+                    # paginator; never allow another tenant's canonical key into this scan.
+                    if not key.startswith(prefix):
+                        continue
                     objects.append(
                         ReceiptStorageObject(
                             key=key,

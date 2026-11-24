@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from app.services.receipt_storage_service import S3ReceiptStorage
 
 
-def test_s3_receipt_listing_paginates_and_filters_noncanonical_keys(monkeypatch) -> None:
+def test_s3_receipt_listing_paginates_and_filters_noncanonical_and_cross_tenant_keys(monkeypatch) -> None:
     organization_id = "11111111-1111-1111-1111-111111111111"
     prefix = f"receipts/{organization_id}/"
     valid_key_one = f"{prefix}22222222-2222-2222-2222-222222222222"
@@ -58,4 +58,5 @@ def test_s3_receipt_listing_paginates_and_filters_noncanonical_keys(monkeypatch)
     listed = storage.list_objects(prefix)
 
     assert [item.key for item in listed] == [valid_key_one, valid_key_two]
+    assert all(item.key.startswith(prefix) for item in listed)
     assert all(item.last_modified.tzinfo is not None for item in listed)
