@@ -392,7 +392,10 @@ final class TripExpenseOutbox {
             createdAt: now,
             updatedAt: now
         )
-        try save(item)
+        try database.transaction {
+            let queueOrder = try database.nextPendingTripExpenseQueueOrder(tripId: tripId)
+            try save(item, queueOrder: queueOrder)
+        }
         return item
     }
 
@@ -401,7 +404,7 @@ final class TripExpenseOutbox {
             table: "pending_trip_expenses",
             where: "trip_id = ?",
             bindings: [tripId],
-            order: "created_at ASC, id ASC"
+            order: "queue_order ASC, created_at ASC, id ASC"
         ).map { try DateCoding.decode(PendingTripExpense.self, from: $0) }
     }
 
@@ -422,15 +425,18 @@ final class TripExpenseOutbox {
         try database.delete(table: "pending_trip_expenses", id: id)
     }
 
-    private func save(_ item: PendingTripExpense) throws {
+    private func save(_ item: PendingTripExpense, queueOrder: Int? = nil) throws {
+        var columns: [String: Any?] = [
+            "trip_id": item.tripId,
+            "created_at": SQLTimestamp.basics.string(from: item.createdAt),
+            "updated_at": SQLTimestamp.basics.string(from: item.updatedAt),
+        ]
+        // Updates after a failed attempt deliberately omit this column so FIFO position is immutable.
+        if let queueOrder { columns["queue_order"] = queueOrder }
         try database.upsert(
             table: "pending_trip_expenses",
             id: item.id,
-            columns: [
-                "trip_id": item.tripId,
-                "created_at": SQLTimestamp.basics.string(from: item.createdAt),
-                "updated_at": SQLTimestamp.basics.string(from: item.updatedAt),
-            ],
+            columns: columns,
             payload: try DateCoding.encode(item)
         )
     }

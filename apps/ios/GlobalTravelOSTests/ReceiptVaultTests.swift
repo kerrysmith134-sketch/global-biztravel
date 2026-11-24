@@ -46,7 +46,7 @@ final class ReceiptVaultTests: XCTestCase {
         )
         XCTAssertGreaterThanOrEqual(
             try metadataDatabase.count(table: "schema_migrations"),
-            8
+            9
         )
     }
 
@@ -154,6 +154,65 @@ final class ReceiptVaultTests: XCTestCase {
 
         try reopenedOutbox.remove(id: queued.id)
         XCTAssertTrue(try reopenedOutbox.pending(tripId: queued.tripId).isEmpty)
+    }
+
+    func testTripExpenseOutboxMaintainsFIFOOrderAcrossRapidEnqueuesAndReopen() throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: true
+        )
+        let outbox = vault.makeTripExpenseOutbox()
+        let tripId = "trip-fifo-expense"
+
+        func request(_ amount: String) -> TripExpenseCreateRequest {
+            TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: amount) ?? .zero,
+                currency: "EUR",
+                occurredOn: "2026-11-24",
+                note: "FIFO order acceptance",
+                receiptAssetId: nil
+            )
+        }
+
+        let first = try outbox.enqueue(
+            tripId: tripId,
+            body: request("10.00"),
+            localReceiptAssetId: nil
+        )
+        let second = try outbox.enqueue(
+            tripId: tripId,
+            body: request("20.00"),
+            localReceiptAssetId: nil
+        )
+        let third = try outbox.enqueue(
+            tripId: tripId,
+            body: request("30.00"),
+            localReceiptAssetId: nil
+        )
+        try outbox.recordFailure(id: second.id, message: "Temporary network failure")
+
+        let expectedOrder = [first.id, second.id, third.id]
+        XCTAssertEqual(try outbox.pending(tripId: tripId).map(\.id), expectedOrder)
+
+        // A new database handle simulates termination/relaunch without changing FIFO positions.
+        let reopenedDatabase = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
+        )
+        let reopenedOutbox = TripExpenseOutbox(database: reopenedDatabase)
+        XCTAssertEqual(try reopenedOutbox.pending(tripId: tripId).map(\.id), expectedOrder)
+
+        try reopenedOutbox.remove(id: second.id)
+        let fourth = try reopenedOutbox.enqueue(
+            tripId: tripId,
+            body: request("40.00"),
+            localReceiptAssetId: nil
+        )
+        XCTAssertEqual(
+            try reopenedOutbox.pending(tripId: tripId).map(\.id),
+            [first.id, third.id, fourth.id]
+        )
     }
 
     private func pngFixture() -> Data {

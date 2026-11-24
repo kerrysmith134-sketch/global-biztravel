@@ -219,6 +219,24 @@ struct LocalDatabase {
         CREATE INDEX IF NOT EXISTS ix_pending_trip_expenses_trip_created
             ON pending_trip_expenses (trip_id, created_at);
         """),
+        ("0009_pending_trip_expense_fifo", """
+        ALTER TABLE pending_trip_expenses
+            ADD COLUMN queue_order INTEGER NOT NULL DEFAULT 0;
+        WITH ranked AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY trip_id
+                       ORDER BY created_at ASC, id ASC
+                   ) AS position
+            FROM pending_trip_expenses
+        )
+        UPDATE pending_trip_expenses
+        SET queue_order = (
+            SELECT position FROM ranked WHERE ranked.id = pending_trip_expenses.id
+        );
+        CREATE INDEX IF NOT EXISTS ix_pending_trip_expenses_trip_queue
+            ON pending_trip_expenses (trip_id, queue_order);
+        """),
     ]
 
     func migrate() throws {
@@ -269,6 +287,15 @@ struct LocalDatabase {
 
     func transaction(_ work: () throws -> Void) throws {
         try store.transaction(work)
+    }
+
+    /// Allocates a stable FIFO position for the next expense command in one Trip.
+    /// Call inside `transaction(_:)\` before inserting the queue item.
+    func nextPendingTripExpenseQueueOrder(tripId: String) throws -> Int {
+        try store.query(
+            "SELECT COALESCE(MAX(queue_order), 0) + 1 FROM pending_trip_expenses WHERE trip_id = ?",
+            bindings: [tripId]
+        ) { $0.int(0) }.first ?? 1
     }
 
     func delete(table: String, id: String) throws {
