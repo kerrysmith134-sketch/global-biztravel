@@ -211,6 +211,7 @@ def test_closeout_separates_currencies_and_flags_latest_rejected_report(
 ) -> None:
     trip_id = make_trip(client)
     try:
+        expense_ids: list[str] = []
         for amount, currency in (("10.00", "EUR"), ("20.00", "USD")):
             created = client.post(
                 f"/v1/trips/{trip_id}/expenses",
@@ -223,6 +224,7 @@ def test_closeout_separates_currencies_and_flags_latest_rejected_report(
                 },
             )
             assert created.status_code == 201, created.text
+            expense_ids.append(created.json()["id"])
         report = client.post(
             f"/v1/trips/{trip_id}/expense-reports",
             headers=headers(key=str(uuid.uuid4())),
@@ -258,6 +260,26 @@ def test_closeout_separates_currencies_and_flags_latest_rejected_report(
             "EUR",
             "USD",
         }
+
+        # A newer partial draft replaces the rejected report as the active
+        # reimbursement workflow. The omitted expense must remain a blocker;
+        # the rejected historical snapshot must not satisfy readiness.
+        partial = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers=headers(key=str(uuid.uuid4())),
+            json={"expense_ids": [expense_ids[0]]},
+        )
+        assert partial.status_code == 201, partial.text
+        refreshed = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert refreshed.status_code == 200, refreshed.text
+        refreshed_body = refreshed.json()
+        missing_expenses = [
+            item for item in refreshed_body["blockers"]
+            if item["code"] == "EXPENSE_NOT_IN_REPORT"
+        ]
+        assert [item["source_id"] for item in missing_expenses] == [expense_ids[1]]
     finally:
         cleanup(trip_id)
 
