@@ -312,14 +312,16 @@ def decide_report(
     report = require_report(session, organization_id, report_id)
     # Rejection removes a report from expense coverage. Serialize report decisions
     # with the same Trip lock used by expense mutations and report submission.
-    session.execute(
+    locked_trip_id = session.execute(
         select(Trip.id)
         .where(
             Trip.organization_id == str(organization_id),
             Trip.id == report.trip_id,
         )
         .with_for_update()
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if locked_trip_id is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
     report = session.scalars(
         select(ExpenseReport)
         .where(
