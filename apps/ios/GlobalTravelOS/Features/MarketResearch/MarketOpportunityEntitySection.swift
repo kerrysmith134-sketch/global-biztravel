@@ -5,6 +5,11 @@ struct MarketOpportunityEntitySection: View {
     let candidates: [MarketWorkspaceEntityRead]
     @Binding var relationshipNote: String
     let isSubmitting: Bool
+    @State private var showsAllCandidates = false
+
+    private var visibleCandidates: [MarketWorkspaceEntityRead] {
+        showsAllCandidates ? candidates : Array(candidates.prefix(8))
+    }
     let onCreate: () -> Void
     let onAttach: (MarketWorkspaceEntityRead, String) -> Void
 
@@ -65,7 +70,7 @@ struct MarketOpportunityEntitySection: View {
                 TextField("关联说明（可选）", text: $relationshipNote, axis: .vertical)
                     .lineLimit(2...3)
                     .textFieldStyle(.roundedBorder)
-                ForEach(candidates.prefix(8)) { candidate in
+                ForEach(visibleCandidates) { candidate in
                     DSCard(padding: DS.Spacing.md) {
                         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
                             HStack {
@@ -76,6 +81,10 @@ struct MarketOpportunityEntitySection: View {
                                 DSBadge(
                                     text: candidate.entity.statusLabel,
                                     color: DS.ColorToken.status(candidate.entity.status)
+                                )
+                                DSBadge(
+                                    text: candidate.workspaceStatusLabel,
+                                    color: DS.ColorToken.info
                                 )
                             }
                             Text([candidate.entity.entityKind, candidate.entity.locationLabel]
@@ -110,9 +119,14 @@ struct MarketOpportunityEntitySection: View {
                     }
                 }
                 if candidates.count > 8 {
-                    Text("当前展示前 8 项候选企业。")
-                        .font(.caption2)
-                        .foregroundStyle(DS.ColorToken.textSecondary)
+                    Button(showsAllCandidates ? "收起候选企业" : "查看全部 \(candidates.count) 个候选") {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showsAllCandidates.toggle()
+                        }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(DS.ColorToken.brand)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             } else {
                 Text("没有可关联的 Workspace 候选实体。可以新建一个候选，或先在该工作空间中整理候选企业。")

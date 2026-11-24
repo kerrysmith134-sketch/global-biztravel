@@ -155,7 +155,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
         )
         async let entitiesRequest = repository.listMarketWorkspaceEntities(
             workspaceId: workspaceId,
-            page: PageRequest(limit: 60)
+            page: PageRequest(limit: 100)
         )
 
         do {
