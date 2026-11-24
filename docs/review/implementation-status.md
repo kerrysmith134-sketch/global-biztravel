@@ -117,7 +117,7 @@
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
 
-- **H2.13 票据资产与报销证据快照（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。新增迁移 `0047_receipt_ocr`：对已保存的图片 ReceiptAsset 执行 Tesseract OCR，保存 content hash、引擎版本、候选字段与 AgentRun 关联；不复制原始票据文本，不因识别结果创建/修改费用。用户可对一次 OCR 运行单独确认或驳回，确认字段写入只追加审阅记录，数据库撤销应用角色 UPDATE/DELETE。PDF 仍可保留与下载，但当前 OCR 明确只支持图片格式。仍待完成对象存储孤儿对账、Trip 结账就绪度与 iOS 离线票据入口；CI/真实数据库验收以本分支最新 Actions 为准。
+- **H2.13 票据资产与报销证据快照（后端基础已落地，iOS 闭环仍进行中）**：新增私有 ReceiptAsset 元数据、文件系统/S3 私有存储适配器、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。迁移 `0046_report_receipt_snapshot` 为报销明细固定 Asset ID、内容哈希及原始元数据；迁移 `0047_receipt_ocr` 将图片 OCR 与 AgentRun 关联，人工确认/驳回采用只追加审阅记录，PDF 仅保留和下载。iOS 私有 ReceiptVault 已支持原件采集、哈希校验、上传确认和待上传重试。新增租户前缀对象枚举与每日 Worker 孤儿对象对账：默认 24 小时宽限期，数据库已有资产和其他租户对象不删除，支持服务层 dry-run。只读 `GET /v1/trips/{id}/closeout-readiness` 已有集成测试。**剩余**：云端模式离线费用命令尚未与 Receipt 上传组成一个可恢复 Outbox 工作流；iOS Trip Closeout 面板与源记录跳转仍待开发；切换存储 Provider 前需先对旧 Provider 单独对账。CI/真实数据库验收以本分支最新 Actions 为准。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
