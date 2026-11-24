@@ -337,27 +337,56 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(readiness.blockers.last?.sourceLabel, "费用记录")
     }
 
-    func testExpenseReportSnapshotMustCoverEveryCurrentTripExpense() {
-        let report = ExpenseReport(
-            id: "report-1",
-            tripId: "trip-1",
-            items: [
-                ExpenseReportItem(
-                    id: "item-1",
-                    reportId: "report-1",
-                    expenseId: "expense-1",
-                    category: "MEALS",
-                    amount: Decimal(string: "12.50") ?? .zero,
-                    currency: "EUR"
-                )
-            ]
+    func testExpenseReportSnapshotsCoverCurrentExpensesAcrossNonRejectedReports() {
+        func makeReport(
+            _ id: String,
+            expenseId: String,
+            status: ExpenseReportStatus = .draft
+        ) -> ExpenseReport {
+            ExpenseReport(
+                id: id,
+                tripId: "trip-1",
+                status: status,
+                items: [
+                    ExpenseReportItem(
+                        id: "item-\(id)",
+                        reportId: id,
+                        expenseId: expenseId,
+                        category: "MEALS",
+                        amount: Decimal(string: "12.50") ?? .zero,
+                        currency: "EUR"
+                    )
+                ]
+            )
+        }
+
+        let firstHalf = makeReport("report-1", expenseId: "expense-1")
+        let secondHalf = makeReport("report-2", expenseId: "expense-2")
+        let rejectedHalf = makeReport("report-3", expenseId: "expense-2", status: .rejected)
+        let allCurrent = Set(["expense-1", "expense-2"])
+
+        XCTAssertFalse(
+            ExpenseReport.snapshotsCoverCurrentExpenses([firstHalf], currentExpenseIDs: allCurrent)
         )
-
-        XCTAssertTrue(report.coversCurrentExpenses(["expense-1"]))
-        XCTAssertFalse(report.coversCurrentExpenses(["expense-1", "expense-2"]))
-        XCTAssertTrue(report.coversCurrentExpenses([]))
+        XCTAssertTrue(
+            ExpenseReport.snapshotsCoverCurrentExpenses(
+                [firstHalf, secondHalf],
+                currentExpenseIDs: allCurrent
+            )
+        )
+        XCTAssertFalse(
+            ExpenseReport.snapshotsCoverCurrentExpenses(
+                [firstHalf, rejectedHalf],
+                currentExpenseIDs: allCurrent
+            )
+        )
+        XCTAssertTrue(
+            ExpenseReport.snapshotsCoverCurrentExpenses(
+                [firstHalf, secondHalf],
+                currentExpenseIDs: ["expense-1"]
+            )
+        )
     }
-
     func testTripCloseoutEndpointUsesReadOnlyTripRoute() {
         let request = Endpoints.tripCloseoutReadiness(tripId: "trip-1")
         XCTAssertEqual(request.method, .get)
