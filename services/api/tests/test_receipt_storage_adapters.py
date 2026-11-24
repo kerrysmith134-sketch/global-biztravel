@@ -10,8 +10,9 @@ from app.services.receipt_storage_service import S3ReceiptStorage
 def test_s3_receipt_listing_paginates_and_filters_noncanonical_and_cross_tenant_keys(monkeypatch) -> None:
     organization_id = "11111111-1111-1111-1111-111111111111"
     prefix = f"receipts/{organization_id}/"
-    valid_key_one = f"{prefix}22222222-2222-2222-2222-222222222222"
-    valid_key_two = f"{prefix}33333333-3333-3333-3333-333333333333"
+    trip_id = "22222222-2222-2222-2222-222222222222"
+    valid_key_one = f"{prefix}{trip_id}/33333333-3333-3333-3333-333333333333"
+    valid_key_two = f"{prefix}{trip_id}/44444444-4444-4444-4444-444444444444"
     now = datetime.now(UTC)
 
     class FakePaginator:
