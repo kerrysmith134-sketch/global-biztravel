@@ -243,7 +243,7 @@ final class ReceiptVault {
 
     /// Best-effort retry for a Trip's durable pending uploads. A failure leaves each original in
     /// place with PENDING_UPLOAD state and a visible diagnostic; no state is marked uploaded early.
-    func retryPendingUploads(tripId: String) async {
+    func retryPendingUploads(tripId: String, excluding assetIDs: Set<String> = []) async {
         guard uploadsEnabled else { return }
         let payloads = (try? database.loadPayloads(
             table: "receipt_assets",
@@ -253,8 +253,13 @@ final class ReceiptVault {
         )) ?? []
         for payload in payloads {
             guard let asset = try? DateCoding.decode(LocalReceiptAsset.self, from: payload) else { continue }
+            guard !assetIDs.contains(asset.id) else { continue }
             _ = try? await upload(assetId: asset.id)
         }
+    }
+
+    func makeTripExpenseOutbox() -> TripExpenseOutbox {
+        TripExpenseOutbox(database: database)
     }
 
     func assets(tripId: String) throws -> [LocalReceiptAsset] {
@@ -347,6 +352,87 @@ final class ReceiptVault {
         filename.replacingOccurrences(of: "\"", with: "_")
             .replacingOccurrences(of: "\r", with: "_")
             .replacingOccurrences(of: "\n", with: "_")
+    }
+}
+
+/// Durable command log for cloud-mode expense creation. The local receipt reference is stored
+/// separately because only a server-confirmed asset ID can be sent to the expense endpoint.
+struct PendingTripExpense: Codable, Equatable, Identifiable {
+    let id: String
+    let tripId: String
+    let body: TripExpenseCreateRequest
+    let localReceiptAssetId: String?
+    var attempts: Int
+    var lastError: String?
+    let createdAt: Date
+    var updatedAt: Date
+}
+
+final class TripExpenseOutbox {
+    private let database: LocalDatabase
+
+    init(database: LocalDatabase) {
+        self.database = database
+    }
+
+    @discardableResult
+    func enqueue(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        localReceiptAssetId: String?
+    ) throws -> PendingTripExpense {
+        let now = Date()
+        let item = PendingTripExpense(
+            id: UUID().uuidString.lowercased(),
+            tripId: tripId,
+            body: body,
+            localReceiptAssetId: localReceiptAssetId,
+            attempts: 0,
+            lastError: nil,
+            createdAt: now,
+            updatedAt: now
+        )
+        try save(item)
+        return item
+    }
+
+    func pending(tripId: String) throws -> [PendingTripExpense] {
+        try database.loadPayloads(
+            table: "pending_trip_expenses",
+            where: "trip_id = ?",
+            bindings: [tripId],
+            order: "created_at ASC, id ASC"
+        ).map { try DateCoding.decode(PendingTripExpense.self, from: $0) }
+    }
+
+    func recordFailure(id: String, message: String) throws {
+        guard let payload = try database.loadPayloads(
+            table: "pending_trip_expenses",
+            where: "id = ?",
+            bindings: [id]
+        ).first else { return }
+        var item = try DateCoding.decode(PendingTripExpense.self, from: payload)
+        item.attempts += 1
+        item.lastError = String(message.prefix(500))
+        item.updatedAt = Date()
+        try save(item)
+    }
+
+    func remove(id: String) throws {
+        try database.delete(table: "pending_trip_expenses", id: id)
+    }
+
+    private func save(_ item: PendingTripExpense) throws {
+        try database.upsert(
+            table: "pending_trip_expenses",
+            id: item.id,
+            columns: [
+                "trip_id": item.tripId,
+                "created_at": SQLTimestamp.basics.string(from: item.createdAt),
+                "updated_at": SQLTimestamp.basics.string(from: item.updatedAt),
+            ],
+            payload: try DateCoding.encode(item)
+        )
     }
 }
 

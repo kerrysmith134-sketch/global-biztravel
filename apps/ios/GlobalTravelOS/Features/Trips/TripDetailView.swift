@@ -8,6 +8,8 @@ final class TripDetailViewModel: ObservableObject {
     @Published private(set) var visaCases: [VisaCase] = []
     @Published private(set) var entryAssessments: [EntryAssessment] = []
     @Published private(set) var expenses: [TripExpense] = []
+    @Published private(set) var pendingExpenses: [PendingTripExpense] = []
+    @Published private(set) var isSyncingPendingExpenses = false
     @Published private(set) var budget: BudgetSummary?
     @Published private(set) var expenseReports: [ExpenseReport] = []
     @Published private(set) var isLoading = false
@@ -17,10 +19,12 @@ final class TripDetailViewModel: ObservableObject {
 
     let tripId: String
     private let environment: AppEnvironment
+    private let expenseOutbox: TripExpenseOutbox?
 
     init(tripId: String, environment: AppEnvironment) {
         self.tripId = tripId
         self.environment = environment
+        self.expenseOutbox = environment.receiptVault?.makeTripExpenseOutbox()
     }
 
     /// 分域加载错误（审计七·额外可靠性）：空区块必须能区分"确实没有"与"加载失败"。
@@ -99,10 +103,16 @@ final class TripDetailViewModel: ObservableObject {
         } catch {
             sectionErrors["budget"] = environment.errorMessage(error)
         }
+        refreshPendingExpenses()
         environment.refreshOfflineSummary()
         if !environment.isLocalMode, let receiptVault = environment.receiptVault {
+            let queuedReceiptIDs = Set(pendingExpenses.compactMap(\.localReceiptAssetId))
             Task {
-                await receiptVault.retryPendingUploads(tripId: tripId)
+                await receiptVault.retryPendingUploads(
+                    tripId: tripId,
+                    excluding: queuedReceiptIDs
+                )
+                await retryPendingExpenses()
             }
         }
     }
@@ -110,6 +120,95 @@ final class TripDetailViewModel: ObservableObject {
     /// 某区块的加载错误（nil 表示该域加载成功或无错误）。
     func sectionError(_ key: String) -> String? {
         sectionErrors[key]
+    }
+
+    private func refreshPendingExpenses() {
+        guard let expenseOutbox else {
+            pendingExpenses = []
+            return
+        }
+        do {
+            pendingExpenses = try expenseOutbox.pending(tripId: tripId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    /// Replays durable financial commands in order. Receipt upload is a prerequisite; only the
+    /// server-confirmed asset ID is allowed into the API request.
+    func retryPendingExpenses() async {
+        guard !environment.isLocalMode, !isSyncingPendingExpenses else { return }
+        guard let expenseOutbox else {
+            errorMessage = "本地费用队列不可用，无法安全重试"
+            return
+        }
+
+        let queued: [PendingTripExpense]
+        do {
+            queued = try expenseOutbox.pending(tripId: tripId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+            return
+        }
+        guard !queued.isEmpty else {
+            pendingExpenses = []
+            return
+        }
+
+        isSyncingPendingExpenses = true
+        defer { isSyncingPendingExpenses = false }
+        var syncedCount = 0
+
+        for item in queued {
+            do {
+                var request = item.body
+                if let localReceiptAssetId = item.localReceiptAssetId {
+                    guard let receiptVault = environment.receiptVault else {
+                        throw ReceiptVaultError.originalFileUnavailable
+                    }
+                    let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
+                    guard let serverAssetId = asset.serverAssetId else {
+                        throw ReceiptVaultError.serverAssetNotConfirmed
+                    }
+                    request.receiptAssetId = serverAssetId
+                }
+                _ = try await environment.tripRepository.createExpense(
+                    tripId: tripId,
+                    body: request,
+                    idempotencyKey: item.id
+                )
+                try expenseOutbox.remove(id: item.id)
+                syncedCount += 1
+            } catch {
+                try? expenseOutbox.recordFailure(
+                    id: item.id,
+                    message: environment.errorMessage(error)
+                )
+                break
+            }
+        }
+
+        refreshPendingExpenses()
+        if syncedCount > 0 {
+            do {
+                expenses = try await environment.tripRepository.expenses(tripId: tripId)
+            } catch {
+                sectionErrors["expenses"] = environment.errorMessage(error)
+            }
+            do {
+                budget = try await environment.tripRepository.budgetSummary(
+                    tripId: tripId,
+                    baseCurrency: trip?.currency
+                )
+            } catch {
+                sectionErrors["budget"] = environment.errorMessage(error)
+            }
+        }
+        if pendingExpenses.isEmpty {
+            if syncedCount > 0 { statusMessage = "\(syncedCount) 笔费用已同步" }
+        } else {
+            statusMessage = "费用已保存在本机，仍有 \(pendingExpenses.count) 笔待同步"
+        }
     }
 
     func storeReceiptDraft(_ draft: ReceiptDraft) throws -> LocalReceiptAsset {
@@ -133,32 +232,73 @@ final class TripDetailViewModel: ObservableObject {
             return false
         }
 
-        var receiptAssetId: String?
-        if let localReceiptAssetId {
-            guard let receiptVault = environment.receiptVault else {
-                errorMessage = "本地票据仓库不可用，费用未保存"
-                return false
-            }
-            do {
-                let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
-                receiptAssetId = asset.expenseReceiptAssetId
-            } catch {
-                errorMessage = "\(environment.errorMessage(error))。原始文件已保留在本机；联网后可重试。"
-                return false
-            }
-        }
-
         let body = TripExpenseCreateRequest(
             category: category,
             amount: amount,
             currency: currency.uppercased(),
             occurredOn: ISO8601.dayString(from: occurredOn),
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
-            receiptAssetId: receiptAssetId
+            receiptAssetId: nil
         )
+
+        // Local-only mode writes directly into its local domain repository.
+        if environment.isLocalMode {
+            var localBody = body
+            if let localReceiptAssetId {
+                guard let receiptVault = environment.receiptVault else {
+                    errorMessage = "本地票据仓库不可用，费用未保存"
+                    return false
+                }
+                do {
+                    let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
+                    localBody.receiptAssetId = asset.expenseReceiptAssetId
+                } catch {
+                    errorMessage = environment.errorMessage(error)
+                    return false
+                }
+            }
+            do {
+                _ = try await environment.tripRepository.createExpense(tripId: tripId, body: localBody)
+                await load()
+                return true
+            } catch {
+                errorMessage = environment.errorMessage(error)
+                return false
+            }
+        }
+
+        // Cloud mode commits to the local outbox first. Network work must never be able to
+        // prevent the user from keeping a valid expense entry on the device.
+        guard let expenseOutbox else {
+            errorMessage = "本地费用队列不可用，费用未保存"
+            return false
+        }
+        if let localReceiptAssetId {
+            guard let receiptVault = environment.receiptVault else {
+                errorMessage = "本地票据仓库不可用，费用未保存"
+                return false
+            }
+            do {
+                let assets = try receiptVault.assets(tripId: tripId)
+                guard assets.contains(where: { $0.id == localReceiptAssetId }) else {
+                    errorMessage = "所选票据不属于当前行程，费用未保存"
+                    return false
+                }
+            } catch {
+                errorMessage = environment.errorMessage(error)
+                return false
+            }
+        }
+
         do {
-            _ = try await environment.tripRepository.createExpense(tripId: tripId, body: body)
-            await load()
+            _ = try expenseOutbox.enqueue(
+                tripId: tripId,
+                body: body,
+                localReceiptAssetId: localReceiptAssetId
+            )
+            refreshPendingExpenses()
+            statusMessage = "费用已保存在本机，正在尝试同步"
+            Task { await retryPendingExpenses() }
             return true
         } catch {
             errorMessage = environment.errorMessage(error)
@@ -513,7 +653,7 @@ struct TripDetailView: View {
                         Text("费用记录加载失败：\(error)")
                             .font(.caption)
                             .foregroundStyle(.red)
-                    } else if viewModel.expenses.isEmpty {
+                    } else if viewModel.expenses.isEmpty && viewModel.pendingExpenses.isEmpty {
                         Text("还没有费用记录。登记交通、住宿等实际支出后会自动汇总。")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -546,6 +686,45 @@ struct TripDetailView: View {
                         showsExpense = true
                     } label: {
                         Label("记一笔费用", systemImage: "plus.circle")
+                    }
+                }
+
+                if !viewModel.pendingExpenses.isEmpty {
+                    Section {
+                        ForEach(viewModel.pendingExpenses) { item in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(item.body.category.label)
+                                    Spacer()
+                                    Text(
+                                        "\(item.body.currency) " +
+                                            NSDecimalNumber(decimal: item.body.amount).stringValue
+                                    )
+                                    .font(.caption.monospacedDigit())
+                                }
+                                Text(
+                                    item.localReceiptAssetId == nil
+                                        ? "费用已保存在本机，等待提交"
+                                        : "原始票据已保存在本机，上传后提交费用"
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                if let error = item.lastError {
+                                    Text(error)
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                        .lineLimit(2)
+                                }
+                            }
+                        }
+                        Button {
+                            Task { await viewModel.retryPendingExpenses() }
+                        } label: {
+                            Label("重试同步", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(viewModel.isSyncingPendingExpenses)
+                    } header: {
+                        Text("待同步费用")
                     }
                 }
 

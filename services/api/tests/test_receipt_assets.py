@@ -13,6 +13,7 @@ from app.main import app
 from app.models.expense_reports import ExpenseReport
 from app.models.expenses import TripExpense
 from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun
+from app.models.reliability import IdempotencyRecord
 from app.models.trip import Trip
 from app.models.workflow import AgentRun
 from app.services import (
@@ -25,7 +26,7 @@ from app.services.receipt_storage_service import (
     ReceiptStorageUnavailable,
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
@@ -128,6 +129,14 @@ def test_receipt_asset_upload_download_and_idempotency(
             assert asset is not None
             assert asset.storage_key.startswith("receipts/")
             assert asset.sha256
+            idempotency_record = session.scalars(
+                select(IdempotencyRecord).where(
+                    IdempotencyRecord.organization_id == UUID(ORG_A),
+                    IdempotencyRecord.endpoint == "POST /v1/trips/{trip_id}/receipt-assets",
+                    IdempotencyRecord.key == key,
+                )
+            ).one()
+            assert idempotency_record.expires_at is None
             receipt_id = asset.id
             storage_key = asset.storage_key
             session.execute(delete(ReceiptAsset).where(ReceiptAsset.id == receipt_id))
@@ -135,6 +144,13 @@ def test_receipt_asset_upload_download_and_idempotency(
         private_storage.delete(storage_key)
     finally:
         with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(IdempotencyRecord).where(
+                    IdempotencyRecord.organization_id == UUID(ORG_A),
+                    IdempotencyRecord.endpoint == "POST /v1/trips/{trip_id}/receipt-assets",
+                    IdempotencyRecord.key == key,
+                )
+            )
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
 
 

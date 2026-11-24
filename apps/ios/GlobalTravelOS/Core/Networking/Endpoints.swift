@@ -769,13 +769,14 @@ enum Endpoints {
 
     static func createTripExpense(
         tripId: String,
-        body: TripExpenseCreateRequest
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String? = nil
     ) throws -> APIRequest {
         APIRequest(
             method: .post,
             path: "/v1/trips/\(tripId)/expenses",
             body: try DateCoding.encode(body),
-            idempotencyKey: APIRequest.newIdempotencyKey()
+            idempotencyKey: idempotencyKey ?? APIRequest.newIdempotencyKey()
         )
     }
 

@@ -46,7 +46,7 @@ final class ReceiptVaultTests: XCTestCase {
         )
         XCTAssertGreaterThanOrEqual(
             try metadataDatabase.count(table: "schema_migrations"),
-            7
+            8
         )
     }
 
@@ -115,6 +115,45 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertNil(afterFailure.serverAssetId)
         XCTAssertNotNil(afterFailure.lastError)
         XCTAssertEqual(try vault.originalData(assetId: localAsset.id), draft.data)
+    }
+
+    func testTripExpenseOutboxPersistsStableKeyAndRetryMetadataAcrossReopen() throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: true
+        )
+        let outbox = vault.makeTripExpenseOutbox()
+        let request = TripExpenseCreateRequest(
+            category: .meals,
+            amount: Decimal(string: "42.50") ?? .zero,
+            currency: "EUR",
+            occurredOn: "2026-11-24",
+            note: "Dinner receipt",
+            receiptAssetId: nil
+        )
+        let queued = try outbox.enqueue(
+            tripId: "trip-offline-expense",
+            body: request,
+            localReceiptAssetId: "local-receipt-asset"
+        )
+        try outbox.recordFailure(id: queued.id, message: "Network unavailable")
+
+        // A new SQLite handle simulates app termination and relaunch.
+        let reopenedDatabase = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
+        )
+        let reopenedOutbox = TripExpenseOutbox(database: reopenedDatabase)
+        let restored = try XCTUnwrap(reopenedOutbox.pending(tripId: queued.tripId).first)
+
+        XCTAssertEqual(restored.id, queued.id)
+        XCTAssertEqual(restored.body, request)
+        XCTAssertEqual(restored.localReceiptAssetId, "local-receipt-asset")
+        XCTAssertEqual(restored.attempts, 1)
+        XCTAssertEqual(restored.lastError, "Network unavailable")
+
+        try reopenedOutbox.remove(id: queued.id)
+        XCTAssertTrue(try reopenedOutbox.pending(tripId: queued.tripId).isEmpty)
     }
 
     private func pngFixture() -> Data {

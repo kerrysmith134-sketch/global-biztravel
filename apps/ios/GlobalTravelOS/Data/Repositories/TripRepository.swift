@@ -40,6 +40,11 @@ protocol TripRepository {
     func updateVisaCase(id: String, status: VisaCaseStatus) async throws -> VisaCase
     func expenses(tripId: String) async throws -> [TripExpense]
     func createExpense(tripId: String, body: TripExpenseCreateRequest) async throws -> TripExpense
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String?
+    ) async throws -> TripExpense
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary
     func expenseReports(tripId: String) async throws -> [ExpenseReport]
     func createExpenseReport(tripId: String) async throws -> ExpenseReport
@@ -51,6 +56,17 @@ protocol TripRepository {
     func tripOutcome(tripId: String) async throws -> TripOutcome
     func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult
     func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult
+}
+
+extension TripRepository {
+    /// Repositories without remote idempotency support keep their existing local write path.
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String?
+    ) async throws -> TripExpense {
+        try await createExpense(tripId: tripId, body: body)
+    }
 }
 
 /// Talks to `/v1/trips` and `/v1/trips/{id}/imports:*`.
@@ -107,8 +123,20 @@ final class RemoteTripRepository: TripRepository {
         tripId: String,
         body: TripExpenseCreateRequest
     ) async throws -> TripExpense {
+        try await createExpense(tripId: tripId, body: body, idempotencyKey: nil)
+    }
+
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String?
+    ) async throws -> TripExpense {
         try await client.send(
-            try Endpoints.createTripExpense(tripId: tripId, body: body),
+            try Endpoints.createTripExpense(
+                tripId: tripId,
+                body: body,
+                idempotencyKey: idempotencyKey
+            ),
             as: TripExpense.self
         )
     }
@@ -301,6 +329,18 @@ final class OfflineTripRepository: TripRepository {
         body: TripExpenseCreateRequest
     ) async throws -> TripExpense {
         try await remote.createExpense(tripId: tripId, body: body)
+    }
+
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String?
+    ) async throws -> TripExpense {
+        try await remote.createExpense(
+            tripId: tripId,
+            body: body,
+            idempotencyKey: idempotencyKey
+        )
     }
 
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary {

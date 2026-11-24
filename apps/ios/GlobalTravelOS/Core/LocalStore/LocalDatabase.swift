@@ -208,6 +208,17 @@ struct LocalDatabase {
             ON receipt_assets (server_asset_id)
             WHERE server_asset_id IS NOT NULL;
         """),
+        ("0008_pending_trip_expenses", """
+        CREATE TABLE IF NOT EXISTS pending_trip_expenses (
+            id         TEXT PRIMARY KEY,
+            trip_id    TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            payload    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_pending_trip_expenses_trip_created
+            ON pending_trip_expenses (trip_id, created_at);
+        """),
     ]
 
     func migrate() throws {

@@ -129,7 +129,11 @@ def create_expense(
         payload,
         actor_user_id=context.user_id,
     )
-    return guard.finish(status_code=status.HTTP_201_CREATED, body=ExpenseRead.model_validate(row))
+    return guard.finish(
+        status_code=status.HTTP_201_CREATED,
+        body=ExpenseRead.model_validate(row),
+        ttl=None,
+    )
 
 
 @router.delete(
