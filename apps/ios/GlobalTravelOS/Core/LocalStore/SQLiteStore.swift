@@ -28,6 +28,9 @@ final class SQLiteStore {
             throw LocalStoreError.openFailed(path.path)
         }
         queue.setSpecific(key: queueKey, value: 1)
+        // Separate SQLiteStore instances can open the same account database concurrently.
+        // Wait for short-lived startup/migration writer locks instead of failing with SQLITE_BUSY.
+        try run("PRAGMA busy_timeout=10000")
         try run("PRAGMA journal_mode=WAL")
         try run("PRAGMA foreign_keys=ON")
     }
