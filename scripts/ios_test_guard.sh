@@ -24,7 +24,7 @@ if [[ "$DEST" == *"name="* ]]; then
   requested_name="${DEST##*name=}"
   if ! xcrun simctl list devices available | grep -Fq "$requested_name"; then
     fallback="$(xcrun simctl list devices available \
-      | sed -n 's/^ *\\(iPhone [^(]*\\) (.*/\\1/p' \
+      | sed -n 's/^ *\(iPhone [^(]*\) (.*/\1/p' \
       | head -1 | sed 's/ *$//')"
     if [ -z "$fallback" ]; then
       echo "[guard] 没有可用的 iPhone 模拟器" >&2
