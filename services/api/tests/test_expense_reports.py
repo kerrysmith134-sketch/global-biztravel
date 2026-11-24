@@ -9,7 +9,7 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
-from app.models.identity import Membership, User
+from app.models.identity import Membership
 from app.models.proactive import Approval
 from app.models.trip import Trip
 from app.models.workflow import WorkflowInstance
@@ -161,17 +161,12 @@ def test_draft_report_can_be_cancelled_without_deleting_snapshot_or_expenses(
     client: TestClient,
 ) -> None:
     trip_id, expense_ids = setup(client)
-    other_user_id = uuid.uuid4()
+    # USER_B is created by the shared seed fixture and is already an ORG_B traveler.
+    # Add only a temporary ORG_A membership; never insert directly into the RLS-protected
+    # users table from this tenant-scoped test transaction.
+    other_user_id = UUID(USER_B)
     try:
         with org_session(UUID(ORG_A)) as session:
-            session.add(
-                User(
-                    id=other_user_id,
-                    email=f"{other_user_id}@example.test",
-                    display_name="Other traveler",
-                )
-            )
-            session.flush()
             session.add(
                 Membership(
                     organization_id=UUID(ORG_A),
@@ -306,7 +301,6 @@ def test_draft_report_can_be_cancelled_without_deleting_snapshot_or_expenses(
                     Membership.user_id == other_user_id,
                 )
             )
-            session.execute(delete(User).where(User.id == other_user_id))
         cleanup(trip_id)
 
 
