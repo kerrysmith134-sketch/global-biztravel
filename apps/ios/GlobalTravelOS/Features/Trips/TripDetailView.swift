@@ -23,6 +23,8 @@ final class TripDetailViewModel: ObservableObject {
     let tripId: String
     private let environment: AppEnvironment
     private let expenseOutbox: TripExpenseOutbox?
+    /// Coalesces retry requests made while an earlier FIFO drain is awaiting network I/O.
+    private var pendingExpenseRetryRequested = false
 
     init(tripId: String, environment: AppEnvironment) {
         self.tripId = tripId
@@ -159,29 +161,41 @@ final class TripDetailViewModel: ObservableObject {
     /// Replays durable financial commands in order. Receipt upload is a prerequisite; only the
     /// server-confirmed asset ID is allowed into the API request.
     func retryPendingExpenses() async {
-        guard !environment.isLocalMode, !isSyncingPendingExpenses else { return }
+        guard !environment.isLocalMode else { return }
+        guard !isSyncingPendingExpenses else {
+            pendingExpenseRetryRequested = true
+            return
+        }
         guard let expenseOutbox else {
             errorMessage = "本地费用队列不可用，无法安全重试"
             return
         }
 
-        let queued: [PendingTripExpense]
-        do {
-            queued = try expenseOutbox.pending(tripId: tripId)
-        } catch {
-            errorMessage = environment.errorMessage(error)
-            return
-        }
-        guard !queued.isEmpty else {
-            pendingExpenses = []
-            return
-        }
-
         isSyncingPendingExpenses = true
-        defer { isSyncingPendingExpenses = false }
+        defer {
+            isSyncingPendingExpenses = false
+            if pendingExpenseRetryRequested {
+                pendingExpenseRetryRequested = false
+                Task { await retryPendingExpenses() }
+            }
+        }
         var syncedCount = 0
 
-        for item in queued {
+        // Re-read the FIFO head after every successful write. A new expense may be
+        // enqueued while an upload/API request is suspended; it must join this drain
+        // rather than waiting for the next Trip screen load.
+        while true {
+            let item: PendingTripExpense
+            do {
+                guard let next = try expenseOutbox.pending(tripId: tripId).first else {
+                    break
+                }
+                item = next
+            } catch {
+                errorMessage = environment.errorMessage(error)
+                break
+            }
+
             do {
                 var request = item.body
                 if let localReceiptAssetId = item.localReceiptAssetId {
@@ -228,9 +242,9 @@ final class TripDetailViewModel: ObservableObject {
             await refreshCloseoutReadiness()
         }
         if pendingExpenses.isEmpty {
-            if syncedCount > 0 { statusMessage = "\(syncedCount) 笔费用已同步" }
+            if syncedCount > 0 { statusMessage = "\\(syncedCount) 笔费用已同步" }
         } else {
-            statusMessage = "费用已保存在本机，仍有 \(pendingExpenses.count) 笔待同步"
+            statusMessage = "费用已保存在本机，仍有 \\(pendingExpenses.count) 笔待同步"
         }
     }
 
