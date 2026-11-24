@@ -242,9 +242,9 @@ final class TripDetailViewModel: ObservableObject {
             await refreshCloseoutReadiness()
         }
         if pendingExpenses.isEmpty {
-            if syncedCount > 0 { statusMessage = "\\(syncedCount) 笔费用已同步" }
+            if syncedCount > 0 { statusMessage = "\(syncedCount) 笔费用已同步" }
         } else {
-            statusMessage = "费用已保存在本机，仍有 \\(pendingExpenses.count) 笔待同步"
+            statusMessage = "费用已保存在本机，仍有 \(pendingExpenses.count) 笔待同步"
         }
     }
 
