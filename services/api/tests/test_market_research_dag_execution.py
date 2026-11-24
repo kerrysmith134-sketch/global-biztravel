@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from uuid import UUID
 
 import pytest
 from app.db import org_session
+from app.llm.contracts import LLMResponse
 from app.main import app
 from app.models.market import (
     MarketEvidenceDerivation,
@@ -21,8 +23,9 @@ from app.services import (
     market_insight_service,
     market_research_dag_service,
 )
+from app.workers import main as workers_main
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 

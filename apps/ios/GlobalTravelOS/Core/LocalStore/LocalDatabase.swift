@@ -290,7 +290,7 @@ struct LocalDatabase {
     }
 
     /// Allocates a stable FIFO position for the next expense command in one Trip.
-    /// Call inside `transaction(_:)\` before inserting the queue item.
+    /// Call inside `transaction(_:)` before inserting the queue item.
     func nextPendingTripExpenseQueueOrder(tripId: String) throws -> Int {
         try store.query(
             "SELECT COALESCE(MAX(queue_order), 0) + 1 FROM pending_trip_expenses WHERE trip_id = ?",
