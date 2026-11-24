@@ -77,7 +77,7 @@ extension TripRepository {
             code: "EXPENSE_REPORT_CANCELLATION_UNAVAILABLE",
             message: "当前仓储不支持撤销报销草稿",
             traceId: nil,
-            details: ["report_id": id]
+            details: ["report_id": .string(id)]
         )
     }
 
