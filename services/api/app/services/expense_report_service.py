@@ -19,6 +19,7 @@ from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.expenses import TripExpense
 from app.models.proactive import Approval
 from app.models.receipts import ReceiptAsset
+from app.models.trip import Trip
 from app.models.workflow import WorkflowInstance
 from app.services import trip_service
 
@@ -75,7 +76,17 @@ def create_report(
     *,
     actor_user_id: UUID | str | None = None,
 ) -> ReportDetail:
-    trip = trip_service.require_trip(session, organization_id, trip_id)
+    trip_service.require_trip(session, organization_id, trip_id)
+    # Match the lock order used by expense create/delete and submission so the
+    # snapshot cannot race a concurrent TripExpense membership change.
+    trip = session.scalars(
+        select(Trip)
+        .where(
+            Trip.organization_id == str(organization_id),
+            Trip.id == str(trip_id),
+        )
+        .with_for_update()
+    ).one()
     stmt = select(TripExpense).where(
         TripExpense.organization_id == str(organization_id),
         TripExpense.trip_id == trip.id,
@@ -202,6 +213,29 @@ def submit_report(
     now: datetime | None = None,
 ) -> ReportDetail:
     report = require_report(session, organization_id, report_id)
+
+    # Lock order is always Trip then ExpenseReport. Expense create/delete take the
+    # Trip lock too, so the current expense set cannot change between validation
+    # and the DRAFT -> SUBMITTED transition, including writes from other clients.
+    session.execute(
+        select(Trip.id)
+        .where(
+            Trip.organization_id == str(organization_id),
+            Trip.id == report.trip_id,
+        )
+        .with_for_update()
+    ).scalar_one()
+    report = session.scalars(
+        select(ExpenseReport)
+        .where(
+            ExpenseReport.organization_id == str(organization_id),
+            ExpenseReport.id == report_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if report is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
     if report.status == STATUS_SUBMITTED:
         return _detail(session, report)
     if report.status != STATUS_DRAFT:
@@ -209,6 +243,34 @@ def submit_report(
             "只有草稿报销单可以提交",
             details={"report_id": str(report.id), "status": report.status},
         )
+
+    current_expense_ids = set(
+        session.scalars(
+            select(TripExpense.id).where(
+                TripExpense.organization_id == str(organization_id),
+                TripExpense.trip_id == report.trip_id,
+            )
+        )
+    )
+    snapshot_expense_ids = set(
+        session.scalars(
+            select(ExpenseReportItem.expense_id).where(
+                ExpenseReportItem.organization_id == str(organization_id),
+                ExpenseReportItem.report_id == report.id,
+                ExpenseReportItem.expense_id.is_not(None),
+            )
+        )
+    )
+    missing_expense_ids = sorted(str(item) for item in current_expense_ids - snapshot_expense_ids)
+    if missing_expense_ids:
+        raise Conflict(
+            "报销单快照未包含该行程的全部当前费用，请重新生成草稿",
+            details={
+                "report_id": str(report.id),
+                "missing_expense_ids": missing_expense_ids,
+            },
+        )
+
     current = now or session.scalar(select(func.clock_timestamp()))
     report.status = STATUS_SUBMITTED
     report.submitted_at = current
