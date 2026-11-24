@@ -380,6 +380,13 @@ final class TripDetailViewModel: ObservableObject {
         guard ensureNoPendingCloudExpenses() else { return }
         errorMessage = nil
         do {
+            let currentExpenses = try await environment.tripRepository.expenses(tripId: tripId)
+            guard report.coversCurrentExpenses(Set(currentExpenses.map(\\.id))) else {
+                errorMessage = "这份报销单不包含当前行程的全部费用。请重新生成草稿，避免遗漏新登记或后同步的费用。"
+                return
+            }
+            // A new local expense may have been enqueued while the authoritative expense list loaded.
+            guard ensureNoPendingCloudExpenses() else { return }
             _ = try await environment.tripRepository.submitExpenseReport(id: report.id)
             expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
             await refreshCloseoutReadiness()
