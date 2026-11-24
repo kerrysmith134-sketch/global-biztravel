@@ -25,31 +25,42 @@ def upgrade() -> None:
         "expense_reports",
         sa.Column("cancellation_reason", sa.Text(), nullable=True),
     )
-    op.create_foreign_key(
-        "fk_expense_reports_cancelled_by_user_id_users",
-        "expense_reports",
-        "users",
-        ["cancelled_by_user_id"],
-        ["id"],
-        ondelete="SET NULL",
+
+    # The repository's naming convention prefixes explicitly supplied names.
+    # Use exact SQL names here because 0022 created this legacy check via raw DDL.
+    op.execute(
+        """
+        ALTER TABLE expense_reports
+        ADD CONSTRAINT fk_expense_reports_cancelled_by_user_id_users
+        FOREIGN KEY (cancelled_by_user_id)
+        REFERENCES users (id) ON DELETE SET NULL
+        """
     )
-    op.drop_constraint(
-        "ck_expense_reports_status_allowed",
-        "expense_reports",
-        type_="check",
+    op.execute(
+        "ALTER TABLE expense_reports "
+        "DROP CONSTRAINT ck_expense_reports_status_allowed"
     )
-    op.create_check_constraint(
-        "ck_expense_reports_status_allowed",
-        "expense_reports",
-        "status IN ('DRAFT','SUBMITTED','APPROVED','REJECTED','CANCELLED')",
+    op.execute(
+        """
+        ALTER TABLE expense_reports
+        ADD CONSTRAINT ck_expense_reports_status_allowed
+        CHECK (status IN ('DRAFT','SUBMITTED','APPROVED','REJECTED','CANCELLED'))
+        """
     )
-    op.create_check_constraint(
-        "ck_expense_reports_cancellation_metadata_consistent",
-        "expense_reports",
-        "(status = 'CANCELLED' AND cancelled_at IS NOT NULL "
-        "AND cancellation_reason IS NOT NULL AND length(btrim(cancellation_reason)) > 0) "
-        "OR (status <> 'CANCELLED' AND cancelled_at IS NULL "
-        "AND cancelled_by_user_id IS NULL AND cancellation_reason IS NULL)",
+    op.execute(
+        """
+        ALTER TABLE expense_reports
+        ADD CONSTRAINT ck_expense_reports_cancellation_metadata_consistent
+        CHECK (
+            (status = 'CANCELLED' AND cancelled_at IS NOT NULL
+             AND cancellation_reason IS NOT NULL
+             AND length(btrim(cancellation_reason)) > 0)
+            OR
+            (status <> 'CANCELLED' AND cancelled_at IS NULL
+             AND cancelled_by_user_id IS NULL
+             AND cancellation_reason IS NULL)
+        )
+        """
     )
 
 
@@ -69,25 +80,24 @@ def downgrade() -> None:
         $$;
         """
     )
-    op.drop_constraint(
-        "ck_expense_reports_cancellation_metadata_consistent",
-        "expense_reports",
-        type_="check",
+    op.execute(
+        "ALTER TABLE expense_reports "
+        "DROP CONSTRAINT ck_expense_reports_cancellation_metadata_consistent"
     )
-    op.drop_constraint(
-        "ck_expense_reports_status_allowed",
-        "expense_reports",
-        type_="check",
+    op.execute(
+        "ALTER TABLE expense_reports "
+        "DROP CONSTRAINT ck_expense_reports_status_allowed"
     )
-    op.create_check_constraint(
-        "ck_expense_reports_status_allowed",
-        "expense_reports",
-        "status IN ('DRAFT','SUBMITTED','APPROVED','REJECTED')",
+    op.execute(
+        """
+        ALTER TABLE expense_reports
+        ADD CONSTRAINT ck_expense_reports_status_allowed
+        CHECK (status IN ('DRAFT','SUBMITTED','APPROVED','REJECTED'))
+        """
     )
-    op.drop_constraint(
-        "fk_expense_reports_cancelled_by_user_id_users",
-        "expense_reports",
-        type_="foreignkey",
+    op.execute(
+        "ALTER TABLE expense_reports "
+        "DROP CONSTRAINT fk_expense_reports_cancelled_by_user_id_users"
     )
     op.drop_column("expense_reports", "cancellation_reason")
     op.drop_column("expense_reports", "cancelled_by_user_id")
