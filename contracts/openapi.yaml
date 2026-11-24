@@ -1950,7 +1950,7 @@
         "tags": [
           "audit"
         ],
-        "summary": "一次出行的审计时间线（建议/审批/Outbox/记录/规划尝试）",
+        "summary": "一次出行的审计时间线（建议/审批/报销/Outbox/记录/规划尝试）",
         "operationId": "trip_audit_v1_trips__trip_id__audit_get",
         "parameters": [
           {

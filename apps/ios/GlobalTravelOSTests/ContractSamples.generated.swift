@@ -170,10 +170,10 @@ enum ContractSamples {
 """
     static let expenseReport = """
 {
+  "can_cancel": true,
   "cancelled_at": "2026-11-09T09:00:00+00:00",
   "cancelled_by_user_id": "11111111-1111-1111-1111-111111111111",
   "cancellation_reason": "1",
-  "can_cancel": true,
   "created_at": "2026-11-09T09:00:00+00:00",
   "decided_at": "2026-11-09T09:00:00+00:00",
   "decided_by_user_id": "11111111-1111-1111-1111-111111111111",
