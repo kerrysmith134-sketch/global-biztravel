@@ -141,13 +141,4 @@ ios-build: ## 构建 iOS 客户端（通用模拟器目标，不依赖具体设�
 		-destination 'generic/platform=iOS Simulator' build
 
 ios-test: seed ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行；自动补种子与夹具；挂死自动清缓存重试；模拟器名用 IOS_DEST 覆盖）
-	@name="$(IOS_DEST)"; name="$${name##*name=}"; \
-	if ! xcrun simctl list devices available | grep -q "$$name"; then \
-	  fallback=$$(xcrun simctl list devices available | sed -n 's/^ *\(iPhone [^(]*\) (.*/\1/p' | head -1 | sed 's/ *$$//'); \
-	  if [ -z "$$fallback" ]; then echo "没有可用的 iPhone 模拟器"; exit 1; fi; \
-	  echo "目标模拟器 '$$name' 不存在，回退到 '$$fallback'"; \
-	  dest="platform=iOS Simulator,name=$$fallback"; \
-	else \
-	  dest='$(IOS_DEST)'; \
-	fi; \
-	DEST="$dest" bash scripts/ios_test_guard.sh
+	bash scripts/ios_test_guard.sh '$(IOS_DEST)'
