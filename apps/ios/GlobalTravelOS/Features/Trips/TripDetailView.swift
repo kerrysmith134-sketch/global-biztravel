@@ -343,7 +343,29 @@ final class TripDetailViewModel: ObservableObject {
         }
     }
 
+    /// Server-side report snapshots cannot include expenses that are still only in the
+    /// local outbox. Refresh the durable queue immediately before every report mutation.
+    private func ensureNoPendingCloudExpenses() -> Bool {
+        guard !environment.isLocalMode else { return true }
+        guard let expenseOutbox else {
+            errorMessage = "本地费用队列不可用，无法安全生成或提交报销单"
+            return false
+        }
+        do {
+            pendingExpenses = try expenseOutbox.pending(tripId: tripId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+            return false
+        }
+        guard pendingExpenses.isEmpty else {
+            errorMessage = "仍有 \(pendingExpenses.count) 笔费用仅保存在本机，请完成同步后再生成或提交报销单"
+            return false
+        }
+        return true
+    }
+
     func createExpenseReport() async {
+        guard ensureNoPendingCloudExpenses() else { return }
         errorMessage = nil
         do {
             let report = try await environment.tripRepository.createExpenseReport(tripId: tripId)
@@ -355,6 +377,7 @@ final class TripDetailViewModel: ObservableObject {
     }
 
     func submitExpenseReport(_ report: ExpenseReport) async {
+        guard ensureNoPendingCloudExpenses() else { return }
         errorMessage = nil
         do {
             _ = try await environment.tripRepository.submitExpenseReport(id: report.id)
@@ -794,6 +817,14 @@ struct TripDetailView: View {
                 }
 
                 Section("报销单") {
+                    if !viewModel.pendingExpenses.isEmpty {
+                        Label(
+                            "还有 \(viewModel.pendingExpenses.count) 笔费用只保存在本机。请先同步，避免报销单遗漏这些费用。",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    }
                     if let error = viewModel.sectionError("reports") {
                         Text(error).font(.caption).foregroundStyle(.red)
                     }
@@ -817,6 +848,7 @@ struct TripDetailView: View {
                                     Task { await viewModel.submitExpenseReport(report) }
                                 }
                                 .font(.caption)
+                                .disabled(!viewModel.pendingExpenses.isEmpty)
                             }
                         }
                         .id("closeout-report-\(report.id)")
@@ -826,6 +858,7 @@ struct TripDetailView: View {
                     } label: {
                         Label("从费用记录生成报销单", systemImage: "doc.text")
                     }
+                    .disabled(!viewModel.pendingExpenses.isEmpty)
                 }
             }
             if section == .visa {
