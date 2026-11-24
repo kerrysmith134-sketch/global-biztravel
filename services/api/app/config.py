@@ -156,6 +156,10 @@ class Settings(BaseSettings):
     receipt_storage_provider: str = "filesystem"  # filesystem | s3
     receipt_storage_root: str = "var/receipts"
     receipt_max_upload_bytes: int = 10 * 1024 * 1024
+    # Object-before-row writes can leave storage orphans if DB commit fails after PUT.
+    # The Worker only deletes objects older than this grace period and absent from tenant metadata.
+    receipt_orphan_grace_seconds: int = 86400
+    receipt_orphan_reconcile_interval_seconds: int = 86400
     receipt_s3_endpoint_url: str | None = None
     receipt_s3_bucket: str | None = None
     receipt_s3_region: str = "us-east-1"
