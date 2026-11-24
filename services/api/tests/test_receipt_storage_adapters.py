@@ -44,7 +44,7 @@ def test_s3_receipt_listing_paginates_and_filters_noncanonical_keys(monkeypatch)
             return FakePaginator()
 
     fake_client = FakeS3Client()
-    fake_boto3 = SimpleNamespace(client=lambda **_kwargs: fake_client)
+    fake_boto3 = SimpleNamespace(client=lambda _service, **_kwargs: fake_client)
     monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
 
     storage = S3ReceiptStorage(
