@@ -300,7 +300,7 @@ struct LocalDatabase {
         try store.run(sql, bindings: bindings)
     }
 
-    func transaction(_ work: () throws -> Void) throws {
+    func transaction<T>(_ work: () throws -> T) throws -> T {
         try store.transaction(work)
     }
 
