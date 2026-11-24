@@ -311,6 +311,7 @@ struct TripDetailView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .accessibilityIdentifier("trip-section-picker")
             }
             if let error = viewModel.errorMessage {
                 Section { ErrorBanner(message: error) }
@@ -475,11 +476,8 @@ struct TripDetailView: View {
 
             }
             if section == .money {
-                if let budget = viewModel.budget {
-                    Section("费用与预算") {
-                    if let error = viewModel.sectionError("expenses") ?? viewModel.sectionError("budget") {
-                        Text(error).font(.caption).foregroundStyle(.red)
-                    }
+                Section("费用与预算") {
+                    if let budget = viewModel.budget {
                         LabeledContent("预算", value: budget.budgetLabel)
                         LabeledContent("计划估算", value: budget.plannedLabel)
                         LabeledContent("实际费用", value: budget.actualLabel)
@@ -490,35 +488,64 @@ struct TripDetailView: View {
                         if let note = budget.conversionNote {
                             Text(note)
                                 .font(.caption2)
-                                .foregroundStyle(budget.conversionComplete == true ? Color.secondary : Color.orange)
+                                .foregroundStyle(
+                                    budget.conversionComplete == true ? Color.secondary : Color.orange
+                                )
                         }
-                        ForEach(viewModel.expenses) { expense in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(expense.categoryLabel)
-                                    Spacer()
-                                    Text(expense.amountLabel)
-                                        .font(.caption.monospacedDigit())
-                                }
-                                if expense.receiptAssetId != nil {
-                                    Label(
-                                        environment.isLocalMode ? "原件保存在本机" : "原件已上传",
-                                        systemImage: "paperclip"
-                                    )
+                    } else if let error = viewModel.sectionError("budget") {
+                        Label("预算汇总加载失败", systemImage: "exclamationmark.triangle")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.orange)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if viewModel.isLoading {
+                        ProgressView("正在加载预算…")
+                    } else {
+                        ContentUnavailableView(
+                            "暂无预算汇总",
+                            systemImage: "chart.bar",
+                            description: Text("暂时没有可展示的预算数据，请检查预算设置或稍后刷新。")
+                        )
+                    }
+
+                    if let error = viewModel.sectionError("expenses") {
+                        Text("费用记录加载失败：\(error)")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if viewModel.expenses.isEmpty {
+                        Text("还没有费用记录。登记交通、住宿等实际支出后会自动汇总。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(viewModel.expenses) { expense in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(expense.categoryLabel)
+                                Spacer()
+                                Text(expense.amountLabel)
+                                    .font(.caption.monospacedDigit())
+                            }
+                            if expense.receiptAssetId != nil {
+                                Label(
+                                    environment.isLocalMode ? "原件保存在本机" : "原件已上传",
+                                    systemImage: "paperclip"
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            } else {
+                                Label("未附原始票据", systemImage: "paperclip")
                                     .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                } else {
-                                    Label("未附原始票据", systemImage: "paperclip")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                }
+                                    .foregroundStyle(.tertiary)
                             }
                         }
-                        Button {
-                            showsExpense = true
-                        } label: {
-                            Label("记一笔费用", systemImage: "plus.circle")
-                        }
+                    }
+
+                    Button {
+                        showsExpense = true
+                    } label: {
+                        Label("记一笔费用", systemImage: "plus.circle")
                     }
                 }
 
@@ -555,11 +582,15 @@ struct TripDetailView: View {
                         Label("从费用记录生成报销单", systemImage: "doc.text")
                     }
                 }
-
             }
             if section == .visa {
                 Section("签证与入境") {
-                    if viewModel.visaCases.isEmpty {
+                    if let error = viewModel.sectionError("visa") {
+                        Text("签证与入境数据加载失败：\(error)")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    if viewModel.visaCases.isEmpty && viewModel.sectionError("visa") == nil {
                         Text("还没有签证案件。创建后会按目的国生成材料清单。")
                             .font(.footnote)
                             .foregroundStyle(.secondary)

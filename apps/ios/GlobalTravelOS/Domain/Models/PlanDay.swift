@@ -105,6 +105,12 @@ struct PlanStop: Codable, Equatable, Identifiable {
         latitude != nil && longitude != nil
     }
 
+    /// Coordinates used for map handoff must be geographically valid, not merely non-nil.
+    var hasValidCoordinates: Bool {
+        guard let latitude, let longitude else { return false }
+        return (-90.0...90.0).contains(latitude) && (-180.0...180.0).contains(longitude)
+    }
+
     var arriveLabel: String {
         guard let arrive else { return "—" }
         return ISO8601.timeDisplay(from: arrive)
@@ -132,6 +138,31 @@ struct PlanStop: Codable, Equatable, Identifiable {
     }
 
     var travelIsStale: Bool { stale ?? false }
+
+    var travelSourceLabel: String {
+        TravelSourcePresentation.label(source: travelSource, stale: travelIsStale)
+    }
+}
+
+/// Human-readable provenance for estimated travel times. OSRM road-network routing is not
+/// live traffic data; straight-line fallbacks are explicitly not navigation routes.
+enum TravelSourcePresentation {
+    static func label(source: String?, stale: Bool) -> String {
+        let base: String
+        switch source {
+        case .some("osrm-road"):
+            base = "道路网络估算（无实时路况）"
+        case .some("haversine-estimate"):
+            base = "直线距离估算（非导航路线）"
+        case .some("fallback-haversine"):
+            base = "降级直线估算"
+        case let .some(value):
+            base = "估算来源：\(value)"
+        case .none:
+            base = "交通来源未知"
+        }
+        return stale ? "\(base) · 需要复核" : base
+    }
 }
 
 /// One `plan_travel_legs` row. `fromStopId == nil` means the leg starts at the trip origin.
@@ -180,7 +211,9 @@ struct PlanTravelLeg: Codable, Equatable, Identifiable {
         guard let costAmount else { return "费用未知" }
         return "\(costCurrency ?? "") \(String(format: "%.2f", costAmount))"
     }
-    var sourceLabel: String { stale ? "\(source)（可能过期）" : source }
+    var sourceLabel: String {
+        TravelSourcePresentation.label(source: source, stale: stale)
+    }
 }
 
 /// `time_window:{start,end}|null` — kept as raw strings because the contract does not pin the

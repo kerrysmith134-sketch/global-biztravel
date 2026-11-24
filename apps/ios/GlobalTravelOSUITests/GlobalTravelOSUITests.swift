@@ -231,10 +231,8 @@ final class GlobalTravelOSUITests: XCTestCase {
     // 简报/助手/同步由分步用例覆盖；全部连接真实后端与 Worker。
     // swiftlint:disable:next function_body_length
     func testAcceptanceJourneyChain() throws {
-        // 主干（创建→导入→规划→激活→记录→纪要）已跑通；尾段仍在联调：预算 GET 服务端
-        // 200、payload 解码单测通过、无错误横幅，但链式长流程中页面上下文会漂移，
-        // 预算区探针显示概览/签证/报销单同时缺失。下一轮应在每个阶段后加导航栏标题
-        // 检查点定位漂移点。XCTSkip 在 UI 宿主无效，用期望失败标记保持套件绿灯。
+        // TripDetailView 使用分区 Picker；费用与预算不属于默认「概览」分区。
+        // 通过真实分区控件进入费用页，再验证预算/费用/报销单内容，避免用滚动手势猜页面状态。
         try seedImportFixture()
         let app = XCUIApplication()
         app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
@@ -434,43 +432,22 @@ final class GlobalTravelOSUITests: XCTestCase {
         // 回到行程详情（费用与后续步骤都在详情页）
         XCTAssertTrue(backToTripDetail(app, tripName: tripName), "AT-006：未能回到行程详情")
 
-        // 5) 记一笔费用
-        // 预算区在异步 budget 加载后才渲染：先等区块头出现，再找按钮。
-        // 先看顶部错误横幅（budget 失败会写在 errorMessage，横幅在列表顶部）。
-        Thread.sleep(forTimeInterval: 2)
-        // 匹配预算加载失败的横幅（errorMessage）。注意不能匹配「预算」「失败」这种宽泛词：
-        // 正常区块头「费用与预算」本身含"预算"，页面一但完成加载就会被误判为错误横幅。
-        let topBanner = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS '无法解析' OR label CONTAINS 'Budget' OR label CONTAINS '请求失败' OR label CONTAINS 'HTTP'")
-        ).firstMatch
-        if topBanner.exists {
-            XCTFail("detail-banner: \(topBanner.label)")
-        }
-        // 列表可能以恢复的滚动位置重新出现（停在底部）：分两阶段单向搜。
-        // 拖动起点避开行内容（用右侧滚动条区域），否则 press+drag 会误触 NavigationLink
-        // 进入计划详情；同时对误入做即时回退。
+        // 5) 进入费用分区 → 验证预算区存在 → 记一笔费用
+        let sectionPicker = app.segmentedControls["trip-section-picker"]
+        XCTAssertTrue(sectionPicker.waitForExistence(timeout: 10), "行程详情缺少分区切换器")
+        let moneySegment = sectionPicker.buttons["费用"]
+        XCTAssertTrue(moneySegment.waitForExistence(timeout: 10), "行程详情缺少费用分区")
+        moneySegment.tap()
+
         let budgetHeader = app.staticTexts["费用与预算"]
-        func scrollSafely(up: Bool) {
-            if app.navigationBars["计划详情"].exists {
-                app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
-                    .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
-                return
-            }
-            let from = CGVector(dx: 0.97, dy: up ? 0.72 : 0.35)
-            let to = CGVector(dx: 0.97, dy: up ? 0.35 : 0.72)
-            app.coordinate(withNormalizedOffset: from)
-                .press(forDuration: 0.15, thenDragTo: app.coordinate(withNormalizedOffset: to))
-        }
-        let half = Date().addingTimeInterval(20)
-        while !budgetHeader.exists && Date() < half { scrollSafely(up: true) }
-        let budgetDeadline = Date().addingTimeInterval(20)
-        while !budgetHeader.exists && Date() < budgetDeadline { scrollSafely(up: false) }
-        if !budgetHeader.exists {
-            let banner = app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS '失败' OR label CONTAINS '预算' OR label CONTAINS 'HTTP'")
-            ).firstMatch
-            failBudgetProbe(app, budgetHeader)
-        }
+        XCTAssertTrue(
+            budgetHeader.waitForExistence(timeout: 20),
+            "费用分区未渲染预算卡片；检查预算加载状态和分区导航"
+        )
+        XCTAssertTrue(
+            app.buttons["记一笔费用"].waitForExistence(timeout: 10),
+            "费用分区未提供新增费用入口"
+        )
         XCTAssertTrue(revealAndTap(app, app.buttons["记一笔费用"]), "未找到记一笔费用")
         if !app.navigationBars["记一笔费用"].waitForExistence(timeout: 15) {
             // 第一次点击可能落在滚动惯性中：再点一次。
@@ -907,21 +884,6 @@ final class GlobalTravelOSUITests: XCTestCase {
 }
 
 extension GlobalTravelOSUITests {
-    func failBudgetProbe(_ app: XCUIApplication, _ budgetHeader: XCUIElement) {
-        let bars = app.navigationBars
-        var titles: [String] = []
-        for index in 0 ..< min(bars.count, 4) {
-            titles.append(bars.element(boundBy: index).label ?? "?")
-        }
-        var texts: [String] = []
-        let all = app.staticTexts
-        for index in 0 ..< min(all.count, 8) {
-            texts.append(all.element(boundBy: index).label)
-        }
-        XCTFail(
-            "budget-missing: bars=\(titles) texts=\(texts)"
-        )
-    }
 
     /// Verifies that a map-originated visit cancellation creates a server-owned draft version.
     func performMapVisitCancellationFlow(_ app: XCUIApplication, tripName: String) throws {

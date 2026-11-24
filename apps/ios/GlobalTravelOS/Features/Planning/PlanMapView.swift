@@ -50,10 +50,7 @@ struct PlanMapView: View {
             // The origin is a valid first-day anchor only. Never draw a synthetic
             // overnight transfer from yesterday's final stop to today's first stop.
             if dayIndex == 0, let originCoordinate { coordinates.append(originCoordinate) }
-            let dayStops = day.stops.filter { stop in
-                guard let latitude = stop.latitude, let longitude = stop.longitude else { return false }
-                return (-90.0...90.0).contains(latitude) && (-180.0...180.0).contains(longitude)
-            }
+            let dayStops = day.stops.filter(\.hasValidCoordinates)
             for stop in dayStops {
                 guard let lat = stop.latitude, let lon = stop.longitude else { continue }
                 coordinates.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
@@ -434,11 +431,6 @@ struct PlanMapView: View {
     }
 
     private func sourceLabel(_ leg: PlanTravelLeg) -> String {
-        if leg.stale { return "供应商数据过期" }
-        switch leg.source {
-        case "osrm-road": return "路网"
-        case "haversine-estimate": return "直线估算"
-        case let other: return other
-        }
+        leg.sourceLabel
     }
 }

@@ -1,6 +1,6 @@
 # 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
-- 核对时间：2026-11-22（市场情报 H1.9 增量更新）
+- 核对时间：2026-11-24（H2.13 票据证据闭环之后）
 - 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
   规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
   后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
@@ -11,12 +11,12 @@
 
 | 里程碑 | 要求 | 状态 | 证据 |
 |---|---|---|---|
-| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0030`；`0010_security_rls` 全库兜底；RLS 断言测试 |
+| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0047`；`0010_security_rls` 全库兜底；RLS 断言测试 |
 | MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 第 3 步 |
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；46 单测（18 解码 + 28 契约样本）+ 8 UI 自动化 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；141 单元测试（含契约样本解码）+ 9 UI 自动化用例 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -61,14 +61,14 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **240 passed**（真实 PostgreSQL；全新库 `db-reset` 后一条命令全绿——`make test` 自动先补种子数据） |
-| `make typecheck` | MyPy：138 个源文件无问题 |
+| `make test` | **473 passed / 1 skipped**（真实 PostgreSQL；全新库 `db-reset` 后一条命令全绿——`make test` 自动先补种子数据） |
+| `make typecheck` | MyPy：177 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
-| `make contract-check` | 85 路径 / 141 schema；契约一致（S6：`unplaced`/`policy_violations`/`cards`/`data_gaps`/`actual_cost` 已从 `list[dict]` 收紧为显式模型，见 ADR-0030） |
+| `make contract-check` | 157 路径 / 264 schema；契约一致（S6：`unplaced`/`policy_violations`/`cards`/`data_gaps`/`actual_cost` 已从 `list[dict]` 收紧为显式模型，见 ADR-0030） |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | N3 实例族 8 实例全门禁通过（覆盖/能力声明/确定性/金目标基线，2026-11-10 实测）：启发式全族 p50 ≤1.8ms；ortools 快实例 6.5ms~8.9s、corridor_rhine_12 39.4s。**实测发现**：`solver_budget_seconds` 是解数量预算而非墙钟，DFS+GLS 在 n≥12 后墙钟指数级（详见 `docs/architecture/performance.md` §3）。快速跑：`make bench ARGS="--skip-ortools"` |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | **46 单测 + 9 条 UI 用例整轮全绿**（598s，连接真实后端，经 `scripts/ios_test_guard.sh` 保护；链式 207s、AT-007/008 专项 131s）。2026-11-09 八轮完整套件实证并修掉：费用横幅谓词过宽（误匹配正常区块头）、AT-006 加载时序、AT-011 同步 Tab 被 sheet 关闭动画吞掉、AT-007 计划版本区定位、`PlanDiff` 模型与契约漂移（契约样本门禁首次实战命中）、`backToTripDetail` 多元素匹配、Excel 文件选择器重试 |
+| `make ios-test` | **141 条 iOS 单测 + 9 条 UI 自动化用例**；UI 用例连接真实 API/Worker，执行由 `ios-acceptance` GitHub Actions job 与本地 `make ios-test` 覆盖。费用区用例先切换到「费用」分区，不再通过跨分区滚动猜测页面状态 |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 

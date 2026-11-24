@@ -3,6 +3,52 @@ import XCTest
 
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
+
+    func testPlanStopCoordinatesRequireValidGeographicRanges() {
+        let valid = PlanStop(
+            visitId: "visit-valid",
+            sequence: 1,
+            latitude: 52.52,
+            longitude: 13.405
+        )
+        let invalidLatitude = PlanStop(
+            visitId: "visit-invalid-latitude",
+            sequence: 2,
+            latitude: 91,
+            longitude: 13.405
+        )
+        let invalidLongitude = PlanStop(
+            visitId: "visit-invalid-longitude",
+            sequence: 3,
+            latitude: 52.52,
+            longitude: 181
+        )
+        let incomplete = PlanStop(
+            visitId: "visit-incomplete",
+            sequence: 4,
+            latitude: 52.52
+        )
+
+        XCTAssertTrue(valid.hasValidCoordinates)
+        XCTAssertFalse(invalidLatitude.hasValidCoordinates)
+        XCTAssertFalse(invalidLongitude.hasValidCoordinates)
+        XCTAssertFalse(incomplete.hasValidCoordinates)
+    }
+
+    func testTravelSourcePresentationDoesNotClaimLiveTrafficForOSRM() {
+        XCTAssertEqual(
+            TravelSourcePresentation.label(source: "osrm-road", stale: false),
+            "道路网络估算（无实时路况）"
+        )
+        XCTAssertEqual(
+            TravelSourcePresentation.label(source: "haversine-estimate", stale: false),
+            "直线距离估算（非导航路线）"
+        )
+        XCTAssertEqual(
+            TravelSourcePresentation.label(source: "fallback-haversine", stale: true),
+            "降级直线估算 · 需要复核"
+        )
+    }
     func testExpenseReceiptAssetIdDecodesAndEncodesOnTheWire() throws {
         let json = """
         {
