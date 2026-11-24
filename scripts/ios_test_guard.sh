@@ -15,7 +15,25 @@
 set -uo pipefail
 
 DEST="${DEST:-${1:-}}"
-[ -n "$DEST" ] || { echo "[guard] 缺少 destination（DEST=...）" >&2; exit 64; }
+[ -n "$DEST" ] || { echo "[guard] 缺少 destination（DEST=... 或首个位置参数）" >&2; exit 64; }
+
+# Resolve a missing named simulator here rather than in Makefile. This script is
+# always invoked with bash, so the Make recipe does not depend on executable bits
+# or Make/shell dollar escaping.
+if [[ "$DEST" == *"name="* ]]; then
+  requested_name="${DEST##*name=}"
+  if ! xcrun simctl list devices available | grep -Fq "$requested_name"; then
+    fallback="$(xcrun simctl list devices available \
+      | sed -n 's/^ *\\(iPhone [^(]*\\) (.*/\\1/p' \
+      | head -1 | sed 's/ *$//')"
+    if [ -z "$fallback" ]; then
+      echo "[guard] 没有可用的 iPhone 模拟器" >&2
+      exit 1
+    fi
+    echo "[guard] 目标模拟器 '$requested_name' 不存在，回退到 '$fallback'" >&2
+    DEST="platform=iOS Simulator,name=$fallback"
+  fi
+fi
 ONLY_TESTING="${ONLY_TESTING:-}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 STALL_SECONDS="${STALL_SECONDS:-900}"
