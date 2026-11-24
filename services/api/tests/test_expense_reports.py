@@ -174,7 +174,36 @@ def test_report_submission_requires_trip_wide_snapshot_coverage(client: TestClie
         )
         assert second_half.status_code == 201, second_half.text
 
-        # Multiple draft snapshots may collectively cover a Trip's expenses.
+        second_report_id = second_half.json()["id"]
+
+        # A rejected report no longer contributes to Trip-wide snapshot coverage.
+        submitted_second = client.post(
+            f"/v1/expense-reports/{second_report_id}:submit",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert submitted_second.status_code == 200, submitted_second.text
+        rejected_second = client.post(
+            f"/v1/expense-reports/{second_report_id}:reject",
+            headers={**headers(USER_ADMIN), "Idempotency-Key": str(uuid.uuid4())},
+            json={"note": "补充票据后重新提交"},
+        )
+        assert rejected_second.status_code == 200, rejected_second.text
+
+        invalidated = client.post(
+            f"/v1/expense-reports/{first_report_id}:submit",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert invalidated.status_code == 409, invalidated.text
+        assert set(invalidated.json()["error"]["details"]["missing_expense_ids"]) == {expense_ids[1]}
+
+        replacement = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+            json={"expense_ids": [expense_ids[1]]},
+        )
+        assert replacement.status_code == 201, replacement.text
+
+        # Multiple non-rejected snapshots may collectively cover a Trip's expenses.
         submitted_first = client.post(
             f"/v1/expense-reports/{first_report_id}:submit",
             headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
@@ -182,12 +211,12 @@ def test_report_submission_requires_trip_wide_snapshot_coverage(client: TestClie
         assert submitted_first.status_code == 200, submitted_first.text
         assert submitted_first.json()["status"] == "SUBMITTED"
 
-        submitted_second = client.post(
-            f"/v1/expense-reports/{second_half.json()['id']}:submit",
+        submitted_replacement = client.post(
+            f"/v1/expense-reports/{replacement.json()['id']}:submit",
             headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
         )
-        assert submitted_second.status_code == 200, submitted_second.text
-        assert submitted_second.json()["status"] == "SUBMITTED"
+        assert submitted_replacement.status_code == 200, submitted_replacement.text
+        assert submitted_replacement.json()["status"] == "SUBMITTED"
     finally:
         cleanup(trip_id)
 
