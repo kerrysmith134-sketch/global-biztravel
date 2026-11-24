@@ -284,6 +284,107 @@ def test_closeout_separates_currencies_and_flags_latest_rejected_report(
         cleanup(trip_id)
 
 
+def test_closeout_aggregates_all_split_report_states(client: TestClient) -> None:
+    trip_id = make_trip(client)
+    try:
+        expense_ids: list[str] = []
+        for amount in ("10.00", "20.00"):
+            created = client.post(
+                f"/v1/trips/{trip_id}/expenses",
+                headers=headers(key=str(uuid.uuid4())),
+                json={
+                    "category": "TRANSPORT",
+                    "amount": amount,
+                    "currency": "EUR",
+                    "occurred_on": datetime.now(UTC).date().isoformat(),
+                },
+            )
+            assert created.status_code == 201, created.text
+            expense_ids.append(created.json()["id"])
+
+        report_ids: list[str] = []
+        for expense_id in expense_ids:
+            report = client.post(
+                f"/v1/trips/{trip_id}/expense-reports",
+                headers=headers(key=str(uuid.uuid4())),
+                json={"expense_ids": [expense_id]},
+            )
+            assert report.status_code == 201, report.text
+            report_ids.append(report.json()["id"])
+
+        initial = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert initial.status_code == 200, initial.text
+        initial_body = initial.json()
+        assert initial_body["status"] == "BLOCKED"
+        draft_issues = [
+            item for item in initial_body["blockers"]
+            if item["code"] == "EXPENSE_REPORT_DRAFT"
+        ]
+        assert {item["source_id"] for item in draft_issues} == set(report_ids)
+
+        # Submitting one half is not enough while the other split report remains a draft.
+        first_submitted = client.post(
+            f"/v1/expense-reports/{report_ids[0]}:submit",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert first_submitted.status_code == 200, first_submitted.text
+        partial = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert partial.status_code == 200, partial.text
+        partial_body = partial.json()
+        assert partial_body["status"] == "BLOCKED"
+        assert [
+            item["source_id"] for item in partial_body["blockers"]
+            if item["code"] == "EXPENSE_REPORT_DRAFT"
+        ] == [report_ids[1]]
+
+        second_submitted = client.post(
+            f"/v1/expense-reports/{report_ids[1]}:submit",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert second_submitted.status_code == 200, second_submitted.text
+        submitted = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert submitted.status_code == 200, submitted.text
+        assert submitted.json()["status"] == "REPORT_SUBMITTED"
+
+        # The newest report is approved first. The Trip must remain SUBMITTED
+        # until every non-rejected split report has reached APPROVED.
+        newest_approved = client.post(
+            f"/v1/expense-reports/{report_ids[1]}:approve",
+            headers=headers(org=ORG_A, user=USER_ADMIN, key=str(uuid.uuid4())),
+            json={"note": "Split report approved"},
+        )
+        assert newest_approved.status_code == 200, newest_approved.text
+        mixed = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert mixed.status_code == 200, mixed.text
+        assert mixed.json()["status"] == "REPORT_SUBMITTED"
+
+        oldest_approved = client.post(
+            f"/v1/expense-reports/{report_ids[0]}:approve",
+            headers=headers(org=ORG_A, user=USER_ADMIN, key=str(uuid.uuid4())),
+            json={"note": "All split reports approved"},
+        )
+        assert oldest_approved.status_code == 200, oldest_approved.text
+        approved = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["status"] == "REPORT_APPROVED"
+        assert not any(
+            item["code"] == "EXPENSE_REPORT_DRAFT"
+            for item in approved.json()["blockers"]
+        )
+    finally:
+        cleanup(trip_id)
+
+
 def test_action_center_surfaces_only_hard_closeout_blockers(client: TestClient) -> None:
     trip_id = make_trip(client)
     place_id = make_place(client)
