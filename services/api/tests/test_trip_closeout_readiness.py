@@ -317,9 +317,9 @@ def test_closeout_aggregates_all_split_report_states(client: TestClient) -> None
         )
         assert initial.status_code == 200, initial.text
         initial_body = initial.json()
-        assert initial_body["status"] == "BLOCKED"
+        assert initial_body["status"] == "READY_WITH_EXCEPTIONS"
         draft_issues = [
-            item for item in initial_body["blockers"]
+            item for item in initial_body["warnings"]
             if item["code"] == "EXPENSE_REPORT_DRAFT"
         ]
         assert {item["source_id"] for item in draft_issues} == set(report_ids)
@@ -335,9 +335,9 @@ def test_closeout_aggregates_all_split_report_states(client: TestClient) -> None
         )
         assert partial.status_code == 200, partial.text
         partial_body = partial.json()
-        assert partial_body["status"] == "BLOCKED"
+        assert partial_body["status"] == "READY_WITH_EXCEPTIONS"
         assert [
-            item["source_id"] for item in partial_body["blockers"]
+            item["source_id"] for item in partial_body["warnings"]
             if item["code"] == "EXPENSE_REPORT_DRAFT"
         ] == [report_ids[1]]
 
@@ -379,7 +379,7 @@ def test_closeout_aggregates_all_split_report_states(client: TestClient) -> None
         assert approved.json()["status"] == "REPORT_APPROVED"
         assert not any(
             item["code"] == "EXPENSE_REPORT_DRAFT"
-            for item in approved.json()["blockers"]
+            for item in approved.json()["warnings"]
         )
     finally:
         cleanup(trip_id)
