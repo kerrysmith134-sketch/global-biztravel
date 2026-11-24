@@ -389,6 +389,94 @@ enum Endpoints {
         )
     }
 
+    static func listMarketOpportunities(
+        workspaceId: String,
+        page: PageRequest,
+        statusFilter: String?
+    ) -> APIRequest {
+        var queryItems = page.queryItems
+        if let statusFilter, !statusFilter.isEmpty {
+            queryItems.append(URLQueryItem(name: "status_filter", value: statusFilter))
+        }
+        return APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/opportunities",
+            queryItems: queryItems
+        )
+    }
+
+    static func createMarketOpportunity(
+        workspaceId: String,
+        body: MarketOpportunityCreateRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/opportunities",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func listMarketEvidence(workspaceId: String, page: PageRequest) -> APIRequest {
+        APIRequest(
+            method: .get,
+            path: "/v1/market/workspaces/\(workspaceId)/evidence",
+            queryItems: page.queryItems
+        )
+    }
+
+    static func addMarketOpportunityEvidence(
+        workspaceId: String,
+        opportunityId: String,
+        body: MarketOpportunityEvidenceCreateRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/opportunities/\(opportunityId)/evidence",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func transitionMarketOpportunity(
+        workspaceId: String,
+        opportunityId: String,
+        body: MarketOpportunityTransitionRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/opportunities/\(opportunityId):transition",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func qualifyMarketOpportunity(
+        workspaceId: String,
+        opportunityId: String,
+        body: MarketOpportunityQualifyRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/opportunities/\(opportunityId):qualify",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
+    static func recordMarketOpportunityOutcome(
+        workspaceId: String,
+        opportunityId: String,
+        body: MarketOpportunityOutcomeRequest
+    ) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/market/workspaces/\(workspaceId)/opportunities/\(opportunityId):outcome",
+            body: try DateCoding.encode(body),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func marketOpportunityDetail(workspaceId: String, opportunityId: String) -> APIRequest {
         APIRequest(
             method: .get,

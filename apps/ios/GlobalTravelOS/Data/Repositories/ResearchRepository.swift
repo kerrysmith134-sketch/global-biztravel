@@ -15,6 +15,36 @@ protocol ResearchRepository {
     func claimHistory(workspaceId: String, claimId: String) async throws -> MarketClaimLineageHistory
     func claimImpactReport(workspaceId: String) async throws -> MarketClaimImpactReport
     func marketInsight(workspaceId: String, insightId: String) async throws -> MarketInsightRead
+    func listMarketOpportunities(
+        workspaceId: String,
+        page: PageRequest,
+        statusFilter: String?
+    ) async throws -> Page<MarketOpportunitySummaryRead>
+    func createMarketOpportunity(
+        workspaceId: String,
+        request: MarketOpportunityCreateRequest
+    ) async throws -> MarketOpportunitySummaryRead
+    func listMarketEvidence(workspaceId: String, page: PageRequest) async throws -> Page<ResearchEvidence>
+    func addMarketOpportunityEvidence(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityEvidenceCreateRequest
+    ) async throws -> MarketOpportunityEvidenceRead
+    func transitionMarketOpportunity(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityTransitionRequest
+    ) async throws -> MarketOpportunitySummaryRead
+    func qualifyMarketOpportunity(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityQualifyRequest
+    ) async throws -> MarketOpportunitySummaryRead
+    func recordMarketOpportunityOutcome(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityOutcomeRequest
+    ) async throws -> MarketOpportunitySummaryRead
     func marketOpportunity(workspaceId: String, opportunityId: String) async throws -> MarketOpportunityDetailRead
     func marketOpportunityExecution(
         workspaceId: String,
@@ -103,6 +133,57 @@ extension ResearchRepository {
 
     func marketInsight(workspaceId: String, insightId: String) async throws -> MarketInsightRead {
         throw RepositoryError.requiresNetwork("当前研究仓库未实现市场判断详情读取")
+    }
+
+    func listMarketOpportunities(
+        workspaceId: String,
+        page: PageRequest,
+        statusFilter: String?
+    ) async throws -> Page<MarketOpportunitySummaryRead> {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现商业机会列表")
+    }
+
+    func createMarketOpportunity(
+        workspaceId: String,
+        request: MarketOpportunityCreateRequest
+    ) async throws -> MarketOpportunitySummaryRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现商业机会创建")
+    }
+
+    func listMarketEvidence(workspaceId: String, page: PageRequest) async throws -> Page<ResearchEvidence> {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现 Workspace Evidence 列表")
+    }
+
+    func addMarketOpportunityEvidence(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityEvidenceCreateRequest
+    ) async throws -> MarketOpportunityEvidenceRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现机会 Evidence 关联")
+    }
+
+    func transitionMarketOpportunity(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityTransitionRequest
+    ) async throws -> MarketOpportunitySummaryRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现机会阶段流转")
+    }
+
+    func qualifyMarketOpportunity(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityQualifyRequest
+    ) async throws -> MarketOpportunitySummaryRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现机会资格确认")
+    }
+
+    func recordMarketOpportunityOutcome(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityOutcomeRequest
+    ) async throws -> MarketOpportunitySummaryRead {
+        throw RepositoryError.requiresNetwork("当前研究仓库未实现机会结果记录")
     }
 
     func marketOpportunity(
@@ -274,6 +355,98 @@ final class RemoteResearchRepository: ResearchRepository {
             cursor = nextCursor
         }
         throw APIError.invalidResponse("当前工作空间中未找到受影响的市场判断")
+    }
+
+    func listMarketOpportunities(
+        workspaceId: String,
+        page: PageRequest,
+        statusFilter: String?
+    ) async throws -> Page<MarketOpportunitySummaryRead> {
+        try await client.send(
+            Endpoints.listMarketOpportunities(
+                workspaceId: workspaceId,
+                page: page,
+                statusFilter: statusFilter
+            ),
+            as: Page<MarketOpportunitySummaryRead>.self
+        )
+    }
+
+    func createMarketOpportunity(
+        workspaceId: String,
+        request: MarketOpportunityCreateRequest
+    ) async throws -> MarketOpportunitySummaryRead {
+        try await client.send(
+            try Endpoints.createMarketOpportunity(workspaceId: workspaceId, body: request),
+            as: MarketOpportunitySummaryRead.self
+        )
+    }
+
+    func listMarketEvidence(workspaceId: String, page: PageRequest) async throws -> Page<ResearchEvidence> {
+        try await client.send(
+            Endpoints.listMarketEvidence(workspaceId: workspaceId, page: page),
+            as: Page<ResearchEvidence>.self
+        )
+    }
+
+    func addMarketOpportunityEvidence(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityEvidenceCreateRequest
+    ) async throws -> MarketOpportunityEvidenceRead {
+        try await client.send(
+            try Endpoints.addMarketOpportunityEvidence(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId,
+                body: request
+            ),
+            as: MarketOpportunityEvidenceRead.self
+        )
+    }
+
+    func transitionMarketOpportunity(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityTransitionRequest
+    ) async throws -> MarketOpportunitySummaryRead {
+        try await client.send(
+            try Endpoints.transitionMarketOpportunity(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId,
+                body: request
+            ),
+            as: MarketOpportunitySummaryRead.self
+        )
+    }
+
+    func qualifyMarketOpportunity(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityQualifyRequest
+    ) async throws -> MarketOpportunitySummaryRead {
+        try await client.send(
+            try Endpoints.qualifyMarketOpportunity(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId,
+                body: request
+            ),
+            as: MarketOpportunitySummaryRead.self
+        )
+    }
+
+    func recordMarketOpportunityOutcome(
+        workspaceId: String,
+        opportunityId: String,
+        request: MarketOpportunityOutcomeRequest
+    ) async throws -> MarketOpportunitySummaryRead {
+        try await client.send(
+            try Endpoints.recordMarketOpportunityOutcome(
+                workspaceId: workspaceId,
+                opportunityId: opportunityId,
+                body: request
+            ),
+            as: MarketOpportunitySummaryRead.self
+        )
     }
 
     func marketOpportunity(

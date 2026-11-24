@@ -52,6 +52,7 @@ struct MarketOpportunitySummaryRead: Decodable, Equatable, Identifiable {
     var nextAction: String?
     var qualificationReason: String?
     var disqualificationReason: String?
+    var outcomeNote: String?
     var assessmentSummary: String?
     var assessmentConfidence: String
     var createdAt: Date
@@ -72,6 +73,32 @@ struct MarketOpportunitySummaryRead: Decodable, Equatable, Identifiable {
         default: return status
         }
     }
+}
+
+struct MarketOpportunityCreateRequest: Codable, Equatable {
+    var title: String
+    var description: String?
+    var nextAction: String?
+}
+
+struct MarketOpportunityEvidenceCreateRequest: Codable, Equatable {
+    var evidenceId: String
+    var relationType: String
+    var rationale: String?
+}
+
+struct MarketOpportunityTransitionRequest: Codable, Equatable {
+    var targetStatus: String
+    var note: String?
+}
+
+struct MarketOpportunityQualifyRequest: Codable, Equatable {
+    var qualificationReason: String
+}
+
+struct MarketOpportunityOutcomeRequest: Codable, Equatable {
+    var outcome: String
+    var outcomeNote: String
 }
 
 struct MarketOpportunityEvidenceRead: Decodable, Equatable, Identifiable {

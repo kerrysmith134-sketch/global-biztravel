@@ -225,6 +225,10 @@ struct MarketResearchWorkspaceDetailView: View {
             LazyVStack(alignment: .leading, spacing: DS.Spacing.lg) {
                 workspaceHeader
                 contextSection
+                MarketOpportunityWorkspaceView(
+                    workspaceId: viewModel.workspace.id,
+                    repository: viewModel.repository
+                )
                 evidenceIntelligenceSection
                 sourceVerificationPlanSection
                 claimImpactSection

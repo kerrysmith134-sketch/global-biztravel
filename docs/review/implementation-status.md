@@ -459,3 +459,13 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 
 
 - **H2.1 deadline enforcement**：每个 Research DAG execution 额外持久化一条 `available_at=deadline_at` 的延迟 scheduler BackgroundJob。即使 Workspace 长期处于 `WAITING_FOR_REVIEW` 或 `WAITING_FOR_EVIDENCE`，Worker 也会在截止时间自动唤醒执行器；提前完成/取消时会安全撤销未认领的延迟任务。新增真实 Worker 集成测试，模拟 idle execution 到期后被认领并验证进入 `TIMED_OUT`，且不会创建 Answer Agent 子任务。该实现仍以本次最新 CI 全绿作为接受门槛。
+
+
+## 2026-11-24 H2.14 iOS 商业机会工作台
+
+- Workspace 详情页新增独立“商业机会”区：服务端分页列表、按状态筛选、显式创建、加载更多与下拉刷新；不会把候选机会自动升级为已确认商机。
+- 新增机会详情工作台：读取机会状态、下一步、置信度和证据；用户可以把当前 Workspace Evidence 明确关联为 SUPPORTS / CONTRADICTS，并查看服务端核验状态。
+- 阶段动作严格映射现有后端状态机：DISCOVERED → RESEARCHING → EVIDENCE_READY → QUALIFICATION_PENDING → QUALIFIED → ACTION_PLANNED；资格确认要求人工理由，且 UI 在存在 CONTRADICTS 时阻止提交；ACTION_PLANNED 可记录有说明的 WON / LOST 或暂缓。
+- ACTION_PLANNED 复用既有机会—Trip 拜访关联面板；没有新增第二套客户、拜访或任务主数据。
+- 新增 iOS Repository / Endpoint / Codable 契约测试，验证请求路径、查询参数、snake_case 负载、幂等键、机会分页与 Evidence 核验状态解码。
+- **验收状态**：代码已接入，须以当前分支最新 iOS 构建、单测及真实服务 UI 验收为准；本条不代表已在真机验收或已部署。
