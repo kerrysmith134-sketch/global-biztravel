@@ -149,8 +149,19 @@ final class SQLiteStore {
             try bind(bindings, to: statement)
             var results: [T] = []
             let cursor = StatementRow(statement: statement)
-            while sqlite3_step(statement) == SQLITE_ROW {
-                results.append(row(cursor))
+            while true {
+                let result = sqlite3_step(statement)
+                if result == SQLITE_ROW {
+                    results.append(row(cursor))
+                    continue
+                }
+                guard result == SQLITE_DONE else {
+                    throw LocalStoreError.queryFailed(
+                        "QUERY[\\(sql.prefix(80))]: \\(lastError())",
+                        code: sqlite3_errcode(handle)
+                    )
+                }
+                break
             }
             return results
         }
