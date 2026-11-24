@@ -114,6 +114,13 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         return totalList.map { "\($0.currency) \(String(format: "%.2f", $0.amount))" }.joined(separator: " · ")
     }
 
+    /// A report is safe to submit only when its immutable snapshot includes every
+    /// expense that currently belongs to the Trip.
+    func coversCurrentExpenses(_ expenseIDs: Set<String>) -> Bool {
+        let snapshotIDs = Set(itemList.compactMap(\\.expenseId))
+        return expenseIDs.isSubset(of: snapshotIDs)
+    }
+
     var canSubmit: Bool { status == .draft }
 }
 
