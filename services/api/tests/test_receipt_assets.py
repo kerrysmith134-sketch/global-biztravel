@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -14,8 +15,15 @@ from app.models.expenses import TripExpense
 from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun
 from app.models.trip import Trip
 from app.models.workflow import AgentRun
-from app.services import receipt_asset_service, receipt_ocr_service
-from app.services.receipt_storage_service import FilesystemReceiptStorage
+from app.services import (
+    receipt_asset_service,
+    receipt_ocr_service,
+    receipt_storage_reconciliation_service,
+)
+from app.services.receipt_storage_service import (
+    FilesystemReceiptStorage,
+    ReceiptStorageUnavailable,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
@@ -531,3 +539,78 @@ def test_receipt_pdf_is_preserved_but_not_sent_to_image_ocr(
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
         if storage_key is not None:
             private_storage.delete(storage_key)
+
+
+
+def test_receipt_orphan_reconciliation_respects_tenant_and_grace_period(
+    client: TestClient, private_storage
+) -> None:
+    trip_id = create_trip(client)
+    known_storage_key: str | None = None
+    orphan_key = f"receipts/{ORG_A}/{trip_id}/{uuid.uuid4()}"
+    recent_key = f"receipts/{ORG_A}/{trip_id}/{uuid.uuid4()}"
+    other_tenant_key = f"receipts/{ORG_B}/{uuid.uuid4()}/{uuid.uuid4()}"
+    try:
+        uploaded = client.post(
+            f"/v1/trips/{trip_id}/receipt-assets",
+            headers=headers(key=str(uuid.uuid4())),
+            files={"file": ("known.png", _PNG_1PX, "image/png")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        with org_session(UUID(ORG_A)) as session:
+            known = session.get(ReceiptAsset, UUID(uploaded.json()["id"]))
+            assert known is not None
+            known_storage_key = known.storage_key
+
+        private_storage.put(orphan_key, b"orphan object", "application/octet-stream")
+        private_storage.put(recent_key, b"new object", "application/octet-stream")
+        private_storage.put(other_tenant_key, b"other tenant object", "application/octet-stream")
+
+        now = datetime.now(UTC)
+        stale_timestamp = (now - timedelta(days=2)).timestamp()
+        os.utime(private_storage.root / orphan_key, (stale_timestamp, stale_timestamp))
+        # An old object with a valid DB row must remain; a new untracked object is inside grace.
+        os.utime(
+            private_storage.root / known_storage_key,
+            (stale_timestamp, stale_timestamp),
+        )
+        os.utime(private_storage.root / other_tenant_key, (stale_timestamp, stale_timestamp))
+
+        with org_session(UUID(ORG_A)) as session:
+            preview = receipt_storage_reconciliation_service.reconcile_orphaned_receipt_objects(
+                session,
+                UUID(ORG_A),
+                storage=private_storage,
+                now=now,
+                grace_seconds=86400,
+                dry_run=True,
+            )
+        assert preview.objects_scanned == 3
+        assert preview.orphaned_objects == 1
+        assert preview.deleted_objects == 0
+        assert private_storage.get(orphan_key) == b"orphan object"
+
+        with org_session(UUID(ORG_A)) as session:
+            result = receipt_storage_reconciliation_service.reconcile_orphaned_receipt_objects(
+                session,
+                UUID(ORG_A),
+                storage=private_storage,
+                now=now,
+                grace_seconds=86400,
+            )
+        assert result.objects_scanned == 3
+        assert result.orphaned_objects == 1
+        assert result.deleted_objects == 1
+        assert result.failed_deletions == 0
+
+        with pytest.raises(ReceiptStorageUnavailable):
+            private_storage.get(orphan_key)
+        assert private_storage.get(recent_key) == b"new object"
+        assert private_storage.get(known_storage_key) == _PNG_1PX
+        assert private_storage.get(other_tenant_key) == b"other tenant object"
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+        for key in (known_storage_key, recent_key, other_tenant_key):
+            if key is not None:
+                private_storage.delete(key)
