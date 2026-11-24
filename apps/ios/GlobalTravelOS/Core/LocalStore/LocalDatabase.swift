@@ -246,13 +246,28 @@ struct LocalDatabase {
             applied_at TEXT NOT NULL
         )
         """)
-        let applied = try store.query("SELECT name FROM schema_migrations") { $0.string(0) }
-        let known = Set(applied)
-        for migration in LocalDatabase.migrations where !known.contains(migration.name) {
-            try store.executeScript(migration.script)
+        for migration in LocalDatabase.migrations {
+            try applyMigration(name: migration.name, script: migration.script)
+        }
+    }
+
+    /// Applies one local schema migration atomically.
+    ///
+    /// BEGIN IMMEDIATE serializes writers across SQLite connections. Re-checking the
+    /// marker after the lock is acquired makes simultaneous app/database opens safe;
+    /// the DDL and marker commit together, so a crash cannot leave a half-applied version.
+    func applyMigration(name: String, script: String) throws {
+        try store.transaction {
+            let alreadyApplied = try store.query(
+                "SELECT name FROM schema_migrations WHERE name = ?",
+                bindings: [name]
+            ) { $0.string(0) }.first != nil
+            guard !alreadyApplied else { return }
+
+            try store.executeScript(script)
             try store.run(
                 "INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)",
-                bindings: [migration.name, Date()]
+                bindings: [name, Date()]
             )
         }
     }
