@@ -334,13 +334,22 @@ def reconcile_receipt_orphans(
     previous = _last_receipt_reconciliation.get(org_id)
     if not force and previous is not None and now - previous < interval:
         return None
+    try:
+        with org_session(org_id) as session:
+            report = receipt_storage_reconciliation_service.reconcile_orphaned_receipt_objects(
+                session,
+                org_id,
+                grace_seconds=settings.receipt_orphan_grace_seconds,
+            )
+    except Exception:
+        # A transient DB/S3 failure must not suppress this maintenance job for a full day.
+        # Keep a short bounded retry cooldown to avoid hammering a failed dependency each poll.
+        retry_cooldown = min(max(interval, 1), 300)
+        _last_receipt_reconciliation[org_id] = now - max(interval - retry_cooldown, 0)
+        raise
+
     _last_receipt_reconciliation[org_id] = now
-    with org_session(org_id) as session:
-        return receipt_storage_reconciliation_service.reconcile_orphaned_receipt_objects(
-            session,
-            org_id,
-            grace_seconds=settings.receipt_orphan_grace_seconds,
-        )
+    return report
 
 
 def dispatch_notifications(
