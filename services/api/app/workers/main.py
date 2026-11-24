@@ -348,7 +348,12 @@ def reconcile_receipt_orphans(
         _last_receipt_reconciliation[org_id] = now - max(interval - retry_cooldown, 0)
         raise
 
-    _last_receipt_reconciliation[org_id] = now
+    if report.failed_deletions:
+        # Partial object-store failures are retryable too; do not wait for the full daily cycle.
+        retry_cooldown = min(max(interval, 1), 300)
+        _last_receipt_reconciliation[org_id] = now - max(interval - retry_cooldown, 0)
+    else:
+        _last_receipt_reconciliation[org_id] = now
     return report
 
 
