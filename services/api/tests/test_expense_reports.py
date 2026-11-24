@@ -149,41 +149,47 @@ def test_report_snapshot_submit_and_approve(client: TestClient) -> None:
         cleanup(trip_id)
 
 
-def test_report_submission_rejects_snapshot_missing_current_expenses(client: TestClient) -> None:
+def test_report_submission_requires_trip_wide_snapshot_coverage(client: TestClient) -> None:
     trip_id, expense_ids = setup(client)
     try:
-        partial = client.post(
+        first_half = client.post(
             f"/v1/trips/{trip_id}/expense-reports",
             headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
             json={"expense_ids": [expense_ids[0]]},
         )
-        assert partial.status_code == 201, partial.text
-        report_id = partial.json()["id"]
-        assert [item["expense_id"] for item in partial.json()["items"]] == [expense_ids[0]]
+        assert first_half.status_code == 201, first_half.text
+        first_report_id = first_half.json()["id"]
 
-        rejected = client.post(
-            f"/v1/expense-reports/{report_id}:submit",
+        incomplete = client.post(
+            f"/v1/expense-reports/{first_report_id}:submit",
             headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
         )
-        assert rejected.status_code == 409, rejected.text
-        assert set(rejected.json()["error"]["details"]["missing_expense_ids"]) == {expense_ids[1]}
+        assert incomplete.status_code == 409, incomplete.text
+        assert set(incomplete.json()["error"]["details"]["missing_expense_ids"]) == {expense_ids[1]}
 
-        refreshed = client.post(
+        second_half = client.post(
             f"/v1/trips/{trip_id}/expense-reports",
             headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
-            json={},
+            json={"expense_ids": [expense_ids[1]]},
         )
-        assert refreshed.status_code == 201, refreshed.text
-        complete_report_id = refreshed.json()["id"]
-        submitted = client.post(
-            f"/v1/expense-reports/{complete_report_id}:submit",
+        assert second_half.status_code == 201, second_half.text
+
+        # Multiple draft snapshots may collectively cover a Trip's expenses.
+        submitted_first = client.post(
+            f"/v1/expense-reports/{first_report_id}:submit",
             headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
         )
-        assert submitted.status_code == 200, submitted.text
-        assert submitted.json()["status"] == "SUBMITTED"
+        assert submitted_first.status_code == 200, submitted_first.text
+        assert submitted_first.json()["status"] == "SUBMITTED"
+
+        submitted_second = client.post(
+            f"/v1/expense-reports/{second_half.json()['id']}:submit",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert submitted_second.status_code == 200, submitted_second.text
+        assert submitted_second.json()["status"] == "SUBMITTED"
     finally:
         cleanup(trip_id)
-
 
 def test_report_snapshot_survives_expense_deletion_and_reject(client: TestClient) -> None:
     trip_id, expense_ids = setup(client)
