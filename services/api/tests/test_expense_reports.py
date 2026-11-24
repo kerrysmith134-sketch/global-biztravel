@@ -166,7 +166,7 @@ def test_report_submission_rejects_snapshot_missing_current_expenses(client: Tes
             headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
         )
         assert rejected.status_code == 409, rejected.text
-        assert set(rejected.json()["details"]["missing_expense_ids"]) == {expense_ids[1]}
+        assert set(rejected.json()["error"]["details"]["missing_expense_ids"]) == {expense_ids[1]}
 
         refreshed = client.post(
             f"/v1/trips/{trip_id}/expense-reports",
