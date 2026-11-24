@@ -31,8 +31,46 @@ final class SQLiteStore {
         // Separate SQLiteStore instances can open the same account database concurrently.
         // Wait for short-lived startup/migration writer locks instead of failing with SQLITE_BUSY.
         try run("PRAGMA busy_timeout=10000")
-        try run("PRAGMA journal_mode=WAL")
+        try configureWriteAheadLogging()
         try run("PRAGMA foreign_keys=ON")
+    }
+
+    /// WAL mode changes require an exclusive database lock. SQLite may return SQLITE_BUSY
+    /// immediately for this PRAGMA even when busy_timeout is configured, so concurrent
+    /// first-open calls need a bounded retry that re-reads the current mode each time.
+    private func configureWriteAheadLogging() throws {
+        let maximumAttempts = 8
+        var delay: TimeInterval = 0.025
+
+        for attempt in 0..<maximumAttempts {
+            let currentMode = try query("PRAGMA journal_mode") { $0.string(0).lowercased() }.first
+            if currentMode == "wal" { return }
+
+            do {
+                try run("PRAGMA journal_mode=WAL")
+                let confirmedMode = try query("PRAGMA journal_mode") { $0.string(0).lowercased() }.first
+                guard confirmedMode == "wal" else {
+                    throw LocalStoreError.queryFailed(
+                        "SQLite refused WAL mode (current: \\(confirmedMode ?? "unknown"))",
+                        code: SQLITE_ERROR
+                    )
+                }
+                return
+            } catch let error as LocalStoreError {
+                guard case let .queryFailed(_, code) = error,
+                      code == SQLITE_BUSY,
+                      attempt + 1 < maximumAttempts else {
+                    throw error
+                }
+                Thread.sleep(forTimeInterval: delay)
+                delay = min(delay * 2, 0.4)
+            }
+        }
+
+        throw LocalStoreError.queryFailed(
+            "SQLite remained busy while enabling WAL after \\(maximumAttempts) attempts",
+            code: SQLITE_BUSY
+        )
     }
 
     deinit {
