@@ -80,6 +80,7 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
     workspace_id: str | None = None
     execution_id: str | None = None
     schedule_job_id: str | None = None
+    deadline_job_id: str | None = None
     answer_job_ids: list[str] = []
     try:
         workspace_response = client.post(
@@ -154,6 +155,15 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
         assert started.status_code == 202, started.text
         execution_id = started.json()["execution_id"]
         schedule_job_id = started.json()["job_id"]
+        with org_session(UUID(ORG_A)) as session:
+            deadline_job = session.scalars(
+                select(BackgroundJob).where(
+                    BackgroundJob.organization_id == UUID(ORG_A),
+                    BackgroundJob.dedupe_key == f"market_research_dag_deadline:{execution_id}",
+                )
+            ).one()
+            deadline_job_id = str(deadline_job.id)
+            assert deadline_job.status == "PENDING"
 
         # Run the persisted scheduler handler's domain service once. It should queue
         # only the root node; the dependent node remains blocked on human acceptance.
@@ -267,6 +277,12 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
         assert cancelled.json()["cancelled"] is True
         assert cancelled.json()["cancelled_jobs"] == 1
         assert cancelled.json()["running_jobs"] == 0
+
+        with org_session(UUID(ORG_A)) as session:
+            assert deadline_job_id is not None
+            deadline_job = session.get(BackgroundJob, UUID(deadline_job_id))
+            assert deadline_job is not None
+            assert deadline_job.status == "CANCELLED"
 
         detail = client.get(
             f"/v1/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}",
