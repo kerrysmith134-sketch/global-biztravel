@@ -990,8 +990,11 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
 
         let workspaceRow = app.staticTexts[workspaceName]
-        XCTAssertTrue(workspaceRow.waitForExistence(timeout: 20), "测试工作区未出现在列表")
-        workspaceRow.tap()
+        XCTAssertTrue(
+            workspaceRow.waitForExistence(timeout: 20),
+            "测试工作区未出现在列表"
+        )
+        XCTAssertTrue(revealAndTap(app, workspaceRow), "测试工作区不可点击")
         XCTAssertTrue(
             app.navigationBars[workspaceName].waitForExistence(timeout: 15),
             "研究工作区详情未打开"
@@ -1020,7 +1023,7 @@ final class GlobalTravelOSUITests: XCTestCase {
             opportunityCard.waitForExistence(timeout: 20),
             "新建商业机会未出现在 Workspace 列表"
         )
-        opportunityCard.tap()
+        XCTAssertTrue(revealAndTap(app, opportunityCard), "新建商业机会卡不可点击")
         XCTAssertTrue(
             app.navigationBars["机会详情"].waitForExistence(timeout: 15),
             "商业机会详情未打开"
@@ -1043,7 +1046,7 @@ final class GlobalTravelOSUITests: XCTestCase {
 
         let entityKindField = app.textFields["实体类型（如经销商、运营商、制造商）"]
         XCTAssertTrue(entityKindField.waitForExistence(timeout: 10), "实体类型字段未出现")
-        entityKindField.tap()
+        XCTAssertTrue(revealAndTap(app, entityKindField), "实体类型字段不可点击")
         entityKindField.typeText("Distributor")
         app.buttons["创建"].tap()
 
@@ -1054,8 +1057,11 @@ final class GlobalTravelOSUITests: XCTestCase {
         let attachButton = app.buttons.matching(
             NSPredicate(format: "label CONTAINS '关联到机会'")
         ).firstMatch
-        XCTAssertTrue(attachButton.waitForExistence(timeout: 10), "候选企业缺少显式关联入口")
-        attachButton.tap()
+        XCTAssertTrue(
+            attachButton.waitForExistence(timeout: 10),
+            "候选企业缺少显式关联入口"
+        )
+        XCTAssertTrue(revealAndTap(app, attachButton), "候选企业关联按钮不可点击")
 
         XCTAssertTrue(
             app.staticTexts[entityName].waitForExistence(timeout: 20),
