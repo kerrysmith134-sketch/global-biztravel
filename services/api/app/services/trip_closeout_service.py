@@ -183,19 +183,20 @@ def build_trip_closeout_readiness(
             )
         )
 
-    # A Trip can use multiple split reports. Every non-rejected draft is still
-    # unfinished work, even when another split report has already been submitted
-    # or approved. Surface each draft as a source-linked closeout blocker.
+    # A Trip can use multiple split reports. Drafts remain visible even when
+    # another split report has already been submitted or approved. Until the
+    # product exposes a safe draft-cancel/edit action, keep these as warnings:
+    # an accidental draft must not make closeout impossible to recover.
     for draft_report in (row for row in eligible_reports if row.status == "DRAFT"):
-        blockers.append(
+        warnings.append(
             _issue(
                 "EXPENSE_REPORT_DRAFT",
-                "BLOCKER",
+                "WARNING",
                 "报销单草稿尚未提交",
-                "该报销单尚未进入审批流程；拆分报销时，每张有效报销单都必须完成提交",
+                "该报销单尚未进入审批流程；拆分报销时，每张有效报销单都应完成提交",
                 "EXPENSE_REPORT",
                 draft_report.id,
-                "打开该报销单并提交；所有拆分报销单均提交后才能完成出差结账",
+                "打开该报销单核对费用明细，确认无误后提交",
             )
         )
 
