@@ -949,6 +949,126 @@ final class GlobalTravelOSUITests: XCTestCase {
             "新建出行未出现在列表中"
         )
     }
+
+    // Real backend journey: create a research Workspace, create an Opportunity in the UI,
+    // add a Workspace-only company candidate, then explicitly link it to the Opportunity.
+    // This must not create or mutate a formal CRM Customer record.
+    // swiftlint:disable:next function_body_length
+    func testOpportunityEntityWorkflow() throws {
+        let suffix = Int(Date().timeIntervalSince1970)
+        let workspaceName = "UI 商机企业工作区 \(suffix)"
+        let opportunityTitle = "UI 区域渠道机会 \(suffix)"
+        let entityName = "UI 区域能源经销商 \(suffix)"
+
+        _ = try postJSON(
+            "http://127.0.0.1:8080/v1/market/workspaces",
+            body: [
+                "name": workspaceName,
+                "objective": "验证商业机会与候选企业关联的真实 UI 流程。",
+            ]
+        )
+
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launch()
+
+        XCTAssertTrue(
+            app.navigationBars["任务"].waitForExistence(timeout: 15),
+            "任务页未加载"
+        )
+        let more = app.buttons["更多操作"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10), "未找到更多操作菜单")
+        more.tap()
+        let researchEntry = app.buttons["研究工作区"]
+        XCTAssertTrue(researchEntry.waitForExistence(timeout: 10), "未找到研究工作区入口")
+        researchEntry.tap()
+        XCTAssertTrue(
+            app.navigationBars["研究工作区"].waitForExistence(timeout: 15),
+            "研究工作区列表未打开"
+        )
+
+        let workspaceRow = app.staticTexts[workspaceName]
+        XCTAssertTrue(workspaceRow.waitForExistence(timeout: 20), "测试工作区未出现在列表")
+        workspaceRow.tap()
+        XCTAssertTrue(
+            app.navigationBars[workspaceName].waitForExistence(timeout: 15),
+            "研究工作区详情未打开"
+        )
+
+        let createOpportunity = app.buttons["新建"]
+        XCTAssertTrue(
+            revealAndTap(app, createOpportunity),
+            "未找到商业机会的新建入口"
+        )
+        XCTAssertTrue(
+            app.navigationBars["新建商业机会"].waitForExistence(timeout: 10),
+            "新建商业机会表单未打开"
+        )
+        let opportunityField = app.textFields["机会名称"]
+        XCTAssertTrue(opportunityField.waitForExistence(timeout: 10), "机会名称字段未出现")
+        opportunityField.tap()
+        Thread.sleep(forTimeInterval: 1)
+        opportunityField.typeText(opportunityTitle)
+        app.buttons["创建"].tap()
+
+        let opportunityCard = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", opportunityTitle)
+        ).firstMatch
+        XCTAssertTrue(
+            opportunityCard.waitForExistence(timeout: 20),
+            "新建商业机会未出现在 Workspace 列表"
+        )
+        opportunityCard.tap()
+        XCTAssertTrue(
+            app.navigationBars["机会详情"].waitForExistence(timeout: 15),
+            "商业机会详情未打开"
+        )
+
+        let createEntity = app.buttons["新建候选"]
+        XCTAssertTrue(
+            revealAndTap(app, createEntity),
+            "机会详情中未找到新建企业候选入口"
+        )
+        XCTAssertTrue(
+            app.navigationBars["新建企业候选"].waitForExistence(timeout: 10),
+            "企业候选创建表单未打开"
+        )
+        let entityNameField = app.textFields["企业名称"]
+        XCTAssertTrue(entityNameField.waitForExistence(timeout: 10), "企业名称字段未出现")
+        entityNameField.tap()
+        Thread.sleep(forTimeInterval: 1)
+        entityNameField.typeText(entityName)
+
+        let entityKindField = app.textFields["实体类型（如经销商、运营商、制造商）"]
+        XCTAssertTrue(entityKindField.waitForExistence(timeout: 10), "实体类型字段未出现")
+        entityKindField.tap()
+        entityKindField.typeText("Distributor")
+        app.buttons["创建"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Workspace 候选实体"].waitForExistence(timeout: 20),
+            "新建企业候选未回显到机会工作台"
+        )
+        let attachButton = app.buttons["关联到机会"].firstMatch
+        XCTAssertTrue(attachButton.waitForExistence(timeout: 10), "候选企业缺少显式关联入口")
+        attachButton.tap()
+
+        XCTAssertTrue(
+            app.staticTexts[entityName].waitForExistence(timeout: 20),
+            "关联成功后机会未展示企业实体"
+        )
+        let candidateHeader = app.staticTexts["Workspace 候选实体"]
+        let refreshDeadline = Date().addingTimeInterval(15)
+        while candidateHeader.exists && Date() < refreshDeadline {
+            usleep(500_000)
+        }
+        XCTAssertFalse(
+            candidateHeader.exists,
+            "实体已关联到机会，但仍被显示为待关联候选"
+        )
+    }
 }
 
 extension GlobalTravelOSUITests {
