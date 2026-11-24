@@ -86,7 +86,9 @@ def create_report(
             Trip.id == str(trip_id),
         )
         .with_for_update()
-    ).one()
+    ).one_or_none()
+    if trip is None:
+        raise NotFound("行程不存在", details={"trip_id": str(trip_id)})
     stmt = select(TripExpense).where(
         TripExpense.organization_id == str(organization_id),
         TripExpense.trip_id == trip.id,
@@ -217,14 +219,16 @@ def submit_report(
     # Lock order is always Trip then ExpenseReport. Expense create/delete take the
     # Trip lock too, so the current expense set cannot change between validation
     # and the DRAFT -> SUBMITTED transition, including writes from other clients.
-    session.execute(
+    locked_trip_id = session.execute(
         select(Trip.id)
         .where(
             Trip.organization_id == str(organization_id),
             Trip.id == report.trip_id,
         )
         .with_for_update()
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if locked_trip_id is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
     report = session.scalars(
         select(ExpenseReport)
         .where(
