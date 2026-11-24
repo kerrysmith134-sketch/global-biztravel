@@ -381,11 +381,15 @@ final class TripDetailViewModel: ObservableObject {
         errorMessage = nil
         do {
             let currentExpenses = try await environment.tripRepository.expenses(tripId: tripId)
-            guard report.coversCurrentExpenses(Set(currentExpenses.map(\\.id))) else {
-                errorMessage = "这份报销单不包含当前行程的全部费用。请重新生成草稿，避免遗漏新登记或后同步的费用。"
+            expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
+            guard ExpenseReport.snapshotsCoverCurrentExpenses(
+                expenseReports,
+                currentExpenseIDs: Set(currentExpenses.map(\.id))
+            ) else {
+                errorMessage = "仍有费用尚未纳入任何有效报销草稿。请先为剩余费用创建或补全报销草稿，再提交。"
                 return
             }
-            // A new local expense may have been enqueued while the authoritative expense list loaded.
+            // A new local expense may have been enqueued while the authoritative reads were in flight.
             guard ensureNoPendingCloudExpenses() else { return }
             _ = try await environment.tripRepository.submitExpenseReport(id: report.id)
             expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
@@ -394,7 +398,6 @@ final class TripDetailViewModel: ObservableObject {
             errorMessage = environment.errorMessage(error)
         }
     }
-
     func createVisaCases() async {
         errorMessage = nil
         do {
