@@ -146,7 +146,8 @@ def build_trip_closeout_readiness(
     # A rejected report is an audit snapshot, not evidence that an expense is
     # currently included in a valid reimbursement workflow. A newer partial draft
     # must not let an older rejected snapshot hide omitted expenses.
-    eligible_report_ids = {row.id for row in reports if row.status != "REJECTED"}
+    eligible_reports = [row for row in reports if row.status != "REJECTED"]
+    eligible_report_ids = {row.id for row in eligible_reports}
     snapshotted_expense_ids = {
         row.expense_id
         for row in report_items
@@ -179,6 +180,22 @@ def build_trip_closeout_readiness(
                 "EXPENSE_REPORT",
                 latest_report.id,
                 "查看驳回原因，修正费用/票据后创建新的报销单",
+            )
+        )
+
+    # A Trip can use multiple split reports. Every non-rejected draft is still
+    # unfinished work, even when another split report has already been submitted
+    # or approved. Surface each draft as a source-linked closeout blocker.
+    for draft_report in (row for row in eligible_reports if row.status == "DRAFT"):
+        blockers.append(
+            _issue(
+                "EXPENSE_REPORT_DRAFT",
+                "BLOCKER",
+                "报销单草稿尚未提交",
+                "该报销单尚未进入审批流程；拆分报销时，每张有效报销单都必须完成提交",
+                "EXPENSE_REPORT",
+                draft_report.id,
+                "打开该报销单并提交；所有拆分报销单均提交后才能完成出差结账",
             )
         )
 
@@ -366,9 +383,11 @@ def build_trip_closeout_readiness(
 
     if blockers:
         status = "BLOCKED"
-    elif latest_report is not None and latest_report.status == "APPROVED":
+    elif eligible_reports and all(row.status == "APPROVED" for row in eligible_reports):
         status = "REPORT_APPROVED"
-    elif latest_report is not None and latest_report.status == "SUBMITTED":
+    elif eligible_reports and any(
+        row.status == "SUBMITTED" for row in eligible_reports
+    ) and all(row.status in ("SUBMITTED", "APPROVED") for row in eligible_reports):
         status = "REPORT_SUBMITTED"
     elif warnings:
         status = "READY_WITH_EXCEPTIONS"
