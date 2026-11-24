@@ -739,9 +739,14 @@ final class GlobalTravelOSUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS '55.8'")
         ).firstMatch
         XCTAssertTrue(
-            sourceAmount.waitForExistence(timeout: 10) && sourceAmount.isHittable,
-            "定位来源后没有跳转到对应的费用记录"
+            sourceAmount.waitForExistence(timeout: 10),
+            "对应的费用记录未出现在行程视图"
         )
+        let navigationDeadline = Date().addingTimeInterval(8)
+        while !sourceAmount.isHittable && Date() < navigationDeadline {
+            usleep(250_000)
+        }
+        XCTAssertTrue(sourceAmount.isHittable, "定位来源后没有滚动到对应的费用记录")
     }
 
     func testVisitRecordSubmissionFlow() throws {
