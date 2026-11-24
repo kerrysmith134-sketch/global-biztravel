@@ -51,7 +51,7 @@ final class SQLiteStore {
                 let confirmedMode = try query("PRAGMA journal_mode") { $0.string(0).lowercased() }.first
                 guard confirmedMode == "wal" else {
                     throw LocalStoreError.queryFailed(
-                        "SQLite refused WAL mode (current: \\(confirmedMode ?? "unknown"))",
+                        "SQLite refused WAL mode (current: \(confirmedMode ?? "unknown"))",
                         code: SQLITE_ERROR
                     )
                 }
@@ -68,7 +68,7 @@ final class SQLiteStore {
         }
 
         throw LocalStoreError.queryFailed(
-            "SQLite remained busy while enabling WAL after \\(maximumAttempts) attempts",
+            "SQLite remained busy while enabling WAL after \(maximumAttempts) attempts",
             code: SQLITE_BUSY
         )
     }
@@ -157,7 +157,7 @@ final class SQLiteStore {
                 }
                 guard result == SQLITE_DONE else {
                     throw LocalStoreError.queryFailed(
-                        "QUERY[\\(sql.prefix(80))]: \\(lastError())",
+                        "QUERY[\(sql.prefix(80))]: \(lastError())",
                         code: sqlite3_errcode(handle)
                     )
                 }
