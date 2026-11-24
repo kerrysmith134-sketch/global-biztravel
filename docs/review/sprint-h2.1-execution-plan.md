@@ -86,3 +86,13 @@
 ## 8. 严格不在范围内
 
 H2.1 不自动执行外部搜索、不自动选取新的网页来源、不自动验证事实、不自动采纳答案、不把不同域名视为独立出版方，也不自动创建 Customer、Trip、Visit、Opportunity 或对外商务动作。
+
+
+## 9. 当前实施与验收边界（2026-11-24）
+
+调度器实现已落在 `market_research_dag_service`，并复用现有 BackgroundJob / Worker / Workflow / AgentRun。当前验收证据分为两层：
+
+- DAG 专属集成测试覆盖：依赖节点必须等待上游答案被人工接受、执行取消只取消尚未开始的子任务、问题级 Evidence 隔离；新增 Worker 生命周期测试通过真实 `workers_main.execute_one` 运行调度 job 与 Answer Agent job，验证 Agent 成功后唤醒父 DAG，父执行进入 `WAITING_FOR_REVIEW`，且不会在人工审核前重复排队。
+- 通用任务可靠性集成测试覆盖：多线程 `SKIP LOCKED` 抢占、同 key 在途去重、租约过期回收、退避重试与 DEAD。它们证明共享队列原语，不等于证明每个 DAG 专属状态转换。
+
+仍需独立验收：两个真实 Worker 并发处理同一执行图时的 execution 级并发上限；Answer job 重试耗尽/租约回收为 DEAD 后父图的最终状态；成本计量缺失、成本预算耗尽和时间预算耗尽；图在执行中被修改时旧快照的稳定性；同 Workspace 并发启动的锁竞争与幂等。完成这些场景并通过当前提交的真实 PostgreSQL CI 后，才能把 H2.1 标为完整验收。

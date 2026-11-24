@@ -448,3 +448,11 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - The OpenAPI JSON/YAML snapshots were regenerated for the optional response field.
 - The real-service UI CI previously compiled and passed the iOS build/unit-test jobs, but the UI runner was killed by the output-silence watchdog 298 seconds into a no-output XCTest phase. The test harness now preboots the target simulator, serializes UI test execution and uses a 900-second silence threshold (the app's XCTest per-test allowance is 600 seconds). This is a test-harness correction, not a relaxation of product assertions.
 - Production acceptance still requires the latest real-service UI suite to finish and pass; simulator/real-device offline expense failure-path testing remains outstanding.
+
+
+## 2026-11-24 H2.1 Research DAG Worker 闭环验收补强
+
+- 新增 DAG 专属 Worker 集成测试：通过真实 `workers_main.execute_one` 分别执行调度任务与 Answer Agent 任务；验证 Agent 生成的答案保持 `NEEDS_REVIEW`，Worker 完成后自动唤醒父 DAG，父执行进入 `WAITING_FOR_REVIEW`，且不会重复生成同一节点。
+- 该测试与现有依赖释放、取消及 Evidence 隔离测试组合，补齐了此前“直接调用 scheduler service、未实际跑 Worker”的验收缺口。
+- **仍未完整验收**：DAG 级多 Worker 并发上限、Answer job DEAD/租约恢复后的父图状态、成本/时间预算停止、执行快照冻结及并发启动竞争仍需专门测试。通用任务队列已有的可靠性测试不能替代这些 DAG 级测试。
+- 当前 PR #31 的最新 CI 必须完成后，才可确认 FIFO 变更；本次 Worker 测试加入后仍须以新提交的 Backend + iOS + 真实服务 UI 全绿为准。

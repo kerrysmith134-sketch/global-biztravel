@@ -43,6 +43,34 @@ def headers(key: str | None = None) -> dict[str, str]:
     }
 
 
+def _claim_and_execute(job_id: str, worker_id: str) -> bool:
+    """Claim one exact test job, then pass it through the production Worker executor."""
+    with org_session(UUID(ORG_A)) as session:
+        job = session.scalars(
+            select(BackgroundJob).where(
+                BackgroundJob.organization_id == UUID(ORG_A),
+                BackgroundJob.id == UUID(job_id),
+            ).with_for_update()
+        ).one()
+        assert job.status == "PENDING"
+        now = session.scalar(select(func.clock_timestamp()))
+        job.status = "RUNNING"
+        job.attempts += 1
+        job.locked_at = now
+        job.locked_by = worker_id
+        job.heartbeat_at = now
+        job.lease_expires_at = now + timedelta(seconds=60)
+        if job.started_at is None:
+            job.started_at = now
+        job.last_error = None
+    return workers_main.execute_one(
+        ORG_A,
+        job_id,
+        worker_id=worker_id,
+        lease_seconds=60,
+    )
+
+
 def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
     client: TestClient,
 ) -> None:
@@ -305,6 +333,221 @@ def test_research_dag_execution_releases_dependency_only_after_human_acceptance(
                         )
                     )
 
+
+
+def test_answer_worker_completion_wakes_dag_and_waits_for_human_review(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace_id: str | None = None
+    execution_id: str | None = None
+    job_ids: list[str] = []
+    try:
+        workspace = client.post(
+            "/v1/market/workspaces",
+            headers=headers(),
+            json={
+                "name": f"Worker wakeup {uuid.uuid4().hex[:8]}",
+                "objective": "Verify the real Worker-to-DAG wakeup lifecycle.",
+            },
+        )
+        assert workspace.status_code == 201, workspace.text
+        workspace_id = workspace.json()["id"]
+
+        question = client.post(
+            f"/v1/market/workspaces/{workspace_id}/questions",
+            headers=headers(),
+            json={
+                "question": "What does the verified market evidence indicate?",
+                "rationale": "A draft must be prepared from Workspace evidence and reviewed by a person.",
+            },
+        )
+        assert question.status_code == 201, question.text
+        question_id = question.json()["id"]
+
+        evidence = client.post(
+            f"/v1/market/workspaces/{workspace_id}/evidence",
+            headers=headers(),
+            json={
+                "canonical_ref": "https://worker-wakeup.example.test/market",
+                "content": "The published report documents sustained investment and a measurable buyer demand signal.",
+                "kind": "WEB_SOURCE",
+                "source": "worker-wakeup-test",
+                "observation": "Investment and buyer demand",
+            },
+        )
+        assert evidence.status_code == 201, evidence.text
+        evidence_id = evidence.json()["id"]
+
+        class FakeGateway:
+            def complete(
+                self,
+                _session,
+                _organization_id,
+                _request,
+                *,
+                trace_id=None,
+            ):
+                return LLMResponse(
+                    output={
+                        "answer_summary": (
+                            "The supplied source indicates sustained investment and a buyer demand signal."
+                        ),
+                        "assumptions": [],
+                        "unknowns": ["The final approved procurement budget is not established."],
+                        "confidence_level": "MEDIUM",
+                        "evidence_assessments": [
+                            {
+                                "evidence_id": evidence_id,
+                                "relation_type": "SUPPORTS",
+                                "rationale": "The source directly describes investment and demand.",
+                            }
+                        ],
+                        "evidence_gap": "Budget approval and procurement timing still require confirmation.",
+                    },
+                    invocation_id=uuid.uuid4(),
+                    model="test-market-answer-model",
+                    degraded=False,
+                )
+
+        monkeypatch.setattr("app.workers.tasks.get_gateway", lambda: FakeGateway())
+
+        started = client.post(
+            f"/v1/market/workspaces/{workspace_id}/research-graph/executions",
+            headers=headers(),
+            json={
+                "max_concurrency": 1,
+                "max_questions": 1,
+                "max_duration_minutes": 30,
+            },
+        )
+        assert started.status_code == 202, started.text
+        execution_id = started.json()["execution_id"]
+        initial_schedule_job_id = started.json()["job_id"]
+        job_ids.append(initial_schedule_job_id)
+
+        # Execute the actual persisted DAG scheduler BackgroundJob via Worker.main.
+        assert _claim_and_execute(initial_schedule_job_id, "dag-scheduler-worker")
+        with org_session(UUID(ORG_A)) as session:
+            answer_workflow = session.scalars(
+                select(WorkflowInstance).where(
+                    WorkflowInstance.organization_id == UUID(ORG_A),
+                    WorkflowInstance.workflow_type == "market_question_answer",
+                    WorkflowInstance.payload["question_id"].as_string() == question_id,
+                    WorkflowInstance.payload["dag_execution_workflow_id"].as_string() == execution_id,
+                )
+            ).one()
+            assert answer_workflow.job_id is not None
+            answer_job_id = str(answer_workflow.job_id)
+            job_ids.append(answer_job_id)
+            answer_job = session.get(BackgroundJob, answer_workflow.job_id)
+            assert answer_job is not None and answer_job.status == "PENDING"
+
+        # The Answer Agent runs through the production task handler and Worker lease path.
+        assert _claim_and_execute(answer_job_id, "dag-answer-worker")
+
+        # Successful answer generation must enqueue a fresh parent scheduler run.
+        with org_session(UUID(ORG_A)) as session:
+            wake_job = session.scalars(
+                select(BackgroundJob).where(
+                    BackgroundJob.organization_id == UUID(ORG_A),
+                    BackgroundJob.job_type == job_service.JOB_TYPE_MARKET_RESEARCH_DAG_SCHEDULE,
+                    BackgroundJob.dedupe_key == f"market_research_dag_schedule:{execution_id}",
+                    BackgroundJob.status == "PENDING",
+                )
+            ).one()
+            wake_job_id = str(wake_job.id)
+            job_ids.append(wake_job_id)
+
+        assert _claim_and_execute(wake_job_id, "dag-review-wakeup-worker")
+
+        answer_list = client.get(
+            f"/v1/market/workspaces/{workspace_id}/questions/{question_id}/answers",
+            headers=headers(),
+        )
+        assert answer_list.status_code == 200, answer_list.text
+        assert len(answer_list.json()) == 1
+        assert answer_list.json()[0]["status"] == "NEEDS_REVIEW"
+
+        execution = client.get(
+            f"/v1/market/workspaces/{workspace_id}/research-graph/executions/{execution_id}",
+            headers=headers(),
+        )
+        assert execution.status_code == 200, execution.text
+        assert execution.json()["execution_state"] == "WAITING_FOR_REVIEW"
+        assert execution.json()["waiting_review_count"] == 1
+        assert execution.json()["active_count"] == 0
+
+        # A wakeup must not re-enqueue the same node while its answer awaits human review.
+        with org_session(UUID(ORG_A)) as session:
+            answer_workflows = session.scalars(
+                select(WorkflowInstance).where(
+                    WorkflowInstance.organization_id == UUID(ORG_A),
+                    WorkflowInstance.workflow_type == "market_question_answer",
+                    WorkflowInstance.payload["question_id"].as_string() == question_id,
+                    WorkflowInstance.payload["dag_execution_workflow_id"].as_string() == execution_id,
+                )
+            ).all()
+            assert len(answer_workflows) == 1
+            assert answer_workflows[0].status == "COMPLETED"
+
+    finally:
+        if workspace_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                linked_workflow_ids = list(
+                    session.scalars(
+                        select(MarketWorkspaceWorkflow.workflow_id).where(
+                            MarketWorkspaceWorkflow.organization_id == UUID(ORG_A),
+                            MarketWorkspaceWorkflow.workspace_id == UUID(workspace_id),
+                        )
+                    ).all()
+                )
+                all_workflow_ids = set(linked_workflow_ids)
+                if execution_id:
+                    all_workflow_ids.add(UUID(execution_id))
+                discovered_job_ids = list(
+                    session.scalars(
+                        select(WorkflowInstance.job_id).where(
+                            WorkflowInstance.organization_id == UUID(ORG_A),
+                            WorkflowInstance.id.in_(all_workflow_ids),
+                            WorkflowInstance.job_id.is_not(None),
+                        )
+                    ).all()
+                ) if all_workflow_ids else []
+                all_job_ids = set(discovered_job_ids)
+                all_job_ids.update(UUID(item) for item in job_ids)
+                if all_job_ids:
+                    session.execute(
+                        delete(BackgroundJob).where(
+                            BackgroundJob.organization_id == UUID(ORG_A),
+                            BackgroundJob.id.in_(all_job_ids),
+                        )
+                    )
+                session.execute(
+                    delete(MarketWorkspace).where(
+                        MarketWorkspace.organization_id == UUID(ORG_A),
+                        MarketWorkspace.id == UUID(workspace_id),
+                    )
+                )
+                session.execute(
+                    delete(Evidence).where(
+                        Evidence.organization_id == UUID(ORG_A),
+                        Evidence.subject_type == "market_workspace",
+                        Evidence.subject_id == UUID(workspace_id),
+                    )
+                )
+                if all_workflow_ids:
+                    session.execute(
+                        delete(AgentRun).where(
+                            AgentRun.organization_id == UUID(ORG_A),
+                            AgentRun.workflow_id.in_(all_workflow_ids),
+                        )
+                    )
+                    session.execute(
+                        delete(WorkflowInstance).where(
+                            WorkflowInstance.organization_id == UUID(ORG_A),
+                            WorkflowInstance.id.in_(all_workflow_ids),
+                        )
+                    )
 
 
 def test_question_scoped_evidence_does_not_leak_between_research_questions(
