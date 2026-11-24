@@ -71,6 +71,16 @@ extension TripRepository {
         )
     }
 
+    /// Custom/test repositories that do not expose remote draft cancellation fail explicitly.
+    func cancelExpenseReport(id: String) async throws -> ExpenseReport {
+        throw APIError.serverError(
+            code: "EXPENSE_REPORT_CANCELLATION_UNAVAILABLE",
+            message: "当前仓储不支持撤销报销草稿",
+            traceId: nil,
+            details: ["report_id": id]
+        )
+    }
+
     /// Repositories without remote idempotency support keep their existing local write path.
     func createExpense(
         tripId: String,
