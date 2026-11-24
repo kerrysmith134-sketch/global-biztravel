@@ -150,4 +150,4 @@ ios-test: seed ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行；�
 	else \
 	  dest='$(IOS_DEST)'; \
 	fi; \
-	DEST="$$dest" scripts/ios_test_guard.sh
+	DEST="$dest" bash scripts/ios_test_guard.sh
