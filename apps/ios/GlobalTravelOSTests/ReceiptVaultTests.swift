@@ -108,6 +108,42 @@ final class ReceiptVaultTests: XCTestCase {
         )
     }
 
+    func testConcurrentCaptureDeduplicatesSameReceiptAcrossDatabaseHandles() throws {
+        let directory = temporaryDirectory!
+        let failures = MigrationFailureCollector()
+        let identifiers = MigrationFailureCollector()
+        let original = pngFixture()
+
+        DispatchQueue.concurrentPerform(iterations: 8) { _ in
+            do {
+                let vault = try ReceiptVault.open(
+                    directory: directory,
+                    client: nil,
+                    uploadsEnabled: false
+                )
+                let asset = try vault.capture(
+                    tripId: "trip-concurrent-capture",
+                    draft: ReceiptDraft(filename: "same-receipt.png", data: original)
+                )
+                identifiers.append(asset.id)
+            } catch {
+                failures.append(String(describing: error))
+            }
+        }
+
+        XCTAssertTrue(
+            failures.messages.isEmpty,
+            "Concurrent receipt capture failed: \\(failures.messages.joined(separator: "; "))"
+        )
+        XCTAssertEqual(Set(identifiers.messages).count, 1)
+        let reopened = try ReceiptVault.open(
+            directory: directory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        XCTAssertEqual(try reopened.assets(tripId: "trip-concurrent-capture").count, 1)
+    }
+
     func testSameOriginalIsDeduplicatedPerTripAndNeverAcrossTrips() throws {
         let vault = try ReceiptVault.open(
             directory: temporaryDirectory,
