@@ -145,7 +145,7 @@ final class ReceiptVaultTests: XCTestCase {
 
         XCTAssertTrue(
             failures.messages.isEmpty,
-            "Concurrent receipt capture failed: \\(failures.messages.joined(separator: "; "))"
+            "Concurrent receipt capture failed: \(failures.messages.joined(separator: "; "))"
         )
         XCTAssertEqual(Set(identifiers.messages).count, 1)
         let reopened = try ReceiptVault.open(
