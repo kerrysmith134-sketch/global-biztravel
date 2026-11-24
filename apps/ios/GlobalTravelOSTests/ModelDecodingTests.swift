@@ -363,6 +363,7 @@ final class ModelDecodingTests: XCTestCase {
         let firstHalf = makeReport("report-1", expenseId: "expense-1")
         let secondHalf = makeReport("report-2", expenseId: "expense-2")
         let rejectedHalf = makeReport("report-3", expenseId: "expense-2", status: .rejected)
+        let cancelledHalf = makeReport("report-4", expenseId: "expense-2", status: .cancelled)
         let allCurrent = Set(["expense-1", "expense-2"])
 
         XCTAssertFalse(
@@ -380,6 +381,12 @@ final class ModelDecodingTests: XCTestCase {
                 currentExpenseIDs: allCurrent
             )
         )
+        XCTAssertFalse(
+            ExpenseReport.snapshotsCoverCurrentExpenses(
+                [firstHalf, cancelledHalf],
+                currentExpenseIDs: allCurrent
+            )
+        )
         XCTAssertTrue(
             ExpenseReport.snapshotsCoverCurrentExpenses(
                 [firstHalf, secondHalf],
@@ -387,6 +394,14 @@ final class ModelDecodingTests: XCTestCase {
             )
         )
     }
+    func testExpenseReportCancellationEndpointIsIdempotentPost() {
+        let request = Endpoints.cancelExpenseReport(id: "report-1")
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/v1/expense-reports/report-1:cancel")
+        XCTAssertNotNil(request.idempotencyKey)
+        XCTAssertEqual(ExpenseReportStatus(rawValue: "CANCELLED"), .cancelled)
+    }
+
     func testTripCloseoutEndpointUsesReadOnlyTripRoute() {
         let request = Endpoints.tripCloseoutReadiness(tripId: "trip-1")
         XCTAssertEqual(request.method, .get)

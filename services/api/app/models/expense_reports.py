@@ -4,7 +4,7 @@
 
 - ``expense_report_items`` 保存建单时的类别/金额/币种/日期/备注/凭证引用；
 - 之后费用记录被修改/删除，不影响已提交报销单的内容；
-- 报销单状态：DRAFT → SUBMITTED → APPROVED / REJECTED；
+- 报销单状态：DRAFT → SUBMITTED → APPROVED / REJECTED；草稿可转为 CANCELLED 并保留审计快照；
 - 审批落 ``approvals``（subject_type=expense_report）与 ``workflow_instances``。
 
 多币种仍不换算：报销单按币种分组展示金额。
@@ -34,14 +34,21 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, created_at, updated_at, uuid_pk
 
-REPORT_STATUSES = ("DRAFT", "SUBMITTED", "APPROVED", "REJECTED")
+REPORT_STATUSES = ("DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "CANCELLED")
 
 
 class ExpenseReport(Base):
     __tablename__ = "expense_reports"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('DRAFT','SUBMITTED','APPROVED','REJECTED')", name="status_allowed"
+            "status IN ('DRAFT','SUBMITTED','APPROVED','REJECTED','CANCELLED')", name="status_allowed"
+        ),
+        CheckConstraint(
+            "(status = 'CANCELLED' AND cancelled_at IS NOT NULL AND "
+            "cancellation_reason IS NOT NULL AND length(btrim(cancellation_reason)) > 0) OR "
+            "(status <> 'CANCELLED' AND cancelled_at IS NULL AND "
+            "cancelled_by_user_id IS NULL AND cancellation_reason IS NULL)",
+            name="cancellation_metadata_consistent",
         ),
         UniqueConstraint(
             "organization_id", "trip_id", "id", name="uq_expense_reports_org_trip_id"
@@ -67,6 +74,11 @@ class ExpenseReport(Base):
     decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    cancellation_reason: Mapped[str | None] = mapped_column(Text)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )

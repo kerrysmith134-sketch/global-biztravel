@@ -929,6 +929,14 @@ enum Endpoints {
         )
     }
 
+    static func cancelExpenseReport(id: String) -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/expense-reports/\(id):cancel",
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     // MARK: - Visa
 
     static func visaCases(tripId: String) -> APIRequest {

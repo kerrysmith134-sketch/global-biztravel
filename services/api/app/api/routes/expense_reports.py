@@ -135,6 +135,37 @@ def submit_report(
 
 
 @router.post(
+    "/expense-reports/{report_id}:cancel",
+    response_model=ExpenseReportRead,
+    summary="撤销草稿报销单（仅 DRAFT；保留费用快照）",
+)
+def cancel_report(
+    report_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint="POST /v1/expense-reports/{report_id}:cancel",
+        key=idempotency_key,
+        payload={"report_id": str(report_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    detail = expense_report_service.cancel_report(
+        session,
+        context.organization_id,
+        report_id,
+        actor_user_id=context.user_id,
+        can_cancel_any=context.rank >= ROLE_ADMIN,
+    )
+    return guard.finish(status_code=status.HTTP_200_OK, body=_read(detail))
+
+
+@router.post(
     "/expense-reports/{report_id}:approve",
     response_model=ExpenseReportRead,
     summary="审批通过报销单（ADMIN）",

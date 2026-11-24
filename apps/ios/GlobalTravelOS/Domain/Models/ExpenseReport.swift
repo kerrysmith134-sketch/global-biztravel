@@ -5,6 +5,7 @@ enum ExpenseReportStatus: String, Codable, CaseIterable, Identifiable {
     case submitted = "SUBMITTED"
     case approved = "APPROVED"
     case rejected = "REJECTED"
+    case cancelled = "CANCELLED"
     case unknown = "UNKNOWN"
 
     var id: String { rawValue }
@@ -20,6 +21,7 @@ enum ExpenseReportStatus: String, Codable, CaseIterable, Identifiable {
         case .submitted: return "已提交"
         case .approved: return "已通过"
         case .rejected: return "已驳回"
+        case .cancelled: return "已撤销"
         case .unknown: return "未知"
         }
     }
@@ -97,6 +99,9 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
     var submittedAt: Date?
     var decidedAt: Date?
     var decidedByUserId: String?
+    var cancelledAt: Date?
+    var cancelledByUserId: String?
+    var cancellationReason: String?
     var items: [ExpenseReportItem]?
     var totals: [CurrencyTotal]?
     var createdAt: Date?
@@ -110,6 +115,9 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         submittedAt: Date? = nil,
         decidedAt: Date? = nil,
         decidedByUserId: String? = nil,
+        cancelledAt: Date? = nil,
+        cancelledByUserId: String? = nil,
+        cancellationReason: String? = nil,
         items: [ExpenseReportItem]? = nil,
         totals: [CurrencyTotal]? = nil,
         createdAt: Date? = nil,
@@ -122,6 +130,9 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         self.submittedAt = submittedAt
         self.decidedAt = decidedAt
         self.decidedByUserId = decidedByUserId
+        self.cancelledAt = cancelledAt
+        self.cancelledByUserId = cancelledByUserId
+        self.cancellationReason = cancellationReason
         self.items = items
         self.totals = totals
         self.createdAt = createdAt
@@ -144,13 +155,14 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
     ) -> Bool {
         let snapshotIDs = Set(
             reports
-                .filter { $0.status != .rejected }
+                .filter { $0.status != .rejected && $0.status != .cancelled }
                 .flatMap(\.itemList)
                 .compactMap(\.expenseId)
         )
         return currentExpenseIDs.isSubset(of: snapshotIDs)
     }
     var canSubmit: Bool { status == .draft }
+    var canCancel: Bool { status == .draft }
 }
 
 struct ExpenseReportCreateRequest: Codable, Equatable {

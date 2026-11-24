@@ -385,6 +385,57 @@ def test_closeout_aggregates_all_split_report_states(client: TestClient) -> None
         cleanup(trip_id)
 
 
+
+def test_cancelled_report_snapshot_does_not_cover_closeout_expenses(
+    client: TestClient,
+) -> None:
+    trip_id = make_trip(client)
+    try:
+        expense_ids: list[str] = []
+        for amount in ("10.00", "20.00"):
+            created = client.post(
+                f"/v1/trips/{trip_id}/expenses",
+                headers=headers(key=str(uuid.uuid4())),
+                json={
+                    "category": "TRANSPORT",
+                    "amount": amount,
+                    "currency": "EUR",
+                    "occurred_on": datetime.now(UTC).date().isoformat(),
+                },
+            )
+            assert created.status_code == 201, created.text
+            expense_ids.append(created.json()["id"])
+
+        report = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers=headers(key=str(uuid.uuid4())),
+            json={},
+        )
+        assert report.status_code == 201, report.text
+        report_id = report.json()["id"]
+        cancelled = client.post(
+            f"/v1/expense-reports/{report_id}:cancel",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert cancelled.status_code == 200, cancelled.text
+        assert cancelled.json()["status"] == "CANCELLED"
+
+        readiness = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert readiness.status_code == 200, readiness.text
+        body = readiness.json()
+        assert body["summary"]["latest_report_status"] == "CANCELLED"
+        assert body["summary"]["expenses_in_report_count"] == 0
+        assert body["summary"]["expenses_not_in_report_count"] == 2
+        assert {
+            item["source_id"] for item in body["blockers"]
+            if item["code"] == "EXPENSE_NOT_IN_REPORT"
+        } == set(expense_ids)
+    finally:
+        cleanup(trip_id)
+
+
 def test_action_center_surfaces_only_hard_closeout_blockers(client: TestClient) -> None:
     trip_id = make_trip(client)
     place_id = make_place(client)

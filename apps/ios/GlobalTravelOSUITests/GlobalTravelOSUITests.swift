@@ -806,6 +806,76 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
     }
 
+
+
+    func testDraftExpenseReportCanBeCancelledFromTripWorkspace() throws {
+        let setup = try makeBriefingTrip()
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        _ = try postJSON(
+            "http://127.0.0.1:8080/v1/trips/\(setup.tripId)/expenses",
+            body: [
+                "category": "MEALS",
+                "amount": "55.80",
+                "currency": "EUR",
+                "occurred_on": dateFormatter.string(from: Date()),
+                "note": "Expense report draft cancellation UI acceptance",
+            ]
+        )
+
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "出行 Tab 未出现")
+        app.buttons["出行"].tap()
+        let trip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
+        trip.tap()
+
+        let sectionPicker = app.segmentedControls["trip-section-picker"]
+        XCTAssertTrue(sectionPicker.waitForExistence(timeout: 10), "行程详情缺少分区切换器")
+        sectionPicker.buttons["费用"].tap()
+        XCTAssertTrue(
+            app.staticTexts["出差结账准备度"].waitForExistence(timeout: 20),
+            "费用分区未展示服务端结账评估"
+        )
+
+        let createReport = app.buttons["从费用记录生成报销单"]
+        XCTAssertTrue(revealAndTap(app, createReport), "未找到生成报销单入口")
+        let draft = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '草稿' AND label CONTAINS '1 项'")
+        ).firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 20), "服务端报销草稿未回显")
+
+        let cancelButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'expense-report-cancel-'")
+        ).firstMatch
+        XCTAssertTrue(revealAndTap(app, cancelButton), "草稿报销单缺少撤销操作")
+        let confirm = app.buttons["确认撤销草稿"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "撤销确认对话框未出现")
+        confirm.tap()
+
+        let cancelled = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '已撤销' AND label CONTAINS '1 项'")
+        ).firstMatch
+        XCTAssertTrue(
+            cancelled.waitForExistence(timeout: 20),
+            "撤销成功后，行程详情没有回显已撤销状态"
+        )
+        XCTAssertFalse(
+            app.buttons.matching(
+                NSPredicate(format: "identifier BEGINSWITH 'expense-report-cancel-'")
+            ).firstMatch.exists,
+            "已撤销报销单仍显示草稿撤销操作"
+        )
+    }
+
     func testVisitRecordSubmissionFlow() throws {
         let setup = try makeBriefingTrip()
         let app = XCUIApplication()

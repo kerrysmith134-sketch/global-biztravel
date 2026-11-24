@@ -72,7 +72,7 @@
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0047`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0048`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -113,11 +113,14 @@
                            0045_receipt_assets
                            0046_report_receipt_snapshot
                            0047_receipt_ocr
+                           0048_expense_report_draft_cancellation
 ```
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
 
 - **H2.13 票据资产与报销证据快照（后端基础已落地，iOS 闭环仍进行中）**：新增私有 ReceiptAsset 元数据、文件系统/S3 私有存储适配器、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。迁移 `0046_report_receipt_snapshot` 为报销明细固定 Asset ID、内容哈希及原始元数据；迁移 `0047_receipt_ocr` 将图片 OCR 与 AgentRun 关联，人工确认/驳回采用只追加审阅记录，PDF 仅保留和下载。iOS 私有 ReceiptVault 已支持原件采集、哈希校验、上传确认和待上传重试。新增租户前缀对象枚举与每日 Worker 孤儿对象对账：默认 24 小时宽限期，数据库已有资产和其他租户对象不删除，支持服务层 dry-run。只读 `GET /v1/trips/{id}/closeout-readiness` 已有集成测试。**新增**：云端模式费用现已先写入账户隔离的 SQLite Outbox，使用稳定 UUID 关联票据上传与费用提交；失败保留原件和命令，Trip 详情可见待同步项并可重试。服务端对票据上传和费用创建的幂等记录不自动过期，覆盖长时间离线后的重放。**新增**：iOS Trip 费用工作区现已接入只读 Closeout API，按 BLOCKER/WARNING 分区展示服务端结账状态、拜访结果、费用纳入报销情况、票据/OCR 风险及各币种金额；每项保留 source_type/source_id/action_hint，可定位到对应拜访、费用、票据附件或报销单行。新增模型解码与 GET 路由单测；本地模式明确显示不提供云端结账评估。**剩余**：需在 Simulator/真机验收来源跳转与评估刷新，并完成断网、终止进程、重启联网及服务端提交后响应丢失等费用 Outbox 失败路径；切换存储 Provider 前需先对旧 Provider 单独对账。CI/真实数据库验收以本分支最新 Actions 为准。
+
+**H2.14 草稿报销生命周期**：迁移 `0048_expense_report_draft_cancellation` 增加 `CANCELLED` 终态及撤销人/时间/原因；仅 `DRAFT` 可撤销，普通差旅成员只能撤销本人创建的草稿，ADMIN/OWNER 可撤销组织内任意草稿。撤销保留费用快照与票据原件，并写入 Trip 审计时间线；已提交/已审批/已驳回报销单不可撤销。撤销快照不再参与行程费用覆盖和结账统计，允许用户重新生成正确草稿。API 与 iOS UI 均有状态/权限/快照保留回归测试。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 

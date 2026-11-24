@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.errors import Conflict, NotFound, Unprocessable
+from app.api.errors import Conflict, Forbidden, NotFound, Unprocessable
 from app.api.schemas import ExpenseReportCreate
 from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.expenses import TripExpense
@@ -28,6 +28,8 @@ STATUS_DRAFT = "DRAFT"
 STATUS_SUBMITTED = "SUBMITTED"
 STATUS_APPROVED = "APPROVED"
 STATUS_REJECTED = "REJECTED"
+STATUS_CANCELLED = "CANCELLED"
+CANCELLATION_REASON_USER = "USER_CANCELLED_DRAFT"
 
 
 @dataclass
@@ -268,7 +270,7 @@ def submit_report(
                 ExpenseReportItem.expense_id.is_not(None),
                 ExpenseReport.organization_id == str(organization_id),
                 ExpenseReport.trip_id == report.trip_id,
-                ExpenseReport.status != STATUS_REJECTED,
+                ExpenseReport.status.notin_((STATUS_REJECTED, STATUS_CANCELLED)),
             )
         )
     )
@@ -295,6 +297,65 @@ def submit_report(
             created_by_user_id=None if actor_user_id is None else str(actor_user_id),
         )
     )
+    session.flush()
+    return _detail(session, report)
+
+
+def cancel_report(
+    session: Session,
+    organization_id: UUID | str,
+    report_id: UUID | str,
+    *,
+    actor_user_id: UUID | str,
+    can_cancel_any: bool = False,
+    now: datetime | None = None,
+) -> ReportDetail:
+    report = require_report(session, organization_id, report_id)
+
+    # Cancellation and submission share the Trip -> Report lock order. A race
+    # can therefore produce exactly one terminal transition from DRAFT.
+    locked_trip_id = session.execute(
+        select(Trip.id)
+        .where(
+            Trip.organization_id == str(organization_id),
+            Trip.id == report.trip_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if locked_trip_id is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
+    report = session.scalars(
+        select(ExpenseReport)
+        .where(
+            ExpenseReport.organization_id == str(organization_id),
+            ExpenseReport.id == report_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if report is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
+    if report.status == STATUS_CANCELLED:
+        return _detail(session, report)
+    if report.status != STATUS_DRAFT:
+        raise Conflict(
+            "只有草稿报销单可以撤销",
+            details={"report_id": str(report.id), "status": report.status},
+        )
+    if not can_cancel_any and (
+        report.created_by_user_id is None
+        or str(report.created_by_user_id) != str(actor_user_id)
+    ):
+        raise Forbidden(
+            "只能撤销自己创建的草稿报销单",
+            details={"report_id": str(report.id)},
+        )
+
+    current = now or session.scalar(select(func.clock_timestamp()))
+    report.status = STATUS_CANCELLED
+    report.cancelled_at = current
+    report.cancelled_by_user_id = str(actor_user_id)
+    report.cancellation_reason = CANCELLATION_REASON_USER
     session.flush()
     return _detail(session, report)
 

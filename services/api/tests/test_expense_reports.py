@@ -9,6 +9,7 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.identity import Membership, User
 from app.models.proactive import Approval
 from app.models.trip import Trip
 from app.models.workflow import WorkflowInstance
@@ -110,6 +111,12 @@ def test_report_snapshot_submit_and_approve(client: TestClient) -> None:
         assert submitted.json()["status"] == "SUBMITTED"
         assert submitted.json()["submitted_at"] is not None
 
+        cannot_cancel_submitted = client.post(
+            f"/v1/expense-reports/{report['id']}:cancel",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert cannot_cancel_submitted.status_code == 409
+
         approved = client.post(
             f"/v1/expense-reports/{report['id']}:approve",
             headers={**headers(USER_ADMIN), "Idempotency-Key": str(uuid.uuid4())},
@@ -146,6 +153,143 @@ def test_report_snapshot_submit_and_approve(client: TestClient) -> None:
         )
         assert stolen.status_code == 404
     finally:
+        cleanup(trip_id)
+
+
+
+def test_draft_report_can_be_cancelled_without_deleting_snapshot_or_expenses(
+    client: TestClient,
+) -> None:
+    trip_id, expense_ids = setup(client)
+    other_user_id = uuid.uuid4()
+    try:
+        with org_session(UUID(ORG_A)) as session:
+            session.add(
+                User(
+                    id=other_user_id,
+                    email=f"{other_user_id}@example.test",
+                    display_name="Other traveler",
+                )
+            )
+            session.add(
+                Membership(
+                    organization_id=UUID(ORG_A),
+                    user_id=other_user_id,
+                    role="TRAVELER",
+                )
+            )
+
+        created = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+            json={},
+        )
+        assert created.status_code == 201, created.text
+        report_id = created.json()["id"]
+        assert len(created.json()["items"]) == 2
+
+        denied = client.post(
+            f"/v1/expense-reports/{report_id}:cancel",
+            headers={
+                **headers(str(other_user_id)),
+                "Idempotency-Key": str(uuid.uuid4()),
+            },
+        )
+        assert denied.status_code == 403, denied.text
+
+        key = str(uuid.uuid4())
+        cancelled = client.post(
+            f"/v1/expense-reports/{report_id}:cancel",
+            headers={**headers(), "Idempotency-Key": key},
+        )
+        assert cancelled.status_code == 200, cancelled.text
+        body = cancelled.json()
+        assert body["status"] == "CANCELLED"
+        assert body["cancelled_at"] is not None
+        assert body["cancelled_by_user_id"] == USER_A
+        assert body["cancellation_reason"] == "USER_CANCELLED_DRAFT"
+        assert len(body["items"]) == 2
+
+        # The idempotency key replays the same response; a new key is also a safe
+        # no-op because CANCELLED is already a terminal state.
+        replay = client.post(
+            f"/v1/expense-reports/{report_id}:cancel",
+            headers={**headers(), "Idempotency-Key": key},
+        )
+        assert replay.status_code == 200
+        assert replay.json()["status"] == "CANCELLED"
+        repeated = client.post(
+            f"/v1/expense-reports/{report_id}:cancel",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert repeated.status_code == 200
+        assert repeated.json()["id"] == report_id
+
+        detail = client.get(f"/v1/expense-reports/{report_id}", headers=headers())
+        assert detail.status_code == 200
+        assert len(detail.json()["items"]) == 2
+        remaining = client.get(f"/v1/trips/{trip_id}/expenses", headers=headers())
+        assert remaining.status_code == 200
+        assert {item["id"] for item in remaining.json()} == set(expense_ids)
+
+        blocked_submit = client.post(
+            f"/v1/expense-reports/{report_id}:submit",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert blocked_submit.status_code == 409
+
+        # Cancelled snapshots are not eligible for the server-side coverage union.
+        first_partial = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+            json={"expense_ids": [expense_ids[0]]},
+        )
+        assert first_partial.status_code == 201, first_partial.text
+        first_partial_id = first_partial.json()["id"]
+        uncovered = client.post(
+            f"/v1/expense-reports/{first_partial_id}:submit",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert uncovered.status_code == 409, uncovered.text
+        assert set(uncovered.json()["error"]["details"]["missing_expense_ids"]) == {
+            expense_ids[1]
+        }
+
+        second_partial = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+            json={"expense_ids": [expense_ids[1]]},
+        )
+        assert second_partial.status_code == 201, second_partial.text
+        first_submitted = client.post(
+            f"/v1/expense-reports/{first_partial_id}:submit",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert first_submitted.status_code == 200, first_submitted.text
+        second_submitted = client.post(
+            f"/v1/expense-reports/{second_partial.json()['id']}:submit",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert second_submitted.status_code == 200, second_submitted.text
+
+        audit = client.get(f"/v1/trips/{trip_id}/audit", headers=headers())
+        assert audit.status_code == 200, audit.text
+        cancel_event = next(
+            event
+            for event in audit.json()
+            if event["kind"] == "expense_report" and event["action"] == "CANCELLED"
+        )
+        assert cancel_event["actor"] == USER_A
+        assert cancel_event["detail"]["report_id"] == report_id
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(Membership).where(
+                    Membership.organization_id == UUID(ORG_A),
+                    Membership.user_id == other_user_id,
+                )
+            )
+            session.execute(delete(User).where(User.id == other_user_id))
         cleanup(trip_id)
 
 

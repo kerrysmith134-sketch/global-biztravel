@@ -398,6 +398,19 @@ final class TripDetailViewModel: ObservableObject {
             errorMessage = environment.errorMessage(error)
         }
     }
+
+    func cancelExpenseReport(_ report: ExpenseReport) async {
+        guard report.canCancel else { return }
+        errorMessage = nil
+        do {
+            _ = try await environment.tripRepository.cancelExpenseReport(id: report.id)
+            expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
+            await refreshCloseoutReadiness()
+            statusMessage = "报销草稿已撤销；费用和原始票据均已保留"
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
     func createVisaCases() async {
         errorMessage = nil
         do {
@@ -507,6 +520,7 @@ struct TripDetailView: View {
     @State private var showsAddVisit = false
     @State private var showsExpense = false
     @State private var showsAssistant = false
+    @State private var reportToCancel: ExpenseReport?
     @State private var section: TripSection = .overview
 
     init(tripId: String, environment: AppEnvironment) {
@@ -860,6 +874,15 @@ struct TripDetailView: View {
                                 .font(.caption)
                                 .disabled(!viewModel.pendingExpenses.isEmpty)
                             }
+                            if report.canCancel {
+                                Button(role: .destructive) {
+                                    reportToCancel = report
+                                } label: {
+                                    Text("撤销草稿")
+                                }
+                                .font(.caption)
+                                .accessibilityIdentifier("expense-report-cancel-\(report.id)")
+                            }
                         }
                         .id("closeout-report-\(report.id)")
                     }
@@ -986,6 +1009,25 @@ struct TripDetailView: View {
                     )
                 }
             )
+        }
+        .confirmationDialog(
+            "确认撤销这张报销草稿？",
+            isPresented: Binding(
+                get: { reportToCancel != nil },
+                set: { if !$0 { reportToCancel = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("确认撤销草稿", role: .destructive) {
+                guard let report = reportToCancel else { return }
+                reportToCancel = nil
+                Task { await viewModel.cancelExpenseReport(report) }
+            }
+            Button("取消", role: .cancel) {
+                reportToCancel = nil
+            }
+        } message: {
+            Text("撤销后报销快照会保留用于审计，但不再计入有效报销覆盖。费用和原始票据不会删除。")
         }
         }
     }

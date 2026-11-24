@@ -50,6 +50,7 @@ protocol TripRepository {
     func expenseReports(tripId: String) async throws -> [ExpenseReport]
     func createExpenseReport(tripId: String) async throws -> ExpenseReport
     func submitExpenseReport(id: String) async throws -> ExpenseReport
+    func cancelExpenseReport(id: String) async throws -> ExpenseReport
     func entryAssessments(tripId: String) async throws -> [EntryAssessment]
     func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment]
     func createTrip(_ request: CreateTripRequest) async throws -> Trip
@@ -188,6 +189,13 @@ final class RemoteTripRepository: TripRepository {
     func submitExpenseReport(id: String) async throws -> ExpenseReport {
         try await client.send(
             Endpoints.submitExpenseReport(id: id),
+            as: ExpenseReport.self
+        )
+    }
+
+    func cancelExpenseReport(id: String) async throws -> ExpenseReport {
+        try await client.send(
+            Endpoints.cancelExpenseReport(id: id),
             as: ExpenseReport.self
         )
     }
@@ -395,6 +403,10 @@ final class OfflineTripRepository: TripRepository {
 
     func submitExpenseReport(id: String) async throws -> ExpenseReport {
         try await remote.submitExpenseReport(id: id)
+    }
+
+    func cancelExpenseReport(id: String) async throws -> ExpenseReport {
+        try await remote.cancelExpenseReport(id: id)
     }
 
     func entryAssessments(tripId: String) async throws -> [EntryAssessment] {

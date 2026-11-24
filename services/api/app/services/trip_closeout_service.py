@@ -146,7 +146,9 @@ def build_trip_closeout_readiness(
     # A rejected report is an audit snapshot, not evidence that an expense is
     # currently included in a valid reimbursement workflow. A newer partial draft
     # must not let an older rejected snapshot hide omitted expenses.
-    eligible_reports = [row for row in reports if row.status != "REJECTED"]
+    eligible_reports = [
+        row for row in reports if row.status not in ("REJECTED", "CANCELLED")
+    ]
     eligible_report_ids = {row.id for row in eligible_reports}
     snapshotted_expense_ids = {
         row.expense_id
@@ -169,7 +171,10 @@ def build_trip_closeout_readiness(
             )
         )
 
-    latest_report = reports[0] if reports else None
+    latest_report = next(
+        (row for row in reports if row.status != "CANCELLED"),
+        reports[0] if reports else None,
+    )
     if latest_report is not None and latest_report.status == "REJECTED":
         blockers.append(
             _issue(
@@ -184,9 +189,8 @@ def build_trip_closeout_readiness(
         )
 
     # A Trip can use multiple split reports. Drafts remain visible even when
-    # another split report has already been submitted or approved. Until the
-    # product exposes a safe draft-cancel/edit action, keep these as warnings:
-    # an accidental draft must not make closeout impossible to recover.
+    # another split report has already been submitted or approved. Keep drafts
+    # as source-linked warnings so users can review or safely cancel them.
     for draft_report in (row for row in eligible_reports if row.status == "DRAFT"):
         warnings.append(
             _issue(

@@ -1937,7 +1937,7 @@ class PolicyCheckRead(BaseModel):
 
 
 # --------------------------------------------------------- expense reports
-ExpenseReportStatus = Literal["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"]
+ExpenseReportStatus = Literal["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "CANCELLED"]
 
 
 class ExpenseReportCreate(BaseModel):
@@ -1970,6 +1970,9 @@ class ExpenseReportRead(BaseModel):
     submitted_at: datetime | None = None
     decided_at: datetime | None = None
     decided_by_user_id: UUID | None = None
+    cancelled_at: datetime | None = None
+    cancelled_by_user_id: UUID | None = None
+    cancellation_reason: str | None = None
     items: list[ExpenseReportItemRead] = Field(default_factory=list)
     totals: list[CurrencyTotalRead] = Field(default_factory=list)
     created_at: datetime

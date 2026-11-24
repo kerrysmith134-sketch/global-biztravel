@@ -17,7 +17,7 @@ router = APIRouter(tags=["audit"])
 @router.get(
     "/trips/{trip_id}/audit",
     response_model=list[AuditEventRead],
-    summary="一次出行的审计时间线（建议/审批/Outbox/记录/规划尝试）",
+    summary="一次出行的审计时间线（建议/审批/报销/Outbox/记录/规划尝试）",
 )
 def trip_audit(
     trip_id: UUID,
