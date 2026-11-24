@@ -1051,7 +1051,9 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.staticTexts["Workspace 候选实体"].waitForExistence(timeout: 20),
             "新建企业候选未回显到机会工作台"
         )
-        let attachButton = app.buttons["关联到机会"].firstMatch
+        let attachButton = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS '关联到机会'")
+        ).firstMatch
         XCTAssertTrue(attachButton.waitForExistence(timeout: 10), "候选企业缺少显式关联入口")
         attachButton.tap()
 
