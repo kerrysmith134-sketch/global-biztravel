@@ -17,6 +17,18 @@ final class ReceiptVaultTests: XCTestCase {
         try? FileManager.default.removeItem(at: temporaryDirectory)
     }
 
+    func testSQLiteQueryPropagatesStepFailuresInsteadOfReturningPartialResults() throws {
+        let database = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("query-errors.sqlite3")
+        )
+
+        XCTAssertThrowsError(
+            try database.store.query(
+                "SELECT abs(CAST('-9223372036854775808' AS INTEGER))"
+            ) { $0.int(0) }
+        )
+    }
+
     func testLocalMigrationDDLAndVersionMarkerRollbackTogether() throws {
         let database = try LocalDatabase.open(
             path: temporaryDirectory.appendingPathComponent("migration-atomic.sqlite3")
