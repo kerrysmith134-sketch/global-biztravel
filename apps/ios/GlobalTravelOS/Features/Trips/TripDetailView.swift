@@ -400,7 +400,7 @@ final class TripDetailViewModel: ObservableObject {
     }
 
     func cancelExpenseReport(_ report: ExpenseReport) async {
-        guard report.canCancel else { return }
+        guard report.canCancelInUI else { return }
         errorMessage = nil
         do {
             _ = try await environment.tripRepository.cancelExpenseReport(id: report.id)
