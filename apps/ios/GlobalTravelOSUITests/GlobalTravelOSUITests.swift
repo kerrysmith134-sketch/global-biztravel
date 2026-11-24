@@ -685,6 +685,65 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
     }
 
+    func testTripCloseoutBlockerNavigatesToSourceExpense() throws {
+        let setup = try makeBriefingTrip()
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let expense = try postJSON(
+            "http://127.0.0.1:8080/v1/trips/\(setup.tripId)/expenses",
+            body: [
+                "category": "MEALS",
+                "amount": "55.80",
+                "currency": "EUR",
+                "occurred_on": dateFormatter.string(from: Date()),
+                "note": "Closeout navigation UI acceptance",
+            ]
+        )
+        let expenseId = try XCTUnwrap(expense["id"] as? String)
+
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "出行 Tab 未出现")
+        app.buttons["出行"].tap()
+        let trip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
+        trip.tap()
+
+        let sectionPicker = app.segmentedControls["trip-section-picker"]
+        XCTAssertTrue(sectionPicker.waitForExistence(timeout: 10), "行程详情缺少分区切换器")
+        sectionPicker.buttons["费用"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts["出差结账准备度"].waitForExistence(timeout: 20),
+            "费用分区未展示服务端结账评估"
+        )
+        let blocker = app.staticTexts["费用尚未纳入报销快照"]
+        XCTAssertTrue(
+            blocker.waitForExistence(timeout: 20),
+            "服务端没有将未纳入报销快照的费用识别为阻断项"
+        )
+
+        let sourceButton = app.buttons["closeout-source-\(expenseId)"]
+        XCTAssertTrue(
+            revealAndTap(app, sourceButton),
+            "结账阻断项没有可用的来源定位操作"
+        )
+        let sourceAmount = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '55.8'")
+        ).firstMatch
+        XCTAssertTrue(
+            sourceAmount.waitForExistence(timeout: 10) && sourceAmount.isHittable,
+            "定位来源后没有跳转到对应的费用记录"
+        )
+    }
+
     func testVisitRecordSubmissionFlow() throws {
         let setup = try makeBriefingTrip()
         let app = XCUIApplication()
