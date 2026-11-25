@@ -109,8 +109,8 @@ def test_trip_get_plan_tool_is_executable_and_idempotent(client: TestClient) -> 
             endpoint,
             headers=headers(),
             json={
-                "tool_name": "visa.prepare_checklist",
-                "arguments": {"trip_id": trip_id, "countries": ["DE"]},
+                "tool_name": "place.prepare_geocoding",
+                "arguments": {"place_ids": []},
             },
         )
         assert approval_gated.status_code == 403, approval_gated.text
@@ -231,6 +231,18 @@ def test_visa_prepare_tool_requires_user_click_and_is_idempotent(client: TestCli
         assert replay.status_code == 200, replay.text
         assert replay.headers.get("Idempotent-Replay") == "true"
         assert replay.json() == result
+
+        conversation_detail = client.get(
+            f"/v1/assistant/conversations/{conversation_id}",
+            headers=headers(),
+        )
+        assert conversation_detail.status_code == 200, conversation_detail.text
+        visa_result_messages = [
+            message
+            for message in conversation_detail.json()["messages"]
+            if any(card.get("type") == "TOOL_RESULT" for card in message.get("cards", []))
+        ]
+        assert len(visa_result_messages) == 1
 
         with org_session(UUID(ORG_A)) as session:
             cases = list(
