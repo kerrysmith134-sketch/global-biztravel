@@ -14,8 +14,10 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.assistant import AssistantConversation
 from app.models.crm import CrmSyncJob
 from app.models.trip import Trip, Visit
+from app.models.workflow import AgentRun
 from app.services import minutes_service
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
@@ -118,6 +120,159 @@ def test_insights_classified_and_confirmation_forced(client: TestClient) -> None
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Visit).where(Visit.id == UUID(visit_id)))
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+
+
+
+def test_assistant_meeting_minutes_tool_requires_tap_and_keeps_followups_unconfirmed(
+    client: TestClient,
+) -> None:
+    raw_notes = (
+        "CONFIDENTIAL RAW CUSTOMER NOTE: customer needs 800V fast charging; "
+        "send the technical proposal before Friday."
+    )
+    trip_id, visit_id = make_visit_with_notes(client, raw_notes)
+    conversation_id: str | None = None
+
+    try:
+        conversation = client.post(
+            "/v1/assistant/conversations",
+            headers=headers(),
+            json={"trip_id": trip_id, "title": "会议纪要草稿"},
+        )
+        assert conversation.status_code == 201, conversation.text
+        conversation_id = conversation.json()["id"]
+
+        proposed = client.post(
+            f"/v1/assistant/conversations/{conversation_id}/messages",
+            headers=headers(),
+            json={"content": "请为这次拜访生成会议纪要草稿"},
+        )
+        assert proposed.status_code == 200, proposed.text
+        tool_cards = [
+            card
+            for card in proposed.json()["cards"]
+            if card.get("tool_name") == "visit.draft_minutes"
+        ]
+        assert len(tool_cards) == 1
+        proposal = tool_cards[0]
+        assert proposal["entity_id"] == str(visit_id)
+        assert proposal["tool_arguments"] == {
+            "visit_id": str(visit_id),
+            "tone": "PROFESSIONAL",
+        }
+
+        # Creating a proposal card is read-only: no AgentRun and no generated minutes yet.
+        with org_session(UUID(ORG_A)) as session:
+            before = list(
+                session.scalars(
+                    select(AgentRun).where(
+                        AgentRun.organization_id == UUID(ORG_A),
+                        AgentRun.agent_type == "tool:visit.draft_minutes",
+                        AgentRun.input["arguments"]["visit_id"].astext == visit_id,
+                    )
+                )
+            )
+            assert before == []
+
+        endpoint = f"/v1/assistant/conversations/{conversation_id}/tools:execute"
+        request_headers = headers()
+        key = str(uuid.uuid4())
+        request_headers["Idempotency-Key"] = key
+        payload = {
+            "tool_name": "visit.draft_minutes",
+            "arguments": {
+                "visit_id": visit_id,
+                "tone": "PROFESSIONAL",
+            },
+        }
+        first = client.post(endpoint, headers=request_headers, json=payload)
+        assert first.status_code == 200, first.text
+        result = first.json()
+        assert result["role"] == "ASSISTANT"
+        assert result["cards"][0]["type"] == "TOOL_RESULT"
+        assert result["cards"][0]["title"] in {"会议纪要草稿", "缺少现场记录"}
+        assert "会议纪要仅为草稿" in result["content"]
+        assert "人工确认" in result["content"]
+
+        replay = client.post(endpoint, headers=request_headers, json=payload)
+        assert replay.status_code == 200, replay.text
+        assert replay.headers.get("Idempotent-Replay") == "true"
+        assert replay.json() == result
+
+        conversation_detail = client.get(
+            f"/v1/assistant/conversations/{conversation_id}",
+            headers=headers(),
+        )
+        assert conversation_detail.status_code == 200, conversation_detail.text
+        minutes_messages = [
+            message
+            for message in conversation_detail.json()["messages"]
+            if any(
+                card.get("type") == "TOOL_RESULT"
+                and card.get("title") in {"会议纪要草稿", "缺少现场记录"}
+                for card in message.get("cards", [])
+            )
+        ]
+        assert len(minutes_messages) == 1
+
+        with org_session(UUID(ORG_A)) as session:
+            runs = list(
+                session.scalars(
+                    select(AgentRun).where(
+                        AgentRun.organization_id == UUID(ORG_A),
+                        AgentRun.agent_type == "tool:visit.draft_minutes",
+                        AgentRun.input["arguments"]["visit_id"].astext == visit_id,
+                    )
+                )
+            )
+            assert len(runs) == 1
+            run = runs[0]
+            assert run.status == "SUCCEEDED"
+            assert run.input["arguments"] == {
+                "visit_id": str(visit_id),
+                "tone": "PROFESSIONAL",
+            }
+            assert "notes" not in run.input
+            assert raw_notes not in str(run.input)
+            assert run.output["visit_id"] == str(visit_id)
+            assert run.output["llm_invocation_id"]
+            assert "follow_up_tasks" in run.output
+
+            # Structured follow-ups are discoverable as suggestions only; no formal task exists.
+            from app.services import visit_follow_up_service
+
+            feed = visit_follow_up_service.list_follow_ups(
+                session, UUID(ORG_A), UUID(visit_id)
+            )
+            assert feed["items"] == []
+            for suggestion in feed["suggestions"]:
+                assert suggestion["source_type"] == "MINUTES_DRAFT"
+                assert suggestion["source_agent_run_id"] == run.id
+
+            crm_count = session.scalar(
+                select(func.count())
+                .select_from(CrmSyncJob)
+                .where(CrmSyncJob.organization_id == UUID(ORG_A))
+            )
+            assert int(crm_count or 0) == 0
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            if conversation_id is not None:
+                session.execute(
+                    delete(AssistantConversation).where(
+                        AssistantConversation.id == UUID(conversation_id)
+                    )
+                )
+            session.execute(
+                delete(AgentRun).where(
+                    AgentRun.organization_id == UUID(ORG_A),
+                    AgentRun.agent_type == "tool:visit.draft_minutes",
+                    AgentRun.input["arguments"]["visit_id"].astext == visit_id,
+                )
+            )
+            session.execute(delete(Visit).where(Visit.id == UUID(visit_id)))
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+
 
 
 def test_normalise_insights_enforces_business_rule() -> None:
