@@ -222,6 +222,49 @@ def test_visa_prepare_requires_traveler_and_records_created_by_user(monkeypatch)
     assert finished["output_snapshot"]["status"] == "VISA_CASES_PREPARED"
 
 
+def test_visa_prepare_without_destinations_does_not_create_cases(monkeypatch) -> None:
+    trip_id = uuid4()
+    run = SimpleNamespace()
+    finished = {}
+
+    monkeypatch.setattr(agent_tool_service, "start_agent_run", lambda *args, **kwargs: run)
+    monkeypatch.setattr(
+        agent_tool_service,
+        "succeed_agent_run",
+        lambda session, current_run, **kwargs: finished.update(kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.trip_service,
+        "require_trip",
+        lambda session, organization_id, requested_id: SimpleNamespace(
+            id=trip_id,
+            name="Open trip",
+            countries=[],
+        ),
+    )
+    calls = {}
+    monkeypatch.setattr(
+        agent_tool_service.visa_service,
+        "ensure_cases",
+        lambda session, organization_id, trip, **kwargs: calls.update(kwargs) or [],
+    )
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="TRAVELER",
+        tool_name="visa.prepare_checklist",
+        arguments={"trip_id": str(trip_id)},
+        actor_user_id=uuid4(),
+    )
+
+    assert result.status == "NO_DESTINATIONS"
+    assert result.visa_case_count == 0
+    assert "没有可建立签证案件的目的国" in result.detail
+    assert calls["countries"] is None
+    assert finished["output_snapshot"]["status"] == "NO_DESTINATIONS"
+
+
 def test_visa_tool_summarizes_only_persisted_checklist_items(monkeypatch) -> None:
     trip_id = uuid4()
     run = SimpleNamespace()
