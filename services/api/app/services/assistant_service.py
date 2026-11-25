@@ -121,6 +121,79 @@ def delete_conversation(
     session.flush()
 
 
+def _explicit_visa_prepare_intent(message: str) -> bool:
+    """A write-capable visa tool may be proposed only for an explicit create/prepare request."""
+    normalized = message.lower()
+    return any(
+        term in normalized
+        for term in (
+            "创建签证",
+            "建立签证",
+            "准备签证材料",
+            "生成签证清单",
+            "新增签证案件",
+            "create visa checklist",
+            "prepare visa documents",
+        )
+    )
+
+
+def _merge_tool_proposals(
+    *,
+    policy_proposals: list[dict],
+    model_candidates: Any,
+    available_tools: list[dict],
+    message: str,
+) -> list[dict]:
+    """Merge deterministic policy hints with model suggestions, failing closed.
+
+    The model can nominate only tools already backed by a concrete server executor.
+    Write-scoped tools are proposed only when the user's message explicitly requests
+    the corresponding creation/preparation action. A proposal is not execution; the
+    user must still tap its card and the executor re-checks actor, scope and trip.
+    """
+    available_by_name = {
+        str(tool.get("name")): tool
+        for tool in available_tools
+        if isinstance(tool.get("name"), str) and tool.get("name")
+    }
+    merged: dict[str, dict] = {}
+
+    for proposal in policy_proposals:
+        name = proposal.get("name")
+        if isinstance(name, str) and name in available_by_name:
+            merged.setdefault(name, dict(proposal))
+
+    if not isinstance(model_candidates, list):
+        return list(merged.values())
+
+    explicit_write_intent = _explicit_visa_prepare_intent(message)
+    for candidate in model_candidates:
+        if not isinstance(candidate, str):
+            continue
+        name = candidate.strip()
+        tool = available_by_name.get(name)
+        if tool is None or name in merged:
+            continue
+
+        scope = str(tool.get("scope") or "")
+        try:
+            _resource, action = scope.split(":", maxsplit=1)
+        except ValueError:
+            continue
+        if action == "write" and not explicit_write_intent:
+            continue
+
+        merged[name] = {
+            "name": name,
+            "description": str(tool.get("description") or ""),
+            "requires_approval": bool(tool.get("requires_approval")),
+            "scope": scope,
+        }
+
+    return list(merged.values())
+
+
 def _facts(session: Session, conversation: AssistantConversation, message: str) -> dict:
     trip = (
         session.get(Trip, conversation.trip_id) if conversation.trip_id is not None else None
@@ -179,18 +252,15 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
     text = message.lower()
     proposals: list[dict] = []
     matched: set[str] = set()
+    available_tools = list_executable_tools() if trip is not None else []
     if trip is not None:
         if any(term in text for term in ("计划", "plan", "简报")):
             matched.add("trip.get_plan")
-        create_visa_intent = any(
-            term in text
-            for term in ("创建签证", "建立签证", "准备签证材料", "生成签证清单", "新增签证案件")
-        )
-        if create_visa_intent:
+        if _explicit_visa_prepare_intent(message):
             matched.add("visa.prepare_checklist")
         elif any(term in text for term in ("签证", "材料清单", "visa")):
             matched.add("visa.get_checklist")
-    for tool in list_executable_tools():
+    for tool in available_tools:
         if tool["name"] in matched:
             proposals.append(
                 {
@@ -200,7 +270,12 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
                     "scope": tool["scope"],
                 }
             )
-    return {"cards": cards, "counts": counts, "proposals": proposals}
+    return {
+        "cards": cards,
+        "counts": counts,
+        "proposals": proposals,
+        "available_tools": available_tools,
+    }
 
 
 
@@ -684,6 +759,14 @@ def post_message(
             else None
         ),
         "action_counts": facts["counts"],
+        "available_tools": [
+            {
+                "name": tool["name"],
+                "description": tool["description"],
+                "scope": tool["scope"],
+            }
+            for tool in facts["available_tools"]
+        ],
         "history": [
             {"role": item.role, "content": item.content[:200]} for item in reversed(history)
         ],
@@ -701,7 +784,13 @@ def post_message(
     reply = str(response.output.get("reply") or "").strip() or "（无回复）"
 
     cards = facts["cards"]
-    if facts["proposals"]:
+    proposals = _merge_tool_proposals(
+        policy_proposals=facts["proposals"],
+        model_candidates=response.output.get("tool_suggestions"),
+        available_tools=facts["available_tools"],
+        message=text,
+    )
+    if proposals:
         cards = cards + [
             {
                 "type": "TOOL_PROPOSAL",
@@ -710,7 +799,7 @@ def post_message(
                 "entity_id": proposal["name"],
                 "link": "tool",
             }
-            for proposal in facts["proposals"]
+            for proposal in proposals
         ]
 
     user_row = AssistantMessage(
