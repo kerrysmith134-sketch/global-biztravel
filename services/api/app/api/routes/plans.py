@@ -158,49 +158,6 @@ def list_plan_versions(trip_id: UUID, context: ContextDep, session: SessionDep):
     return items
 
 
-def _plan_detail(
-    session: Session, organization_id, version
-) -> PlanVersionDetailRead:
-    detail = PlanVersionDetailRead.model_validate(version)
-    # 逐条显式转换，而不是直接把 ORM 对象塞进 stops：Pydantic 校验已构造的同类实例时不会
-    # 重新校验嵌套字段，ORM 对象会一路带到序列化阶段再炸。
-    detail.stops = [
-        PlanStopRead.model_validate(stop)
-        for stop in plan_service.list_plan_stops(session, organization_id, version.id)
-    ]
-    visit_ids = [stop.visit_id for stop in detail.stops]
-    if visit_ids:
-        place_rows = session.execute(
-            select(
-                Visit.id,
-                Visit.place_id,
-                Place.name,
-                Place.city,
-                Place.country_code,
-                Place.lat,
-                Place.lon,
-            )
-            .join(Place, Place.id == Visit.place_id)
-            .where(Visit.organization_id == str(organization_id), Visit.id.in_(visit_ids))
-        ).all()
-        place_by_visit = {row[0]: row for row in place_rows}
-        for stop in detail.stops:
-            info = place_by_visit.get(stop.visit_id)
-            if info is not None:
-                stop.place_id = info[1]
-                stop.place_name = info[2]
-                stop.city = info[3]
-                stop.country_code = info[4]
-                stop.latitude = info[5]
-                stop.longitude = info[6]
-    detail.legs = [
-        PlanTravelLegRead.model_validate(leg)
-        for leg in plan_service.list_plan_legs(session, organization_id, version.id)
-    ]
-    detail.stop_count = len(detail.stops)
-    detail.day_count = len({stop.day_index for stop in detail.stops})
-    return detail
-
 
 @router.get(
     "/plan-versions/{plan_version_id}",
@@ -212,7 +169,7 @@ def get_plan_version(plan_version_id: UUID, context: ContextDep, session: Sessio
     version = plan_service.require_plan_version(
         session, context.organization_id, plan_version_id
     )
-    return _plan_detail(session, context.organization_id, version)
+    return plan_service.plan_version_detail(session, context.organization_id, version)
 
 
 
@@ -318,7 +275,7 @@ def get_trip_plan_version(
     )
     if str(version.trip_id) != str(trip_id):
         raise NotFound("计划版本不属于该出行")
-    return _plan_detail(session, context.organization_id, version)
+    return plan_service.plan_version_detail(session, context.organization_id, version)
 
 
 @router.post(
