@@ -12,29 +12,28 @@ mkdir -p "$LOG_DIR"
 
 PG_PREFIX="$(brew --prefix postgresql@18)"
 PG_BIN="$PG_PREFIX/bin"
-PGDATA="$(brew --prefix)/var/postgresql@18"
+# Never reuse Homebrew's shared data directory or LaunchAgent on a hosted runner.
+# The disposable cluster lives under RUNNER_TEMP and is started directly with pg_ctl.
+PGDATA="$RUNNER_TEMP/globalbiztravel-postgres-data"
+PGSOCKET="$RUNNER_TEMP/globalbiztravel-postgres-socket"
 export PATH="$PG_BIN:$PATH"
-PSQL="$PG_BIN/psql"
-CREATEDB="$PG_BIN/createdb"
-PG_ISREADY="$PG_BIN/pg_isready"
 export PGPORT=55432
+PG_ISREADY="$PG_BIN/pg_isready"
 
-# Homebrew initializes a default cluster on normal installs, but its own CI
-# install path can intentionally skip init_data_dir. Make runner provisioning
-# deterministic without resetting an existing cluster.
-if [ ! -s "$PGDATA/PG_VERSION" ]; then
-  echo "Initialize empty PostgreSQL 18 data directory: $PGDATA"
-  mkdir -p "$PGDATA"
-  "$PG_BIN/initdb" --locale=en_US.UTF-8 -E UTF-8 "$PGDATA"
-fi
-# Use a dedicated port so a preinstalled or user-started PostgreSQL service on
-# the hosted runner cannot make this disposable test database bind the wrong instance.
-printf '\nport = 55432\nlisten_addresses = 127.0.0.1\n' >> "$PGDATA/postgresql.conf"
+mkdir -p "$PGSOCKET"
+echo "== Initialize isolated PostgreSQL 18 cluster =="
+"$PG_BIN/initdb" --locale=en_US.UTF-8 -E UTF-8 \
+  --auth-local=trust --auth-host=scram-sha-256 "$PGDATA"
 
-echo "== PostgreSQL service =="
-brew services start postgresql@18
+echo "== Start isolated PostgreSQL 18 cluster =="
+"$PG_BIN/pg_ctl" -D "$PGDATA" \
+  -l "$LOG_DIR/postgres.log" \
+  -o "-p $PGPORT -h 127.0.0.1 -k $PGSOCKET" \
+  -w start
+echo "$PGDATA" > "$RUNNER_TEMP/globalbiztravel-postgres-data-dir"
+
 ready=0
-for attempt in $(seq 1 90); do
+for attempt in $(seq 1 30); do
   if "$PG_ISREADY" -h 127.0.0.1 -p "$PGPORT" >/dev/null 2>&1; then
     ready=1
     break
@@ -42,22 +41,23 @@ for attempt in $(seq 1 90); do
   sleep 2
 done
 if [ "$ready" -ne 1 ]; then
-  echo "PostgreSQL did not become ready on 127.0.0.1:5432" >&2
-  brew services list >&2 || true
+  echo "PostgreSQL did not become ready on 127.0.0.1:$PGPORT" >&2
+  tail -100 "$LOG_DIR/postgres.log" >&2 || true
+  "$PG_BIN/pg_ctl" -D "$PGDATA" status >&2 || true
   exit 1
 fi
 
-# The Homebrew service's local socket trusts the runner account; create the same
-# restricted application/migration roles used by the Docker development stack.
-"$PSQL" --dbname postgres --set ON_ERROR_STOP=1 <<'SQL'
+# Bootstrap roles over the private Unix socket; the application connects via TCP
+# using the SCRAM password stored in the database URL.
+"$PG_BIN/psql" --host="$PGSOCKET" --port="$PGPORT" --dbname postgres --set ON_ERROR_STOP=1 <<'SQL'
 CREATE ROLE gbt_owner LOGIN PASSWORD 'gbt_owner_pw'
   NOSUPERUSER NOCREATEDB NOCREATEROLE;
 CREATE ROLE gbt_app LOGIN PASSWORD 'gbt_app_pw'
   NOSUPERUSER NOCREATEDB NOCREATEROLE;
 SQL
 
-"$CREATEDB" --owner=gbt_owner gbt_os
-"$PSQL" --dbname gbt_os --set ON_ERROR_STOP=1 <<'SQL'
+"$PG_BIN/createdb" --host="$PGSOCKET" --port="$PGPORT" --owner=gbt_owner gbt_os
+"$PG_BIN/psql" --host="$PGSOCKET" --port="$PGPORT" --dbname gbt_os --set ON_ERROR_STOP=1 <<'SQL'
 ALTER SCHEMA public OWNER TO gbt_owner;
 GRANT USAGE ON SCHEMA public TO gbt_app;
 GRANT ALL ON SCHEMA public TO gbt_owner;
@@ -69,7 +69,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE gbt_owner IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO gbt_app;
 SQL
 
-"$PSQL" --dbname gbt_os --set ON_ERROR_STOP=1 --tuples-only --no-align <<'SQL'
+"$PG_BIN/psql" --host="$PGSOCKET" --port="$PGPORT" --dbname gbt_os --set ON_ERROR_STOP=1 --tuples-only --no-align <<'SQL'
 SELECT current_setting('server_version');
 SELECT postgis_full_version();
 SELECT extversion FROM pg_extension WHERE extname = 'vector';

@@ -19,4 +19,9 @@ for name in api worker; do
   rm -f "$pid_file"
 done
 
-brew services stop postgresql@18 >/dev/null 2>&1 || true
+# Stop only the isolated cluster created under this job's RUNNER_TEMP.
+PGDATA="$RUNNER_TEMP/globalbiztravel-postgres-data"
+if [ -x "$(brew --prefix postgresql@18 2>/dev/null)/bin/pg_ctl" ] && [ -s "$PGDATA/PG_VERSION" ]; then
+  "$(brew --prefix postgresql@18)/bin/pg_ctl" -D "$PGDATA" -m fast -w stop >/dev/null 2>&1 || true
+fi
+rm -f "$RUNNER_TEMP/globalbiztravel-postgres-data-dir"
