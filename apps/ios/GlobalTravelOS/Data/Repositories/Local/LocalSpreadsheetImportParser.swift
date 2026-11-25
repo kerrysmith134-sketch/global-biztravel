@@ -268,7 +268,8 @@ enum LocalSpreadsheetImportParser {
         }
 
         let email = value("contact_email")
-        if let email, (!email.contains("@") || !email.split(separator: "@").last!.contains(".")) {
+        if let email,
+           (!email.contains("@") || !(email.components(separatedBy: "@").last ?? "").contains(".")) {
             issues.append(issue("INVALID_EMAIL", "contact_email", "WARNING", "邮箱格式可疑；建议修正或留空"))
         }
 
@@ -352,7 +353,7 @@ enum LocalSpreadsheetImportParser {
     ) -> Int {
         guard let raw else { return fallback }
         guard let value = Double(raw), value.isFinite, value.rounded() == value,
-              range.contains(Int(value)) else {
+              value >= Double(range.lowerBound), value <= Double(range.upperBound) else {
             issues.append(issue(code, field, "WARNING", message))
             return fallback
         }

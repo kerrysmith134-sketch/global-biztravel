@@ -88,7 +88,8 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertEqual(visit.status, "PLANNED")
         XCTAssertNotNil(visit.timeWindowStart)
         XCTAssertNotNil(visit.timeWindowEnd)
-        XCTAssertEqual(try await repository.trip(id: trip.id).version, originalVersion + 1)
+        let updatedTrip = try await repository.trip(id: trip.id)
+        XCTAssertEqual(updatedTrip.version, originalVersion + 1)
 
         do {
             _ = try await repository.confirmImport(
