@@ -776,14 +776,18 @@ enum Endpoints {
         )
     }
 
-    static func assistantTool(conversationId: String, toolName: String, tripId: String) throws -> APIRequest {
+    static func assistantTool(
+        conversationId: String,
+        toolName: String,
+        arguments: AssistantToolExecuteArguments
+    ) throws -> APIRequest {
         APIRequest(
             method: .post,
             path: "/v1/assistant/conversations/\(conversationId)/tools:execute",
             body: try DateCoding.encode(
                 AssistantToolExecuteCreate(
                     toolName: toolName,
-                    arguments: AssistantToolExecuteArguments(tripId: tripId)
+                    arguments: arguments
                 )
             ),
             idempotencyKey: APIRequest.newIdempotencyKey()
