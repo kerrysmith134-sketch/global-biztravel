@@ -238,14 +238,23 @@ def main() -> int:
         generated = client.post(f"/v1/trips/{trip_id}/plans:generate", headers=headers())
         generated.raise_for_status()
         job_id = generated.json()["job_id"]
-        run_worker_once()
-        job = poll_job(client, job_id)
-        if job["status"] == "PENDING":
-            # 单轮 Worker 可能在其启动瞬间还没看到刚提交的任务；真实 Worker 是循环的，
-            # 这里再跑一轮等价于"下一轮轮询"。
-            time.sleep(0.5)
+        use_running_worker = os.getenv("GBT_E2E_USE_RUNNING_WORKER", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if use_running_worker:
+            # CI 的 iOS UI lane 启动了常驻 Worker；必须由真实轮询循环消费任务，
+            # 而不是在测试脚本里另起 --once 进程，否则无法验证后台进程运行链路。
+            job = poll_job(client, job_id, timeout=120.0)
+        else:
+            # 本地轻量验收可不常驻 Worker：用 --once 驱动一轮，再容忍入队竞态补跑一轮。
             run_worker_once()
             job = poll_job(client, job_id)
+            if job["status"] == "PENDING":
+                time.sleep(0.5)
+                run_worker_once()
+                job = poll_job(client, job_id)
         check(job["status"] == "SUCCEEDED", f"求解任务完成（{job['status']}）")
 
         plans = client.get(f"/v1/trips/{trip_id}/plans", headers=headers())
