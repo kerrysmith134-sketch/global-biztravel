@@ -84,7 +84,7 @@ jobs:
     needs: [backend, ios]
     # The simulator is macOS-native; use Intel macOS so Colima can host the Linux test stack.
     runs-on: macos-15-intel
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -134,15 +134,19 @@ jobs:
           xcrun simctl list devices | grep "$device_id"
       - name: Run complete iOS UI acceptance suite against real services
         run: |
+          RESULT_BUNDLE_BASE=/tmp/globaltravel-ios-acceptance \
           ONLY_TESTING=GlobalTravelOSUITests MAX_ATTEMPTS=1 STALL_SECONDS=900 \
             make ios-test IOS_DEST="platform=iOS Simulator,name=iPhone 16"
-      - name: Upload iOS UI test logs
-        if: failure()
+      - name: Upload iOS UI test diagnostics
+        if: ${{ always() && (failure() || cancelled()) }}
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ui-acceptance-logs
-          path: /tmp/ios-test-attempt-*.log
-          if-no-files-found: ignore
+          name: ios-ui-acceptance-diagnostics
+          path: |
+            /tmp/ios-test-attempt-*.log
+            /tmp/globaltravel-ios-acceptance*.xcresult
+          if-no-files-found: warn
+          retention-days: 7
       - name: Stop test stack
         if: always()
         run: |
