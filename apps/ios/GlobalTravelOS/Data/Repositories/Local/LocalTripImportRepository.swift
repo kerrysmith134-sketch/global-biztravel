@@ -7,6 +7,13 @@ private struct LocalImportStagedRow: Codable {
     var confirmationStatus: String?
 }
 
+private struct LocalImportCustomerPlaceLink: Codable {
+    let customerId: String
+    let placeId: String
+    let label: String?
+    let isPrimary: Bool
+}
+
 private struct LocalImportBatch: Codable {
     let id: String
     let tripId: String
@@ -387,10 +394,10 @@ extension LocalTripRepository {
             table: "customer_places",
             where: "customer_id = ? AND is_primary = 1",
             bindings: [customerId]
-        ).map { try DateCoding.decoder().decode(LocalCustomerPlaceLink.self, from: $0) }
+        ).map { try DateCoding.decoder().decode(LocalImportCustomerPlaceLink.self, from: $0) }
 
         for current in existing where current.placeId != placeId {
-            let demoted = LocalCustomerPlaceLink(
+            let demoted = LocalImportCustomerPlaceLink(
                 customerId: current.customerId,
                 placeId: current.placeId,
                 label: current.label,
@@ -409,7 +416,7 @@ extension LocalTripRepository {
             )
         }
 
-        let link = LocalCustomerPlaceLink(
+        let link = LocalImportCustomerPlaceLink(
             customerId: customerId,
             placeId: placeId,
             label: nil,
