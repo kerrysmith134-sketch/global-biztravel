@@ -618,6 +618,10 @@ enum Endpoints {
         APIRequest(method: .get, path: "/v1/trips/\(tripId)/outcome")
     }
 
+    static func tripCloseoutReadiness(tripId: String) -> APIRequest {
+        APIRequest(method: .get, path: "/v1/trips/\(tripId)/closeout-readiness")
+    }
+
     // MARK: - Local guide
 
     static func localGuide(tripId: String) -> APIRequest {
