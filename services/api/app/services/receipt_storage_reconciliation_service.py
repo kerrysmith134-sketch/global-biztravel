@@ -82,6 +82,12 @@ def reconcile_receipt_storage(
     )
     report = ReceiptReconciliationReport(cleanup_enabled=delete_enabled)
 
+    storage = get_receipt_storage()
+    provider = storage.provider
+    prefix = f"receipts/{org_id}/"
+    objects = storage.list_objects(prefix)
+    report.objects_scanned = len(objects)
+
     # Same lock as receipt_asset_service.create_receipt_asset. An upload takes the
     # transaction-scoped lock before PUT and holds it until its ReceiptAsset commits.
     session.execute(
@@ -89,20 +95,16 @@ def reconcile_receipt_storage(
         {"organization_id": org_id},
     )
 
-    storage = get_receipt_storage()
-    provider = storage.provider
-    prefix = f"receipts/{org_id}/"
-    objects = storage.list_objects(prefix)
-    report.objects_scanned = len(objects)
-
-    known_keys = set(
-        session.scalars(
-            select(ReceiptAsset.storage_key).where(
+    known_assets = {
+        asset.storage_key: asset
+        for asset in session.scalars(
+            select(ReceiptAsset).where(
                 ReceiptAsset.organization_id == org_id,
                 ReceiptAsset.storage_provider == provider,
             )
         )
-    )
+    }
+    known_keys = set(known_assets)
     incidents = session.scalars(
         select(ReceiptStorageOrphan).where(
             ReceiptStorageOrphan.organization_id == org_id,
@@ -112,6 +114,31 @@ def reconcile_receipt_storage(
     by_key = {row.storage_key: row for row in incidents}
     listed_keys: set[str] = set()
     cutoff = current - timedelta(seconds=grace)
+
+    # Detect broken references as well as storage-only orphans. A missing object with a
+    # live ReceiptAsset is never deleted; it gets an auditable MISSING incident.
+    for key, asset in known_assets.items():
+        if key in {item.key for item in objects}:
+            continue
+        incident = by_key.get(key)
+        if incident is None:
+            incident = ReceiptStorageOrphan(
+                organization_id=UUID(org_id),
+                storage_provider=provider,
+                storage_key=key,
+                object_size=asset.byte_length,
+                object_last_modified_at=_utc(asset.uploaded_at),
+                status="MISSING",
+                first_seen_at=current,
+                last_seen_at=current,
+                last_error="ReceiptAsset metadata exists but its storage object is absent",
+            )
+            session.add(incident)
+            by_key[key] = incident
+        elif incident.status != "MISSING":
+            incident.status = "MISSING"
+            incident.last_error = "ReceiptAsset metadata exists but its storage object is absent"
+        report.missing += 1
 
     for stored in objects:
         if not _belongs_to_organization(stored.key, org_id):
@@ -148,9 +175,13 @@ def reconcile_receipt_storage(
             by_key[key] = incident
             report.orphans_discovered += 1
         else:
-            if incident.status in {"DELETED", "MISSING", "RESOLVED"}:
+            if incident.status == "DELETED":
+                # Keys are immutable UUID identities. Ignore a listing snapshot captured
+                # before a concurrent worker deleted this object; it cannot be a new upload.
+                continue
+            if incident.status in {"MISSING", "RESOLVED"}:
                 # The same key reappeared. Start a new observation window; never inherit
-                # a prior deletion/absence decision for a newly visible object.
+                # a prior absence decision for a newly visible object.
                 incident.status = "DISCOVERED"
                 incident.first_seen_at = current
                 incident.delete_attempts = 0
@@ -206,12 +237,6 @@ def reconcile_receipt_storage(
         if incident.storage_key in listed_keys:
             continue
         if incident.storage_key in known_keys:
-            # Metadata exists but the referenced object is absent: this is not an orphan,
-            # but it is a broken evidence reference and must remain visible to operators.
-            if incident.status != "MISSING":
-                incident.status = "MISSING"
-                incident.last_error = "ReceiptAsset metadata exists but its storage object is absent"
-                report.missing += 1
             continue
         if incident.status in {"DISCOVERED", "DELETE_PENDING", "DELETE_FAILED"}:
             incident.status = "MISSING"
