@@ -12,7 +12,7 @@ from app.services import agent_tool_service
 
 def test_only_tools_with_explicit_handlers_are_executable() -> None:
     catalogue = {item["name"]: item for item in agent_tool_service.list_executable_tools()}
-    assert list(catalogue) == ["trip.get_plan", "visa.get_checklist", "visa.prepare_checklist"]
+    assert list(catalogue) == ["trip.get_plan", "visa.get_checklist", "visa.prepare_checklist", "visit.draft_minutes"]
     prepare_schema = catalogue["visa.prepare_checklist"]["input_schema"]
     assert prepare_schema["required"] == ["trip_id"]
     assert "countries" not in prepare_schema["required"]
@@ -24,7 +24,6 @@ def test_only_tools_with_explicit_handlers_are_executable() -> None:
     [
         "place.prepare_geocoding",
         "plan.prepare_adjustment",
-        "visit.draft_minutes",
     ],
 )
 def test_approval_gated_tools_are_not_executable(tool_name: str) -> None:
@@ -472,6 +471,182 @@ def test_domain_read_error_is_persisted_as_a_failed_agent_run(monkeypatch) -> No
     assert failure["error"] == "出行不存在"
     assert failure["output_snapshot"]["status"] == "FAILED"
     assert failure["output_snapshot"]["error_code"] == "NOT_FOUND"
+
+
+def test_minutes_tool_requires_applied_record_and_reuses_outer_agent_run(monkeypatch) -> None:
+    from app.services import agent_tool_service
+
+    visit_id = uuid4()
+    trip_id = uuid4()
+    actor_user_id = uuid4()
+    run = SimpleNamespace(id=uuid4())
+    started = {}
+    finished = {}
+    passed = {}
+    visit = SimpleNamespace(
+        id=visit_id,
+        trip_id=trip_id,
+        title="Commercial review",
+    )
+    trip = SimpleNamespace(id=trip_id, name="Berlin work trip")
+    applied_record = SimpleNamespace(
+        id=uuid4(),
+        applied=True,
+        server_version=4,
+        client_updated_at=SimpleNamespace(isoformat=lambda: "2026-11-25T10:00:00+00:00"),
+        notes="CONFIDENTIAL CUSTOMER RAW NOTES",
+        follow_up_tasks=[{"title": "Send technical specification"}],
+    )
+    draft = SimpleNamespace(
+        invocation_id=uuid4(),
+        agent_run_id=run.id,
+        title="Commercial review minutes",
+        summary="Discussed charging deployment.",
+        decisions=["Prepare technical proposal"],
+        follow_up_tasks=[{"title": "Send technical specification", "due_date": None}],
+        insights=[
+            SimpleNamespace(
+                kind="CUSTOMER_NEED",
+                text="Customer requires 800V support",
+                requires_confirmation=True,
+            )
+        ],
+        degraded=False,
+    )
+
+    monkeypatch.setattr(
+        agent_tool_service,
+        "start_agent_run",
+        lambda *args, **kwargs: started.update(kwargs) or run,
+    )
+    monkeypatch.setattr(
+        agent_tool_service,
+        "succeed_agent_run",
+        lambda session, current_run, **kwargs: finished.update(kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.visit_service,
+        "require_visit",
+        lambda *args, **kwargs: visit,
+    )
+    monkeypatch.setattr(
+        agent_tool_service.trip_service,
+        "require_trip",
+        lambda *args, **kwargs: trip,
+    )
+    monkeypatch.setattr(
+        agent_tool_service.record_service,
+        "list_records",
+        lambda *args, **kwargs: [applied_record],
+    )
+
+    def draft_minutes(session, organization_id, requested_visit_id, **kwargs):
+        passed.update(kwargs)
+        return draft
+
+    monkeypatch.setattr(agent_tool_service.minutes_service, "draft_minutes", draft_minutes)
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="TRAVELER",
+        tool_name="visit.draft_minutes",
+        arguments={"visit_id": str(visit_id), "tone": "CONCISE"},
+        actor_user_id=actor_user_id,
+        expected_trip_id=trip_id,
+    )
+
+    assert result.status == "MINUTES_DRAFTED"
+    assert result.trip_id == str(trip_id)
+    assert "会议纪要仅为草稿" in result.detail
+    assert "人工确认" in result.detail
+    assert passed["agent_run"] is run
+    assert started["agent_type"] == "tool:visit.draft_minutes"
+    assert started["input_snapshot"]["arguments"] == {
+        "visit_id": str(visit_id),
+        "tone": "CONCISE",
+    }
+    assert "notes" not in started["input_snapshot"]
+    assert "CONFIDENTIAL CUSTOMER RAW NOTES" not in str(started["input_snapshot"])
+    audit = finished["output_snapshot"]
+    assert audit["status"] == "MINUTES_DRAFTED"
+    assert audit["visit_id"] == str(visit_id)
+    assert audit["follow_up_tasks"][0]["title"] == "Send technical specification"
+    assert audit["insights"][0]["requires_confirmation"] is True
+
+
+def test_minutes_tool_without_applied_record_does_not_call_llm(monkeypatch) -> None:
+    from app.services import agent_tool_service
+
+    visit_id = uuid4()
+    trip_id = uuid4()
+    run = SimpleNamespace(id=uuid4())
+    finished = {}
+    visit = SimpleNamespace(id=visit_id, trip_id=trip_id, title="Unrecorded visit")
+
+    monkeypatch.setattr(agent_tool_service, "start_agent_run", lambda *args, **kwargs: run)
+    monkeypatch.setattr(
+        agent_tool_service,
+        "succeed_agent_run",
+        lambda session, current_run, **kwargs: finished.update(kwargs),
+    )
+    monkeypatch.setattr(agent_tool_service.visit_service, "require_visit", lambda *args, **kwargs: visit)
+    monkeypatch.setattr(
+        agent_tool_service.trip_service,
+        "require_trip",
+        lambda *args, **kwargs: SimpleNamespace(id=trip_id, name="Berlin work trip"),
+    )
+    monkeypatch.setattr(agent_tool_service.record_service, "list_records", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        agent_tool_service.minutes_service,
+        "draft_minutes",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("LLM must not run without an applied field record")
+        ),
+    )
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="TRAVELER",
+        tool_name="visit.draft_minutes",
+        arguments={"visit_id": str(visit_id)},
+        actor_user_id=uuid4(),
+        expected_trip_id=trip_id,
+    )
+
+    assert result.status == "NO_APPLIED_RECORD"
+    assert "尚无已生效的现场记录" in result.detail
+    assert finished["output_snapshot"]["status"] == "NO_APPLIED_RECORD"
+
+
+def test_minutes_tool_cannot_target_a_visit_from_another_trip(monkeypatch) -> None:
+    from app.services import agent_tool_service
+
+    visit = SimpleNamespace(id=uuid4(), trip_id=uuid4())
+    started = []
+
+    monkeypatch.setattr(
+        agent_tool_service.visit_service,
+        "require_visit",
+        lambda *args, **kwargs: visit,
+    )
+    monkeypatch.setattr(
+        agent_tool_service,
+        "start_agent_run",
+        lambda *args, **kwargs: started.append(kwargs),
+    )
+    with pytest.raises(Unprocessable, match="当前对话绑定的出行"):
+        agent_tool_service.execute_tool(
+            object(),  # type: ignore[arg-type]
+            uuid4(),
+            actor_role="TRAVELER",
+            tool_name="visit.draft_minutes",
+            arguments={"visit_id": str(visit.id)},
+            actor_user_id=uuid4(),
+            expected_trip_id=uuid4(),
+        )
+    assert started == []
 
 
 def test_assistant_tool_requires_conversation_owner(monkeypatch) -> None:
