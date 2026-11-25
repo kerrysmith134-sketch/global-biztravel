@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import GlobalTravelOS
 
@@ -368,6 +369,15 @@ final class ReceiptVaultTests: XCTestCase {
     }
 
 
+    private func pngFixture() -> Data {
+        Data([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x00
+        ])
+    }
+}
+
+extension ReceiptVaultTests {
     func testExpenseOutboxReplaysCommittedWriteAfterResponseLossAcrossRelaunch() async throws {
         let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
         let database = try LocalDatabase.open(path: path)
@@ -441,13 +451,6 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertEqual(snapshot.idempotencyKeys, [queued.id, queued.id])
         XCTAssertEqual(snapshot.requestBodies.count, 2)
         XCTAssertEqual(snapshot.requestBodies[0], snapshot.requestBodies[1])
-    }
-
-    private func pngFixture() -> Data {
-        Data([
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            0x00, 0x00, 0x00, 0x00
-        ])
     }
 }
 
