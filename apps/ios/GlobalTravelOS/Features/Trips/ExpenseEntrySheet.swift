@@ -114,7 +114,7 @@ struct ExpenseEntrySheet: View {
                             .foregroundStyle(.red)
                     }
                     if let localReceiptAsset {
-                        if receiptRecognitionEnabled {
+                        if receiptRecognitionEnabled && localReceiptAsset.mimeType.hasPrefix("image/") {
                             Button {
                                 recognizeReceipt(assetId: localReceiptAsset.id)
                             } label: {
@@ -125,6 +125,10 @@ struct ExpenseEntrySheet: View {
                             }
                             .disabled(isRecognizingReceipt || isReviewingReceipt || saving)
                             .accessibilityIdentifier("expense.receipt.ocr.start")
+                        } else if receiptRecognitionEnabled {
+                            Text("原件已安全保存；服务端 OCR 目前只支持 JPEG、PNG、GIF 或 WebP 图片，PDF 可继续保留和下载。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         } else {
                             Text("本地模式暂不调用云端 OCR；原件已保存在本机，可以继续手工录入。")
                                 .font(.caption)

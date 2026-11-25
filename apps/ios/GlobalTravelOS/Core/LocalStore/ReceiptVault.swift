@@ -37,6 +37,10 @@ struct LocalReceiptAsset: Codable, Equatable, Identifiable {
 
 
 struct ReceiptOcrCandidates: Codable, Equatable {
+    private enum CodingKeys: String, CodingKey {
+        case merchantHint, amountCandidates, dateCandidates, textLength
+    }
+
     var merchantHint: String?
     var amountCandidates: [String]
     var dateCandidates: [String]
