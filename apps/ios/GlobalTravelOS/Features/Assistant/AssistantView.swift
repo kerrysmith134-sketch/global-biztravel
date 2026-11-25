@@ -287,15 +287,21 @@ private struct MessageBubble: View {
                     cardFace(card)
                     if card.link == "tool",
                        let toolName = card.entityId,
-                       ["trip.get_plan", "visa.get_checklist"].contains(toolName) {
+                       ["trip.get_plan", "visa.get_checklist", "visa.prepare_checklist"].contains(toolName) {
                         Button {
                             Task { await runTool(toolName) }
                         } label: {
                             Label(
-                                toolName == "visa.get_checklist" ? "查看签证清单" : "读取计划",
+                                toolName == "visa.get_checklist"
+                                    ? "查看签证清单"
+                                    : toolName == "visa.prepare_checklist"
+                                        ? "创建签证清单"
+                                        : "读取计划",
                                 systemImage: toolName == "visa.get_checklist"
                                     ? "doc.text"
-                                    : "doc.text.magnifyingglass"
+                                    : toolName == "visa.prepare_checklist"
+                                        ? "doc.badge.plus"
+                                        : "doc.text.magnifyingglass"
                             )
                             .font(.caption)
                         }
