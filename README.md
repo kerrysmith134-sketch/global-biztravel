@@ -5,15 +5,9 @@
 多线事务"变成"系统主动推进、人只做决策"。
 
 设计文档：`docs/design/global-business-travel-os-design-v2.0.md`（v2.0，优化后正式版）
-<<<<<<< HEAD
-市场情报引擎：`docs/design/market-intelligence-engine-v1.0.md`（Sprint H，通用市场情报领域与 Agent 架构）
-H1 实施计划：`docs/review/sprint-h1-execution-plan.md`（领域基础、证据数据架构与工程验收）
-H1.0 源码审计：`docs/review/sprint-h1-code-audit.md`（真实模型复用矩阵、Evidence 缺口与安全发现）
-=======
 市场情报引擎：`docs/design/market-intelligence-engine-v1.0.md`（通用市场情报领域与 Agent 架构）
 H1 实施计划：`docs/review/sprint-h1-execution-plan.md`（领域基础、证据数据架构与工程验收）
-H1.0 源码审计：`docs/review/sprint-h1-code-audit.md`（模型复用矩阵、Evidence 缺口与安全发现）
->>>>>>> github/feat/sprint-h2.13-ios-receipt-vault
+H1.0 源码审计：`docs/review/sprint-h1-code-audit.md`（Customer / Evidence / Workflow 复用矩阵、证据缺口与安全发现）
 H1.1 领域契约：`docs/architecture/market-intelligence-domain-contract-v1.0.md`（实体、状态机、证据版本化与租户关系约束）
 评审报告：`docs/review/design-review-and-optimization-plan.md`
 实施进度：`docs/review/implementation-status.md`（按里程碑与批次逐项核对，含验证记录）
@@ -65,16 +59,12 @@ make stack-up                    # Docker 完整栈（DB + API + Worker）
 ## 目录结构
 
 ```text
-global-travel-os/                      # 本工作区
+global-biztravel/                      # 本工作区
 ├── apps/ios/                           # SwiftUI 客户端（Xcode 工程，可构建 + 单元测试）
 ├── services/api/
 │   ├── app/                            # api / services / models / llm / workers / data
 │   │                                   # （业务规则在 services，路由只做 HTTP 语义）
-<<<<<<< HEAD
-│   ├── migrations/versions/            # 0001…0031（源码最新 revision：0031_visa_catalog_overrides；部署库以 alembic current 为准）
-=======
 │   ├── migrations/versions/            # 0001…0047（源码最新迁移：0047_receipt_ocr；部署库以 alembic current 为准）
->>>>>>> github/feat/sprint-h2.13-ios-receipt-vault
 │   └── tests/                          # 单元 + 真实 PostgreSQL 集成 + 验收场景
 ├── packages/planning-engine/           # 纯计算规划引擎（无 IO、不碰数据库、不订票）
 ├── contracts/openapi.yaml              # 契约唯一真相源（由 make openapi 导出）
@@ -117,8 +107,10 @@ Input Normalizer → Feasibility Checker → Candidate Generator
 ## 验收
 
 - `AT-001~AT-012`：MVP-1 业务闭环（创建多国 Trip → Excel 导入 → 校验 → 生成候选行程 → 地图/顺序/时间/费用/约束验证 → 增删调整 → 新版本 + diff → 激活 → 现场记录（离线可存）→ 网络恢复同步 → 会议纪要草稿）。
-  后端与客户端能力均已实现；客户端由 `testAcceptanceJourneyChain` **单条串联全部 12 个阶段**，
-  场景到测试用例的映射见 `docs/acceptance-tests/backend-extended.md`。
+  iOS UI 自动化按真实后端流程拆分：`testAcceptanceJourneyChain` 覆盖 AT-001~006 与 AT-010/012；
+  `testPlanChangeAndDiffFlow` 覆盖 AT-007/008；同步中心路径由独立 UI 冒烟覆盖，逐项同步结果由后端 E2E 与
+  `test_records_sync_integration` 验证。场景映射见 `docs/acceptance-tests/ios-ui-automation.md` 与
+  `docs/acceptance-tests/backend-extended.md`。
 - `AT-P01~AT-P04`：主动式（签证时效触发 / 重复触发抑制 / 人审→受控执行→审计 / 驳回→误报回收）。
   场景到测试用例的映射见 `docs/acceptance-tests/proactive-runtime.md`。
 - `AT-S01`：组织 A 会话访问组织 B 数据必须全部失败（数据库级 RLS）。
