@@ -84,14 +84,17 @@ TOOL_CATALOG: tuple[dict[str, Any], ...] = (
     },
     {
         "name": "visit.draft_minutes",
-        "description": "根据现场记录起草会议纪要与跟进任务（草稿，不发送）",
+        "description": "用户点击确认后，根据该次拜访已生效的现场记录生成会议纪要草稿与跟进建议（不发送、不创建正式任务）",
         "input_schema": {
             "type": "object",
             "required": ["visit_id"],
-            "properties": {"visit_id": {"type": "string"}},
+            "properties": {
+                "visit_id": {"type": "string"},
+                "tone": {"type": "string", "enum": ["PROFESSIONAL", "CONCISE"]},
+            },
         },
         "scope": "visit:write",
-        "requires_approval": True,
+        "requires_approval": False,
         "idempotent": True,
         "handler": "usecase:DraftMeetingMinutes",
     },
