@@ -282,6 +282,15 @@ final class ReceiptVault {
         }
     }
 
+    /// Verifies both trip ownership and the original file's persisted SHA-256 digest.
+    func verifyOriginal(assetId: String, tripId: String) throws {
+        let asset = try requireAsset(assetId)
+        guard asset.tripId == tripId else {
+            throw ReceiptVaultError.assetTripMismatch
+        }
+        _ = try originalData(assetId: assetId)
+    }
+
     private func requireAsset(_ id: String) throws -> LocalReceiptAsset {
         let payloads = try database.loadPayloads(
             table: "receipt_assets",
@@ -357,6 +366,7 @@ enum ReceiptVaultError: LocalizedError, Equatable {
     case originalFileUnavailable
     case integrityCheckFailed
     case assetNotFound
+    case assetTripMismatch
     case uploadUnavailable
     case serverAssetNotConfirmed
     case serverAssetMismatch
@@ -369,6 +379,7 @@ enum ReceiptVaultError: LocalizedError, Equatable {
         case .originalFileUnavailable: return "本地原始票据文件不可读取"
         case .integrityCheckFailed: return "票据完整性校验失败，原始文件未上传"
         case .assetNotFound: return "本地票据资产不存在"
+        case .assetTripMismatch: return "票据资产不属于当前行程"
         case .uploadUnavailable: return "当前未配置票据上传服务"
         case .serverAssetNotConfirmed: return "服务端尚未确认票据资产，费用未保存"
         case .serverAssetMismatch: return "服务端返回的票据内容与本地原件不一致"
