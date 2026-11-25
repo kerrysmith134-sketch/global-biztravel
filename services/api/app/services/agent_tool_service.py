@@ -269,8 +269,10 @@ def execute_tool(
     tool_name: str,
     arguments: dict[str, Any],
     actor_user_id: UUID | str | None = None,
+    expected_trip_id: UUID | str | None = None,
 ) -> AgentToolResult:
     """Validate, authorize, execute and audit one bounded tool invocation."""
+
 
     catalog_entry = next((item for item in list_tools() if item["name"] == tool_name), None)
     if catalog_entry is None:
@@ -322,6 +324,19 @@ def execute_tool(
             for item in exc.errors()
         ]
         raise Unprocessable("工具参数校验失败", details=details) from exc
+
+    # Bind the validated business target to the current Assistant conversation. This check
+    # happens after handler allow-list validation so unavailable tools fail closed with 403.
+    if expected_trip_id is not None:
+        parsed_trip_id = getattr(parsed_arguments, "trip_id", None)
+        if parsed_trip_id is None or str(parsed_trip_id) != str(expected_trip_id):
+            raise Unprocessable(
+                "工具目标必须与当前对话绑定的出行一致",
+                details={
+                    "tool_name": tool_name,
+                    "conversation_trip_id": str(expected_trip_id),
+                },
+            )
 
     # Never persist free-form conversation text as tool input. This handler currently needs
     # exactly one stable entity reference, which is safe to retain in the run audit.
