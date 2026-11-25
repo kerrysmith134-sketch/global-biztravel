@@ -44,6 +44,14 @@ struct ProactiveConfig {
     var dailySuggestionCap = 3
 }
 
+private struct ProactiveRecordDecision {
+    let status: String
+    let pushStatus: String
+    let pushReason: String?
+    let confidence: Double
+    let feedbackPenalty: Double
+}
+
 enum LocalProactiveEngine {
     // MARK: - 扫描入口
 
@@ -221,93 +229,48 @@ enum LocalProactiveEngine {
         report: inout ProactiveScanReport
     ) {
         report.triggers += 1
-
-        // 层 0：去重（同 trip+type+dedupe_key 已存在 ⇒ 跳过）
-        let duplicateCount = (try? database.count(
-            table: "proactive_suggestions",
-            where: "trip_id = ? AND type = ? AND dedupe_key = ?",
-            bindings: [trip.id, candidate.suggestionType, candidate.dedupeKey]
-        )) ?? 0
-        if duplicateCount > 0 {
-            report.deduped += 1
-            return
-        }
-
-        // 层 1：冷却（同 trip+type 在冷却窗口内 ⇒ SUPPRESSED/WITHHELD:COOLDOWN）
-        let cooldownStart = SQLTimestamp.basics.string(from: now.addingTimeInterval(-Double(config.cooldownHours) * 3600))
-        let cooldownCount = (try? database.count(
-            table: "proactive_suggestions",
-            where: "trip_id = ? AND type = ? AND created_at >= ?",
-            bindings: [trip.id, candidate.suggestionType, cooldownStart]
-        )) ?? 0
-        let inCooldown = cooldownCount > 0
-
-        // 层 2：负反馈折扣（窗口内同类型被驳回次数 × 单次惩罚，封顶）
-        let windowStart = SQLTimestamp.basics.string(
-            from: now.addingTimeInterval(-Double(config.feedbackWindowDays) * 86_400)
-        )
-        let dismissedCount = (try? database.count(
-            table: "proactive_suggestions",
-            where: "type = ? AND status = 'DISMISSED' AND created_at >= ?",
-            bindings: [candidate.suggestionType, windowStart]
-        )) ?? 0
-        let penalty = min(
-            config.maxFeedbackPenalty,
-            Double(dismissedCount) * config.dismissalPenalty
-        )
-        let confidence = max(0.05, min(1.0, candidate.confidence - penalty))
-
-        // 三层判定：冷却 > 低置信 > 每日上限。
-        var status = "PENDING"
-        var pushStatus = "PUSHED"
-        var pushReason: String?
-        if inCooldown {
-            status = "SUPPRESSED"
-            pushStatus = "WITHHELD"
-            pushReason = "COOLDOWN"
-        } else if confidence < config.confidenceThreshold {
-            pushStatus = "WITHHELD"
-            pushReason = "LOW_CONFIDENCE"
-        } else if dailyCapReached(database: database, userId: userId, now: now, cap: config.dailySuggestionCap) {
-            pushStatus = "WITHHELD"
-            pushReason = "DAILY_CAP"
-        }
-
-        let suggestionId = UUID().uuidString
-        var payload: [String: Any] = [
-            "id": suggestionId,
-            "trip_id": trip.id,
-            "suggestion_type": candidate.suggestionType,
-            "status": status,
-            "title": candidate.title,
-            "rationale": candidate.rationale,
-            "evidence": candidate.evidence,
-            "proposed_action": candidate.proposedAction,
-            "confidence": confidence,
-            "requires_approval": candidate.requiresApproval,
-            "severity": candidate.severity,
-            "dedupe_key": candidate.dedupeKey,
-            "push_status": pushStatus,
-            "push_reason": pushReason ?? NSNull(),
-            "created_at": proactiveISO(now),
-            "feedback_penalty": penalty,
-        ]
-        if pushStatus == "PUSHED" { payload["notified_at"] = proactiveISO(now) }
-        guard let payloadData = try? JSONSerialization.data(withJSONObject: payload) else {
-            report.errors.append("suggestion payload encode failed")
-            return
-        }
-
         do {
+            let existing = try database.count(
+                table: "proactive_suggestions",
+                where: "trip_id = ? AND type = ? AND dedupe_key = ?",
+                bindings: [trip.id, candidate.suggestionType, candidate.dedupeKey]
+            )
+            guard existing == 0 else {
+                report.deduped += 1
+                return
+            }
+
+            let decision = try recordDecision(
+                candidate: candidate,
+                trip: trip,
+                userId: userId,
+                database: database,
+                config: config,
+                now: now
+            )
+            let suggestionId = UUID().uuidString
+            let payload = try makeSuggestionPayload(
+                candidate: candidate,
+                trip: trip,
+                suggestionId: suggestionId,
+                decision: decision,
+                now: now
+            )
             try persistTriggerAndSuggestion(
                 candidate: candidate,
                 trip: trip,
                 suggestionId: suggestionId,
-                status: status,
-                pushStatus: pushStatus,
-                payload: payloadData,
+                decision: decision,
+                payload: payload,
                 database: database,
                 now: now
+            )
+            report.suggestions += 1
+            recordOutcome(
+                candidate: candidate,
+                suggestionId: suggestionId,
+                decision: decision,
+                report: &report
             )
         } catch {
             handlePersistenceFailure(
@@ -317,15 +280,115 @@ enum LocalProactiveEngine {
                 database: database,
                 report: &report
             )
-            return
+        }
+    }
+
+    private static func recordDecision(
+        candidate: ProactiveCandidate,
+        trip: Trip,
+        userId: String,
+        database: LocalDatabase,
+        config: ProactiveConfig,
+        now: Date
+    ) throws -> ProactiveRecordDecision {
+        let cooldownStart = SQLTimestamp.basics.string(
+            from: now.addingTimeInterval(-Double(config.cooldownHours) * 3600)
+        )
+        let cooldownCount = try database.count(
+            table: "proactive_suggestions",
+            where: "trip_id = ? AND type = ? AND created_at >= ?",
+            bindings: [trip.id, candidate.suggestionType, cooldownStart]
+        )
+        let windowStart = SQLTimestamp.basics.string(
+            from: now.addingTimeInterval(-Double(config.feedbackWindowDays) * 86_400)
+        )
+        let dismissedCount = try database.count(
+            table: "proactive_suggestions",
+            where: "type = ? AND status = 'DISMISSED' AND created_at >= ?",
+            bindings: [candidate.suggestionType, windowStart]
+        )
+        let penalty = min(
+            config.maxFeedbackPenalty,
+            Double(dismissedCount) * config.dismissalPenalty
+        )
+        let confidence = max(0.05, min(1.0, candidate.confidence - penalty))
+
+        var status = "PENDING"
+        var pushStatus = "PUSHED"
+        var pushReason: String?
+        if cooldownCount > 0 {
+            status = "SUPPRESSED"
+            pushStatus = "WITHHELD"
+            pushReason = "COOLDOWN"
+        } else if confidence < config.confidenceThreshold {
+            pushStatus = "WITHHELD"
+            pushReason = "LOW_CONFIDENCE"
+        } else if try dailyCapReached(
+            database: database,
+            userId: userId,
+            now: now,
+            cap: config.dailySuggestionCap
+        ) {
+            pushStatus = "WITHHELD"
+            pushReason = "DAILY_CAP"
         }
 
-        report.suggestions += 1
-        if status == "SUPPRESSED" {
+        return ProactiveRecordDecision(
+            status: status,
+            pushStatus: pushStatus,
+            pushReason: pushReason,
+            confidence: confidence,
+            feedbackPenalty: penalty
+        )
+    }
+
+    private static func makeSuggestionPayload(
+        candidate: ProactiveCandidate,
+        trip: Trip,
+        suggestionId: String,
+        decision: ProactiveRecordDecision,
+        now: Date
+    ) throws -> Data {
+        var payload: [String: Any] = [
+            "id": suggestionId,
+            "trip_id": trip.id,
+            "suggestion_type": candidate.suggestionType,
+            "status": decision.status,
+            "title": candidate.title,
+            "rationale": candidate.rationale,
+            "evidence": candidate.evidence,
+            "proposed_action": candidate.proposedAction,
+            "confidence": decision.confidence,
+            "requires_approval": candidate.requiresApproval,
+            "severity": candidate.severity,
+            "dedupe_key": candidate.dedupeKey,
+            "push_status": decision.pushStatus,
+            "push_reason": decision.pushReason ?? NSNull(),
+            "created_at": proactiveISO(now),
+            "feedback_penalty": decision.feedbackPenalty,
+        ]
+        if decision.pushStatus == "PUSHED" {
+            payload["notified_at"] = proactiveISO(now)
+        }
+        return try JSONSerialization.data(withJSONObject: payload)
+    }
+
+    private static func recordOutcome(
+        candidate: ProactiveCandidate,
+        suggestionId: String,
+        decision: ProactiveRecordDecision,
+        report: inout ProactiveScanReport
+    ) {
+        if decision.status == "SUPPRESSED" {
             report.suppressed += 1
-        } else if pushStatus == "PUSHED" {
+        } else if decision.pushStatus == "PUSHED" {
             report.pushed += 1
-            notifyPushed(title: candidate.title, body: candidate.rationale, suggestionId: suggestionId, severity: candidate.severity)
+            notifyPushed(
+                title: candidate.title,
+                body: candidate.rationale,
+                suggestionId: suggestionId,
+                severity: candidate.severity
+            )
         } else {
             report.withheld += 1
         }
@@ -337,8 +400,7 @@ enum LocalProactiveEngine {
         candidate: ProactiveCandidate,
         trip: Trip,
         suggestionId: String,
-        status: String,
-        pushStatus: String,
+        decision: ProactiveRecordDecision,
         payload: Data,
         database: LocalDatabase,
         now: Date
@@ -356,7 +418,7 @@ enum LocalProactiveEngine {
                     trip.id,
                     candidate.ruleId,
                     candidate.dedupeKey,
-                    status == "SUPPRESSED" ? "SUPPRESSED" : "PROPOSED",
+                    decision.status == "SUPPRESSED" ? "SUPPRESSED" : "PROPOSED",
                     proactiveISO(now),
                 ]
             )
@@ -366,8 +428,8 @@ enum LocalProactiveEngine {
                 columns: [
                     "trip_id": trip.id,
                     "type": candidate.suggestionType,
-                    "status": status,
-                    "push_status": pushStatus,
+                    "status": decision.status,
+                    "push_status": decision.pushStatus,
                     "dedupe_key": candidate.dedupeKey,
                     "severity": candidate.severity,
                     "created_at": proactiveISO(now),
@@ -397,13 +459,18 @@ enum LocalProactiveEngine {
     }
 
     /// 每日推送上限。Local mode is single-user; created_at is the persisted push-time proxy.
-    static func dailyCapReached(database: LocalDatabase, userId: String, now: Date, cap: Int) -> Bool {
+    static func dailyCapReached(
+        database: LocalDatabase,
+        userId: String,
+        now: Date,
+        cap: Int
+    ) throws -> Bool {
         guard let startOfDay = proactiveDayStart(now) else { return false }
-        let used = (try? database.count(
+        let used = try database.count(
             table: "proactive_suggestions",
             where: "push_status = 'PUSHED' AND created_at >= ?",
             bindings: [startOfDay]
-        )) ?? 0
+        )
         return used >= cap
     }
 
