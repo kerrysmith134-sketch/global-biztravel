@@ -109,6 +109,7 @@ final class TripExpenseSyncCoordinator {
 
     private func drain(tripId: String) async -> Int {
         var syncedCount = 0
+        var encounteredFailure = false
         while true {
             let item: PendingTripExpense
             do {
@@ -134,6 +135,7 @@ final class TripExpenseSyncCoordinator {
                 try outbox.remove(id: item.id)
                 syncedCount += 1
             } catch {
+                encounteredFailure = true
                 try? outbox.recordFailure(
                     id: item.id,
                     message: String(error.localizedDescription.prefix(500))
@@ -144,7 +146,9 @@ final class TripExpenseSyncCoordinator {
         }
         if syncedCount > 0 {
             lastSyncAt = Date()
-            lastSyncError = nil
+            if !encounteredFailure {
+                lastSyncError = nil
+            }
         }
         return syncedCount
     }

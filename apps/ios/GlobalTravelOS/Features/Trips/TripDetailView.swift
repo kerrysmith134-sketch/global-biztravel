@@ -162,10 +162,8 @@ final class TripDetailViewModel: ObservableObject {
         }
     }
 
-    /// Replays durable financial commands in order. Receipt upload is a prerequisite; only the
-    /// server-confirmed asset ID is allowed into the API request.
-    /// Delegates durable FIFO replay to the app-wide coordinator so pending commands do
-    /// not depend on this navigation screen remaining alive.
+    /// Delegates durable FIFO replay to the app-wide coordinator. Receipt upload remains a
+    /// prerequisite and only a server-confirmed asset ID is sent to the expense API.
     func retryPendingExpenses() async {
         guard !environment.isLocalMode else { return }
         guard let coordinator = environment.tripExpenseSyncCoordinator else {
