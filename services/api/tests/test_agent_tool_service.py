@@ -12,13 +12,12 @@ from app.services import agent_tool_service
 
 def test_only_tools_with_explicit_handlers_are_executable() -> None:
     names = [item["name"] for item in agent_tool_service.list_executable_tools()]
-    assert names == ["trip.get_plan", "visa.get_checklist"]
+    assert names == ["trip.get_plan", "visa.get_checklist", "visa.prepare_checklist"]
 
 
 @pytest.mark.parametrize(
     "tool_name",
     [
-        "visa.prepare_checklist",
         "place.prepare_geocoding",
         "plan.prepare_adjustment",
         "visit.draft_minutes",
@@ -141,6 +140,86 @@ def test_visa_tool_without_cases_returns_an_explicit_empty_result(monkeypatch) -
     assert "尚未建立签证案件" in result.detail
     assert "不会根据离线目录推断签证要求" in result.detail
     assert finished["output_snapshot"]["status"] == "NO_VISA_CASES"
+
+
+def test_visa_prepare_requires_traveler_and_records_created_by_user(monkeypatch) -> None:
+    trip_id = uuid4()
+    actor_user_id = uuid4()
+    run = SimpleNamespace()
+    started = {}
+    finished = {}
+    cases = [
+        SimpleNamespace(
+            country_code="DE",
+            checklist=[
+                {"status": "MISSING"},
+                {"status": "READY"},
+                {"status": "MISSING"},
+            ],
+        ),
+        SimpleNamespace(
+            country_code="NL",
+            checklist=[
+                {"status": "MISSING"},
+                {"status": "MISSING"},
+            ],
+        ),
+    ]
+
+    monkeypatch.setattr(
+        agent_tool_service,
+        "start_agent_run",
+        lambda *args, **kwargs: started.update(kwargs) or run,
+    )
+    monkeypatch.setattr(
+        agent_tool_service,
+        "succeed_agent_run",
+        lambda session, current_run, **kwargs: finished.update(kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.trip_service,
+        "require_trip",
+        lambda session, organization_id, requested_id: SimpleNamespace(
+            id=trip_id,
+            name="Europe work trip",
+            countries=["DE", "NL"],
+        ),
+    )
+    ensure = {}
+    monkeypatch.setattr(
+        agent_tool_service.visa_service,
+        "ensure_cases",
+        lambda session, organization_id, trip, **kwargs: ensure.update(kwargs) or cases,
+    )
+
+    with pytest.raises(Forbidden):
+        agent_tool_service.execute_tool(
+            object(),  # type: ignore[arg-type]
+            uuid4(),
+            actor_role="VIEWER",
+            tool_name="visa.prepare_checklist",
+            arguments={"trip_id": str(trip_id)},
+            actor_user_id=actor_user_id,
+        )
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="TRAVELER",
+        tool_name="visa.prepare_checklist",
+        arguments={"trip_id": str(trip_id), "countries": ["de", "nl"]},
+        actor_user_id=actor_user_id,
+    )
+
+    assert result.status == "VISA_CASES_PREPARED"
+    assert result.visa_case_count == 2
+    assert result.checklist_item_count == 5
+    assert result.ready_item_count == 1
+    assert result.missing_item_count == 4
+    assert ensure["countries"] == ["de", "nl"]
+    assert ensure["actor_user_id"] == actor_user_id
+    assert started["input_snapshot"]["arguments"]["countries"] == ["DE", "NL"]
+    assert finished["output_snapshot"]["status"] == "VISA_CASES_PREPARED"
 
 
 def test_visa_tool_summarizes_only_persisted_checklist_items(monkeypatch) -> None:
