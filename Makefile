@@ -96,8 +96,12 @@ ci: ## 完整门禁：静态检查 + 契约 + 后端测试 + Docker E2E + iOS
 ci-backend: ## 后端门禁：静态检查 + 契约 + 后端测试
 	bash scripts/ci.sh
 
-lint-ios: ## SwiftLint（未安装则提示并跳过，不伪造通过）
-	@command -v swiftlint >/dev/null 2>&1 && swiftlint --strict || echo "swiftlint 未安装，跳过（CI 镜像需安装 SwiftLint）"
+lint-ios: ## SwiftLint（CI 安装后真实执行；fatal error 不得被跳过逻辑吞掉）
+	@if command -v swiftlint >/dev/null 2>&1; then \
+		swiftlint lint; \
+	else \
+		echo "SwiftLint 未安装，本地跳过（CI 会显式安装）"; \
+	fi
 
 seed: ## 造种子数据 + 生成 Excel 夹具（幂等；日期相对今天，夹具不入库）
 	$(PY) scripts/seed_dev.py
