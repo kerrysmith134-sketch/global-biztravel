@@ -422,16 +422,21 @@ final class TripExpenseOutbox {
     }
 
     func recordFailure(id: String, message: String) throws {
-        guard let payload = try database.loadPayloads(
-            table: "pending_trip_expenses",
-            where: "id = ?",
-            bindings: [id]
-        ).first else { return }
-        var item = try DateCoding.decode(PendingTripExpense.self, from: payload)
-        item.attempts += 1
-        item.lastError = String(message.prefix(500))
-        item.updatedAt = Date()
-        try save(item)
+        // Read-modify-write must share one SQLite writer transaction across database handles.
+        // Otherwise concurrent retries can lose attempt increments, or recreate a queue row
+        // after another view has already removed it following a successful server response.
+        try database.transaction {
+            guard let payload = try database.loadPayloads(
+                table: "pending_trip_expenses",
+                where: "id = ?",
+                bindings: [id]
+            ).first else { return }
+            var item = try DateCoding.decode(PendingTripExpense.self, from: payload)
+            item.attempts += 1
+            item.lastError = String(message.prefix(500))
+            item.updatedAt = Date()
+            try save(item)
+        }
     }
 
     func remove(id: String) throws {
