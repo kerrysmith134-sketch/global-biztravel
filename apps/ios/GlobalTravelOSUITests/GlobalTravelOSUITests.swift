@@ -43,9 +43,10 @@ final class GlobalTravelOSUITests: XCTestCase {
         // 触发一次中断监视器（若系统弹窗出现会在这里被关闭）。
         app.tap()
 
-        let notifications = app.buttons["通知"]
-        XCTAssertTrue(notifications.waitForExistence(timeout: 10), "未找到通知入口")
-        notifications.tap()
+        XCTAssertTrue(
+            openMissionMenuItem(app, "通知中心"),
+            "未找到通知中心菜单入口"
+        )
         XCTAssertTrue(
             app.navigationBars["通知"].waitForExistence(timeout: 15),
             "通知中心未加载"
@@ -89,9 +90,10 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
         app.buttons["关闭"].tap()
 
-        let actionCenter = app.buttons["行动中心"]
-        XCTAssertTrue(actionCenter.waitForExistence(timeout: 10), "未找到行动中心入口")
-        actionCenter.tap()
+        XCTAssertTrue(
+            openMissionMenuItem(app, "行动中心"),
+            "未找到行动中心菜单入口"
+        )
         XCTAssertTrue(
             app.navigationBars["行动中心"].waitForExistence(timeout: 15),
             "行动中心未加载"
@@ -99,10 +101,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         // 行动中心是从 Mission 打开的全屏工作区，关闭后回到任务页。
         app.buttons["关闭"].tap()
 
-        let tripsTab = app.buttons["出行"]
-        XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")
-        tripsTab.tap()
-        XCTAssertTrue(app.navigationBars["出行"].waitForExistence(timeout: 10), "阶段失守：导航栏 出行 未出现")
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
 
         // 开发库里出行会累积，列表按时间倒序分页；冒烟测试取第一行，验证"列表 → 详情"真实可用。
         let firstTrip = app.cells.firstMatch
@@ -181,8 +180,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
@@ -233,7 +231,6 @@ final class GlobalTravelOSUITests: XCTestCase {
     func testAcceptanceJourneyChain() throws {
         // TripDetailView 使用分区 Picker；费用与预算不属于默认「概览」分区。
         // 通过真实分区控件进入费用页，再验证预算/费用/报销单内容，避免用滚动手势猜页面状态。
-        try seedImportFixture()
         let app = XCUIApplication()
         app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
         app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
@@ -244,9 +241,10 @@ final class GlobalTravelOSUITests: XCTestCase {
             "阶段失守：启动（Today 页未出现）"
         )
 
+        try seedImportFixture()
+
         // 1) 新建出行（真实表单）
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10), "阶段失守：底部出行 Tab")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let create = app.buttons["新建出行"]
         XCTAssertTrue(create.waitForExistence(timeout: 10), "阶段失守：出行列表（新建按钮）")
         create.tap()
@@ -616,7 +614,8 @@ final class GlobalTravelOSUITests: XCTestCase {
         // 计划列表是进详情时加载的；下拉刷新只在列表处于顶部时触发，滚动位置不定时不可靠。
         // 因此先给 Worker 留出求解时间，再「回列表 → 重进详情」强制重新加载。
         Thread.sleep(forTimeInterval: 25)
-        app.tabBars.buttons["出行"].tap()
+        app.navigationBars[setup.tripName].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["出行"].waitForExistence(timeout: 10), "未返回出行列表")
         let reloadRow = app.staticTexts[setup.tripName].firstMatch
         if reloadRow.waitForExistence(timeout: 5) {
             reloadRow.tap()
@@ -653,8 +652,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
@@ -710,8 +708,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "出行 Tab 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
         trip.tap()
@@ -774,8 +771,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "出行 Tab 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
         trip.tap()
@@ -832,8 +828,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "出行 Tab 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
         trip.tap()
@@ -885,8 +880,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
@@ -966,8 +960,7 @@ final class GlobalTravelOSUITests: XCTestCase {
             "Today 页未出现；确认 make api 正在运行"
         )
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试出行未出现在列表中")
         trip.tap()
@@ -1057,8 +1050,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
         app.launch()
 
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：按钮 出行 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
 
         let create = app.buttons["新建出行"]
         XCTAssertTrue(create.waitForExistence(timeout: 10), "未找到新建出行按钮")
@@ -1107,7 +1099,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
         let more = app.buttons["更多操作"]
         XCTAssertTrue(more.waitForExistence(timeout: 10), "未找到更多操作菜单")
-        more.tap()
+        more.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let researchEntry = app.buttons["研究工作区"]
         XCTAssertTrue(researchEntry.waitForExistence(timeout: 10), "未找到研究工作区入口")
         researchEntry.tap()
@@ -1254,6 +1246,35 @@ extension GlobalTravelOSUITests {
         )
     }
 
+    /// Tap a Mission toolbar menu item from the current root workspace.
+    func openMissionMenuItem(
+        _ app: XCUIApplication,
+        _ title: String,
+        timeout: TimeInterval = 10
+    ) -> Bool {
+        let item = app.buttons[title].firstMatch
+        if item.exists && item.isHittable {
+            item.tap()
+            return true
+        }
+
+        let more = app.buttons["更多操作"].firstMatch
+        guard more.waitForExistence(timeout: timeout) else { return false }
+        more.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        guard item.waitForExistence(timeout: timeout) else { return false }
+        item.tap()
+        return true
+    }
+
+    /// Trips is a sheet-backed NavigationStack opened from Mission → 更多操作 → 行程管理.
+    func openTripsWorkspace(_ app: XCUIApplication, timeout: TimeInterval = 15) -> Bool {
+        if app.navigationBars["出行"].waitForExistence(timeout: 1) {
+            return true
+        }
+        guard openMissionMenuItem(app, "行程管理", timeout: timeout) else { return false }
+        return app.navigationBars["出行"].waitForExistence(timeout: timeout)
+    }
+
     /// 阶段检查点：断言当前导航栏标题，定位长流程中页面上下文漂移的第一现场。
     func expectNav(_ app: XCUIApplication, _ title: String, stage: String) {
         XCTAssertTrue(
@@ -1294,12 +1315,13 @@ extension GlobalTravelOSUITests {
                 app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
                     .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
             default:
-                // 出行工作区现在从 Mission 打开；在其详情页通过「出行」导航入口回到工作区列表。
-                let travelTab = app.tabBars.buttons["出行"].firstMatch
-                if travelTab.exists {
-                    travelTab.tap()
-                } else {
-                    app.buttons["出行"].firstMatch.tap()
+                // Trips 是 Mission 菜单打开的工作区；不再有独立的「出行」底部 Tab。
+                if !app.navigationBars["出行"].exists {
+                    let close = app.buttons["关闭"].firstMatch
+                    if close.exists && close.isHittable {
+                        close.tap()
+                    }
+                    _ = openTripsWorkspace(app)
                 }
                 let row = app.staticTexts[tripName].firstMatch
                 if row.waitForExistence(timeout: 3) { row.tap() }
