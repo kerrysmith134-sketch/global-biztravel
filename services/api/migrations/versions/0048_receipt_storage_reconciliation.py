@@ -5,7 +5,7 @@ from sqlalchemy.dialects import postgresql
 
 from migrations import helpers
 
-revision = "0048_receipt_storage_reconciliation"
+revision = "0048_receipt_orphans"
 down_revision = "0047_receipt_ocr"
 branch_labels = None
 depends_on = None
