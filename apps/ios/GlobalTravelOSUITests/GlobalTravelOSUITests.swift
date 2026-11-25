@@ -144,7 +144,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
 
-        let seedTrip = app.staticTexts[setup.tripName]
+        let seedTrip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(seedTrip.waitForExistence(timeout: 15), "测试出行未出现在列表中")
         seedTrip.tap()
         XCTAssertTrue(
@@ -180,10 +180,15 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
-        let trip = app.staticTexts[setup.tripName]
+        let trip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
         XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15), "阶段失守：文本 概览 未出现")
+        let planSectionPicker = app.segmentedControls["trip-section-picker"]
+        XCTAssertTrue(planSectionPicker.waitForExistence(timeout: 10), "行程详情缺少分区切换器")
+        planSectionPicker.buttons["计划"].tap()
+        XCTAssertTrue(app.staticTexts["计划版本"].waitForExistence(timeout: 10), "未进入计划分区")
+
 
         let generate = app.buttons["生成新计划"]
         for _ in 0 ..< 8 where !generate.isHittable {
@@ -256,9 +261,9 @@ final class GlobalTravelOSUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
         nameField.typeText(tripName)
         app.buttons["创建"].tap()
-        XCTAssertTrue(app.staticTexts[tripName].waitForExistence(timeout: 20), "新建出行未出现")
+        XCTAssertTrue(app.staticTexts[tripName].firstMatch.waitForExistence(timeout: 20), "新建出行未出现")
         expectNav(app, "出行", stage: "创建后列表")
-        app.staticTexts[tripName].tap()
+        app.staticTexts[tripName].firstMatch.tap()
         expectNav(app, tripName, stage: "打开新建行程")
         XCTAssertTrue(
             app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15),
@@ -544,13 +549,18 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
-        let trip = app.staticTexts[setup.tripName]
+        let trip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
         XCTAssertTrue(
             app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15),
             "阶段失守：文本 概览 未出现"
         )
+        let planSectionPicker = app.segmentedControls["trip-section-picker"]
+        XCTAssertTrue(planSectionPicker.waitForExistence(timeout: 10), "行程详情缺少分区切换器")
+        planSectionPicker.buttons["计划"].tap()
+        XCTAssertTrue(app.staticTexts["计划版本"].waitForExistence(timeout: 10), "未进入计划分区")
+
 
         // 生成计划并等 Worker 求解（与 testGenerateAndActivatePlan 同款流程）。
         let generate = app.buttons["生成新计划"]
@@ -648,7 +658,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
-        let trip = app.staticTexts[setup.tripName]
+        let trip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
         XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15), "阶段失守：文本 概览 未出现")
@@ -704,7 +714,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
-        let trip = app.staticTexts[setup.tripName]
+        let trip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
         trip.tap()
 
@@ -767,7 +777,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
-        let trip = app.staticTexts[setup.tripName]
+        let trip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
         trip.tap()
 
@@ -824,7 +834,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
-        let trip = app.staticTexts[setup.tripName]
+        let trip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试行程未出现在列表")
         trip.tap()
 
@@ -876,7 +886,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
-        let trip = app.staticTexts[setup.tripName]
+        let trip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
         XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15), "阶段失守：文本 概览 未出现")
@@ -956,7 +966,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         )
 
         XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
-        let trip = app.staticTexts[setup.tripName]
+        let trip = app.staticTexts[setup.tripName].firstMatch
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试出行未出现在列表中")
         trip.tap()
         XCTAssertTrue(app.staticTexts["概览"].firstMatch.waitForExistence(timeout: 15), "阶段失守：文本 概览 未出现")
