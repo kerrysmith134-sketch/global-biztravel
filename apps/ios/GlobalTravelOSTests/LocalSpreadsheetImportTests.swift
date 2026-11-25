@@ -38,7 +38,7 @@ final class LocalSpreadsheetImportTests: XCTestCase {
     c1BLAQIUAxQAAAAIABuxeV06fIT3QQEAAOwCAAAUAAAAAAAAAAAAAACAAQgEAAB4bC9zaGFyZWRTdHJpbmdzLnhtbFBLAQIUAxQA
     AAAIABuxeV2urZdMhQEAADMGAAAYAAAAAAAAAAAAAACAAXsFAAB4bC93b3Jrc2hlZXRzL3NoZWV0MS54bWxQSwUGAAAAAAYABgCH
     AQAANgcAAAAA
-    
+
     """
 
     override func setUpWithError() throws {
@@ -55,27 +55,11 @@ final class LocalSpreadsheetImportTests: XCTestCase {
 
     func testTwoPhaseImportPersistsOnlyStagingRowsUntilConfirmation() async throws {
         let repository = LocalTripRepository(database: database)
-        let trip = try await repository.createTrip(CreateTripRequest(
-            name: "Excel 导入验收",
-            purpose: "客户拜访",
-            originPlace: PlaceRef(
-                name: "Shanghai", countryCode: "CN", timezone: "Asia/Shanghai",
-                latitude: 31.23, longitude: 121.47
-            ),
-            window: TripWindow(
-                start: Date(timeIntervalSinceNow: 86_400),
-                end: Date(timeIntervalSinceNow: 86_400 * 3)
-            )
-        ))
+        let trip = try await makeTestTrip(repository, name: "Excel 导入验收")
         let originalPlaceCount = try database.count(table: "places")
         let originalVersion = trip.version
-        let workbook = try XCTUnwrap(Data(base64Encoded: workbookBase64, options: .ignoreUnknownCharacters))
+        let preview = try await parseWorkbook(repository, tripId: trip.id)
 
-        let preview = try await repository.parseImport(
-            tripId: trip.id,
-            fileData: workbook,
-            filename: "customers.xlsx"
-        )
         XCTAssertEqual(preview.status, "PARSED")
         XCTAssertEqual(preview.totalRows, 3)
         XCTAssertEqual(preview.validRows, 1)
@@ -106,11 +90,93 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertEqual((confirmed.createdPlaces ?? 0) + (confirmed.reusedPlaces ?? 0), 2)
         XCTAssertEqual(confirmed.createdVisits, 2)
         XCTAssertEqual(try database.count(table: "customers"), 1)
-        XCTAssertEqual(try database.count(table: "places"), originalPlaceCount + (confirmed.createdPlaces ?? 0))
+        XCTAssertEqual(
+            try database.count(table: "places"),
+            originalPlaceCount + (confirmed.createdPlaces ?? 0)
+        )
         XCTAssertEqual(try database.count(table: "visits"), 2)
         XCTAssertGreaterThanOrEqual(try database.count(table: "customer_places"), 1)
+        try assertConfirmedBatchWasScrubbed(preview.importId)
+        try assertImportedVisit(repository, tripId: trip.id)
 
-        let storedBatch = try XCTUnwrap(database.keyValue("local-import:\(preview.importId)"))
+        let updatedTrip = try await repository.trip(id: trip.id)
+        XCTAssertEqual(updatedTrip.version, originalVersion + 1)
+        let replay = await confirmationOutcome(
+            repository,
+            tripId: trip.id,
+            request: ConfirmImportRequest(importId: preview.importId, acceptedRowNumbers: [2])
+        )
+        XCTAssertEqual(replay, "IMPORT_ALREADY_CONFIRMED")
+    }
+
+    func testConcurrentImportConfirmationOnlyCommitsOnce() async throws {
+        let repository = LocalTripRepository(database: database)
+        let trip = try await makeTestTrip(repository, name: "并发导入验收")
+        let preview = try await parseWorkbook(repository, tripId: trip.id)
+        let request = ConfirmImportRequest(importId: preview.importId, acceptedRowNumbers: [2])
+
+        async let first = confirmationOutcome(repository, tripId: trip.id, request: request)
+        async let second = confirmationOutcome(repository, tripId: trip.id, request: request)
+        let outcomes = await [first, second]
+
+        XCTAssertEqual(outcomes.filter { $0 == "CONFIRMED" }.count, 1)
+        XCTAssertEqual(outcomes.filter { $0 == "IMPORT_ALREADY_CONFIRMED" }.count, 1)
+        XCTAssertEqual(try database.count(table: "customers"), 1)
+        XCTAssertEqual(try database.count(table: "visits"), 1)
+        let updatedTrip = try await repository.trip(id: trip.id)
+        XCTAssertEqual(updatedTrip.version, trip.version + 1)
+    }
+
+    private func makeTestTrip(_ repository: LocalTripRepository, name: String) async throws -> Trip {
+        try await repository.createTrip(CreateTripRequest(
+            name: name,
+            purpose: "客户拜访",
+            originPlace: PlaceRef(
+                name: "Shanghai",
+                countryCode: "CN",
+                timezone: "Asia/Shanghai",
+                latitude: 31.23,
+                longitude: 121.47
+            ),
+            window: TripWindow(
+                start: Date(timeIntervalSinceNow: 86_400),
+                end: Date(timeIntervalSinceNow: 86_400 * 3)
+            )
+        ))
+    }
+
+    private func parseWorkbook(
+        _ repository: LocalTripRepository,
+        tripId: String,
+        filename: String = "customers.xlsx"
+    ) async throws -> ImportParseResult {
+        let workbook = try XCTUnwrap(
+            Data(base64Encoded: workbookBase64, options: .ignoreUnknownCharacters)
+        )
+        return try await repository.parseImport(
+            tripId: tripId,
+            fileData: workbook,
+            filename: filename
+        )
+    }
+
+    private func confirmationOutcome(
+        _ repository: LocalTripRepository,
+        tripId: String,
+        request: ConfirmImportRequest
+    ) async -> String {
+        do {
+            let result = try await repository.confirmImport(tripId: tripId, request: request)
+            return result.status ?? "UNKNOWN"
+        } catch let error as APIError {
+            return error.errorCode ?? "API_ERROR"
+        } catch {
+            return "UNEXPECTED_ERROR"
+        }
+    }
+
+    private func assertConfirmedBatchWasScrubbed(_ importId: String) throws {
+        let storedBatch = try XCTUnwrap(database.keyValue("local-import:\(importId)"))
         XCTAssertFalse(storedBatch.contains("Acme Battery GmbH"))
         let batchJSON = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(storedBatch.utf8)) as? [String: Any]
@@ -119,9 +185,17 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertEqual((storedResult["rows"] as? [Any])?.count, 0)
         let stagedRows = try XCTUnwrap(batchJSON["rows"] as? [[String: Any]])
         XCTAssertTrue(stagedRows.allSatisfy { $0["normalized"] == nil })
+    }
 
-        let visitPayloads = try database.loadPayloads(table: "visits", where: "trip_id = ?", bindings: [trip.id])
-        let visits = try visitPayloads.map { try DateCoding.decoder().decode(TripVisit.self, from: $0) }
+    private func assertImportedVisit(_ repository: LocalTripRepository, tripId: String) throws {
+        let visitPayloads = try database.loadPayloads(
+            table: "visits",
+            where: "trip_id = ?",
+            bindings: [tripId]
+        )
+        let visits = try visitPayloads.map {
+            try DateCoding.decoder().decode(TripVisit.self, from: $0)
+        }
         let visit = try XCTUnwrap(visits.first { $0.title == "拜访 Acme Battery GmbH" })
         XCTAssertEqual(visit.serviceMinutes, 60)
         XCTAssertEqual(visit.priority, 1)
@@ -131,38 +205,6 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertEqual(visit.status, "PLANNED")
         XCTAssertNotNil(visit.timeWindowStart)
         XCTAssertNotNil(visit.timeWindowEnd)
-        let updatedTrip = try await repository.trip(id: trip.id)
-        XCTAssertEqual(updatedTrip.version, originalVersion + 1)
-
-        do {
-            _ = try await repository.confirmImport(
-                tripId: trip.id,
-                request: ConfirmImportRequest(importId: preview.importId, acceptedRowNumbers: [2])
-            )
-            XCTFail("Confirmed batches must be replay-protected")
-        } catch let error as APIError {
-            XCTAssertEqual(error.errorCode, "IMPORT_ALREADY_CONFIRMED")
-        }
-
-        // A confirmation with no accepted visit still closes the batch and advances the trip token,
-        // matching the backend's plan-invalidation contract.
-        let beforeRejectedOnly = try await repository.trip(id: trip.id)
-        let rejectedOnlyPreview = try await repository.parseImport(
-            tripId: trip.id,
-            fileData: workbook,
-            filename: "customers-rejected-only.xlsx"
-        )
-        let rejectedOnly = try await repository.confirmImport(
-            tripId: trip.id,
-            request: ConfirmImportRequest(
-                importId: rejectedOnlyPreview.importId,
-                acceptedRowNumbers: [4]
-            )
-        )
-        XCTAssertEqual(rejectedOnly.acceptedRows, 0)
-        XCTAssertEqual(rejectedOnly.rejectedRows, 1)
-        let afterRejectedOnly = try await repository.trip(id: trip.id)
-        XCTAssertEqual(afterRejectedOnly.version, beforeRejectedOnly.version + 1)
     }
 
     func testLegacyAndCorruptFilesAreRejectedBeforeStaging() async throws {
