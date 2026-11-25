@@ -37,6 +37,7 @@ final class TripExpenseSyncCoordinator {
     private var connectivityState = TripExpenseConnectivityState()
     private var inFlight: [String: Task<Int, Never>] = [:]
     private var syncErrorsByTrip: [String: String] = [:]
+    private var outboxReadError: String?
     private var isStopped = false
 
     private(set) var lastSyncError: String?
@@ -67,7 +68,6 @@ final class TripExpenseSyncCoordinator {
 
     deinit {
         pathMonitor.cancel()
-        inFlight.values.forEach { $0.cancel() }
     }
 
     /// Stops account-scoped observation and cancels in-flight requests before the app switches
@@ -101,9 +101,12 @@ final class TripExpenseSyncCoordinator {
         do {
             tripIDs = try outbox.pendingTripIDs()
         } catch {
-            lastSyncError = error.localizedDescription
+            outboxReadError = error.localizedDescription
+            refreshLastSyncError()
             return
         }
+        outboxReadError = nil
+        refreshLastSyncError()
         for tripID in tripIDs {
             let syncedCount = await syncPendingExpenses(tripId: tripID)
             let pendingCount = (try? outbox.pending(tripId: tripID).count) ?? 0
@@ -140,7 +143,8 @@ final class TripExpenseSyncCoordinator {
 
     private func refreshLastSyncError() {
         // A successful Trip must not erase another Trip's unresolved sync failure.
-        lastSyncError = syncErrorsByTrip.keys.sorted().compactMap { syncErrorsByTrip[$0] }.first
+        lastSyncError = outboxReadError
+            ?? syncErrorsByTrip.keys.sorted().compactMap { syncErrorsByTrip[$0] }.first
     }
 
     private func drain(tripId: String) async -> Int {
@@ -154,7 +158,8 @@ final class TripExpenseSyncCoordinator {
                 }
                 item = next
             } catch {
-                lastSyncError = error.localizedDescription
+                encounteredFailure = error.localizedDescription
+                syncErrorsByTrip[tripId] = error.localizedDescription
                 break
             }
 
