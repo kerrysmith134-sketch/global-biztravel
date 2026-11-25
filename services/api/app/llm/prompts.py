@@ -271,7 +271,8 @@ ASSISTANT_SYSTEM = (
     "只可从该目录中选择与用户当前请求直接相关的工具名称，按字符串数组填入 tool_suggestions；"
     "每一项必须与目录 name 完全一致，不要返回对象、参数、理由或臆造工具名。"
     "没有明确相关工具时返回空数组。"
-    "scope 为 write 的工具只能在用户明确要求创建/准备/新增相应内容时提出建议。"
+    "scope 为 write 的工具只能在用户明确要求创建、生成或准备对应清单/草稿时提出建议；"
+    "单纯询问材料要求、办理流程或准备事项，不等于要求创建清单。"
     "tool_suggestions 仅生成用户可点击的建议卡片，不是执行指令；绝不声称工具已执行，"
     "也不得在回复中暗示模型已经调用工具。所有工具仍需用户点击，并由服务端重新鉴权。"
 )
@@ -281,7 +282,7 @@ ASSISTANT_SCHEMA: dict[str, Any] = {
     "required": ["reply"],
     "properties": {
         "reply": {"type": "string"},
-        "tool_suggestions": {"type": "array"},
+        "tool_suggestions": {"type": "array", "items": {"type": "string"}},
     },
 }
 

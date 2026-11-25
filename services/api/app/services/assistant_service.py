@@ -119,13 +119,22 @@ def delete_conversation(
 
 WRITE_TOOL_INTENT_TERMS: dict[str, tuple[str, ...]] = {
     "visa.prepare_checklist": (
-        "创建签证",
-        "建立签证",
-        "准备签证材料",
-        "生成签证清单",
+        "创建签证清单",
+        "创建签证材料清单",
+        "新建签证清单",
+        "新建签证案件",
+        "建立签证案件",
         "新增签证案件",
+        "生成签证清单",
+        "生成签证材料清单",
+        "准备签证清单",
+        "准备签证材料清单",
+        "帮我准备签证清单",
         "create visa checklist",
-        "prepare visa documents",
+        "create a visa checklist",
+        "generate visa checklist",
+        "prepare a visa checklist",
+        "create visa case",
     ),
 }
 WRITE_TOOL_NEGATIONS = (
