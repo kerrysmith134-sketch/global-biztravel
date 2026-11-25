@@ -907,7 +907,7 @@ final class GlobalTravelOSUITests: XCTestCase {
     func testTripCloseoutReadinessFlow() throws {
         let setup = try makeBriefingTrip()
         _ = try postJSON(
-            "http://127.0.0.1:8080/v1/trips/\\(setup.tripId)/expenses",
+            "http://127.0.0.1:8080/v1/trips/\(setup.tripId)/expenses",
             body: [
                 "category": "MEALS",
                 "amount": "34.20",
