@@ -20,7 +20,6 @@ from app.config import get_settings
 from app.models.receipts import ReceiptAsset, ReceiptStorageOrphan
 from app.services.receipt_storage_service import (
     ReceiptStorageUnavailable,
-    StoredReceiptObject,
     get_receipt_storage,
 )
 
@@ -204,7 +203,15 @@ def reconcile_receipt_storage(
     # If a previously observed orphan disappears without a recorded successful
     # delete, retain the audit row as MISSING. Never infer that we deleted it.
     for incident in incidents:
-        if incident.storage_key in listed_keys or incident.storage_key in known_keys:
+        if incident.storage_key in listed_keys:
+            continue
+        if incident.storage_key in known_keys:
+            # Metadata exists but the referenced object is absent: this is not an orphan,
+            # but it is a broken evidence reference and must remain visible to operators.
+            if incident.status != "MISSING":
+                incident.status = "MISSING"
+                incident.last_error = "ReceiptAsset metadata exists but its storage object is absent"
+                report.missing += 1
             continue
         if incident.status in {"DISCOVERED", "DELETE_PENDING", "DELETE_FAILED"}:
             incident.status = "MISSING"
