@@ -262,6 +262,52 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertTrue(try reopenedOutbox.pending(tripId: queued.tripId).isEmpty)
     }
 
+    func testTripExpenseOutboxSerializesConcurrentFailureUpdatesAcrossDatabaseHandles() throws {
+        let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
+        let initialDatabase = try LocalDatabase.open(path: path)
+        let outbox = TripExpenseOutbox(database: initialDatabase)
+        let request = TripExpenseCreateRequest(
+            category: .meals,
+            amount: Decimal(string: "42.50") ?? .zero,
+            currency: "EUR",
+            occurredOn: "2026-11-24",
+            note: "Concurrent failure counter",
+            receiptAssetId: nil
+        )
+        let queued = try outbox.enqueue(
+            tripId: "trip-concurrent-failures",
+            body: request,
+            localReceiptAssetId: nil
+        )
+        let failures = MigrationFailureCollector()
+
+        DispatchQueue.concurrentPerform(iterations: 8) { index in
+            do {
+                let database = try LocalDatabase.open(path: path)
+                let independentHandle = TripExpenseOutbox(database: database)
+                try independentHandle.recordFailure(
+                    id: queued.id,
+                    message: "Concurrent network failure \(index)"
+                )
+            } catch {
+                failures.append(String(describing: error))
+            }
+        }
+
+        XCTAssertTrue(
+            failures.messages.isEmpty,
+            "Concurrent outbox updates failed: \(failures.messages.joined(separator: "; "))"
+        )
+        let reopened = try LocalDatabase.open(path: path)
+        let restored = try XCTUnwrap(
+            TripExpenseOutbox(database: reopened).pending(tripId: queued.tripId).first
+        )
+        XCTAssertEqual(restored.id, queued.id)
+        XCTAssertEqual(restored.attempts, 8, "Concurrent increments must not be lost")
+        XCTAssertNotNil(restored.lastError)
+        XCTAssertTrue(restored.lastError?.hasPrefix("Concurrent network failure ") == true)
+    }
+
     func testTripExpenseOutboxMaintainsFIFOOrderAcrossRapidEnqueuesAndReopen() throws {
         let vault = try ReceiptVault.open(
             directory: temporaryDirectory,
