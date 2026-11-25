@@ -117,41 +117,47 @@ def delete_conversation(
     session.flush()
 
 
-def _explicit_visa_prepare_intent(message: str) -> bool:
-    """A write-capable visa tool may be proposed only for an explicit create/prepare request."""
-    normalized = message.lower()
-    negations = (
-        "不要创建",
-        "不想创建",
-        "不需要创建",
-        "无需创建",
-        "不用创建",
-        "暂不创建",
-        "先不创建",
-        "不要准备",
-        "不需要准备",
-        "不要生成",
-        "don't create",
-        "do not create",
-        "no need to create",
-        "don't prepare",
-        "do not prepare",
-        "no need to prepare",
-    )
-    if any(term in normalized for term in negations):
+WRITE_TOOL_INTENT_TERMS: dict[str, tuple[str, ...]] = {
+    "visa.prepare_checklist": (
+        "创建签证",
+        "建立签证",
+        "准备签证材料",
+        "生成签证清单",
+        "新增签证案件",
+        "create visa checklist",
+        "prepare visa documents",
+    ),
+}
+WRITE_TOOL_NEGATIONS = (
+    "不要创建",
+    "不想创建",
+    "不需要创建",
+    "无需创建",
+    "不用创建",
+    "暂不创建",
+    "先不创建",
+    "不要准备",
+    "不需要准备",
+    "不要生成",
+    "don't create",
+    "do not create",
+    "no need to create",
+    "don't prepare",
+    "do not prepare",
+    "no need to prepare",
+)
+
+
+def _has_explicit_write_intent(tool_name: str, message: str) -> bool:
+    """A write-capable tool requires positive, tool-specific creation intent."""
+    terms = WRITE_TOOL_INTENT_TERMS.get(tool_name)
+    if not terms:
         return False
-    return any(
-        term in normalized
-        for term in (
-            "创建签证",
-            "建立签证",
-            "准备签证材料",
-            "生成签证清单",
-            "新增签证案件",
-            "create visa checklist",
-            "prepare visa documents",
-        )
-    )
+    normalized = message.lower()
+    if any(term in normalized for term in WRITE_TOOL_NEGATIONS):
+        return False
+    return any(term in normalized for term in terms)
+
 
 
 def _merge_tool_proposals(
@@ -177,7 +183,6 @@ def _merge_tool_proposals(
             and tool.get("requires_approval") is False
         )
     }
-    explicit_write_intent = _explicit_visa_prepare_intent(message)
     merged: dict[str, dict] = {}
 
     def include(name: object) -> None:
@@ -195,7 +200,7 @@ def _merge_tool_proposals(
         if not resource.strip():
             return
         if action == "write":
-            if not explicit_write_intent:
+            if not _has_explicit_write_intent(name.strip(), message):
                 return
         elif action != "read":
             return
@@ -284,7 +289,7 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
     if trip is not None:
         if any(term in text for term in ("计划", "plan", "简报")):
             matched.add("trip.get_plan")
-        if _explicit_visa_prepare_intent(message):
+        if _has_explicit_write_intent("visa.prepare_checklist", message):
             matched.add("visa.prepare_checklist")
         elif any(term in text for term in ("签证", "材料清单", "visa")):
             matched.add("visa.get_checklist")

@@ -126,6 +126,26 @@ def test_model_candidates_must_be_a_list() -> None:
     assert proposals == []
 
 
+def test_write_intent_is_specific_to_the_requested_tool() -> None:
+    available = AVAILABLE_TOOLS + [
+        {
+            "name": "expense_report.create",
+            "description": "Create an expense report draft",
+            "scope": "trip:write",
+            "requires_approval": False,
+        }
+    ]
+
+    proposals = assistant_service._merge_tool_proposals(
+        policy_proposals=[],
+        model_candidates=["expense_report.create"],
+        available_tools=available,
+        message="请创建签证材料清单",
+    )
+
+    assert proposals == []
+
+
 def test_admin_scope_is_never_offered_as_an_assistant_tool() -> None:
     available = AVAILABLE_TOOLS + [
         {
