@@ -142,8 +142,7 @@ final class GlobalTravelOSUITests: XCTestCase {
             app.navigationBars["任务"].waitForExistence(timeout: 15),
             "Today 页未出现；确认 make api 正在运行"
         )
-        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 10), "阶段失守：按钮 出行 未出现")
-        app.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
 
         let seedTrip = app.staticTexts[setup.tripName]
         XCTAssertTrue(seedTrip.waitForExistence(timeout: 15), "测试出行未出现在列表中")
@@ -544,11 +543,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
         app.launch()
 
-        XCTAssertTrue(
-            app.tabBars.buttons["出行"].waitForExistence(timeout: 15),
-            "阶段失守：Tab 出行 未出现"
-        )
-        app.tabBars.buttons["出行"].tap()
+        XCTAssertTrue(openTripsWorkspace(app), "未能通过 Mission 菜单打开出行工作区")
         let trip = app.staticTexts[setup.tripName]
         XCTAssertTrue(trip.waitForExistence(timeout: 15), "阶段失守：元素未出现（trip）")
         trip.tap()
