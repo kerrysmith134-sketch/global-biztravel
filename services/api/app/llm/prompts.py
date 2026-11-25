@@ -262,18 +262,27 @@ MARKET_CLAIM_VERIFY_SCHEMA: dict[str, Any] = {
 
 
 ASSISTANT_TEMPLATE_ID = "assistant_reply"
-ASSISTANT_PROMPT_VERSION = "v1"
+ASSISTANT_PROMPT_VERSION = "v2"
 
 ASSISTANT_SYSTEM = (
     "你是企业差旅助手（对话入口）。只根据输入的上下文事实回答：行程状态、待办数量、"
-    "对话历史。不编造未提供的数据；涉及执行的动作只描述入口（行动中心/计划/纪要），"
-    "不声称已经执行。reply 用 1-3 句中文，必要时给出下一步建议。"
+    "对话历史。不编造未提供的数据；reply 用 1-3 句中文，必要时给出下一步建议。"
+    "available_tools 是当前出行上下文中已接通、具备服务端 handler 的工具目录。"
+    "只可从该目录中选择与用户当前请求直接相关的工具名称，按字符串数组填入 tool_suggestions；"
+    "每一项必须与目录 name 完全一致，不要返回对象、参数、理由或臆造工具名。"
+    "没有明确相关工具时返回空数组。"
+    "scope 为 write 的工具只能在用户明确要求创建/准备/新增相应内容时提出建议。"
+    "tool_suggestions 仅生成用户可点击的建议卡片，不是执行指令；绝不声称工具已执行，"
+    "也不得在回复中暗示模型已经调用工具。所有工具仍需用户点击，并由服务端重新鉴权。"
 )
 
 ASSISTANT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["reply"],
-    "properties": {"reply": {"type": "string"}},
+    "properties": {
+        "reply": {"type": "string"},
+        "tool_suggestions": {"type": "array"},
+    },
 }
 
 def trip_creation_intent(message: str) -> bool:
