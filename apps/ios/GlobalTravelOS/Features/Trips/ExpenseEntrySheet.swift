@@ -183,9 +183,17 @@ struct ExpenseEntrySheet: View {
                             }
                         }
                         if !ocrRun.candidates.dateCandidates.isEmpty {
-                            Text("日期候选：\(ocrRun.candidates.dateCandidates.joined(separator: "、"))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("日期候选（点选后仍需核对）")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                ForEach(ocrRun.candidates.dateCandidates, id: \.self) { candidate in
+                                    Button(candidate) {
+                                        selectOCRDateCandidate(candidate)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
                         if let review = ocrRun.review {
                             Label(
@@ -332,7 +340,8 @@ struct ExpenseEntrySheet: View {
                 ocrRun = execution.run
                 ocrMerchant = execution.run.candidates.merchantHint ?? ""
                 ocrAmount = execution.run.candidates.amountCandidates.first.map(numericAmount(from:)) ?? ""
-                ocrCurrency = currency
+                // OCR does not determine currency. Require the traveler to enter it explicitly.
+                ocrCurrency = ""
                 includeOcrDate = false
                 ocrRejectNote = ""
             } catch {
@@ -414,6 +423,24 @@ struct ExpenseEntrySheet: View {
                 ocrError = "保存人工审阅失败：\(error.localizedDescription)"
             }
         }
+    }
+
+    private func selectOCRDateCandidate(_ candidate: String) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.isLenient = false
+        for pattern in ["yyyy-MM-dd", "yyyy/MM/dd", "yyyy.M.d", "yyyy年M月d日"] {
+            formatter.dateFormat = pattern
+            if let parsed = formatter.date(from: candidate) {
+                ocrDate = parsed
+                includeOcrDate = true
+                ocrError = nil
+                return
+            }
+        }
+        ocrError = "无法安全解析日期候选，请在日期选择器中手工选择"
+        includeOcrDate = true
     }
 
     private func numericAmount(from candidate: String) -> String {
