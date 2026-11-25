@@ -143,6 +143,17 @@ def test_tool_scope_resource_must_match_registered_handler(monkeypatch) -> None:
             arguments={"trip_id": str(uuid4())},
         )
 
+def test_registered_handler_without_resource_mapping_fails_closed(monkeypatch) -> None:
+    monkeypatch.setattr(agent_tool_service, "SCOPE_RESOURCE_BY_TOOL", {})
+    with pytest.raises(Forbidden, match="权限范围配置无效"):
+        agent_tool_service.execute_tool(
+            object(),  # type: ignore[arg-type]
+            uuid4(),
+            actor_role="VIEWER",
+            tool_name="trip.get_plan",
+            arguments={"trip_id": str(uuid4())},
+        )
+
 
 def test_active_plan_tool_returns_real_version_summary(monkeypatch) -> None:
     trip_id = uuid4()

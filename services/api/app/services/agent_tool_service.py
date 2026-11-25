@@ -138,9 +138,11 @@ def execute_tool(
     scope = str(catalog_entry.get("scope") or "")
     try:
         resource, action = scope.split(":", maxsplit=1)
+        expected_resource = SCOPE_RESOURCE_BY_TOOL.get(tool_name)
         if (
-            not resource.strip()
-            or resource != SCOPE_RESOURCE_BY_TOOL[tool_name]
+            not expected_resource
+            or not resource.strip()
+            or resource != expected_resource
             or action not in SCOPE_MINIMUM_ROLES
         ):
             raise ValueError
