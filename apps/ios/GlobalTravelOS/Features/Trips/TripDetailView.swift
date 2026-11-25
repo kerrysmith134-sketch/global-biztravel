@@ -595,6 +595,7 @@ struct TripDetailView: View {
                         HStack(alignment: .center, spacing: DS.Spacing.md) {
                             VStack(alignment: .leading, spacing: DS.Spacing.xs) {
                                 Text(readiness.status.label)
+                                    .accessibilityIdentifier("trip.closeout.status")
                                     .font(.headline)
                                     .foregroundStyle(closeoutStatusColor(readiness.status))
                                 Text("检查于 " + readiness.generatedAt.formatted(date: .abbreviated, time: .shortened))
@@ -606,8 +607,10 @@ struct TripDetailView: View {
                                 Text("阻塞 " + String(readiness.summary.blockerCount))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(readiness.summary.blockerCount > 0 ? DS.ColorToken.danger : DS.ColorToken.success)
+                                    .accessibilityIdentifier("trip.closeout.blocker-count")
                                 Text("提醒 " + String(readiness.summary.warningCount))
                                     .font(.caption.weight(.semibold))
+                                    .accessibilityIdentifier("trip.closeout.warning-count")
                                     .foregroundStyle(
                                         readiness.summary.warningCount > 0
                                             ? DS.ColorToken.warning
@@ -771,6 +774,7 @@ struct TripDetailView: View {
         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
             HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.sm) {
                 Text(issue.title)
+                .accessibilityIdentifier("trip.closeout.issue.\\(issue.code)")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(issue.severity == .blocker ? DS.ColorToken.danger : DS.ColorToken.warning)
                 Spacer(minLength: DS.Spacing.xs)
@@ -790,10 +794,12 @@ struct TripDetailView: View {
                 .font(.caption)
                 .foregroundStyle(DS.ColorToken.textPrimary)
             Button("查看相关区块") {
-                section = issue.sourceType.uppercased() == "VISIT" ? .schedule : .money
+                let sourceType = issue.sourceType.uppercased()
+                section = ["VISIT", "VISIT_FOLLOW_UP"].contains(sourceType) ? .schedule : .money
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(DS.ColorToken.brand)
+            .accessibilityIdentifier("trip.closeout.action.\\(issue.code)")
         }
         .padding(.vertical, DS.Spacing.xs)
     }
