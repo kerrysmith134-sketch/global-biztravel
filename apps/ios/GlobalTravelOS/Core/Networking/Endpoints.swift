@@ -776,6 +776,20 @@ enum Endpoints {
         )
     }
 
+    static func assistantTool(conversationId: String, toolName: String, tripId: String) throws -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/assistant/conversations/\(conversationId)/tools:execute",
+            body: try DateCoding.encode(
+                AssistantToolExecuteCreate(
+                    toolName: toolName,
+                    arguments: AssistantToolExecuteArguments(tripId: tripId)
+                )
+            ),
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func notificationPreferences() -> APIRequest {
         APIRequest(method: .get, path: "/v1/notifications/preferences")
     }
