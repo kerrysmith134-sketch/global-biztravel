@@ -10,11 +10,22 @@ cd "$ROOT"
 LOG_DIR="$RUNNER_TEMP/globalbiztravel-ui"
 mkdir -p "$LOG_DIR"
 
-PG_BIN="$(brew --prefix postgresql@18)/bin"
+PG_PREFIX="$(brew --prefix postgresql@18)"
+PG_BIN="$PG_PREFIX/bin"
+PGDATA="$(brew --prefix)/var/postgresql@18"
 export PATH="$PG_BIN:$PATH"
 PSQL="$PG_BIN/psql"
 CREATEDB="$PG_BIN/createdb"
 PG_ISREADY="$PG_BIN/pg_isready"
+
+# Homebrew initializes a default cluster on normal installs, but its own CI
+# install path can intentionally skip init_data_dir. Make runner provisioning
+# deterministic without resetting an existing cluster.
+if [ ! -s "$PGDATA/PG_VERSION" ]; then
+  echo "Initialize empty PostgreSQL 18 data directory: $PGDATA"
+  mkdir -p "$PGDATA"
+  "$PG_BIN/initdb" --locale=en_US.UTF-8 -E UTF-8 "$PGDATA"
+fi
 
 echo "== PostgreSQL service =="
 brew services start postgresql@18
