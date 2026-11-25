@@ -75,10 +75,11 @@ SELECT postgis_full_version();
 SELECT extversion FROM pg_extension WHERE extname = 'vector';
 SQL
 
-echo "== Python dependencies and schema =="
+echo "== Verify Python environment and apply schema =="
+# The CI workflow installs requirements-dev.txt immediately before this script.
+# Keep this provisioning script focused on the disposable database and services.
 export PYTHONPATH="$ROOT/services/api:$ROOT/packages/planning-engine${PYTHONPATH:+:$PYTHONPATH}"
-python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
+python -c "import fastapi, sqlalchemy, psycopg"
 make migrate
 make seed
 
