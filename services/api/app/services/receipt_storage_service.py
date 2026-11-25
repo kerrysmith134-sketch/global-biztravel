@@ -117,6 +117,9 @@ class FilesystemReceiptStorage:
             raise ReceiptStorageUnavailable("无法读取原始票据") from exc
 
     def delete(self, key: str) -> None:
+        raw_target = self.root / key
+        if raw_target.is_symlink():
+            raise ReceiptStorageUnavailable("拒绝删除符号链接票据路径")
         target = self._path(key)
         try:
             target.unlink(missing_ok=True)
@@ -124,6 +127,9 @@ class FilesystemReceiptStorage:
             raise ReceiptStorageUnavailable("无法删除原始票据临时对象") from exc
 
     def stat_object(self, key: str) -> StoredReceiptObject | None:
+        raw_target = self.root / key
+        if raw_target.is_symlink():
+            raise ReceiptStorageUnavailable("拒绝检查符号链接票据路径")
         target = self._path(key)
         try:
             stat = target.stat()
@@ -150,7 +156,7 @@ class FilesystemReceiptStorage:
         objects: list[StoredReceiptObject] = []
         try:
             for path in directory.rglob("*"):
-                if not path.is_file() or path.name.startswith(".receipt-"):
+                if path.is_symlink() or not path.is_file() or path.name.startswith(".receipt-"):
                     continue
                 key = path.relative_to(self.root).as_posix()
                 try:
