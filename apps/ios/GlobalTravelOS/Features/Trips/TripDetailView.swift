@@ -97,7 +97,9 @@ final class TripDetailViewModel: ObservableObject {
         }
         switch await closeoutResult {
         case .success(let value): closeoutReadiness = value
-        case .failure(let error): sectionErrors["closeout"] = environment.errorMessage(error)
+        case .failure(let error):
+            closeoutReadiness = nil
+            sectionErrors["closeout"] = environment.errorMessage(error)
         }
         // 预算单独加载（依赖 trip.currency，本就在 trip 之后执行）。
         do {
@@ -123,6 +125,7 @@ final class TripDetailViewModel: ObservableObject {
             closeoutReadiness = try await environment.tripRepository.closeoutReadiness(tripId: tripId)
             sectionErrors["closeout"] = nil
         } catch {
+            closeoutReadiness = nil
             sectionErrors["closeout"] = environment.errorMessage(error)
         }
     }
@@ -605,7 +608,11 @@ struct TripDetailView: View {
                                     .foregroundStyle(readiness.summary.blockerCount > 0 ? DS.ColorToken.danger : DS.ColorToken.success)
                                 Text("提醒 " + String(readiness.summary.warningCount))
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(readiness.summary.warningCount > 0 ? DS.ColorToken.warning : DS.ColorToken.textSecondary)
+                                    .foregroundStyle(
+                                        readiness.summary.warningCount > 0
+                                            ? DS.ColorToken.warning
+                                            : DS.ColorToken.textSecondary
+                                    )
                             }
                         }
                         if !readiness.totalsByCurrency.isEmpty {
