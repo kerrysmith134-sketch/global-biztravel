@@ -48,8 +48,17 @@ _KEY_PATTERN = re.compile(
 
 
 def _validate_key(key: str) -> None:
-    if not _KEY_PATTERN.fullmatch(key):
+    match = _KEY_PATTERN.fullmatch(key)
+    if match is None:
         raise ValueError("invalid receipt storage key")
+    try:
+        segments = key.split("/")
+        if len(segments) != 4 or any(
+            str(UUID(segment)) != segment.lower() for segment in segments[1:]
+        ):
+            raise ValueError("invalid receipt storage key UUID")
+    except ValueError as exc:
+        raise ValueError("invalid receipt storage key") from exc
 
 
 def _validate_org_prefix(prefix: str) -> None:
