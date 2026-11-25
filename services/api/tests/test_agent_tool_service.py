@@ -267,6 +267,23 @@ def test_visa_prepare_rejects_country_outside_trip_destinations(monkeypatch) -> 
     assert failure["output_snapshot"]["error_code"] == "UNPROCESSABLE_ENTITY"
 
 
+def test_write_tool_requires_actor_identity_before_agent_run(monkeypatch) -> None:
+    def unexpected_start(*args, **kwargs):
+        raise AssertionError("write tool must not start an AgentRun without actor identity")
+
+    monkeypatch.setattr(agent_tool_service, "start_agent_run", unexpected_start)
+
+    with pytest.raises(Forbidden, match="必须提供当前操作人的身份"):
+        agent_tool_service.execute_tool(
+            object(),  # type: ignore[arg-type]
+            uuid4(),
+            actor_role="TRAVELER",
+            tool_name="visa.prepare_checklist",
+            arguments={"trip_id": str(uuid4())},
+            actor_user_id=None,
+        )
+
+
 def test_visa_prepare_without_destinations_does_not_create_cases(monkeypatch) -> None:
     trip_id = uuid4()
     run = SimpleNamespace()

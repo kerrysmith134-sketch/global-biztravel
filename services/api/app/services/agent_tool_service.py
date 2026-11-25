@@ -335,6 +335,11 @@ def execute_tool(
             "当前角色无权执行该工具",
             details={"tool_name": tool_name, "required_role": minimum_role, "actor_role": role},
         )
+    if action != "read" and actor_user_id is None:
+        raise Forbidden(
+            "执行写工具必须提供当前操作人的身份",
+            details={"tool_name": tool_name},
+        )
 
     executor, arguments_model = handler
     try:
