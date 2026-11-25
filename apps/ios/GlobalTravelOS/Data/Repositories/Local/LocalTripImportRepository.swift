@@ -285,9 +285,9 @@ extension LocalTripRepository {
                 throw APIError.invalidResponse("无法保存导入确认状态")
             }
             try database.setKeyValue(storageKey, value: updatedText)
-            if createdVisits > 0 {
-                try touchTripAfterImport(tripId: tripId)
-            }
+            // Match the server contract: every confirmed batch invalidates the current plan once,
+            // including batches where all selected rows are rejected or skipped.
+            try touchTripAfterImport(tripId: tripId)
         }
 
         return ConfirmImportResult(

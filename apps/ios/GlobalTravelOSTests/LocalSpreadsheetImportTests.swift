@@ -131,6 +131,26 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         } catch let error as APIError {
             XCTAssertEqual(error.errorCode, "IMPORT_ALREADY_CONFIRMED")
         }
+
+        // A confirmation with no accepted visit still closes the batch and advances the trip token,
+        // matching the backend's plan-invalidation contract.
+        let beforeRejectedOnly = try await repository.trip(id: trip.id)
+        let rejectedOnlyPreview = try await repository.parseImport(
+            tripId: trip.id,
+            fileData: workbook,
+            filename: "customers-rejected-only.xlsx"
+        )
+        let rejectedOnly = try await repository.confirmImport(
+            tripId: trip.id,
+            request: ConfirmImportRequest(
+                importId: rejectedOnlyPreview.importId,
+                acceptedRowNumbers: [4]
+            )
+        )
+        XCTAssertEqual(rejectedOnly.acceptedRows, 0)
+        XCTAssertEqual(rejectedOnly.rejectedRows, 1)
+        let afterRejectedOnly = try await repository.trip(id: trip.id)
+        XCTAssertEqual(afterRejectedOnly.version, beforeRejectedOnly.version + 1)
     }
 
     func testLegacyAndCorruptFilesAreRejectedBeforeStaging() async throws {
