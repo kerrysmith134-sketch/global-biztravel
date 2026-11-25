@@ -69,8 +69,13 @@ final class AssistantViewModel: ObservableObject {
     }
 
 
-    func runTool(toolName: String) async {
-        guard let conversation = detail?.conversation, let tripId = conversation.tripId else { return }
+    func runTool(
+        toolName: String,
+        arguments: AssistantToolExecuteArguments?
+    ) async {
+        guard let conversation = detail?.conversation else { return }
+        let payload = arguments ?? AssistantToolExecuteArguments(tripId: conversation.tripId)
+        guard payload.tripId != nil || payload.visitId != nil else { return }
         isSending = true
         errorMessage = nil
         defer { isSending = false }
@@ -78,7 +83,7 @@ final class AssistantViewModel: ObservableObject {
             _ = try await environment.assistantRepository.runTool(
                 conversationId: conversation.id,
                 toolName: toolName,
-                tripId: tripId
+                arguments: payload
             )
             detail = try await environment.assistantRepository.detail(id: conversation.id)
         } catch {
@@ -223,8 +228,11 @@ struct AssistantView: View {
                                 runAction: { action, subject in
                                     await viewModel.runAction(action: action, subjectId: subject)
                                 },
-                                runTool: { toolName in
-                                    await viewModel.runTool(toolName: toolName)
+                                runTool: { toolName, arguments in
+                                    await viewModel.runTool(
+                                        toolName: toolName,
+                                        arguments: arguments
+                                    )
                                 },
                                 isSending: viewModel.isSending
                             )
@@ -262,7 +270,7 @@ private struct MessageBubble: View {
     let message: AssistantMessage
     let environment: AppEnvironment
     let runAction: (String, String) async -> Void
-    let runTool: (String) async -> Void
+    let runTool: (String, AssistantToolExecuteArguments?) async -> Void
     let isSending: Bool
 
     var body: some View {
@@ -286,22 +294,31 @@ private struct MessageBubble: View {
                 } else {
                     cardFace(card)
                     if card.link == "tool",
-                       let toolName = card.entityId,
-                       ["trip.get_plan", "visa.get_checklist", "visa.prepare_checklist"].contains(toolName) {
+                       let toolName = card.toolName ?? card.entityId,
+                       [
+                            "trip.get_plan",
+                            "visa.get_checklist",
+                            "visa.prepare_checklist",
+                            "visit.draft_minutes"
+                       ].contains(toolName) {
                         Button {
-                            Task { await runTool(toolName) }
+                            Task { await runTool(toolName, card.toolArguments) }
                         } label: {
                             Label(
                                 toolName == "visa.get_checklist"
                                     ? "查看签证清单"
                                     : toolName == "visa.prepare_checklist"
                                         ? "创建签证清单"
-                                        : "读取计划",
+                                        : toolName == "visit.draft_minutes"
+                                            ? "生成纪要草稿"
+                                            : "读取计划",
                                 systemImage: toolName == "visa.get_checklist"
                                     ? "doc.text"
                                     : toolName == "visa.prepare_checklist"
                                         ? "doc.badge.plus"
-                                        : "doc.text.magnifyingglass"
+                                        : toolName == "visit.draft_minutes"
+                                            ? "doc.text"
+                                            : "doc.text.magnifyingglass"
                             )
                             .font(.caption)
                         }
