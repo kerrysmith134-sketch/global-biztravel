@@ -106,7 +106,7 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertEqual((confirmed.createdPlaces ?? 0) + (confirmed.reusedPlaces ?? 0), 2)
         XCTAssertEqual(confirmed.createdVisits, 2)
         XCTAssertEqual(try database.count(table: "customers"), 1)
-        XCTAssertEqual(try database.count(table: "places"), originalPlaceCount + confirmed.createdPlaces)
+        XCTAssertEqual(try database.count(table: "places"), originalPlaceCount + (confirmed.createdPlaces ?? 0))
         XCTAssertEqual(try database.count(table: "visits"), 2)
         XCTAssertGreaterThanOrEqual(try database.count(table: "customer_places"), 1)
 
