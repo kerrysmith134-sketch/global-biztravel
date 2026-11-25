@@ -116,7 +116,7 @@ class IdempotencyStore:
         status: int,
         body: dict[str, Any],
         *,
-        ttl: timedelta = DEFAULT_TTL,
+        ttl: timedelta | None = DEFAULT_TTL,
     ) -> IdempotencyRecord:
         """落库已完成的响应。同一事务内提交，与业务写入原子。"""
         if not 100 <= status <= 599:
@@ -128,7 +128,7 @@ class IdempotencyStore:
             request_hash=fingerprint,
             response_status=status,
             response_body=_jsonable(body),
-            expires_at=datetime.now(UTC) + ttl,
+            expires_at=datetime.now(UTC) + ttl if ttl is not None else None,
         )
         self.session.add(record)
         self.session.flush()

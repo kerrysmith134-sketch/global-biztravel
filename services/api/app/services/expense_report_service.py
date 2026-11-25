@@ -13,12 +13,13 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.errors import Conflict, NotFound, Unprocessable
+from app.api.errors import Conflict, Forbidden, NotFound, Unprocessable
 from app.api.schemas import ExpenseReportCreate
 from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.expenses import TripExpense
 from app.models.proactive import Approval
 from app.models.receipts import ReceiptAsset
+from app.models.trip import Trip
 from app.models.workflow import WorkflowInstance
 from app.services import trip_service
 
@@ -27,6 +28,8 @@ STATUS_DRAFT = "DRAFT"
 STATUS_SUBMITTED = "SUBMITTED"
 STATUS_APPROVED = "APPROVED"
 STATUS_REJECTED = "REJECTED"
+STATUS_CANCELLED = "CANCELLED"
+CANCELLATION_REASON_USER = "USER_CANCELLED_DRAFT"
 
 
 @dataclass
@@ -75,7 +78,19 @@ def create_report(
     *,
     actor_user_id: UUID | str | None = None,
 ) -> ReportDetail:
-    trip = trip_service.require_trip(session, organization_id, trip_id)
+    trip_service.require_trip(session, organization_id, trip_id)
+    # Match the lock order used by expense create/delete and submission so the
+    # snapshot cannot race a concurrent TripExpense membership change.
+    trip = session.scalars(
+        select(Trip)
+        .where(
+            Trip.organization_id == str(organization_id),
+            Trip.id == str(trip_id),
+        )
+        .with_for_update()
+    ).one_or_none()
+    if trip is None:
+        raise NotFound("行程不存在", details={"trip_id": str(trip_id)})
     stmt = select(TripExpense).where(
         TripExpense.organization_id == str(organization_id),
         TripExpense.trip_id == trip.id,
@@ -202,6 +217,31 @@ def submit_report(
     now: datetime | None = None,
 ) -> ReportDetail:
     report = require_report(session, organization_id, report_id)
+
+    # Lock order is always Trip then ExpenseReport. Expense create/delete take the
+    # Trip lock too, so the current expense set cannot change between validation
+    # and the DRAFT -> SUBMITTED transition, including writes from other clients.
+    locked_trip_id = session.execute(
+        select(Trip.id)
+        .where(
+            Trip.organization_id == str(organization_id),
+            Trip.id == report.trip_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if locked_trip_id is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
+    report = session.scalars(
+        select(ExpenseReport)
+        .where(
+            ExpenseReport.organization_id == str(organization_id),
+            ExpenseReport.id == report_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if report is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
     if report.status == STATUS_SUBMITTED:
         return _detail(session, report)
     if report.status != STATUS_DRAFT:
@@ -209,6 +249,41 @@ def submit_report(
             "只有草稿报销单可以提交",
             details={"report_id": str(report.id), "status": report.status},
         )
+
+    current_expense_ids = set(
+        session.scalars(
+            select(TripExpense.id).where(
+                TripExpense.organization_id == str(organization_id),
+                TripExpense.trip_id == report.trip_id,
+            )
+        )
+    )
+    # A Trip may be reimbursed in multiple reports. Every current expense must be
+    # pinned by at least one non-rejected report snapshot, not necessarily this one.
+    snapshot_expense_ids = set(
+        session.scalars(
+            select(ExpenseReportItem.expense_id)
+            .join(ExpenseReport, ExpenseReport.id == ExpenseReportItem.report_id)
+            .where(
+                ExpenseReportItem.organization_id == str(organization_id),
+                ExpenseReportItem.trip_id == report.trip_id,
+                ExpenseReportItem.expense_id.is_not(None),
+                ExpenseReport.organization_id == str(organization_id),
+                ExpenseReport.trip_id == report.trip_id,
+                ExpenseReport.status.notin_((STATUS_REJECTED, STATUS_CANCELLED)),
+            )
+        )
+    )
+    missing_expense_ids = sorted(str(item) for item in current_expense_ids - snapshot_expense_ids)
+    if missing_expense_ids:
+        raise Conflict(
+            "该行程仍有费用未纳入任何有效报销草稿，请先补全报销草稿",
+            details={
+                "report_id": str(report.id),
+                "missing_expense_ids": missing_expense_ids,
+            },
+        )
+
     current = now or session.scalar(select(func.clock_timestamp()))
     report.status = STATUS_SUBMITTED
     report.submitted_at = current
@@ -226,6 +301,65 @@ def submit_report(
     return _detail(session, report)
 
 
+def cancel_report(
+    session: Session,
+    organization_id: UUID | str,
+    report_id: UUID | str,
+    *,
+    actor_user_id: UUID | str,
+    can_cancel_any: bool = False,
+    now: datetime | None = None,
+) -> ReportDetail:
+    report = require_report(session, organization_id, report_id)
+
+    # Cancellation and submission share the Trip -> Report lock order. A race
+    # can therefore produce exactly one terminal transition from DRAFT.
+    locked_trip_id = session.execute(
+        select(Trip.id)
+        .where(
+            Trip.organization_id == str(organization_id),
+            Trip.id == report.trip_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if locked_trip_id is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
+    report = session.scalars(
+        select(ExpenseReport)
+        .where(
+            ExpenseReport.organization_id == str(organization_id),
+            ExpenseReport.id == report_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if report is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
+    if report.status == STATUS_CANCELLED:
+        return _detail(session, report)
+    if report.status != STATUS_DRAFT:
+        raise Conflict(
+            "只有草稿报销单可以撤销",
+            details={"report_id": str(report.id), "status": report.status},
+        )
+    if not can_cancel_any and (
+        report.created_by_user_id is None
+        or str(report.created_by_user_id) != str(actor_user_id)
+    ):
+        raise Forbidden(
+            "只能撤销自己创建的草稿报销单",
+            details={"report_id": str(report.id)},
+        )
+
+    current = now or session.scalar(select(func.clock_timestamp()))
+    report.status = STATUS_CANCELLED
+    report.cancelled_at = current
+    report.cancelled_by_user_id = str(actor_user_id)
+    report.cancellation_reason = CANCELLATION_REASON_USER
+    session.flush()
+    return _detail(session, report)
+
+
 def decide_report(
     session: Session,
     organization_id: UUID | str,
@@ -237,6 +371,29 @@ def decide_report(
     now: datetime | None = None,
 ) -> ReportDetail:
     report = require_report(session, organization_id, report_id)
+    # Rejection removes a report from expense coverage. Serialize report decisions
+    # with the same Trip lock used by expense mutations and report submission.
+    locked_trip_id = session.execute(
+        select(Trip.id)
+        .where(
+            Trip.organization_id == str(organization_id),
+            Trip.id == report.trip_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if locked_trip_id is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
+    report = session.scalars(
+        select(ExpenseReport)
+        .where(
+            ExpenseReport.organization_id == str(organization_id),
+            ExpenseReport.id == report_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if report is None:
+        raise NotFound("报销单不存在", details={"report_id": str(report_id)})
     target = STATUS_APPROVED if approve else STATUS_REJECTED
     if report.status == target:
         return _detail(session, report)

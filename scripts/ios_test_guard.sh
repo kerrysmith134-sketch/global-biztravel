@@ -3,9 +3,9 @@
 # `PruneExplicitPrecompiledModules` / `installApplication` / 交互阶段等）——
 # 进程还在但长时间零输出，测试实际不会开始或收尾。
 #
-# 本脚本按「输出停滞」判定挂死：停滞 ≥ STALL_SECONDS 就杀掉、清构建缓存与残留
-# 进程、重试，最多 MAX_ATTEMPTS 次。**真正的测试失败不重试**（避免掩盖产品缺陷，
-# 只把失败摘要打出来并退出 1）。
+# UI Test Runner 启动应用、安装 runner 和执行长链式交互时可能长时间不写 xcodebuild 日志。
+# 不应以短静默阈值误杀仍在执行的测试；每条 UI 测试另有 XCTest executionTimeAllowance。
+# 超过 STALL_SECONDS 仍无输出才视为基础设施挂死。真正的断言失败不重试。
 #
 # 用法：
 #   DEST='platform=iOS Simulator,name=GBT-E2E' scripts/ios_test_guard.sh
@@ -15,10 +15,29 @@
 set -uo pipefail
 
 DEST="${DEST:-${1:-}}"
-[ -n "$DEST" ] || { echo "[guard] 缺少 destination（DEST=...）" >&2; exit 64; }
+[ -n "$DEST" ] || { echo "[guard] 缺少 destination（DEST=... 或首个位置参数）" >&2; exit 64; }
+
+# Resolve a missing named simulator here rather than in Makefile. This script is
+# always invoked with bash, so the Make recipe does not depend on executable bits
+# or Make/shell dollar escaping.
+if [[ "$DEST" == *"name="* ]]; then
+  requested_name="${DEST##*name=}"
+  if ! xcrun simctl list devices available | grep -Fq "$requested_name"; then
+    fallback="$(xcrun simctl list devices available \
+      | sed -n 's/^ *\(iPhone [^(]*\) (.*/\1/p' \
+      | head -1 | sed 's/ *$//')"
+    if [ -z "$fallback" ]; then
+      echo "[guard] 没有可用的 iPhone 模拟器" >&2
+      exit 1
+    fi
+    echo "[guard] 目标模拟器 '$requested_name' 不存在，回退到 '$fallback'" >&2
+    DEST="platform=iOS Simulator,name=$fallback"
+  fi
+fi
 ONLY_TESTING="${ONLY_TESTING:-}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
-STALL_SECONDS="${STALL_SECONDS:-240}"
+STALL_SECONDS="${STALL_SECONDS:-900}"
+RESULT_BUNDLE_BASE="${RESULT_BUNDLE_BASE:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/../apps/ios"
 DERIVED="$HOME/Library/Developer/Xcode/DerivedData"
@@ -33,9 +52,18 @@ clean_build_state() {
 
 # 返回 0=通过 / 1=真失败 / 2=挂死
 run_attempt() {
-  local log="$1" pid now last
+  local log="$1" attempt_number="$2" pid now last
+  local result_bundle_args=()
+  if [ -n "$RESULT_BUNDLE_BASE" ]; then
+    local result_bundle="${RESULT_BUNDLE_BASE}.attempt-${attempt_number}.xcresult"
+    rm -rf "$result_bundle"
+    result_bundle_args=(-resultBundlePath "$result_bundle")
+  fi
   ( cd "$PROJECT_DIR" && xcodebuild test -project GlobalTravelOS.xcodeproj \
-      -scheme GlobalTravelOS -destination "$DEST" ${ONLY_TESTING:+-only-testing:"$ONLY_TESTING"} \
+      -scheme GlobalTravelOS -destination "$DEST" \
+      -parallel-testing-enabled NO -destination-timeout 120 \
+      "${result_bundle_args[@]}" \
+      ${ONLY_TESTING:+-only-testing:"$ONLY_TESTING"} \
       >"$log" 2>&1 ) &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
@@ -66,7 +94,7 @@ attempt=1
 while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
   log="/tmp/ios-test-attempt-${attempt}-$(date +%s).log"
   echo "[guard] 第 ${attempt}/${MAX_ATTEMPTS} 次 xcodebuild test（日志：${log}）"
-  run_attempt "$log"
+  run_attempt "$log" "$attempt"
   status=$?
   if [ "$status" -eq 0 ]; then
     grep -E "Executed [0-9]+ tests" "$log" | tail -1 | sed 's/^/    /'

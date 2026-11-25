@@ -208,6 +208,35 @@ struct LocalDatabase {
             ON receipt_assets (server_asset_id)
             WHERE server_asset_id IS NOT NULL;
         """),
+        ("0008_pending_trip_expenses", """
+        CREATE TABLE IF NOT EXISTS pending_trip_expenses (
+            id         TEXT PRIMARY KEY,
+            trip_id    TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            payload    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_pending_trip_expenses_trip_created
+            ON pending_trip_expenses (trip_id, created_at);
+        """),
+        ("0009_pending_trip_expense_fifo", """
+        ALTER TABLE pending_trip_expenses
+            ADD COLUMN queue_order INTEGER NOT NULL DEFAULT 0;
+        WITH ranked AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY trip_id
+                       ORDER BY created_at ASC, id ASC
+                   ) AS position
+            FROM pending_trip_expenses
+        )
+        UPDATE pending_trip_expenses
+        SET queue_order = (
+            SELECT position FROM ranked WHERE ranked.id = pending_trip_expenses.id
+        );
+        CREATE INDEX IF NOT EXISTS ix_pending_trip_expenses_trip_queue
+            ON pending_trip_expenses (trip_id, queue_order);
+        """),
     ]
 
     func migrate() throws {
@@ -217,13 +246,28 @@ struct LocalDatabase {
             applied_at TEXT NOT NULL
         )
         """)
-        let applied = try store.query("SELECT name FROM schema_migrations") { $0.string(0) }
-        let known = Set(applied)
-        for migration in LocalDatabase.migrations where !known.contains(migration.name) {
-            try store.executeScript(migration.script)
+        for migration in LocalDatabase.migrations {
+            try applyMigration(name: migration.name, script: migration.script)
+        }
+    }
+
+    /// Applies one local schema migration atomically.
+    ///
+    /// BEGIN IMMEDIATE serializes writers across SQLite connections. Re-checking the
+    /// marker after the lock is acquired makes simultaneous app/database opens safe;
+    /// the DDL and marker commit together, so a crash cannot leave a half-applied version.
+    func applyMigration(name: String, script: String) throws {
+        try store.transaction {
+            let alreadyApplied = try store.query(
+                "SELECT name FROM schema_migrations WHERE name = ?",
+                bindings: [name]
+            ) { $0.string(0) }.first != nil
+            guard !alreadyApplied else { return }
+
+            try store.executeScript(script)
             try store.run(
                 "INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)",
-                bindings: [migration.name, Date()]
+                bindings: [name, Date()]
             )
         }
     }
@@ -256,8 +300,17 @@ struct LocalDatabase {
         try store.run(sql, bindings: bindings)
     }
 
-    func transaction(_ work: () throws -> Void) throws {
+    func transaction<T>(_ work: () throws -> T) throws -> T {
         try store.transaction(work)
+    }
+
+    /// Allocates a stable FIFO position for the next expense command in one Trip.
+    /// Call inside `transaction(_:)` before inserting the queue item.
+    func nextPendingTripExpenseQueueOrder(tripId: String) throws -> Int {
+        try store.query(
+            "SELECT COALESCE(MAX(queue_order), 0) + 1 FROM pending_trip_expenses WHERE trip_id = ?",
+            bindings: [tripId]
+        ) { $0.int(0) }.first ?? 1
     }
 
     func delete(table: String, id: String) throws {

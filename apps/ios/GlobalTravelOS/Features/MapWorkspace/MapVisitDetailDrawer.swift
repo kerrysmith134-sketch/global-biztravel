@@ -1,4 +1,17 @@
+import MapKit
 import SwiftUI
+
+private enum MapHandoff {
+    static func open(name: String, latitude: Double, longitude: Double) {
+        guard (-90.0...90.0).contains(latitude),
+              (-180.0...180.0).contains(longitude) else { return }
+        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        item.name = name
+        // Open the destination only; do not force driving for rail/air legs.
+        item.openInMaps()
+    }
+}
 
 /// A focused inspection drawer for a selected stop on the route map.
 struct MapVisitDetailDrawer: View {
@@ -20,6 +33,7 @@ struct MapVisitDetailDrawer: View {
                 visitContext
                 timingContext
                 travelContext
+                mapAction
                 cancellationAction
             }
         }
@@ -121,31 +135,48 @@ struct MapVisitDetailDrawer: View {
     }
 
     private var travelContext: some View {
-        HStack(alignment: .center, spacing: DS.Spacing.sm) {
-            if let travel = stop.travelMinutes {
-                Label("路程 \(duration(travel))", systemImage: "car")
-                    .font(.caption)
-                    .foregroundStyle(DS.ColorToken.textSecondary)
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            HStack(alignment: .center, spacing: DS.Spacing.sm) {
+                if let travel = stop.travelMinutes {
+                    Label("路程 \(duration(travel))", systemImage: "car")
+                        .font(.caption)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+                if stop.distanceKm != nil {
+                    Text(stop.distanceLabel)
+                        .font(.caption2)
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                }
+                Spacer(minLength: 0)
+                if let cost = stop.costAmount {
+                    Text("\(stop.costCurrency ?? "") \(String(format: "%.2f", cost))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(DS.ColorToken.textPrimary)
+                }
             }
-            if stop.distanceKm != nil {
-                Text(stop.distanceLabel)
-                    .font(.caption2)
-                    .foregroundStyle(DS.ColorToken.textSecondary)
-            }
-            if stop.travelIsStale {
-                DSDataQualityTag(kind: .stale, text: "交通数据需复核")
-            } else if let source = stop.travelSource {
+            if stop.travelSource != nil || stop.travelIsStale {
                 DSDataQualityTag(
-                    kind: source == "osrm-road" ? .live : .estimate,
-                    text: source == "osrm-road" ? "路网路线" : "路线估算"
+                    kind: stop.travelIsStale ? .stale : .estimate,
+                    text: stop.travelSourceLabel
                 )
             }
-            Spacer(minLength: 0)
-            if let cost = stop.costAmount {
-                Text("\(stop.costCurrency ?? "") \(String(format: "%.2f", cost))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(DS.ColorToken.textPrimary)
+        }
+    }
+
+    @ViewBuilder
+    private var mapAction: some View {
+        if stop.hasValidCoordinates,
+           let latitude = stop.latitude,
+           let longitude = stop.longitude {
+            Button {
+                MapHandoff.open(name: stop.displayName, latitude: latitude, longitude: longitude)
+            } label: {
+                Label("在 Apple 地图中查看", systemImage: "map")
+                    .font(.caption.weight(.semibold))
             }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("map-visit-open-in-maps")
+            .accessibilityHint("打开地点后，可在 Apple 地图中选择合适的导航方式")
         }
     }
 
@@ -239,6 +270,23 @@ struct MapCustomerPlaceDrawer: View {
                         .font(.footnote)
                         .foregroundStyle(DS.ColorToken.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if location.place.hasValidCoordinates,
+                   let latitude = location.place.lat,
+                   let longitude = location.place.lon {
+                    Button {
+                        MapHandoff.open(
+                            name: "\(location.customer.name) · \(location.place.name)",
+                            latitude: latitude,
+                            longitude: longitude
+                        )
+                    } label: {
+                        Label("在 Apple 地图中查看", systemImage: "map")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("map-customer-open-in-maps")
                 }
 
                 Divider()

@@ -31,6 +31,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
@@ -38,7 +39,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
-from app.services.idempotency import IdempotencyStore, request_fingerprint
+from app.services.idempotency import DEFAULT_TTL, IdempotencyStore, request_fingerprint
 
 #: 命中幂等记录时回放的响应会带上这个头，客户端据此区分"本次真的执行了"与"回放了首次结果"。
 REPLAY_HEADER = "Idempotent-Replay"
@@ -115,7 +116,13 @@ class IdempotentWrite:
             return None
         return _response(replay.status, replay.body, headers={REPLAY_HEADER: "true"})
 
-    def finish(self, *, status_code: int, body: Any) -> Response:
+    def finish(
+        self,
+        *,
+        status_code: int,
+        body: Any,
+        ttl: timedelta | None = DEFAULT_TTL,
+    ) -> Response:
         """业务已执行完毕：落幂等记录并返回响应（与业务写入同事务、同提交）。"""
         encoded = jsonable_encoder(body)
         key = self.key
@@ -126,5 +133,6 @@ class IdempotentWrite:
                 self._fingerprint,
                 status_code,
                 _as_mapping(encoded),
+                ttl=ttl,
             )
         return _response(status_code, encoded)

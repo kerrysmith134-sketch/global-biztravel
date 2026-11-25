@@ -38,6 +38,7 @@ from app.services import (
     notification_service,
     outbox_service,
     proactive_service,
+    receipt_storage_reconciliation_service,
     retention_service,
 )
 from app.workers.consumers import CONSUMER_HANDLERS
@@ -54,6 +55,8 @@ _last_memory_review: dict[str, float] = {}
 _last_metrics_snapshot: dict[str, float] = {}
 #: 每个租户上次留存清理的单调时钟。
 _last_retention: dict[str, float] = {}
+#: 每个租户上次票据孤儿对象对账的单调时钟。
+_last_receipt_reconciliation: dict[str, float] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +324,39 @@ def apply_retention(org_id: str, *, force: bool = False) -> retention_service.Re
         return retention_service.apply_retention(session, org_id)
 
 
+def reconcile_receipt_orphans(
+    org_id: str, *, force: bool = False
+) -> receipt_storage_reconciliation_service.ReceiptReconciliationReport | None:
+    """删除超过安全宽限期且数据库中没有 ReceiptAsset 元数据的私有对象。"""
+    settings = get_settings()
+    interval = max(settings.receipt_orphan_reconcile_interval_seconds, 0)
+    now = time.monotonic()
+    previous = _last_receipt_reconciliation.get(org_id)
+    if not force and previous is not None and now - previous < interval:
+        return None
+    try:
+        with org_session(org_id) as session:
+            report = receipt_storage_reconciliation_service.reconcile_orphaned_receipt_objects(
+                session,
+                org_id,
+                grace_seconds=settings.receipt_orphan_grace_seconds,
+            )
+    except Exception:
+        # A transient DB/S3 failure must not suppress this maintenance job for a full day.
+        # Keep a short bounded retry cooldown to avoid hammering a failed dependency each poll.
+        retry_cooldown = min(max(interval, 1), 300)
+        _last_receipt_reconciliation[org_id] = now - max(interval - retry_cooldown, 0)
+        raise
+
+    if report.failed_deletions:
+        # Partial object-store failures are retryable too; do not wait for the full daily cycle.
+        retry_cooldown = min(max(interval, 1), 300)
+        _last_receipt_reconciliation[org_id] = now - max(interval - retry_cooldown, 0)
+    else:
+        _last_receipt_reconciliation[org_id] = now
+    return report
+
+
 def dispatch_notifications(
     org_id: str, *, limit: int = 50
 ) -> notification_service.DispatchReport:
@@ -439,6 +475,23 @@ def run_cycle(
                 logger.info("组织 %s 写入 %d 条指标快照", org_id, snapshots)
         except Exception:  # noqa: BLE001
             logger.exception("组织 %s 的指标快照失败", org_id)
+
+        try:
+            reconciliation = reconcile_receipt_orphans(org_id, force=proactive_force)
+            if reconciliation is not None:
+                if reconciliation.deleted_objects:
+                    did_work = True
+                if reconciliation.orphaned_objects or reconciliation.failed_deletions:
+                    logger.info(
+                        "组织 %s 票据对象对账：扫描 %d、孤儿 %d、删除 %d、失败 %d",
+                        org_id,
+                        reconciliation.objects_scanned,
+                        reconciliation.orphaned_objects,
+                        reconciliation.deleted_objects,
+                        reconciliation.failed_deletions,
+                    )
+        except Exception:  # noqa: BLE001
+            logger.exception("组织 %s 的票据对象对账失败", org_id)
     return did_work
 
 

@@ -8,8 +8,13 @@ final class TripDetailViewModel: ObservableObject {
     @Published private(set) var visaCases: [VisaCase] = []
     @Published private(set) var entryAssessments: [EntryAssessment] = []
     @Published private(set) var expenses: [TripExpense] = []
+    @Published private(set) var pendingExpenses: [PendingTripExpense] = []
+    @Published private(set) var isSyncingPendingExpenses = false
     @Published private(set) var budget: BudgetSummary?
     @Published private(set) var expenseReports: [ExpenseReport] = []
+    @Published private(set) var closeoutReadiness: TripCloseoutReadiness?
+    @Published private(set) var isLoadingCloseout = false
+    @Published private(set) var closeoutError: String?
     @Published private(set) var isLoading = false
     @Published private(set) var generating = false
     @Published var errorMessage: String?
@@ -17,10 +22,14 @@ final class TripDetailViewModel: ObservableObject {
 
     let tripId: String
     private let environment: AppEnvironment
+    private let expenseOutbox: TripExpenseOutbox?
+    /// Coalesces retry requests made while an earlier FIFO drain is awaiting network I/O.
+    private var pendingExpenseRetryRequested = false
 
     init(tripId: String, environment: AppEnvironment) {
         self.tripId = tripId
         self.environment = environment
+        self.expenseOutbox = environment.receiptVault?.makeTripExpenseOutbox()
     }
 
     /// 分域加载错误（审计七·额外可靠性）：空区块必须能区分"确实没有"与"加载失败"。
@@ -99,17 +108,144 @@ final class TripDetailViewModel: ObservableObject {
         } catch {
             sectionErrors["budget"] = environment.errorMessage(error)
         }
+        refreshPendingExpenses()
+        await refreshCloseoutReadiness()
         environment.refreshOfflineSummary()
         if !environment.isLocalMode, let receiptVault = environment.receiptVault {
+            let queuedReceiptIDs = Set(pendingExpenses.compactMap(\.localReceiptAssetId))
             Task {
-                await receiptVault.retryPendingUploads(tripId: tripId)
+                await receiptVault.retryPendingUploads(
+                    tripId: tripId,
+                    excluding: queuedReceiptIDs
+                )
+                await retryPendingExpenses()
             }
+        }
+    }
+
+    func refreshCloseoutReadiness() async {
+        guard !environment.isLocalMode else {
+            closeoutReadiness = nil
+            closeoutError = nil
+            return
+        }
+        isLoadingCloseout = true
+        defer { isLoadingCloseout = false }
+        do {
+            closeoutReadiness = try await environment.tripRepository.closeoutReadiness(
+                tripId: tripId
+            )
+            closeoutError = nil
+        } catch {
+            closeoutError = environment.errorMessage(error)
         }
     }
 
     /// 某区块的加载错误（nil 表示该域加载成功或无错误）。
     func sectionError(_ key: String) -> String? {
         sectionErrors[key]
+    }
+
+    private func refreshPendingExpenses() {
+        guard let expenseOutbox else {
+            pendingExpenses = []
+            return
+        }
+        do {
+            pendingExpenses = try expenseOutbox.pending(tripId: tripId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    /// Replays durable financial commands in order. Receipt upload is a prerequisite; only the
+    /// server-confirmed asset ID is allowed into the API request.
+    func retryPendingExpenses() async {
+        guard !environment.isLocalMode else { return }
+        guard !isSyncingPendingExpenses else {
+            pendingExpenseRetryRequested = true
+            return
+        }
+        guard let expenseOutbox else {
+            errorMessage = "本地费用队列不可用，无法安全重试"
+            return
+        }
+
+        isSyncingPendingExpenses = true
+        defer {
+            isSyncingPendingExpenses = false
+            if pendingExpenseRetryRequested {
+                pendingExpenseRetryRequested = false
+                Task { await retryPendingExpenses() }
+            }
+        }
+        var syncedCount = 0
+
+        // Re-read the FIFO head after every successful write. A new expense may be
+        // enqueued while an upload/API request is suspended; it must join this drain
+        // rather than waiting for the next Trip screen load.
+        while true {
+            let item: PendingTripExpense
+            do {
+                guard let next = try expenseOutbox.pending(tripId: tripId).first else {
+                    break
+                }
+                item = next
+            } catch {
+                errorMessage = environment.errorMessage(error)
+                break
+            }
+
+            do {
+                var request = item.body
+                if let localReceiptAssetId = item.localReceiptAssetId {
+                    guard let receiptVault = environment.receiptVault else {
+                        throw ReceiptVaultError.originalFileUnavailable
+                    }
+                    let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
+                    guard let serverAssetId = asset.serverAssetId else {
+                        throw ReceiptVaultError.serverAssetNotConfirmed
+                    }
+                    request.receiptAssetId = serverAssetId
+                }
+                _ = try await environment.tripRepository.createExpense(
+                    tripId: tripId,
+                    body: request,
+                    idempotencyKey: item.id
+                )
+                try expenseOutbox.remove(id: item.id)
+                syncedCount += 1
+            } catch {
+                try? expenseOutbox.recordFailure(
+                    id: item.id,
+                    message: environment.errorMessage(error)
+                )
+                break
+            }
+        }
+
+        refreshPendingExpenses()
+        if syncedCount > 0 {
+            do {
+                expenses = try await environment.tripRepository.expenses(tripId: tripId)
+            } catch {
+                sectionErrors["expenses"] = environment.errorMessage(error)
+            }
+            do {
+                budget = try await environment.tripRepository.budgetSummary(
+                    tripId: tripId,
+                    baseCurrency: trip?.currency
+                )
+            } catch {
+                sectionErrors["budget"] = environment.errorMessage(error)
+            }
+            await refreshCloseoutReadiness()
+        }
+        if pendingExpenses.isEmpty {
+            if syncedCount > 0 { statusMessage = "\(syncedCount) 笔费用已同步" }
+        } else {
+            statusMessage = "费用已保存在本机，仍有 \(pendingExpenses.count) 笔待同步"
+        }
     }
 
     func storeReceiptDraft(_ draft: ReceiptDraft) throws -> LocalReceiptAsset {
@@ -133,32 +269,73 @@ final class TripDetailViewModel: ObservableObject {
             return false
         }
 
-        var receiptAssetId: String?
-        if let localReceiptAssetId {
-            guard let receiptVault = environment.receiptVault else {
-                errorMessage = "本地票据仓库不可用，费用未保存"
-                return false
-            }
-            do {
-                let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
-                receiptAssetId = asset.expenseReceiptAssetId
-            } catch {
-                errorMessage = "\(environment.errorMessage(error))。原始文件已保留在本机；联网后可重试。"
-                return false
-            }
-        }
-
         let body = TripExpenseCreateRequest(
             category: category,
             amount: amount,
             currency: currency.uppercased(),
             occurredOn: ISO8601.dayString(from: occurredOn),
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
-            receiptAssetId: receiptAssetId
+            receiptAssetId: nil
         )
+
+        // Local-only mode writes directly into its local domain repository.
+        if environment.isLocalMode {
+            var localBody = body
+            if let localReceiptAssetId {
+                guard let receiptVault = environment.receiptVault else {
+                    errorMessage = "本地票据仓库不可用，费用未保存"
+                    return false
+                }
+                do {
+                    let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
+                    localBody.receiptAssetId = asset.expenseReceiptAssetId
+                } catch {
+                    errorMessage = environment.errorMessage(error)
+                    return false
+                }
+            }
+            do {
+                _ = try await environment.tripRepository.createExpense(tripId: tripId, body: localBody)
+                await load()
+                return true
+            } catch {
+                errorMessage = environment.errorMessage(error)
+                return false
+            }
+        }
+
+        // Cloud mode commits to the local outbox first. Network work must never be able to
+        // prevent the user from keeping a valid expense entry on the device.
+        guard let expenseOutbox else {
+            errorMessage = "本地费用队列不可用，费用未保存"
+            return false
+        }
+        if let localReceiptAssetId {
+            guard let receiptVault = environment.receiptVault else {
+                errorMessage = "本地票据仓库不可用，费用未保存"
+                return false
+            }
+            do {
+                let assets = try receiptVault.assets(tripId: tripId)
+                guard assets.contains(where: { $0.id == localReceiptAssetId }) else {
+                    errorMessage = "所选票据不属于当前行程，费用未保存"
+                    return false
+                }
+            } catch {
+                errorMessage = environment.errorMessage(error)
+                return false
+            }
+        }
+
         do {
-            _ = try await environment.tripRepository.createExpense(tripId: tripId, body: body)
-            await load()
+            _ = try expenseOutbox.enqueue(
+                tripId: tripId,
+                body: body,
+                localReceiptAssetId: localReceiptAssetId
+            )
+            refreshPendingExpenses()
+            statusMessage = "费用已保存在本机，正在尝试同步"
+            Task { await retryPendingExpenses() }
             return true
         } catch {
             errorMessage = environment.errorMessage(error)
@@ -166,26 +343,74 @@ final class TripDetailViewModel: ObservableObject {
         }
     }
 
+    /// Server-side report snapshots cannot include expenses that are still only in the
+    /// local outbox. Refresh the durable queue immediately before every report mutation.
+    private func ensureNoPendingCloudExpenses() -> Bool {
+        guard !environment.isLocalMode else { return true }
+        guard let expenseOutbox else {
+            errorMessage = "本地费用队列不可用，无法安全生成或提交报销单"
+            return false
+        }
+        do {
+            pendingExpenses = try expenseOutbox.pending(tripId: tripId)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+            return false
+        }
+        guard pendingExpenses.isEmpty else {
+            errorMessage = "仍有 \(pendingExpenses.count) 笔费用仅保存在本机，请完成同步后再生成或提交报销单"
+            return false
+        }
+        return true
+    }
+
     func createExpenseReport() async {
+        guard ensureNoPendingCloudExpenses() else { return }
         errorMessage = nil
         do {
             let report = try await environment.tripRepository.createExpenseReport(tripId: tripId)
             expenseReports.insert(report, at: 0)
+            await refreshCloseoutReadiness()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
     }
 
     func submitExpenseReport(_ report: ExpenseReport) async {
+        guard ensureNoPendingCloudExpenses() else { return }
         errorMessage = nil
         do {
+            let currentExpenses = try await environment.tripRepository.expenses(tripId: tripId)
+            expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
+            guard ExpenseReport.snapshotsCoverCurrentExpenses(
+                expenseReports,
+                currentExpenseIDs: Set(currentExpenses.map(\.id))
+            ) else {
+                errorMessage = "仍有费用尚未纳入任何有效报销草稿。请先为剩余费用创建或补全报销草稿，再提交。"
+                return
+            }
+            // A new local expense may have been enqueued while the authoritative reads were in flight.
+            guard ensureNoPendingCloudExpenses() else { return }
             _ = try await environment.tripRepository.submitExpenseReport(id: report.id)
             expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
+            await refreshCloseoutReadiness()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
     }
 
+    func cancelExpenseReport(_ report: ExpenseReport) async {
+        guard report.canCancelInUI else { return }
+        errorMessage = nil
+        do {
+            _ = try await environment.tripRepository.cancelExpenseReport(id: report.id)
+            expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
+            await refreshCloseoutReadiness()
+            statusMessage = "报销草稿已撤销；费用和原始票据均已保留"
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
     func createVisaCases() async {
         errorMessage = nil
         do {
@@ -289,11 +514,13 @@ struct TripDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: TripDetailViewModel
     @State private var selectedVisit: TripVisit?
+    @State private var selectedFollowUpId: String?
     @State private var briefingVisit: TripVisit?
     @State private var showsImport = false
     @State private var showsAddVisit = false
     @State private var showsExpense = false
     @State private var showsAssistant = false
+    @State private var reportToCancel: ExpenseReport?
     @State private var section: TripSection = .overview
 
     init(tripId: String, environment: AppEnvironment) {
@@ -303,7 +530,8 @@ struct TripDetailView: View {
     }
 
     var body: some View {
-        List {
+        ScrollViewReader { proxy in
+            List {
             Section {
                 Picker("分区", selection: $section) {
                     ForEach(TripSection.allCases) { item in
@@ -311,6 +539,7 @@ struct TripDetailView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .accessibilityIdentifier("trip-section-picker")
             }
             if let error = viewModel.errorMessage {
                 Section { ErrorBanner(message: error) }
@@ -387,6 +616,10 @@ struct TripDetailView: View {
             }
             if section == .schedule {
                 Section("拜访") {
+                    Text("拜访记录与现场结果")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .id("closeout-schedule")
                     if let error = viewModel.sectionError("visits") {
                         Text(error).font(.caption).foregroundStyle(.red)
                     }
@@ -410,9 +643,13 @@ struct TripDetailView: View {
                             Spacer()
                             Button("简报") { briefingVisit = visit }
                                 .buttonStyle(.bordered)
-                            Button("记录") { selectedVisit = visit }
-                                .buttonStyle(.bordered)
+                            Button("记录") {
+                                selectedFollowUpId = nil
+                                selectedVisit = visit
+                            }
+                            .buttonStyle(.bordered)
                         }
+                        .id("closeout-visit-\(visit.id)")
                     }
                 }
 
@@ -475,11 +712,21 @@ struct TripDetailView: View {
 
             }
             if section == .money {
-                if let budget = viewModel.budget {
-                    Section("费用与预算") {
-                    if let error = viewModel.sectionError("expenses") ?? viewModel.sectionError("budget") {
-                        Text(error).font(.caption).foregroundStyle(.red)
+                TripCloseoutPanel(
+                    readiness: viewModel.closeoutReadiness,
+                    isLoading: viewModel.isLoadingCloseout,
+                    errorMessage: viewModel.closeoutError,
+                    isLocalMode: environment.isLocalMode,
+                    onRefresh: {
+                        Task { await viewModel.refreshCloseoutReadiness() }
+                    },
+                    onOpenSource: { issue in
+                        navigateToCloseoutSource(issue, proxy: proxy)
                     }
+                )
+
+                Section("费用与预算") {
+                    if let budget = viewModel.budget {
                         LabeledContent("预算", value: budget.budgetLabel)
                         LabeledContent("计划估算", value: budget.plannedLabel)
                         LabeledContent("实际费用", value: budget.actualLabel)
@@ -490,39 +737,118 @@ struct TripDetailView: View {
                         if let note = budget.conversionNote {
                             Text(note)
                                 .font(.caption2)
-                                .foregroundStyle(budget.conversionComplete == true ? Color.secondary : Color.orange)
+                                .foregroundStyle(
+                                    budget.conversionComplete == true ? Color.secondary : Color.orange
+                                )
                         }
-                        ForEach(viewModel.expenses) { expense in
+                    } else if let error = viewModel.sectionError("budget") {
+                        Label("预算汇总加载失败", systemImage: "exclamationmark.triangle")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.orange)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if viewModel.isLoading {
+                        ProgressView("正在加载预算…")
+                    } else {
+                        ContentUnavailableView(
+                            "暂无预算汇总",
+                            systemImage: "chart.bar",
+                            description: Text("暂时没有可展示的预算数据，请检查预算设置或稍后刷新。")
+                        )
+                    }
+
+                    if let error = viewModel.sectionError("expenses") {
+                        Text("费用记录加载失败：\(error)")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if viewModel.expenses.isEmpty && viewModel.pendingExpenses.isEmpty {
+                        Text("还没有费用记录。登记交通、住宿等实际支出后会自动汇总。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(viewModel.expenses) { expense in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(expense.categoryLabel)
+                                Spacer()
+                                Text(expense.amountLabel)
+                                    .font(.caption.monospacedDigit())
+                            }
+                            if let receiptAssetId = expense.receiptAssetId {
+                                Label(
+                                    environment.isLocalMode ? "原件保存在本机" : "原件已上传",
+                                    systemImage: "paperclip"
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .id("closeout-receipt-\(receiptAssetId)")
+                            } else {
+                                Label("未附原始票据", systemImage: "paperclip")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .id("closeout-expense-\(expense.id)")
+                    }
+
+                    Button {
+                        showsExpense = true
+                    } label: {
+                        Label("记一笔费用", systemImage: "plus.circle")
+                    }
+                }
+                .id("closeout-money-summary")
+
+                if !viewModel.pendingExpenses.isEmpty {
+                    Section {
+                        ForEach(viewModel.pendingExpenses) { item in
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
-                                    Text(expense.categoryLabel)
+                                    Text(item.body.category.label)
                                     Spacer()
-                                    Text(expense.amountLabel)
-                                        .font(.caption.monospacedDigit())
-                                }
-                                if expense.receiptAssetId != nil {
-                                    Label(
-                                        environment.isLocalMode ? "原件保存在本机" : "原件已上传",
-                                        systemImage: "paperclip"
+                                    Text(
+                                        "\(item.body.currency) " +
+                                            NSDecimalNumber(decimal: item.body.amount).stringValue
                                     )
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                } else {
-                                    Label("未附原始票据", systemImage: "paperclip")
+                                    .font(.caption.monospacedDigit())
+                                }
+                                Text(
+                                    item.localReceiptAssetId == nil
+                                        ? "费用已保存在本机，等待提交"
+                                        : "原始票据已保存在本机，上传后提交费用"
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                if let error = item.lastError {
+                                    Text(error)
                                         .font(.caption2)
-                                        .foregroundStyle(.tertiary)
+                                        .foregroundStyle(.orange)
+                                        .lineLimit(2)
                                 }
                             }
                         }
                         Button {
-                            showsExpense = true
+                            Task { await viewModel.retryPendingExpenses() }
                         } label: {
-                            Label("记一笔费用", systemImage: "plus.circle")
+                            Label("重试同步", systemImage: "arrow.clockwise")
                         }
+                        .disabled(viewModel.isSyncingPendingExpenses)
+                    } header: {
+                        Text("待同步费用")
                     }
                 }
 
                 Section("报销单") {
+                    if !viewModel.pendingExpenses.isEmpty {
+                        Label(
+                            "还有 \(viewModel.pendingExpenses.count) 笔费用只保存在本机。请先同步，避免报销单遗漏这些费用。",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    }
                     if let error = viewModel.sectionError("reports") {
                         Text(error).font(.caption).foregroundStyle(.red)
                     }
@@ -546,20 +872,36 @@ struct TripDetailView: View {
                                     Task { await viewModel.submitExpenseReport(report) }
                                 }
                                 .font(.caption)
+                                .disabled(!viewModel.pendingExpenses.isEmpty)
+                            }
+                            if report.canCancelInUI {
+                                Button(role: .destructive) {
+                                    reportToCancel = report
+                                } label: {
+                                    Text("撤销草稿")
+                                }
+                                .font(.caption)
+                                .accessibilityIdentifier("expense-report-cancel-\(report.id)")
                             }
                         }
+                        .id("closeout-report-\(report.id)")
                     }
                     Button {
                         Task { await viewModel.createExpenseReport() }
                     } label: {
                         Label("从费用记录生成报销单", systemImage: "doc.text")
                     }
+                    .disabled(!viewModel.pendingExpenses.isEmpty)
                 }
-
             }
             if section == .visa {
                 Section("签证与入境") {
-                    if viewModel.visaCases.isEmpty {
+                    if let error = viewModel.sectionError("visa") {
+                        Text("签证与入境数据加载失败：\(error)")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    if viewModel.visaCases.isEmpty && viewModel.sectionError("visa") == nil {
                         Text("还没有签证案件。创建后会按目的国生成材料清单。")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -632,7 +974,7 @@ struct TripDetailView: View {
         .refreshable { await viewModel.load() }
         .task { await viewModel.load() }
         .sheet(item: $selectedVisit) { visit in
-            VisitRecordSheet(visit: visit)
+            VisitRecordSheet(visit: visit, focusFollowUpId: selectedFollowUpId)
         }
         .sheet(item: $briefingVisit) { visit in
             VisitBriefingView(visitId: visit.id, environment: environment)
@@ -668,5 +1010,69 @@ struct TripDetailView: View {
                 }
             )
         }
+        .confirmationDialog(
+            "确认撤销这张报销草稿？",
+            isPresented: Binding(
+                get: { reportToCancel != nil },
+                set: { if !$0 { reportToCancel = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("确认撤销草稿", role: .destructive) {
+                guard let report = reportToCancel else { return }
+                reportToCancel = nil
+                Task { await viewModel.cancelExpenseReport(report) }
+            }
+            Button("取消", role: .cancel) {
+                reportToCancel = nil
+            }
+        } message: {
+            Text("撤销后报销快照会保留用于审计，但不再计入有效报销覆盖。费用和原始票据不会删除。")
+        }
+        }
     }
+    private func navigateToCloseoutSource(
+        _ issue: TripCloseoutIssue,
+        proxy: ScrollViewProxy
+    ) {
+        let sourceType = issue.sourceType.uppercased()
+        let destination: TripSection
+        let anchor: String
+        switch sourceType {
+        case "VISIT":
+            destination = .schedule
+            anchor = "closeout-visit-\(issue.sourceId)"
+        case "VISIT_FOLLOW_UP":
+            destination = .schedule
+            anchor = issue.sourceVisitId.map { "closeout-visit-\($0)" } ?? "closeout-schedule"
+        case "EXPENSE":
+            destination = .money
+            anchor = "closeout-expense-\(issue.sourceId)"
+        case "RECEIPT_ASSET":
+            destination = .money
+            anchor = viewModel.expenses.contains(where: { $0.receiptAssetId == issue.sourceId })
+                ? "closeout-receipt-\(issue.sourceId)"
+                : "closeout-money-summary"
+        case "EXPENSE_REPORT":
+            destination = .money
+            anchor = "closeout-report-\(issue.sourceId)"
+        default:
+            destination = .money
+            anchor = "closeout-money-summary"
+        }
+        section = destination
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(anchor, anchor: .center)
+            }
+            if sourceType == "VISIT_FOLLOW_UP",
+               let visitId = issue.sourceVisitId,
+               let visit = viewModel.visits.first(where: { $0.id == visitId }) {
+                selectedFollowUpId = issue.sourceId
+                selectedVisit = visit
+            }
+        }
+    }
+
 }

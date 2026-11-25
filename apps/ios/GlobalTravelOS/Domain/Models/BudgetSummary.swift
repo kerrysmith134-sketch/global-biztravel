@@ -82,7 +82,7 @@ enum TripExpenseCategory: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-struct TripExpenseCreateRequest: Encodable, Equatable {
+struct TripExpenseCreateRequest: Codable, Equatable {
     var category: TripExpenseCategory
     var amount: Decimal
     var currency: String

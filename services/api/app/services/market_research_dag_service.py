@@ -586,6 +586,19 @@ def start_execution(
             if job is None:
                 job = _enqueue_schedule(session, organization_id, active.id, user_id=user_id)
                 active.job_id = job.id
+            active_payload = active.payload or {}
+            raw_deadline = active_payload.get("deadline_at")
+            if raw_deadline:
+                active_deadline = datetime.fromisoformat(str(raw_deadline))
+                if active_deadline.tzinfo is None:
+                    active_deadline = active_deadline.replace(tzinfo=UTC)
+                _enqueue_deadline_check(
+                    session,
+                    organization_id,
+                    active.id,
+                    deadline_at=active_deadline,
+                    user_id=user_id,
+                )
             return {
                 **_serialize_execution(session, organization_id, workspace_id, active),
                 "job_id": job.id,
@@ -636,7 +649,9 @@ def start_execution(
     if max_cost_value is not None:
         max_concurrency_value = 1
 
-    now = datetime.now(UTC)
+    # The delayed BackgroundJob is claimed against PostgreSQL clock_timestamp();
+    # derive the execution deadline from the same clock to avoid host/database skew.
+    now = session.scalar(select(func.clock_timestamp()))
     deadline = now + timedelta(minutes=max_duration_value)
     workflow = WorkflowInstance(
         organization_id=organization_id,
@@ -672,6 +687,13 @@ def start_execution(
     )
     job = _enqueue_schedule(session, organization_id, workflow.id, user_id=user_id)
     workflow.job_id = job.id
+    _enqueue_deadline_check(
+        session,
+        organization_id,
+        workflow.id,
+        deadline_at=deadline,
+        user_id=user_id,
+    )
     session.add(
         MarketActivityEvent(
             organization_id=organization_id,
@@ -716,6 +738,57 @@ def _enqueue_schedule(
         created_by_user_id=user_id,
         max_attempts=8,
     )
+
+
+def _enqueue_deadline_check(
+    session: Session,
+    organization_id: UUID | str,
+    execution_id: UUID,
+    *,
+    deadline_at: datetime,
+    user_id: UUID | None = None,
+) -> BackgroundJob:
+    """Persist one delayed scheduler wakeup so idle executions still enforce deadlines."""
+    key = f"market_research_dag_deadline:{execution_id}"
+    job = job_service.enqueue(
+        session,
+        organization_id,
+        job_type=job_service.JOB_TYPE_MARKET_RESEARCH_DAG_SCHEDULE,
+        payload={"execution_workflow_id": str(execution_id)},
+        dedupe_key=key,
+        created_by_user_id=user_id,
+        max_attempts=8,
+    )
+    # The claim query only sees PENDING jobs after available_at. Keep the original
+    # deadline on an existing pending job; do not alter a job already claimed.
+    if job.status == "PENDING":
+        job.available_at = deadline_at
+        session.flush()
+    return job
+
+
+def _cancel_deadline_check(
+    session: Session,
+    organization_id: UUID | str,
+    execution_id: UUID,
+) -> bool:
+    """Cancel an idle deadline wakeup without waiting on a Worker-owned job row."""
+    key = f"market_research_dag_deadline:{execution_id}"
+    job = session.scalars(
+        select(BackgroundJob)
+        .where(
+            BackgroundJob.organization_id == organization_id,
+            BackgroundJob.dedupe_key == key,
+            BackgroundJob.status == "PENDING",
+        )
+        .with_for_update(skip_locked=True)
+    ).one_or_none()
+    if job is None:
+        return False
+    job.status = "CANCELLED"
+    job.finished_at = session.scalar(select(func.clock_timestamp()))
+    session.flush()
+    return True
 
 
 def wake_workspace_executions(
@@ -789,7 +862,7 @@ def run_scheduler(
         return {"execution_id": str(execution_id), "state": payload.get("execution_state", workflow.status)}
 
     node_states, counts = _node_statuses(session, organization_id, workspace_id, workflow)
-    now = datetime.now(UTC)
+    now = session.scalar(select(func.clock_timestamp()))
     deadline = datetime.fromisoformat(str(payload["deadline_at"]))
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=UTC)
@@ -812,6 +885,7 @@ def run_scheduler(
                 payload={"state": state, "reason": reason},
             )
         )
+        _cancel_deadline_check(session, organization_id, execution_id)
         session.flush()
         return {"execution_id": str(execution_id), "state": state, "stop_reason": reason}
 
@@ -844,6 +918,7 @@ def run_scheduler(
                 payload={"completed_count": counts["completed_count"], "graph_digest": payload["graph_digest"]},
             )
         )
+        _cancel_deadline_check(session, organization_id, execution_id)
         session.flush()
         return {"execution_id": str(execution_id), "state": "COMPLETED"}
 
@@ -915,6 +990,7 @@ def run_scheduler(
         workflow.payload = payload
 
     if workflow.status in {"COMPLETED", "FAILED"}:
+        _cancel_deadline_check(session, organization_id, execution_id)
         session.add(
             MarketActivityEvent(
                 organization_id=organization_id,
@@ -1011,7 +1087,7 @@ def retry_question(
         ):
             raise Conflict("前置问题尚未全部通过人工审核，不能重试当前节点")
 
-    now = datetime.now(UTC)
+    now = session.scalar(select(func.clock_timestamp()))
     deadline = datetime.fromisoformat(str(payload["deadline_at"]))
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=UTC)
@@ -1062,6 +1138,13 @@ def retry_question(
         session, organization_id, execution_id, user_id=actor_user_id
     )
     workflow.job_id = schedule_job.id
+    _enqueue_deadline_check(
+        session,
+        organization_id,
+        execution_id,
+        deadline_at=deadline,
+        user_id=actor_user_id,
+    )
     session.add(
         MarketActivityEvent(
             organization_id=organization_id,
@@ -1162,6 +1245,7 @@ def cancel_execution(
     payload["finished_at"] = datetime.now(UTC).isoformat()
     workflow.payload = payload
     workflow.status = "REJECTED"
+    _cancel_deadline_check(session, organization_id, execution_id)
     session.add(
         MarketActivityEvent(
             organization_id=organization_id,

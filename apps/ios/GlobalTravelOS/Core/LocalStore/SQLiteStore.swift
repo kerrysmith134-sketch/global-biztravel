@@ -28,8 +28,49 @@ final class SQLiteStore {
             throw LocalStoreError.openFailed(path.path)
         }
         queue.setSpecific(key: queueKey, value: 1)
-        try run("PRAGMA journal_mode=WAL")
+        // Separate SQLiteStore instances can open the same account database concurrently.
+        // Wait for short-lived startup/migration writer locks instead of failing with SQLITE_BUSY.
+        try run("PRAGMA busy_timeout=10000")
+        try configureWriteAheadLogging()
         try run("PRAGMA foreign_keys=ON")
+    }
+
+    /// WAL mode changes require an exclusive database lock. SQLite may return SQLITE_BUSY
+    /// immediately for this PRAGMA even when busy_timeout is configured, so concurrent
+    /// first-open calls need a bounded retry that re-reads the current mode each time.
+    private func configureWriteAheadLogging() throws {
+        let maximumAttempts = 8
+        var delay: TimeInterval = 0.025
+
+        for attempt in 0..<maximumAttempts {
+            do {
+                let currentMode = try query("PRAGMA journal_mode") { $0.string(0).lowercased() }.first
+                if currentMode == "wal" { return }
+
+                try run("PRAGMA journal_mode=WAL")
+                let confirmedMode = try query("PRAGMA journal_mode") { $0.string(0).lowercased() }.first
+                guard confirmedMode == "wal" else {
+                    throw LocalStoreError.queryFailed(
+                        "SQLite refused WAL mode (current: \(confirmedMode ?? "unknown"))",
+                        code: SQLITE_ERROR
+                    )
+                }
+                return
+            } catch let error as LocalStoreError {
+                guard case let .queryFailed(_, code) = error,
+                      code == SQLITE_BUSY,
+                      attempt + 1 < maximumAttempts else {
+                    throw error
+                }
+                Thread.sleep(forTimeInterval: delay)
+                delay = min(delay * 2, 0.4)
+            }
+        }
+
+        throw LocalStoreError.queryFailed(
+            "SQLite remained busy while enabling WAL after \(maximumAttempts) attempts",
+            code: SQLITE_BUSY
+        )
     }
 
     deinit {
@@ -108,20 +149,32 @@ final class SQLiteStore {
             try bind(bindings, to: statement)
             var results: [T] = []
             let cursor = StatementRow(statement: statement)
-            while sqlite3_step(statement) == SQLITE_ROW {
-                results.append(row(cursor))
+            while true {
+                let result = sqlite3_step(statement)
+                if result == SQLITE_ROW {
+                    results.append(row(cursor))
+                    continue
+                }
+                guard result == SQLITE_DONE else {
+                    throw LocalStoreError.queryFailed(
+                        "QUERY[\(sql.prefix(80))]: \(lastError())",
+                        code: sqlite3_errcode(handle)
+                    )
+                }
+                break
             }
             return results
         }
     }
 
     /// 事务内执行多条变更；抛错则回滚。
-    func transaction(_ work: () throws -> Void) throws {
+    func transaction<T>(_ work: () throws -> T) throws -> T {
         try queue.sync {
             try runUnlocked("BEGIN IMMEDIATE")
             do {
-                try work()
+                let value = try work()
                 try runUnlocked("COMMIT")
+                return value
             } catch {
                 try? runUnlocked("ROLLBACK")
                 throw error

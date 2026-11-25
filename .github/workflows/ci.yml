@@ -1,9 +1,9 @@
 name: ci
 
-# Versioned concurrency key: release the superseded H2.11 runner while still
-# cancelling superseded runs for the same PR/ref on this validation lane.
+# Versioned concurrency key: isolate opportunity-entity validation from a stalled
+# predecessor simulator runner; later runs of this lane still cancel superseded runs.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-12-visit-follow-up
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-15-opportunity-entities
   cancel-in-progress: true
 
 on:
@@ -78,3 +78,77 @@ jobs:
           xcodebuild -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -only-testing:GlobalTravelOSTests test
+
+  ios-acceptance:
+    name: iOS UI acceptance (real PostgreSQL + API + Worker)
+    needs: [backend, ios]
+    # The simulator is macOS-native; use Intel macOS so Colima can host the Linux test stack.
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Colima and Docker CLI
+        run: |
+          brew install colima docker docker-compose qemu
+          mkdir -p ~/.docker/cli-plugins
+          ln -sfn "$(brew --prefix)/opt/docker-compose/bin/docker-compose" ~/.docker/cli-plugins/docker-compose
+          colima start --cpu 3 --memory 8 --disk 60 --vm-type=qemu
+          docker info
+          docker compose version
+      - name: Install backend test dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements-dev.txt
+          cp .env.example .env
+      - name: Start PostgreSQL, migrate, and seed real test data
+        run: |
+          make db-up
+          make migrate
+          make seed
+      - name: Start API and Worker
+        run: |
+          make stack-up
+          for attempt in {1..180}; do
+            if curl -fsS http://127.0.0.1:8080/v1/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f infra/docker/docker-compose.yml --profile app logs --tail=200 api worker db
+          exit 1
+      - name: Preboot iPhone 16 simulator
+        run: |
+          set -euo pipefail
+          device_id="$(xcrun simctl list devices available | awk -F '[()]' '$0 ~ /^[[:space:]]*iPhone 16 \(/ { print $2; exit }')"
+          if [ -z "$device_id" ]; then
+            xcrun simctl list devices available
+            echo "iPhone 16 simulator is not installed on this runner"
+            exit 1
+          fi
+          xcrun simctl boot "$device_id" || true
+          xcrun simctl bootstatus "$device_id" -b
+          xcrun simctl list devices | grep "$device_id"
+      - name: Run complete iOS UI acceptance suite against real services
+        run: |
+          RESULT_BUNDLE_BASE=/tmp/globaltravel-ios-acceptance \
+          ONLY_TESTING=GlobalTravelOSUITests MAX_ATTEMPTS=1 STALL_SECONDS=900 \
+            make ios-test IOS_DEST="platform=iOS Simulator,name=iPhone 16"
+      - name: Upload iOS UI test diagnostics
+        if: ${{ always() && (failure() || cancelled()) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ui-acceptance-diagnostics
+          path: |
+            /tmp/ios-test-attempt-*.log
+            /tmp/globaltravel-ios-acceptance*.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Stop test stack
+        if: always()
+        run: |
+          docker compose -f infra/docker/docker-compose.yml --profile app down -v || true
+          colima stop || true

@@ -127,11 +127,13 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
     var engine: String?
     var publishedAt: String?
     var evidenceState: String?
+    var verificationStatus: String?
+    var canonicalRef: String?
     var retrievedAt: Date?
     var createdAt: Date?
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, ref, source, payload, retrievedAt, createdAt
+        case id, kind, ref, source, payload, verificationStatus, canonicalRef, retrievedAt, createdAt
     }
 
     init(from decoder: Decoder) throws {
@@ -140,6 +142,8 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
         kind = try values.decode(String.self, forKey: .kind)
         ref = try values.decode(String.self, forKey: .ref)
         source = try values.decodeIfPresent(String.self, forKey: .source)
+        verificationStatus = try values.decodeIfPresent(String.self, forKey: .verificationStatus)
+        canonicalRef = try values.decodeIfPresent(String.self, forKey: .canonicalRef)
         retrievedAt = try values.decodeIfPresent(Date.self, forKey: .retrievedAt)
         createdAt = try values.decodeIfPresent(Date.self, forKey: .createdAt)
         let payload = try values.decodeIfPresent(
@@ -164,6 +168,17 @@ struct ResearchEvidence: Decodable, Equatable, Identifiable {
 
     var isUnverifiedSearchResult: Bool {
         kind == "WEB_SEARCH_RESULT" && evidenceState == "UNVERIFIED_SEARCH_RESULT"
+    }
+
+    var verificationStatusLabel: String {
+        switch verificationStatus?.uppercased() {
+        case "VERIFIED": return "来源已核验"
+        case "PARTIALLY_VERIFIED": return "部分核验"
+        case "DISPUTED": return "存在争议"
+        case "REJECTED": return "已驳回"
+        case "UNVERIFIED": return "尚未核验"
+        default: return isUnverifiedSearchResult ? "搜索摘要，未核验" : "核验状态未知"
+        }
     }
 }
 

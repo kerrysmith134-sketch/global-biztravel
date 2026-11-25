@@ -1,6 +1,6 @@
 # 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
-- 核对时间：2026-11-22（市场情报 H1.9 增量更新）
+- 核对时间：2026-11-24（H2.13 票据证据闭环之后）
 - 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
   规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
   后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
@@ -11,12 +11,12 @@
 
 | 里程碑 | 要求 | 状态 | 证据 |
 |---|---|---|---|
-| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0030`；`0010_security_rls` 全库兜底；RLS 断言测试 |
+| MS-1 | 骨架 + PostgreSQL/PostGIS + 迁移 + RLS | ✅ | 迁移 `0001`~`0047`；`0010_security_rls` 全库兜底；RLS 断言测试 |
 | MS-2 | 身份/组织/Trip/客户/地点 + Excel 两阶段导入 | ✅ | 导入 API、真实校验报告、E2E 第 3 步 |
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；46 单测（18 解码 + 28 契约样本）+ 8 UI 自动化 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；141 单元测试（含契约样本解码）+ 9 UI 自动化用例 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -61,18 +61,18 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **240 passed**（真实 PostgreSQL；全新库 `db-reset` 后一条命令全绿——`make test` 自动先补种子数据） |
-| `make typecheck` | MyPy：138 个源文件无问题 |
+| `make test` | **473 passed / 1 skipped**（真实 PostgreSQL；全新库 `db-reset` 后一条命令全绿——`make test` 自动先补种子数据） |
+| `make typecheck` | MyPy：177 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
-| `make contract-check` | 85 路径 / 141 schema；契约一致（S6：`unplaced`/`policy_violations`/`cards`/`data_gaps`/`actual_cost` 已从 `list[dict]` 收紧为显式模型，见 ADR-0030） |
+| `make contract-check` | 157 路径 / 264 schema；契约一致（S6：`unplaced`/`policy_violations`/`cards`/`data_gaps`/`actual_cost` 已从 `list[dict]` 收紧为显式模型，见 ADR-0030） |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | N3 实例族 8 实例全门禁通过（覆盖/能力声明/确定性/金目标基线，2026-11-10 实测）：启发式全族 p50 ≤1.8ms；ortools 快实例 6.5ms~8.9s、corridor_rhine_12 39.4s。**实测发现**：`solver_budget_seconds` 是解数量预算而非墙钟，DFS+GLS 在 n≥12 后墙钟指数级（详见 `docs/architecture/performance.md` §3）。快速跑：`make bench ARGS="--skip-ortools"` |
 | `make ios-build` | BUILD SUCCEEDED |
-| `make ios-test` | **46 单测 + 9 条 UI 用例整轮全绿**（598s，连接真实后端，经 `scripts/ios_test_guard.sh` 保护；链式 207s、AT-007/008 专项 131s）。2026-11-09 八轮完整套件实证并修掉：费用横幅谓词过宽（误匹配正常区块头）、AT-006 加载时序、AT-011 同步 Tab 被 sheet 关闭动画吞掉、AT-007 计划版本区定位、`PlanDiff` 模型与契约漂移（契约样本门禁首次实战命中）、`backToTripDetail` 多元素匹配、Excel 文件选择器重试 |
+| `make ios-test` | **141 条 iOS 单测 + 9 条 UI 自动化用例**；UI 用例连接真实 API/Worker，执行由 `ios-acceptance` GitHub Actions job 与本地 `make ios-test` 覆盖。费用区用例先切换到「费用」分区，不再通过跨分区滚动猜测页面状态 |
 | `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0047`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0048`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -113,11 +113,14 @@
                            0045_receipt_assets
                            0046_report_receipt_snapshot
                            0047_receipt_ocr
+                           0048_expense_report_draft_cancellation
 ```
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
 
-- **H2.13 票据资产与报销证据快照（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。新增迁移 `0047_receipt_ocr`：对已保存的图片 ReceiptAsset 执行 Tesseract OCR，保存 content hash、引擎版本、候选字段与 AgentRun 关联；不复制原始票据文本，不因识别结果创建/修改费用。用户可对一次 OCR 运行单独确认或驳回，确认字段写入只追加审阅记录，数据库撤销应用角色 UPDATE/DELETE。PDF 仍可保留与下载，但当前 OCR 明确只支持图片格式。仍待完成对象存储孤儿对账、Trip 结账就绪度与 iOS 离线票据入口；CI/真实数据库验收以本分支最新 Actions 为准。
+- **H2.13 票据资产与报销证据快照（后端基础已落地，iOS 闭环仍进行中）**：新增私有 ReceiptAsset 元数据、文件系统/S3 私有存储适配器、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。迁移 `0046_report_receipt_snapshot` 为报销明细固定 Asset ID、内容哈希及原始元数据；迁移 `0047_receipt_ocr` 将图片 OCR 与 AgentRun 关联，人工确认/驳回采用只追加审阅记录，PDF 仅保留和下载。iOS 私有 ReceiptVault 已支持原件采集、哈希校验、上传确认和待上传重试。新增租户前缀对象枚举与每日 Worker 孤儿对象对账：默认 24 小时宽限期，数据库已有资产和其他租户对象不删除，支持服务层 dry-run。只读 `GET /v1/trips/{id}/closeout-readiness` 已有集成测试。**新增**：云端模式费用现已先写入账户隔离的 SQLite Outbox，使用稳定 UUID 关联票据上传与费用提交；失败保留原件和命令，Trip 详情可见待同步项并可重试。服务端对票据上传和费用创建的幂等记录不自动过期，覆盖长时间离线后的重放。**新增**：iOS Trip 费用工作区现已接入只读 Closeout API，按 BLOCKER/WARNING 分区展示服务端结账状态、拜访结果、费用纳入报销情况、票据/OCR 风险及各币种金额；每项保留 source_type/source_id/action_hint，可定位到对应拜访、费用、票据附件或报销单行。新增模型解码与 GET 路由单测；本地模式明确显示不提供云端结账评估。**剩余**：需在 Simulator/真机验收来源跳转与评估刷新，并完成断网、终止进程、重启联网及服务端提交后响应丢失等费用 Outbox 失败路径；切换存储 Provider 前需先对旧 Provider 单独对账。CI/真实数据库验收以本分支最新 Actions 为准。
+
+**H2.14 草稿报销生命周期**：迁移 `0048_expense_report_draft_cancellation` 增加 `CANCELLED` 终态及撤销人/时间/原因；仅 `DRAFT` 可撤销，普通差旅成员只能撤销本人创建的草稿，ADMIN/OWNER 可撤销组织内任意草稿。撤销保留费用快照与票据原件，并写入 Trip 审计时间线；已提交/已审批/已驳回报销单不可撤销。撤销快照不再参与行程费用覆盖和结账统计，允许用户重新生成正确草稿。API 与 iOS UI 均有状态/权限/快照保留回归测试。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
@@ -439,3 +442,45 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 报告不修改任何 Insight / Opportunity / Claim 状态，不推进或回退商机阶段，不自动撤销人工决策；不使用语义相似度推断依赖。
 - 查询按 organization + Workspace 隔离，并设置 200 条主张谱系、5000 条历史主张和 250 条影响关系的上限；截断时返回标记。
 - **验证状态：** 代码和集成测试已提交至 `feat/sprint-h2.9-claim-impact-intelligence`；最新 GitHub Actions 为最终验收依据。该分支保持 Draft PR，不代表已合并或已部署。
+
+
+## 2026-11-24 H2.13 closeout navigation refinement
+
+- Closeout API issue records now include optional `source_visit_id` for `VISIT_FOLLOW_UP` warnings, preserving the relationship between a follow-up task and its owning visit.
+- The iOS closeout panel opens the owning VisitRecordSheet and scrolls directly to the matching follow-up row; other source types retain their existing visit, expense, receipt and report navigation.
+- The OpenAPI JSON/YAML snapshots were regenerated for the optional response field.
+- The real-service UI CI previously compiled and passed the iOS build/unit-test jobs, but the UI runner was killed by the output-silence watchdog 298 seconds into a no-output XCTest phase. The test harness now preboots the target simulator, serializes UI test execution and uses a 900-second silence threshold (the app's XCTest per-test allowance is 600 seconds). This is a test-harness correction, not a relaxation of product assertions.
+- Production acceptance still requires the latest real-service UI suite to finish and pass; simulator/real-device offline expense failure-path testing remains outstanding.
+
+
+## 2026-11-24 H2.1 Research DAG Worker 闭环验收补强
+
+- 新增 DAG 专属 Worker 集成测试：通过真实 `workers_main.execute_one` 分别执行调度任务与 Answer Agent 任务；验证 Agent 生成的答案保持 `NEEDS_REVIEW`，Worker 完成后自动唤醒父 DAG，父执行进入 `WAITING_FOR_REVIEW`，且不会重复生成同一节点。
+- 该测试与现有依赖释放、取消及 Evidence 隔离测试组合，补齐了此前“直接调用 scheduler service、未实际跑 Worker”的验收缺口。
+- **仍未完整验收**：DAG 级多 Worker 并发上限、Answer job DEAD/租约恢复后的父图状态、成本计量失效与成本上限竞态、执行快照冻结及并发启动竞争仍需专门测试。时间预算现已通过持久化 deadline Worker wakeup 测试覆盖，但仍需在长时运行部署中观测实际调度延迟。通用任务队列已有的可靠性测试不能替代这些 DAG 级测试。
+- 当前 PR #31 的最新 CI 必须完成后，才可确认 FIFO 变更；本次 Worker 测试加入后仍须以新提交的 Backend + iOS + 真实服务 UI 全绿为准。
+
+
+- **H2.1 deadline enforcement**：每个 Research DAG execution 额外持久化一条 `available_at=deadline_at` 的延迟 scheduler BackgroundJob。即使 Workspace 长期处于 `WAITING_FOR_REVIEW` 或 `WAITING_FOR_EVIDENCE`，Worker 也会在截止时间自动唤醒执行器；提前完成/取消时会安全撤销未认领的延迟任务。新增真实 Worker 集成测试，模拟 idle execution 到期后被认领并验证进入 `TIMED_OUT`，且不会创建 Answer Agent 子任务。该实现仍以本次最新 CI 全绿作为接受门槛。
+
+
+## 2026-11-24 H2.14 iOS 商业机会工作台
+
+- Workspace 详情页新增独立“商业机会”区：服务端分页列表、按状态筛选、显式创建、加载更多与下拉刷新；不会把候选机会自动升级为已确认商机。
+- 新增机会详情工作台：读取机会状态、下一步、置信度和证据；用户可以把当前 Workspace Evidence 明确关联为 SUPPORTS / CONTRADICTS，并查看服务端核验状态。
+- 阶段动作严格映射现有后端状态机：DISCOVERED → RESEARCHING → EVIDENCE_READY → QUALIFICATION_PENDING → QUALIFIED → ACTION_PLANNED；资格确认要求人工理由，且 UI 在存在 CONTRADICTS 时阻止提交；ACTION_PLANNED 可记录有说明的 WON / LOST 或暂缓。
+- ACTION_PLANNED 复用既有机会—Trip 拜访关联面板；没有新增第二套客户、拜访或任务主数据。
+- 新增 iOS Repository / Endpoint / Codable 契约测试，验证请求路径、查询参数、snake_case 负载、幂等键、机会分页与 Evidence 核验状态解码。
+- **企业实体链路**：机会详情的 `entities` 从通用 JSONValue 改为 `MarketEntityRead` 强类型；接入 Workspace 候选实体分页读取、显式创建候选以及将已存在候选关联到机会的 API。UI 展示已关联企业、候选实体、状态和可能重复提示；关联说明写入既有关系表。创建/关联均为独立幂等写入，不自动合并实体，不创建或修改 CRM Customer。
+- **尚未完成的下游环节**：现有后端已有 MarketEntityCustomerLink 建议与管理员确认服务，但本轮 iOS 尚未接入候选 CRM 客户匹配的读取、显示与确认；因此当前不会把候选实体自动映射成正式客户。
+- 新增实体模型、候选创建、候选分页和机会实体关联的 iOS 契约/解码测试。
+- **验收状态**：代码已接入，须以最新提交 iOS 构建、单测及真实服务 UI 验收为准；本条不代表已在真机验收或已部署。
+## 2026-11-25 H2.13 — Auditable expense-report draft cancellation
+
+- 报销单增加终态 `CANCELLED`；撤销只允许发生在 `DRAFT`，不会删除报销单、费用记录或票据快照。迁移 `0048_report_cancel` 保存撤销时间、撤销人和固定原因码；存在已撤销记录时拒绝降级迁移，避免静默丢失审计事实。
+- 只有原创建者或组织管理员可以撤销草稿；列表/详情按当前调用者计算 `can_cancel`。提交、撤销、审批与费用成员变更均按 Trip → ExpenseReport 锁顺序串行化，避免并发提交/撤销导致双重状态迁移。
+- 撤销动作使用幂等 POST；重复请求返回同一终态。Trip 审计时间线记录报告 ID、操作者、时间和撤销原因。快照明细保留供审计，但 CANCELLED 快照不参与有效报销覆盖与结账金额状态推断。
+- iOS 费用工作区为有撤销权限的草稿显示独立的破坏性操作和二次确认；撤销后刷新服务端报销单列表，显示“已撤销”，费用和原始票据继续保留。
+- API 回归测试覆盖非创建者拒绝、创建者撤销、重复幂等请求、终态不可提交、快照保留、审计时间线及撤销快照不再满足费用覆盖；iOS UI 验收新增草稿撤销操作链。
+- **仍未提供草稿原位编辑**：修正明细时应撤销旧草稿并重新生成快照；不得直接改写已保存的快照项。后续可以设计有版本链的“替换草稿”能力，保留旧版本。
+- **最新 CI 验收口径**：Run #552 的 Backend 与 iOS Build/Unit tests 成功，但真实后端 UI suite 被取消，不能视为完成验收。Run #553 已加入 120 分钟预算，并在失败或取消时上传 XCTest 日志和 `.xcresult` 结果包；需以该最新提交完整跑完为准。真机/模拟器离线失败恢复测试仍未完成。

@@ -17,6 +17,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.expense_reports import ExpenseReport
 from app.models.memory import PlanAttemptLog
 from app.models.proactive import Approval, ProactiveSuggestion, SuggestionAudit
 from app.models.records import VisitRecord
@@ -179,6 +180,34 @@ def trip_timeline(
                     ),
                     "reason": attempt.reason,
                     **dict(attempt.details or {}),
+                },
+            )
+        )
+
+    for report in session.scalars(
+        select(ExpenseReport).where(
+            ExpenseReport.organization_id == org,
+            ExpenseReport.trip_id == trip_uuid,
+            ExpenseReport.cancelled_at.is_not(None),
+        )
+    ):
+        cancelled_at = report.cancelled_at
+        if cancelled_at is None:
+            continue
+        events.append(
+            AuditEvent(
+                at=cancelled_at,
+                kind="expense_report",
+                action="CANCELLED",
+                actor=(
+                    str(report.cancelled_by_user_id)
+                    if report.cancelled_by_user_id is not None
+                    else None
+                ),
+                detail={
+                    "report_id": str(report.id),
+                    "status": report.status,
+                    "reason": report.cancellation_reason,
                 },
             )
         )

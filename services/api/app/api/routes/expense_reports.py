@@ -29,7 +29,7 @@ from app.services import expense_report_service, trip_service
 router = APIRouter(tags=["expense-reports"])
 
 
-def _read(detail) -> ExpenseReportRead:  # noqa: ANN001
+def _read(detail, context: ContextDep) -> ExpenseReportRead:  # noqa: ANN001
     report = detail.report
     return ExpenseReportRead(
         id=report.id,
@@ -39,6 +39,16 @@ def _read(detail) -> ExpenseReportRead:  # noqa: ANN001
         submitted_at=report.submitted_at,
         decided_at=report.decided_at,
         decided_by_user_id=report.decided_by_user_id,
+        cancelled_at=report.cancelled_at,
+        cancelled_by_user_id=report.cancelled_by_user_id,
+        cancellation_reason=report.cancellation_reason,
+        can_cancel=(
+            report.status == "DRAFT"
+            and (
+                context.rank >= ROLE_ADMIN
+                or report.created_by_user_id == context.user_id
+            )
+        ),
         items=[ExpenseReportItemRead.model_validate(item) for item in detail.items],
         totals=[CurrencyTotalRead(**item) for item in detail.totals],
         created_at=report.created_at,
@@ -55,7 +65,7 @@ def list_reports(trip_id: UUID, context: ContextDep, session: SessionDep):
     require_role(context, ROLE_VIEWER)
     trip_service.require_trip(session, context.organization_id, trip_id)
     return [
-        _read(expense_report_service.get_detail(session, context.organization_id, row.id))
+        _read(expense_report_service.get_detail(session, context.organization_id, row.id), context)
         for row in expense_report_service.list_reports(
             session, context.organization_id, trip_id
         )
@@ -92,7 +102,7 @@ def create_report(
         payload,
         actor_user_id=context.user_id,
     )
-    return guard.finish(status_code=status.HTTP_201_CREATED, body=_read(detail))
+    return guard.finish(status_code=status.HTTP_201_CREATED, body=_read(detail, context))
 
 
 @router.get(
@@ -103,7 +113,8 @@ def create_report(
 def get_report(report_id: UUID, context: ContextDep, session: SessionDep):
     require_role(context, ROLE_VIEWER)
     return _read(
-        expense_report_service.get_detail(session, context.organization_id, report_id)
+        expense_report_service.get_detail(session, context.organization_id, report_id),
+        context,
     )
 
 
@@ -131,7 +142,38 @@ def submit_report(
     detail = expense_report_service.submit_report(
         session, context.organization_id, report_id, actor_user_id=context.user_id
     )
-    return guard.finish(status_code=status.HTTP_200_OK, body=_read(detail))
+    return guard.finish(status_code=status.HTTP_200_OK, body=_read(detail, context))
+
+
+@router.post(
+    "/expense-reports/{report_id}:cancel",
+    response_model=ExpenseReportRead,
+    summary="撤销草稿报销单（仅 DRAFT；保留费用快照）",
+)
+def cancel_report(
+    report_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint="POST /v1/expense-reports/{report_id}:cancel",
+        key=idempotency_key,
+        payload={"report_id": str(report_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    detail = expense_report_service.cancel_report(
+        session,
+        context.organization_id,
+        report_id,
+        actor_user_id=context.user_id,
+        can_cancel_any=context.rank >= ROLE_ADMIN,
+    )
+    return guard.finish(status_code=status.HTTP_200_OK, body=_read(detail, context))
 
 
 @router.post(
@@ -210,4 +252,4 @@ def _decide(
         actor_user_id=context.user_id,
         note=note,
     )
-    return guard.finish(status_code=status.HTTP_200_OK, body=_read(detail))
+    return guard.finish(status_code=status.HTTP_200_OK, body=_read(detail, context))

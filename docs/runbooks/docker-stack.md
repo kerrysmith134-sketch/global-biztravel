@@ -38,6 +38,30 @@ API/Worker 共用 `x-app-env` 锚点，关键变量：
 
 生产凭证不要写进 compose 文件：用 `docker compose --env-file` 或编排平台的 secret 注入。
 
+
+### 私有原始票据存储（H2.13）
+
+本地/测试默认使用 filesystem Provider 和持久卷 `gbt_receipt_data`。生产建议使用私有 S3 兼容 Bucket：
+
+```bash
+GBT_RECEIPT_STORAGE_PROVIDER=s3
+GBT_RECEIPT_S3_BUCKET=company-private-receipts
+GBT_RECEIPT_S3_REGION=ap-southeast-1
+GBT_RECEIPT_S3_ENDPOINT_URL=             # AWS S3 留空；兼容服务填写 endpoint
+GBT_RECEIPT_S3_ACCESS_KEY=...
+GBT_RECEIPT_S3_SECRET_KEY=...
+GBT_RECEIPT_MAX_UPLOAD_BYTES=10485760
+GBT_RECEIPT_ORPHAN_GRACE_SECONDS=86400
+GBT_RECEIPT_ORPHAN_RECONCILE_INTERVAL_SECONDS=86400
+```
+
+Bucket 必须保持私有并启用服务端加密。API/Worker 使用的 IAM 身份需要：
+
+- Bucket 级 `s3:ListBucket`，并将 `s3:prefix` 限制在 `receipts/*`；Worker 只按当前组织前缀查询。
+- 对象级 `s3:PutObject`、`s3:GetObject`、`s3:DeleteObject`，资源仅限 `<bucket>/receipts/*`。
+
+Worker 每日执行一次孤儿对账，只删除超过配置宽限期且当前数据库租户下不存在对应 `ReceiptAsset` 的对象。默认宽限期 24 小时，用于避开“对象已写入、数据库事务尚未提交”的窗口。当前对账只扫描正在配置的 Provider；filesystem 与 S3 切换前，应先对旧 Provider 执行单独清理和核对。不要为票据桶开放公共 ACL 或公开对象 URL。
+
 ### SMTP
 
 ```bash

@@ -196,10 +196,12 @@ def test_business_follow_up_is_warning_not_financial_blocker(client: TestClient)
         assert body["blockers"] == []
         assert body["status"] == "READY_WITH_EXCEPTIONS"
         assert body["summary"]["open_business_follow_up_count"] == 1
-        assert any(
-            issue["code"] == "BUSINESS_FOLLOW_UP_OPEN"
+        follow_up_issue = next(
+            issue
             for issue in body["warnings"]
+            if issue["code"] == "BUSINESS_FOLLOW_UP_OPEN"
         )
+        assert follow_up_issue["source_visit_id"] == visit_id
     finally:
         cleanup(trip_id, place_id)
 
@@ -209,6 +211,7 @@ def test_closeout_separates_currencies_and_flags_latest_rejected_report(
 ) -> None:
     trip_id = make_trip(client)
     try:
+        expense_ids: list[str] = []
         for amount, currency in (("10.00", "EUR"), ("20.00", "USD")):
             created = client.post(
                 f"/v1/trips/{trip_id}/expenses",
@@ -221,6 +224,7 @@ def test_closeout_separates_currencies_and_flags_latest_rejected_report(
                 },
             )
             assert created.status_code == 201, created.text
+            expense_ids.append(created.json()["id"])
         report = client.post(
             f"/v1/trips/{trip_id}/expense-reports",
             headers=headers(key=str(uuid.uuid4())),
@@ -256,6 +260,178 @@ def test_closeout_separates_currencies_and_flags_latest_rejected_report(
             "EUR",
             "USD",
         }
+
+        # A newer partial draft replaces the rejected report as the active
+        # reimbursement workflow. The omitted expense must remain a blocker;
+        # the rejected historical snapshot must not satisfy readiness.
+        partial = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers=headers(key=str(uuid.uuid4())),
+            json={"expense_ids": [expense_ids[0]]},
+        )
+        assert partial.status_code == 201, partial.text
+        refreshed = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert refreshed.status_code == 200, refreshed.text
+        refreshed_body = refreshed.json()
+        missing_expenses = [
+            item for item in refreshed_body["blockers"]
+            if item["code"] == "EXPENSE_NOT_IN_REPORT"
+        ]
+        assert [item["source_id"] for item in missing_expenses] == [expense_ids[1]]
+    finally:
+        cleanup(trip_id)
+
+
+def test_closeout_aggregates_all_split_report_states(client: TestClient) -> None:
+    trip_id = make_trip(client)
+    try:
+        expense_ids: list[str] = []
+        for amount in ("10.00", "20.00"):
+            created = client.post(
+                f"/v1/trips/{trip_id}/expenses",
+                headers=headers(key=str(uuid.uuid4())),
+                json={
+                    "category": "TRANSPORT",
+                    "amount": amount,
+                    "currency": "EUR",
+                    "occurred_on": datetime.now(UTC).date().isoformat(),
+                },
+            )
+            assert created.status_code == 201, created.text
+            expense_ids.append(created.json()["id"])
+
+        report_ids: list[str] = []
+        for expense_id in expense_ids:
+            report = client.post(
+                f"/v1/trips/{trip_id}/expense-reports",
+                headers=headers(key=str(uuid.uuid4())),
+                json={"expense_ids": [expense_id]},
+            )
+            assert report.status_code == 201, report.text
+            report_ids.append(report.json()["id"])
+
+        initial = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert initial.status_code == 200, initial.text
+        initial_body = initial.json()
+        assert initial_body["status"] == "READY_WITH_EXCEPTIONS"
+        draft_issues = [
+            item for item in initial_body["warnings"]
+            if item["code"] == "EXPENSE_REPORT_DRAFT"
+        ]
+        assert {item["source_id"] for item in draft_issues} == set(report_ids)
+
+        # Submitting one half is not enough while the other split report remains a draft.
+        first_submitted = client.post(
+            f"/v1/expense-reports/{report_ids[0]}:submit",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert first_submitted.status_code == 200, first_submitted.text
+        partial = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert partial.status_code == 200, partial.text
+        partial_body = partial.json()
+        assert partial_body["status"] == "READY_WITH_EXCEPTIONS"
+        assert [
+            item["source_id"] for item in partial_body["warnings"]
+            if item["code"] == "EXPENSE_REPORT_DRAFT"
+        ] == [report_ids[1]]
+
+        second_submitted = client.post(
+            f"/v1/expense-reports/{report_ids[1]}:submit",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert second_submitted.status_code == 200, second_submitted.text
+        submitted = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert submitted.status_code == 200, submitted.text
+        assert submitted.json()["status"] == "REPORT_SUBMITTED"
+
+        # The newest report is approved first. The Trip must remain SUBMITTED
+        # until every non-rejected split report has reached APPROVED.
+        newest_approved = client.post(
+            f"/v1/expense-reports/{report_ids[1]}:approve",
+            headers=headers(org=ORG_A, user=USER_ADMIN, key=str(uuid.uuid4())),
+            json={"note": "Split report approved"},
+        )
+        assert newest_approved.status_code == 200, newest_approved.text
+        mixed = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert mixed.status_code == 200, mixed.text
+        assert mixed.json()["status"] == "REPORT_SUBMITTED"
+
+        oldest_approved = client.post(
+            f"/v1/expense-reports/{report_ids[0]}:approve",
+            headers=headers(org=ORG_A, user=USER_ADMIN, key=str(uuid.uuid4())),
+            json={"note": "All split reports approved"},
+        )
+        assert oldest_approved.status_code == 200, oldest_approved.text
+        approved = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["status"] == "REPORT_APPROVED"
+        assert not any(
+            item["code"] == "EXPENSE_REPORT_DRAFT"
+            for item in approved.json()["warnings"]
+        )
+    finally:
+        cleanup(trip_id)
+
+
+
+def test_cancelled_report_snapshot_does_not_cover_closeout_expenses(
+    client: TestClient,
+) -> None:
+    trip_id = make_trip(client)
+    try:
+        expense_ids: list[str] = []
+        for amount in ("10.00", "20.00"):
+            created = client.post(
+                f"/v1/trips/{trip_id}/expenses",
+                headers=headers(key=str(uuid.uuid4())),
+                json={
+                    "category": "TRANSPORT",
+                    "amount": amount,
+                    "currency": "EUR",
+                    "occurred_on": datetime.now(UTC).date().isoformat(),
+                },
+            )
+            assert created.status_code == 201, created.text
+            expense_ids.append(created.json()["id"])
+
+        report = client.post(
+            f"/v1/trips/{trip_id}/expense-reports",
+            headers=headers(key=str(uuid.uuid4())),
+            json={},
+        )
+        assert report.status_code == 201, report.text
+        report_id = report.json()["id"]
+        cancelled = client.post(
+            f"/v1/expense-reports/{report_id}:cancel",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert cancelled.status_code == 200, cancelled.text
+        assert cancelled.json()["status"] == "CANCELLED"
+
+        readiness = client.get(
+            f"/v1/trips/{trip_id}/closeout-readiness", headers=headers()
+        )
+        assert readiness.status_code == 200, readiness.text
+        body = readiness.json()
+        assert body["summary"]["latest_report_status"] == "CANCELLED"
+        assert body["summary"]["expenses_in_report_count"] == 0
+        assert body["summary"]["expenses_not_in_report_count"] == 2
+        assert {
+            item["source_id"] for item in body["blockers"]
+            if item["code"] == "EXPENSE_NOT_IN_REPORT"
+        } == set(expense_ids)
     finally:
         cleanup(trip_id)
 

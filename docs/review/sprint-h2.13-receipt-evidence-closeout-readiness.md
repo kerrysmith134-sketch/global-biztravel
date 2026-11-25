@@ -141,3 +141,23 @@ Do not turn every warning into a notification. Deduplicate by source entity and 
 ## Explicitly deferred
 
 Automatic payment, external accounting-system posting, automatic report approval, jurisdiction-specific tax-policy inference without configured rules, and autonomous customer communications are outside H2.13.
+
+## Implementation status — 2026-11-24
+
+The following H2.13 backend and client foundations now exist in the repository:
+
+- Private ReceiptAsset metadata, filesystem/S3 storage adapters, authenticated upload/download and same-Trip expense linkage are implemented in migrations `0045`–`0047`.
+- Expense-report rows pin the receipt asset ID, SHA-256 and original metadata; OCR is tied to a stored asset and AgentRun, and only append-only human review can confirm candidates.
+- iOS can select an image/PDF, persist the original in its private local vault, verify its SHA-256, upload it and mark it uploaded only after the server confirms a matching asset.
+- The read-only `GET /v1/trips/{trip_id}/closeout-readiness` assessment exists and has integration coverage for visit outcomes, unreported expenses, rejected reports, evidence warnings, currencies and tenant isolation.
+- **New in this slice:** filesystem and S3 adapters expose tenant-prefix object listing. A tenant-scoped reconciliation service identifies old storage objects without a matching `ReceiptAsset`; the Worker runs it once per configured interval. The default grace period and reconciliation interval are both 24 hours. Dry-run is supported by the service for controlled diagnostics.
+- **New in this slice:** cloud-mode expense creation is now local-first. A pending command with a stable UUID is committed to the account-scoped SQLite database before any upload or expense API call. The receipt's stable local ID is reused as the upload idempotency key; the expense command UUID is reused as the expense idempotency key. Receipt upload must return a confirmed server Asset ID before the expense command can be posted. Failed operations retain the original and pending command, expose retry diagnostics in Trip detail, and replay in creation order. Both receipt-upload and expense-create idempotency records are non-expiring so retries after prolonged offline periods still replay the first result.
+
+### Remaining product gaps
+
+1. **Durable outbox is implemented; real-device failure-path acceptance remains.** Cloud-mode expense entry now persists a command in the account-scoped SQLite outbox before network work. Receipt upload uses the local receipt ID as its stable idempotency key; expense creation uses the outbox command ID. The original file and pending command survive failed upload, failed expense POST, process termination and retry. The iOS unit test verifies outbox recovery through a reopened SQLite handle; backend tests verify permanent idempotency records, exact replay and 409 on key/body mismatch. Before production sign-off, still run device/simulator acceptance for airplane mode, app termination/relaunch, reconnect, and a lost response after the server commits an expense.
+2. **Closeout panel now consumes the read-only readiness API.** The Trip money workspace displays server-calculated status, blocker/warning separation, visit/expense/evidence counters and per-currency totals. Each issue retains its source type/ID and action hint; navigation jumps to the matching visit, expense, receipt attachment or report row. Business follow-up issues additionally return optional `source_visit_id`, opening the owning VisitRecordSheet and scrolling to the exact follow-up item. A real-backend UI acceptance test now creates an unreported expense, verifies its closeout blocker, and follows the source link to the expense row; the latest simulator CI result remains the acceptance authority.
+3. **Object reconciliation is active-provider scoped.** When storage provider configuration changes, old objects in the previous provider are not scanned by the current Worker. Run the reconciliation against the previous provider before retiring it, or add an explicit multi-provider maintenance job.
+4. **Production S3 policy must allow prefix-scoped `s3:ListBucket` and object-scoped `s3:DeleteObject`** in addition to upload/read permissions. Keep the bucket private and constrain listing to `receipts/{organization_id}/`.
+
+The reconciliation integration test verifies that an old orphan is removed while recent objects, database-backed originals and another tenant's objects remain untouched. GitHub Actions for this branch remains the execution authority; code presence alone is not a green CI result.

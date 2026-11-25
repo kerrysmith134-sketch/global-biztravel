@@ -234,7 +234,20 @@ final class MarketResearchTests: XCTestCase {
               "created_at": "2026-11-22T07:00:00+00:00"
             }
           }],
-          "entities": [],
+          "entities": [{
+            "id": "entity-1",
+            "entity_kind": "Distributor",
+            "display_name": "East Africa Energy Group",
+            "normalized_name": "east africa energy group",
+            "description": null,
+            "canonical_domain": "example.test",
+            "country_code": "KE",
+            "attributes": {},
+            "status": "CANDIDATE",
+            "created_at": "2026-11-24T08:00:00+00:00",
+            "updated_at": "2026-11-24T08:00:00+00:00",
+            "aliases": []
+          }],
           "assessments": []
         }
         """
@@ -242,7 +255,8 @@ final class MarketResearchTests: XCTestCase {
         XCTAssertEqual(detail.opportunity.id, "opportunity-1")
         XCTAssertEqual(detail.opportunity.statusLabel, "研究中")
         XCTAssertEqual(detail.evidence.first?.evidence.title, "Open tender")
-        XCTAssertTrue(detail.entities.isEmpty)
+        XCTAssertEqual(detail.entities.first?.id, "entity-1")
+        XCTAssertEqual(detail.entities.first?.displayName, "East Africa Energy Group")
         XCTAssertTrue(detail.assessments.isEmpty)
     }
 

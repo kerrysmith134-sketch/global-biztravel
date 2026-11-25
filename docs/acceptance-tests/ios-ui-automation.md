@@ -14,12 +14,14 @@ App 启动后把夹具复制进主 App 的 `Documents`（按容器元数据 `MCM
 
 | 用例 | 覆盖 | 说明 |
 |---|---|---|
-| `testAcceptanceJourneyChain` | AT-001~006 + AT-010/012 单条串联：新建 → Excel 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 → 现场记录 → 纪要（严格断言，无期望失败标记） | 每阶段有导航栏检查点（expectNav）。AT-007/008 与 AT-011 拆成独立用例（见下两行）：链式内做这几段在本机 8 轮完整套件验证中可复现地找不稳，拆开后各自可重试、失败点更近 |
+| `testAcceptanceJourneyChain` | AT-001~006 + AT-010/012 单条串联：新建 → Excel 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 → 现场记录 → 纪要（严格断言，无期望失败标记） | 每阶段有导航栏检查点（expectNav）。费用阶段先点击 TripDetail 的「费用」分区，再断言预算区；AT-007/008 与 AT-011 拆成独立用例，避免长链路导航不稳定 |
 | `testLaunchBrowseSeedTripAndSyncCenter` | Today → AI 助手 → 通知中心（含偏好面板 P3 开关真实 PUT）→ 行动中心 → 出行列表 → 详情 → 同步页 | 验证真实网络加载与基本导航 |
 | `testPreparedTripBriefing` | 准备数据 → 详情 → 拜访简报 | 测试内用真实 HTTP 创建地点/出行/拜访，再用启动参数打开，避免依赖列表分页顺序（结果复盘视图 `TripOutcomeView` 暂无 UI 用例，仅服务端 `test_trip_outcome.py` 覆盖） |
 | `testPlanChangeAndDiffFlow` | 生成计划 → 激活 → **AT-007** 取消一个拜访（真实 `POST /plan-changes`，等 Worker 重求解）→ **AT-008** 从行程详情「与上一版比较」打开版本比较页 | 覆盖计划调整与版本比较的按钮级路径；用例准备两个拜访（取消唯一拜访会让重求解以「没有可规划的有效拜访」失败，这是正确业务行为）。`PlanDiff` 模型按真实 `PlanVersionDiffRead` 重写（此前手写字段与响应完全漂移，由新增的契约样本解码测试抓出） |
 | `testCreateTripFlow` | 出行列表 → 新建表单 → 创建 | 创建后断言新出行立即出现在列表顶部 |
+| `testOpportunityEntityWorkflow` | 真实 API 创建 Workspace → UI 创建商业机会 → 新建企业候选 → 显式关联机会 | 验证商机与企业实体前端闭环；候选企业不会自动创建或修改 CRM Customer |
 | `testExpenseEntryFlow` | 详情 → 记一笔费用 → 保存 | 真实 POST 费用，断言金额出现在费用列表 |
+| `testTripCloseoutBlockerNavigatesToSourceExpense` | 真实创建未报销费用 → 行程费用分区 → 结账阻断项 → 定位来源记录 | 真实 API 结账评估、阻断项呈现与来源费用跳转；不能以静态数据替代 |
 | `testGenerateAndActivatePlan` | 详情 → 生成新计划 → 计划详情 → 激活 | 真实 Worker 求解；计划列表裸数组契约；激活后回到顶部读状态 |
 | `testVisitRecordSubmissionFlow` | 详情 → 记录 → 填写 → 保存 → 生成会议纪要草稿 | 真实离线队列 + 服务端提交；同页生成纪要（真实 LLM 网关/stub），断言「会议纪要草稿」区出现 |
 | `testExcelImportFlow` | 详情 → 导入 → 系统选择器选夹具 → 预览 → 确认导入 | 两阶段导入端到端：解析不落库、确认后出现「导入结果」 |
@@ -40,3 +42,10 @@ xcodebuild test -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelO
 - 不使用假 API 或预置页面；测试通过 `GBT_UI_TEST_*` 启动参数覆盖身份与上次出行，不写回磁盘。
 - 文件选择器走「我的iPhone → 应用目录」导航（不走搜索：Spotlight 不索引直接拷入的文件）。
 - 现场记录页不做多行输入（避免键盘遮挡），纪要按钮用中段坐标拖动交替方向查找后点按（sheet 上 swipe 易触发交互式关闭）。
+
+
+## GitHub Actions 执行边界
+
+- `ios` job 只执行 `GlobalTravelOSTests` 单元测试，不代表 UI 业务链路通过。
+- `ios-acceptance` job 使用 macOS Simulator + Colima Docker 栈，启动 PostgreSQL、API、Worker，并执行完整 `GlobalTravelOSUITests`。
+- UI 测试连接真实服务端；不使用模拟 API 响应替代业务链路。失败时上传 `ios_test_guard.sh` 日志。

@@ -40,10 +40,17 @@ protocol TripRepository {
     func updateVisaCase(id: String, status: VisaCaseStatus) async throws -> VisaCase
     func expenses(tripId: String) async throws -> [TripExpense]
     func createExpense(tripId: String, body: TripExpenseCreateRequest) async throws -> TripExpense
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String?
+    ) async throws -> TripExpense
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness
     func expenseReports(tripId: String) async throws -> [ExpenseReport]
     func createExpenseReport(tripId: String) async throws -> ExpenseReport
     func submitExpenseReport(id: String) async throws -> ExpenseReport
+    func cancelExpenseReport(id: String) async throws -> ExpenseReport
     func entryAssessments(tripId: String) async throws -> [EntryAssessment]
     func refreshEntryAssessments(tripId: String) async throws -> [EntryAssessment]
     func createTrip(_ request: CreateTripRequest) async throws -> Trip
@@ -51,6 +58,37 @@ protocol TripRepository {
     func tripOutcome(tripId: String) async throws -> TripOutcome
     func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult
     func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult
+}
+
+extension TripRepository {
+    /// Local-only repositories do not have a server evidence ledger to assess.
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        throw APIError.serverError(
+            code: "CLOSEOUT_UNAVAILABLE",
+            message: "本地模式没有服务端结账评估",
+            traceId: nil,
+            details: [:]
+        )
+    }
+
+    /// Custom/test repositories that do not expose remote draft cancellation fail explicitly.
+    func cancelExpenseReport(id: String) async throws -> ExpenseReport {
+        throw APIError.serverError(
+            code: "EXPENSE_REPORT_CANCELLATION_UNAVAILABLE",
+            message: "当前仓储不支持撤销报销草稿",
+            traceId: nil,
+            details: ["report_id": .string(id)]
+        )
+    }
+
+    /// Repositories without remote idempotency support keep their existing local write path.
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String?
+    ) async throws -> TripExpense {
+        try await createExpense(tripId: tripId, body: body)
+    }
 }
 
 /// Talks to `/v1/trips` and `/v1/trips/{id}/imports:*`.
@@ -107,8 +145,20 @@ final class RemoteTripRepository: TripRepository {
         tripId: String,
         body: TripExpenseCreateRequest
     ) async throws -> TripExpense {
+        try await createExpense(tripId: tripId, body: body, idempotencyKey: nil)
+    }
+
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String?
+    ) async throws -> TripExpense {
         try await client.send(
-            try Endpoints.createTripExpense(tripId: tripId, body: body),
+            try Endpoints.createTripExpense(
+                tripId: tripId,
+                body: body,
+                idempotencyKey: idempotencyKey
+            ),
             as: TripExpense.self
         )
     }
@@ -117,6 +167,13 @@ final class RemoteTripRepository: TripRepository {
         try await client.send(
             Endpoints.tripBudget(tripId: tripId, baseCurrency: baseCurrency),
             as: BudgetSummary.self
+        )
+    }
+
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        try await client.send(
+            Endpoints.tripCloseoutReadiness(tripId: tripId),
+            as: TripCloseoutReadiness.self
         )
     }
 
@@ -142,6 +199,13 @@ final class RemoteTripRepository: TripRepository {
     func submitExpenseReport(id: String) async throws -> ExpenseReport {
         try await client.send(
             Endpoints.submitExpenseReport(id: id),
+            as: ExpenseReport.self
+        )
+    }
+
+    func cancelExpenseReport(id: String) async throws -> ExpenseReport {
+        try await client.send(
+            Endpoints.cancelExpenseReport(id: id),
             as: ExpenseReport.self
         )
     }
@@ -303,8 +367,26 @@ final class OfflineTripRepository: TripRepository {
         try await remote.createExpense(tripId: tripId, body: body)
     }
 
+    func createExpense(
+        tripId: String,
+        body: TripExpenseCreateRequest,
+        idempotencyKey: String?
+    ) async throws -> TripExpense {
+        try await remote.createExpense(
+            tripId: tripId,
+            body: body,
+            idempotencyKey: idempotencyKey
+        )
+    }
+
     func budgetSummary(tripId: String, baseCurrency: String?) async throws -> BudgetSummary {
         try await remote.budgetSummary(tripId: tripId, baseCurrency: baseCurrency)
+    }
+
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        let readiness = try await remote.closeoutReadiness(tripId: tripId)
+        indicator.markServedFromServer()
+        return readiness
     }
 
     func localGuide(tripId: String) async throws -> LocalGuide {
@@ -331,6 +413,10 @@ final class OfflineTripRepository: TripRepository {
 
     func submitExpenseReport(id: String) async throws -> ExpenseReport {
         try await remote.submitExpenseReport(id: id)
+    }
+
+    func cancelExpenseReport(id: String) async throws -> ExpenseReport {
+        try await remote.cancelExpenseReport(id: id)
     }
 
     func entryAssessments(tripId: String) async throws -> [EntryAssessment] {

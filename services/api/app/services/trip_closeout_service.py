@@ -30,6 +30,7 @@ class CloseoutIssue:
     source_type: str
     source_id: UUID
     action_hint: str
+    source_visit_id: UUID | None = None
 
     @property
     def stable_id(self) -> str:
@@ -44,6 +45,7 @@ def _issue(
     source_type: str,
     source_id: UUID,
     action_hint: str,
+    source_visit_id: UUID | None = None,
 ) -> CloseoutIssue:
     return CloseoutIssue(
         code=code,
@@ -53,6 +55,7 @@ def _issue(
         source_type=source_type,
         source_id=source_id,
         action_hint=action_hint,
+        source_visit_id=source_visit_id,
     )
 
 
@@ -140,8 +143,17 @@ def build_trip_closeout_readiness(
             )
         )
 
+    # A rejected report is an audit snapshot, not evidence that an expense is
+    # currently included in a valid reimbursement workflow. A newer partial draft
+    # must not let an older rejected snapshot hide omitted expenses.
+    eligible_reports = [
+        row for row in reports if row.status not in ("REJECTED", "CANCELLED")
+    ]
+    eligible_report_ids = {row.id for row in eligible_reports}
     snapshotted_expense_ids = {
-        row.expense_id for row in report_items if row.expense_id is not None
+        row.expense_id
+        for row in report_items
+        if row.expense_id is not None and row.report_id in eligible_report_ids
     }
     unreported_expenses = [
         row for row in expenses if row.id not in snapshotted_expense_ids
@@ -159,7 +171,10 @@ def build_trip_closeout_readiness(
             )
         )
 
-    latest_report = reports[0] if reports else None
+    latest_report = next(
+        (row for row in reports if row.status != "CANCELLED"),
+        reports[0] if reports else None,
+    )
     if latest_report is not None and latest_report.status == "REJECTED":
         blockers.append(
             _issue(
@@ -170,6 +185,22 @@ def build_trip_closeout_readiness(
                 "EXPENSE_REPORT",
                 latest_report.id,
                 "查看驳回原因，修正费用/票据后创建新的报销单",
+            )
+        )
+
+    # A Trip can use multiple split reports. Drafts remain visible even when
+    # another split report has already been submitted or approved. Keep drafts
+    # as source-linked warnings so users can review or safely cancel them.
+    for draft_report in (row for row in eligible_reports if row.status == "DRAFT"):
+        warnings.append(
+            _issue(
+                "EXPENSE_REPORT_DRAFT",
+                "WARNING",
+                "报销单草稿尚未提交",
+                "该报销单尚未进入审批流程；拆分报销时，每张有效报销单都应完成提交",
+                "EXPENSE_REPORT",
+                draft_report.id,
+                "打开该报销单核对费用明细，确认无误后提交",
             )
         )
 
@@ -348,6 +379,7 @@ def build_trip_closeout_readiness(
                 "VISIT_FOLLOW_UP",
                 follow_up.id,
                 "打开拜访记录更新商务跟进进度；该事项不会阻断财务结账",
+                source_visit_id=follow_up.visit_id,
             )
         )
 
@@ -356,9 +388,11 @@ def build_trip_closeout_readiness(
 
     if blockers:
         status = "BLOCKED"
-    elif latest_report is not None and latest_report.status == "APPROVED":
+    elif eligible_reports and all(row.status == "APPROVED" for row in eligible_reports):
         status = "REPORT_APPROVED"
-    elif latest_report is not None and latest_report.status == "SUBMITTED":
+    elif eligible_reports and any(
+        row.status == "SUBMITTED" for row in eligible_reports
+    ) and all(row.status in ("SUBMITTED", "APPROVED") for row in eligible_reports):
         status = "REPORT_SUBMITTED"
     elif warnings:
         status = "READY_WITH_EXCEPTIONS"

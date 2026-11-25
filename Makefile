@@ -33,8 +33,20 @@ install: ## 安装依赖
 
 db-up: ## 构建镜像并启动 PostgreSQL16+PostGIS+pgvector
 	$(COMPOSE) up -d --build
-	@until docker exec zhi-tu-pg pg_isready -U postgres -d gbt_os >/dev/null 2>&1; do sleep 1; done
-	@echo "db ready on localhost:55432"
+	@for attempt in $$(seq 1 180); do \
+		ready_count=$$(docker logs zhi-tu-pg 2>&1 | grep -c "database system is ready to accept connections" || true); \
+		if [ "$$ready_count" -ge 2 ] && docker exec zhi-tu-pg pg_isready -U postgres -d gbt_os >/dev/null 2>&1; then \
+			echo "db ready on localhost:55432 (post-init server)"; \
+			exit 0; \
+		fi; \
+		if [ "$$(docker inspect -f '{{.State.Status}}' zhi-tu-pg 2>/dev/null || true)" != "running" ]; then \
+			docker logs --tail=200 zhi-tu-pg || true; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done; \
+	docker logs --tail=200 zhi-tu-pg || true; \
+	exit 1
 
 db-down: ## 停止数据库（保留数据卷）
 	$(COMPOSE) down
@@ -129,13 +141,4 @@ ios-build: ## 构建 iOS 客户端（通用模拟器目标，不依赖具体设�
 		-destination 'generic/platform=iOS Simulator' build
 
 ios-test: seed ## 运行 iOS 单元测试 + UI 冒烟（需 make api 运行；自动补种子与夹具；挂死自动清缓存重试；模拟器名用 IOS_DEST 覆盖）
-	@name="$(IOS_DEST)"; name="$${name##*name=}"; \
-	if ! xcrun simctl list devices available | grep -q "$$name"; then \
-	  fallback=$$(xcrun simctl list devices available | sed -n 's/^ *\(iPhone [^(]*\) (.*/\1/p' | head -1 | sed 's/ *$$//'); \
-	  if [ -z "$$fallback" ]; then echo "没有可用的 iPhone 模拟器"; exit 1; fi; \
-	  echo "目标模拟器 '$$name' 不存在，回退到 '$$fallback'"; \
-	  dest="platform=iOS Simulator,name=$$fallback"; \
-	else \
-	  dest='$(IOS_DEST)'; \
-	fi; \
-	DEST="$$dest" scripts/ios_test_guard.sh
+	bash scripts/ios_test_guard.sh '$(IOS_DEST)'

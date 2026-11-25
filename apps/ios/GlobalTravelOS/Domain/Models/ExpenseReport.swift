@@ -5,6 +5,7 @@ enum ExpenseReportStatus: String, Codable, CaseIterable, Identifiable {
     case submitted = "SUBMITTED"
     case approved = "APPROVED"
     case rejected = "REJECTED"
+    case cancelled = "CANCELLED"
     case unknown = "UNKNOWN"
 
     var id: String { rawValue }
@@ -20,6 +21,7 @@ enum ExpenseReportStatus: String, Codable, CaseIterable, Identifiable {
         case .submitted: return "已提交"
         case .approved: return "已通过"
         case .rejected: return "已驳回"
+        case .cancelled: return "已撤销"
         case .unknown: return "未知"
         }
     }
@@ -38,6 +40,28 @@ struct ExpenseReportItem: Codable, Equatable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, reportId, expenseId, category, amount, currency, occurredOn, note, receiptRef
+    }
+
+    init(
+        id: String,
+        reportId: String,
+        expenseId: String?,
+        category: String,
+        amount: Decimal,
+        currency: String,
+        occurredOn: Date? = nil,
+        note: String? = nil,
+        receiptRef: String? = nil
+    ) {
+        self.id = id
+        self.reportId = reportId
+        self.expenseId = expenseId
+        self.category = category
+        self.amount = amount
+        self.currency = currency
+        self.occurredOn = occurredOn
+        self.note = note
+        self.receiptRef = receiptRef
     }
 
     init(from decoder: Decoder) throws {
@@ -75,6 +99,10 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
     var submittedAt: Date?
     var decidedAt: Date?
     var decidedByUserId: String?
+    var cancelledAt: Date?
+    var cancelledByUserId: String?
+    var cancellationReason: String?
+    var canCancel: Bool?
     var items: [ExpenseReportItem]?
     var totals: [CurrencyTotal]?
     var createdAt: Date?
@@ -88,6 +116,10 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         submittedAt: Date? = nil,
         decidedAt: Date? = nil,
         decidedByUserId: String? = nil,
+        cancelledAt: Date? = nil,
+        cancelledByUserId: String? = nil,
+        cancellationReason: String? = nil,
+        canCancel: Bool? = nil,
         items: [ExpenseReportItem]? = nil,
         totals: [CurrencyTotal]? = nil,
         createdAt: Date? = nil,
@@ -100,6 +132,10 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         self.submittedAt = submittedAt
         self.decidedAt = decidedAt
         self.decidedByUserId = decidedByUserId
+        self.cancelledAt = cancelledAt
+        self.cancelledByUserId = cancelledByUserId
+        self.cancellationReason = cancellationReason
+        self.canCancel = canCancel
         self.items = items
         self.totals = totals
         self.createdAt = createdAt
@@ -114,7 +150,23 @@ struct ExpenseReport: Codable, Equatable, Identifiable {
         return totalList.map { "\($0.currency) \(String(format: "%.2f", $0.amount))" }.joined(separator: " · ")
     }
 
+    /// Multiple reports may split a Trip's expenses. Their non-rejected immutable
+    /// snapshots must collectively cover every current expense before any is submitted.
+    static func snapshotsCoverCurrentExpenses(
+        _ reports: [ExpenseReport],
+        currentExpenseIDs: Set<String>
+    ) -> Bool {
+        let snapshotIDs = Set(
+            reports
+                .filter { $0.status != .rejected && $0.status != .cancelled }
+                .flatMap(\.itemList)
+                .compactMap(\.expenseId)
+        )
+        return currentExpenseIDs.isSubset(of: snapshotIDs)
+    }
     var canSubmit: Bool { status == .draft }
+    /// Cancellation is only exposed when the server has confirmed caller authorization.
+    var canCancelInUI: Bool { canCancel ?? false }
 }
 
 struct ExpenseReportCreateRequest: Codable, Equatable {

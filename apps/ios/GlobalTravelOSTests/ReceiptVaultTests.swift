@@ -17,6 +17,76 @@ final class ReceiptVaultTests: XCTestCase {
         try? FileManager.default.removeItem(at: temporaryDirectory)
     }
 
+    func testSQLiteQueryPropagatesStepFailuresInsteadOfReturningPartialResults() throws {
+        let database = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("query-errors.sqlite3")
+        )
+
+        XCTAssertThrowsError(
+            try database.store.query(
+                "SELECT abs(CAST('-9223372036854775808' AS INTEGER))"
+            ) { $0.int(0) }
+        )
+    }
+
+    func testLocalMigrationDDLAndVersionMarkerRollbackTogether() throws {
+        let database = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("migration-atomic.sqlite3")
+        )
+        let migrationName = "test_atomic_failure"
+
+        XCTAssertThrowsError(
+            try database.applyMigration(
+                name: migrationName,
+                script: """
+                CREATE TABLE migration_atomic_probe (id TEXT PRIMARY KEY);
+                CREATE TABLE migration_atomic_probe (id TEXT PRIMARY KEY);
+                """
+            )
+        )
+
+        let createdTables = try database.store.query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            bindings: ["migration_atomic_probe"]
+        ) { $0.string(0) }
+        let appliedMarkers = try database.store.query(
+            "SELECT name FROM schema_migrations WHERE name = ?",
+            bindings: [migrationName]
+        ) { $0.string(0) }
+
+        XCTAssertTrue(createdTables.isEmpty, "DDL before a failed statement must roll back")
+        XCTAssertTrue(appliedMarkers.isEmpty, "A failed migration must not leave a success marker")
+    }
+
+    func testConcurrentOpenAppliesLocalMigrationsExactlyOnce() throws {
+        let path = temporaryDirectory.appendingPathComponent("concurrent-migrations.sqlite3")
+        let failures = MigrationFailureCollector()
+
+        DispatchQueue.concurrentPerform(iterations: 8) { _ in
+            do {
+                let database = try LocalDatabase.open(path: path)
+                let appliedCount = try database.count(table: "schema_migrations")
+                let pendingExpenseColumns = try database.store.query(
+                    "PRAGMA table_info(pending_trip_expenses)"
+                ) { $0.string(1) }
+
+                if appliedCount != 9 || !pendingExpenseColumns.contains("queue_order") {
+                    failures.append(
+                        "Expected 9 migrations and queue_order; got count=\(appliedCount), " +
+                            "columns=\(pendingExpenseColumns)"
+                    )
+                }
+            } catch {
+                failures.append(String(describing: error))
+            }
+        }
+
+        XCTAssertTrue(
+            failures.messages.isEmpty,
+            "Concurrent database open failed: \(failures.messages.joined(separator: "; "))"
+        )
+    }
+
     func testLocalReceiptPersistsExactOriginalAndPrivateMetadata() throws {
         let vault = try ReceiptVault.open(
             directory: temporaryDirectory,
@@ -46,8 +116,44 @@ final class ReceiptVaultTests: XCTestCase {
         )
         XCTAssertGreaterThanOrEqual(
             try metadataDatabase.count(table: "schema_migrations"),
-            7
+            9
         )
+    }
+
+    func testConcurrentCaptureDeduplicatesSameReceiptAcrossDatabaseHandles() throws {
+        let directory = temporaryDirectory!
+        let failures = MigrationFailureCollector()
+        let identifiers = MigrationFailureCollector()
+        let original = pngFixture()
+
+        DispatchQueue.concurrentPerform(iterations: 8) { _ in
+            do {
+                let vault = try ReceiptVault.open(
+                    directory: directory,
+                    client: nil,
+                    uploadsEnabled: false
+                )
+                let asset = try vault.capture(
+                    tripId: "trip-concurrent-capture",
+                    draft: ReceiptDraft(filename: "same-receipt.png", data: original)
+                )
+                identifiers.append(asset.id)
+            } catch {
+                failures.append(String(describing: error))
+            }
+        }
+
+        XCTAssertTrue(
+            failures.messages.isEmpty,
+            "Concurrent receipt capture failed: \(failures.messages.joined(separator: "; "))"
+        )
+        XCTAssertEqual(Set(identifiers.messages).count, 1)
+        let reopened = try ReceiptVault.open(
+            directory: directory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        XCTAssertEqual(try reopened.assets(tripId: "trip-concurrent-capture").count, 1)
     }
 
     func testSameOriginalIsDeduplicatedPerTripAndNeverAcrossTrips() throws {
@@ -117,10 +223,171 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertEqual(try vault.originalData(assetId: localAsset.id), draft.data)
     }
 
+    func testTripExpenseOutboxPersistsStableKeyAndRetryMetadataAcrossReopen() throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: true
+        )
+        let outbox = vault.makeTripExpenseOutbox()
+        let request = TripExpenseCreateRequest(
+            category: .meals,
+            amount: Decimal(string: "42.50") ?? .zero,
+            currency: "EUR",
+            occurredOn: "2026-11-24",
+            note: "Dinner receipt",
+            receiptAssetId: nil
+        )
+        let queued = try outbox.enqueue(
+            tripId: "trip-offline-expense",
+            body: request,
+            localReceiptAssetId: "local-receipt-asset"
+        )
+        try outbox.recordFailure(id: queued.id, message: "Network unavailable")
+
+        // A new SQLite handle simulates app termination and relaunch.
+        let reopenedDatabase = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
+        )
+        let reopenedOutbox = TripExpenseOutbox(database: reopenedDatabase)
+        let restored = try XCTUnwrap(reopenedOutbox.pending(tripId: queued.tripId).first)
+
+        XCTAssertEqual(restored.id, queued.id)
+        XCTAssertEqual(restored.body, request)
+        XCTAssertEqual(restored.localReceiptAssetId, "local-receipt-asset")
+        XCTAssertEqual(restored.attempts, 1)
+        XCTAssertEqual(restored.lastError, "Network unavailable")
+
+        try reopenedOutbox.remove(id: queued.id)
+        XCTAssertTrue(try reopenedOutbox.pending(tripId: queued.tripId).isEmpty)
+    }
+
+    func testTripExpenseOutboxSerializesConcurrentFailureUpdatesAcrossDatabaseHandles() throws {
+        let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
+        let initialDatabase = try LocalDatabase.open(path: path)
+        let outbox = TripExpenseOutbox(database: initialDatabase)
+        let request = TripExpenseCreateRequest(
+            category: .meals,
+            amount: Decimal(string: "42.50") ?? .zero,
+            currency: "EUR",
+            occurredOn: "2026-11-24",
+            note: "Concurrent failure counter",
+            receiptAssetId: nil
+        )
+        let queued = try outbox.enqueue(
+            tripId: "trip-concurrent-failures",
+            body: request,
+            localReceiptAssetId: nil
+        )
+        let failures = MigrationFailureCollector()
+
+        DispatchQueue.concurrentPerform(iterations: 8) { index in
+            do {
+                let database = try LocalDatabase.open(path: path)
+                let independentHandle = TripExpenseOutbox(database: database)
+                try independentHandle.recordFailure(
+                    id: queued.id,
+                    message: "Concurrent network failure \(index)"
+                )
+            } catch {
+                failures.append(String(describing: error))
+            }
+        }
+
+        XCTAssertTrue(
+            failures.messages.isEmpty,
+            "Concurrent outbox updates failed: \(failures.messages.joined(separator: "; "))"
+        )
+        let reopened = try LocalDatabase.open(path: path)
+        let restored = try XCTUnwrap(
+            TripExpenseOutbox(database: reopened).pending(tripId: queued.tripId).first
+        )
+        XCTAssertEqual(restored.id, queued.id)
+        XCTAssertEqual(restored.attempts, 8, "Concurrent increments must not be lost")
+        XCTAssertNotNil(restored.lastError)
+        XCTAssertTrue(restored.lastError?.hasPrefix("Concurrent network failure ") == true)
+    }
+
+    func testTripExpenseOutboxMaintainsFIFOOrderAcrossRapidEnqueuesAndReopen() throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: true
+        )
+        let outbox = vault.makeTripExpenseOutbox()
+        let tripId = "trip-fifo-expense"
+
+        func request(_ amount: String) -> TripExpenseCreateRequest {
+            TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: amount) ?? .zero,
+                currency: "EUR",
+                occurredOn: "2026-11-24",
+                note: "FIFO order acceptance",
+                receiptAssetId: nil
+            )
+        }
+
+        let first = try outbox.enqueue(
+            tripId: tripId,
+            body: request("10.00"),
+            localReceiptAssetId: nil
+        )
+        let second = try outbox.enqueue(
+            tripId: tripId,
+            body: request("20.00"),
+            localReceiptAssetId: nil
+        )
+        let third = try outbox.enqueue(
+            tripId: tripId,
+            body: request("30.00"),
+            localReceiptAssetId: nil
+        )
+        try outbox.recordFailure(id: second.id, message: "Temporary network failure")
+
+        let expectedOrder = [first.id, second.id, third.id]
+        XCTAssertEqual(try outbox.pending(tripId: tripId).map(\.id), expectedOrder)
+
+        // A new database handle simulates termination/relaunch without changing FIFO positions.
+        let reopenedDatabase = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
+        )
+        let reopenedOutbox = TripExpenseOutbox(database: reopenedDatabase)
+        XCTAssertEqual(try reopenedOutbox.pending(tripId: tripId).map(\.id), expectedOrder)
+
+        try reopenedOutbox.remove(id: second.id)
+        let fourth = try reopenedOutbox.enqueue(
+            tripId: tripId,
+            body: request("40.00"),
+            localReceiptAssetId: nil
+        )
+        XCTAssertEqual(
+            try reopenedOutbox.pending(tripId: tripId).map(\.id),
+            [first.id, third.id, fourth.id]
+        )
+    }
+
     private func pngFixture() -> Data {
         Data([
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
             0x00, 0x00, 0x00, 0x00
         ])
+    }
+}
+
+private final class MigrationFailureCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    func append(_ message: String) {
+        lock.lock()
+        storage.append(message)
+        lock.unlock()
+    }
+
+    var messages: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }

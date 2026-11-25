@@ -11,9 +11,10 @@ import pytest
 from app.db import org_session
 from app.main import app
 from app.models.planning import PlanVersion
+from app.models.reliability import IdempotencyRecord
 from app.models.trip import Trip
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -117,4 +118,78 @@ def test_expenses_and_budget_summary(client: TestClient) -> None:
         assert len(after.json()) == 2
     finally:
         with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+
+
+
+def test_expense_idempotency_is_durable_for_long_offline_retries(client: TestClient) -> None:
+    now = datetime.now(UTC)
+    trip = client.post(
+        "/v1/trips",
+        headers=headers(),
+        json={
+            "name": f"离线费用幂等·{uuid.uuid4().hex[:8]}",
+            "window_start": (now + timedelta(days=5)).isoformat(),
+            "window_end": (now + timedelta(days=8)).isoformat(),
+            "countries": ["DE"],
+            "currency": "EUR",
+            "budget_amount": 500,
+        },
+    )
+    assert trip.status_code == 201, trip.text
+    trip_id = trip.json()["id"]
+    key = f"mobile-expense-{uuid.uuid4()}"
+    body = {
+        "category": "MEALS",
+        "amount": "42.50",
+        "currency": "EUR",
+        "occurred_on": date.today().isoformat(),
+        "note": "offline retry fixture",
+    }
+    request_headers = {**headers(), "Idempotency-Key": key}
+    try:
+        first_response = client.post(
+            f"/v1/trips/{trip_id}/expenses",
+            headers=request_headers,
+            json=body,
+        )
+        replay = client.post(
+            f"/v1/trips/{trip_id}/expenses",
+            headers=request_headers,
+            json=body,
+        )
+        assert first_response.status_code == 201, first_response.text
+        assert replay.status_code == 201, replay.text
+        assert replay.json()["id"] == first_response.json()["id"]
+        assert replay.headers.get("Idempotent-Replay") == "true"
+
+        conflicting = client.post(
+            f"/v1/trips/{trip_id}/expenses",
+            headers=request_headers,
+            json={**body, "amount": "99.00"},
+        )
+        assert conflicting.status_code == 409, conflicting.text
+
+        listed = client.get(f"/v1/trips/{trip_id}/expenses", headers=headers())
+        assert listed.status_code == 200
+        assert len(listed.json()) == 1
+
+        with org_session(UUID(ORG_A)) as session:
+            record = session.scalars(
+                select(IdempotencyRecord).where(
+                    IdempotencyRecord.organization_id == UUID(ORG_A),
+                    IdempotencyRecord.endpoint == "POST /v1/trips/{trip_id}/expenses",
+                    IdempotencyRecord.key == key,
+                )
+            ).one()
+            assert record.expires_at is None
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(IdempotencyRecord).where(
+                    IdempotencyRecord.organization_id == UUID(ORG_A),
+                    IdempotencyRecord.endpoint == "POST /v1/trips/{trip_id}/expenses",
+                    IdempotencyRecord.key == key,
+                )
+            )
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))

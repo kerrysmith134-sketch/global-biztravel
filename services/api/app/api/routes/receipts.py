@@ -129,7 +129,7 @@ async def upload_receipt_asset(
         actor_user_id=context.user_id,
     )
     body = ReceiptAssetRead.model_validate(asset)
-    return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
+    return guard.finish(status_code=status.HTTP_201_CREATED, body=body, ttl=None)
 
 
 @router.get(

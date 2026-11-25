@@ -3,6 +3,53 @@ import XCTest
 
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
+
+    func testPlanStopCoordinatesRequireValidGeographicRanges() {
+        let valid = PlanStop(
+            visitId: "visit-valid",
+            sequence: 1,
+            latitude: 52.52,
+            longitude: 13.405
+        )
+        let invalidLatitude = PlanStop(
+            visitId: "visit-invalid-latitude",
+            sequence: 2,
+            latitude: 91,
+            longitude: 13.405
+        )
+        let invalidLongitude = PlanStop(
+            visitId: "visit-invalid-longitude",
+            sequence: 3,
+            latitude: 52.52,
+            longitude: 181
+        )
+        let incomplete = PlanStop(
+            visitId: "visit-incomplete",
+            sequence: 4,
+            latitude: 52.52
+        )
+
+        XCTAssertTrue(valid.hasValidCoordinates)
+        XCTAssertFalse(invalidLatitude.hasValidCoordinates)
+        XCTAssertFalse(invalidLongitude.hasValidCoordinates)
+        XCTAssertFalse(incomplete.hasValidCoordinates)
+    }
+
+    func testTravelSourcePresentationDoesNotClaimLiveTrafficForOSRM() {
+        XCTAssertEqual(
+            TravelSourcePresentation.label(source: "osrm-road", stale: false),
+            "道路网络估算（无实时路况）"
+        )
+        XCTAssertEqual(
+            TravelSourcePresentation.label(source: "haversine-estimate", stale: false),
+            "直线距离估算（非导航路线）"
+        )
+        XCTAssertEqual(
+            TravelSourcePresentation.label(source: "fallback-haversine", stale: true),
+            "降级直线估算 · 需要复核"
+        )
+    }
+
     func testExpenseReceiptAssetIdDecodesAndEncodesOnTheWire() throws {
         let json = """
         {
@@ -192,6 +239,183 @@ final class ModelDecodingTests: XCTestCase {
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
         XCTAssertEqual(payload["customer_id"] as? String, "customer-1")
+    }
+
+    func testTripCloseoutReadinessDecodesIssuesAndCurrencyTotals() throws {
+        let json = """
+        {
+          "trip_id": "trip-1",
+          "status": "BLOCKED",
+          "generated_at": "2026-11-24T10:30:00+00:00",
+          "summary": {
+            "visit_count": 4,
+            "visit_outcome_count": 3,
+            "visits_open_count": 1,
+            "visits_missing_outcome_count": 0,
+            "expense_count": 5,
+            "expenses_in_report_count": 4,
+            "expenses_not_in_report_count": 1,
+            "expenses_without_receipt_count": 2,
+            "receipt_asset_count": 3,
+            "receipt_asset_unavailable_count": 1,
+            "ocr_needs_review_count": 1,
+            "open_business_follow_up_count": 2,
+            "latest_report_id": "report-1",
+            "latest_report_status": "DRAFT",
+            "blocker_count": 2,
+            "warning_count": 2
+          },
+          "totals_by_currency": [
+            {"currency": "EUR", "amount": 120.5, "count": 3},
+            {"currency": "USD", "amount": 42.0, "count": 2}
+          ],
+          "blockers": [
+            {
+              "id": "VISIT_NOT_CLOSED:VISIT:visit-1",
+              "code": "VISIT_NOT_CLOSED",
+              "severity": "BLOCKER",
+              "title": "拜访尚未完成",
+              "detail": "拜访状态为 PLANNED",
+              "source_type": "VISIT",
+              "source_id": "visit-1",
+              "action_hint": "打开该拜访并记录真实结果"
+            },
+            {
+              "id": "EXPENSE_NOT_IN_REPORT:EXPENSE:expense-1",
+              "code": "EXPENSE_NOT_IN_REPORT",
+              "severity": "BLOCKER",
+              "title": "费用尚未纳入报销快照",
+              "detail": "MEALS · 18.50 EUR",
+              "source_type": "EXPENSE",
+              "source_id": "expense-1",
+              "action_hint": "将该费用加入报销单"
+            }
+          ],
+          "warnings": [
+            {
+              "id": "BUSINESS_FOLLOW_UP_OPEN:VISIT_FOLLOW_UP:follow-up-1",
+              "code": "BUSINESS_FOLLOW_UP_OPEN",
+              "severity": "WARNING",
+              "title": "仍有商务跟进事项未完成",
+              "detail": "Send revised proposal",
+              "source_type": "VISIT_FOLLOW_UP",
+              "source_id": "follow-up-1",
+              "source_visit_id": "visit-1",
+              "action_hint": "打开拜访记录更新商务跟进进度"
+            },
+            {
+              "id": "RECEIPT_MISSING:EXPENSE:expense-2",
+              "code": "RECEIPT_MISSING",
+              "severity": "WARNING",
+              "title": "费用缺少原始票据",
+              "detail": "TRANSPORT · 8.00 EUR",
+              "source_type": "EXPENSE",
+              "source_id": "expense-2",
+              "action_hint": "补充原始票据"
+            }
+          ]
+        }
+        """
+        let readiness = try DateCoding.decode(
+            TripCloseoutReadiness.self,
+            fromJSON: json
+        )
+
+        XCTAssertEqual(readiness.tripId, "trip-1")
+        XCTAssertEqual(readiness.status, .blocked)
+        XCTAssertEqual(readiness.summary.visitOutcomeCount, 3)
+        XCTAssertEqual(readiness.summary.expensesNotInReportCount, 1)
+        XCTAssertEqual(readiness.summary.latestReportId, "report-1")
+        XCTAssertEqual(readiness.totalsByCurrency.map(\.currency), ["EUR", "USD"])
+        XCTAssertEqual(readiness.blockers.count, 2)
+        XCTAssertEqual(readiness.warnings.first?.severity, .warning)
+        XCTAssertEqual(
+            readiness.warnings.first(where: { $0.sourceType == "VISIT_FOLLOW_UP" })?.sourceVisitId,
+            "visit-1"
+        )
+        XCTAssertEqual(readiness.blockers.first?.sourceLabel, "拜访记录")
+        XCTAssertEqual(readiness.blockers.last?.sourceLabel, "费用记录")
+    }
+
+    func testExpenseReportSnapshotsCoverCurrentExpensesAcrossNonRejectedReports() {
+        func makeReport(
+            _ id: String,
+            expenseId: String,
+            status: ExpenseReportStatus = .draft
+        ) -> ExpenseReport {
+            ExpenseReport(
+                id: id,
+                tripId: "trip-1",
+                status: status,
+                items: [
+                    ExpenseReportItem(
+                        id: "item-\(id)",
+                        reportId: id,
+                        expenseId: expenseId,
+                        category: "MEALS",
+                        amount: Decimal(string: "12.50") ?? .zero,
+                        currency: "EUR"
+                    )
+                ]
+            )
+        }
+
+        let firstHalf = makeReport("report-1", expenseId: "expense-1")
+        let secondHalf = makeReport("report-2", expenseId: "expense-2")
+        let rejectedHalf = makeReport("report-3", expenseId: "expense-2", status: .rejected)
+        let cancelledHalf = makeReport("report-4", expenseId: "expense-2", status: .cancelled)
+        let allCurrent = Set(["expense-1", "expense-2"])
+
+        XCTAssertFalse(
+            ExpenseReport.snapshotsCoverCurrentExpenses([firstHalf], currentExpenseIDs: allCurrent)
+        )
+        XCTAssertTrue(
+            ExpenseReport.snapshotsCoverCurrentExpenses(
+                [firstHalf, secondHalf],
+                currentExpenseIDs: allCurrent
+            )
+        )
+        XCTAssertFalse(
+            ExpenseReport.snapshotsCoverCurrentExpenses(
+                [firstHalf, rejectedHalf],
+                currentExpenseIDs: allCurrent
+            )
+        )
+        XCTAssertFalse(
+            ExpenseReport.snapshotsCoverCurrentExpenses(
+                [firstHalf, cancelledHalf],
+                currentExpenseIDs: allCurrent
+            )
+        )
+        XCTAssertTrue(
+            ExpenseReport.snapshotsCoverCurrentExpenses(
+                [firstHalf, secondHalf],
+                currentExpenseIDs: ["expense-1"]
+            )
+        )
+    }
+    func testExpenseReportDecodesServerCancellationPermission() throws {
+        let report = try DateCoding.decode(
+            ExpenseReport.self,
+            fromJSON: ContractSamples.expenseReport
+        )
+        XCTAssertEqual(report.status, .draft)
+        XCTAssertEqual(report.canCancel, true)
+    }
+
+    func testExpenseReportCancellationEndpointIsIdempotentPost() {
+        let request = Endpoints.cancelExpenseReport(id: "report-1")
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/v1/expense-reports/report-1:cancel")
+        XCTAssertNotNil(request.idempotencyKey)
+        XCTAssertEqual(ExpenseReportStatus(rawValue: "CANCELLED"), .cancelled)
+    }
+
+    func testTripCloseoutEndpointUsesReadOnlyTripRoute() {
+        let request = Endpoints.tripCloseoutReadiness(tripId: "trip-1")
+        XCTAssertEqual(request.method, .get)
+        XCTAssertEqual(request.path, "/v1/trips/trip-1/closeout-readiness")
+        XCTAssertNil(request.idempotencyKey)
     }
 
     func testTripDecodesBackendFlatShape() throws {
