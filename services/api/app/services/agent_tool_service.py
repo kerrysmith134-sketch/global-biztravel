@@ -8,8 +8,8 @@ and does not require an approval workflow that has not been connected yet.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -18,7 +18,15 @@ from sqlalchemy.orm import Session
 from app.api.deps import ROLE_RANK
 from app.api.errors import ApiError, Conflict, Forbidden, Unprocessable
 from app.llm.tools import list_tools
-from app.services import plan_service, trip_service, visa_service
+from app.models.workflow import AgentRun
+from app.services import (
+    minutes_service,
+    plan_service,
+    record_service,
+    trip_service,
+    visa_service,
+    visit_service,
+)
 from app.services.agent_runtime_service import fail_agent_run, start_agent_run, succeed_agent_run
 
 
@@ -39,6 +47,15 @@ class VisaPrepareChecklistArguments(BaseModel):
     countries: list[str] | None = Field(default=None, max_length=20)
 
 
+class VisitDraftMinutesArguments(BaseModel):
+    """Draft minutes from one specific visit's applied field record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    visit_id: UUID
+    tone: Literal["PROFESSIONAL", "CONCISE"] = "PROFESSIONAL"
+
+
 @dataclass(frozen=True)
 class AgentToolResult:
     tool_name: str
@@ -55,6 +72,7 @@ class AgentToolResult:
     ready_item_count: int = 0
     missing_item_count: int = 0
     not_applicable_item_count: int = 0
+    audit_output: dict[str, Any] = field(default_factory=dict)
 
 
 def _execute_visa_get_checklist(
@@ -186,6 +204,80 @@ def _execute_visa_prepare_checklist(
     )
 
 
+def _execute_visit_draft_minutes(
+    session: Session,
+    organization_id: UUID | str,
+    arguments: VisitDraftMinutesArguments,
+    _actor_user_id: UUID | str | None = None,
+    *,
+    agent_run: AgentRun,
+) -> AgentToolResult:
+    visit = visit_service.require_visit(session, organization_id, arguments.visit_id)
+    trip = trip_service.require_trip(session, organization_id, visit.trip_id)
+    records = record_service.list_records(session, organization_id, visit.id)
+    if not any(record.applied for record in records):
+        return AgentToolResult(
+            tool_name="visit.draft_minutes",
+            status="NO_APPLIED_RECORD",
+            trip_id=str(trip.id),
+            trip_name=trip.name,
+            detail=(
+                f"「{visit.title or '本次拜访'}」尚无已生效的现场记录。"
+                "请先保存并应用现场记录，再生成会议纪要草稿。"
+            ),
+        )
+
+    draft = minutes_service.draft_minutes(
+        session,
+        organization_id,
+        visit.id,
+        tone=arguments.tone,
+        agent_run=agent_run,
+    )
+    insight_lines = [
+        f"{insight.kind}{'（待人工确认）' if insight.requires_confirmation else ''}：{insight.text}"
+        for insight in draft.insights[:5]
+    ]
+    decision_lines = [f"决策：{item}" for item in draft.decisions[:5]]
+    follow_up_lines = [
+        f"待跟进：{str(item.get('title') or '').strip()}"
+        for item in draft.follow_up_tasks[:5]
+        if str(item.get("title") or "").strip()
+    ]
+    sections = [draft.title, draft.summary, *decision_lines, *follow_up_lines, *insight_lines]
+    detail = "\n".join(part for part in sections if part).strip()
+    if draft.degraded:
+        detail += "\n提示：当前为规则模板生成的降级草稿，请人工核对后使用。"
+    detail += "\n会议纪要仅为草稿；跟进建议需要逐项确认，不会自动创建正式任务或发送给客户。"
+
+    audit_output = {
+        "status": "MINUTES_DRAFTED",
+        "visit_id": str(visit.id),
+        "llm_invocation_id": str(draft.invocation_id),
+        "title": draft.title,
+        "summary": draft.summary,
+        "decisions": draft.decisions,
+        "follow_up_tasks": draft.follow_up_tasks,
+        "insights": [
+            {
+                "kind": insight.kind,
+                "text": insight.text,
+                "requires_confirmation": insight.requires_confirmation,
+            }
+            for insight in draft.insights
+        ],
+        "degraded": draft.degraded,
+    }
+    return AgentToolResult(
+        tool_name="visit.draft_minutes",
+        status="MINUTES_DRAFTED",
+        trip_id=str(trip.id),
+        trip_name=trip.name,
+        detail=detail,
+        audit_output=audit_output,
+    )
+
+
 def _execute_trip_get_plan(
     session: Session,
     organization_id: UUID | str,
@@ -238,6 +330,7 @@ EXECUTORS: dict[
     "trip.get_plan": (_execute_trip_get_plan, TripGetPlanArguments),
     "visa.get_checklist": (_execute_visa_get_checklist, TripGetPlanArguments),
     "visa.prepare_checklist": (_execute_visa_prepare_checklist, VisaPrepareChecklistArguments),
+    "visit.draft_minutes": (_execute_visit_draft_minutes, VisitDraftMinutesArguments),
 }
 
 SCOPE_MINIMUM_ROLES = {
@@ -249,6 +342,7 @@ SCOPE_RESOURCE_BY_TOOL = {
     "trip.get_plan": "trip",
     "visa.get_checklist": "trip",
     "visa.prepare_checklist": "trip",
+    "visit.draft_minutes": "visit",
 }
 
 
@@ -329,6 +423,11 @@ def execute_tool(
     # happens after handler allow-list validation so unavailable tools fail closed with 403.
     if expected_trip_id is not None:
         parsed_trip_id = getattr(parsed_arguments, "trip_id", None)
+        if isinstance(parsed_arguments, VisitDraftMinutesArguments):
+            target_visit = visit_service.require_visit(
+                session, organization_id, parsed_arguments.visit_id
+            )
+            parsed_trip_id = target_visit.trip_id
         if parsed_trip_id is None or str(parsed_trip_id) != str(expected_trip_id):
             raise Unprocessable(
                 "工具目标必须与当前对话绑定的出行一致",
@@ -340,7 +439,13 @@ def execute_tool(
 
     # Never persist free-form conversation text as tool input. This handler currently needs
     # exactly one stable entity reference, which is safe to retain in the run audit.
-    audited_arguments: dict[str, Any] = {"trip_id": str(parsed_arguments.trip_id)}
+    audited_arguments: dict[str, Any] = {}
+    if hasattr(parsed_arguments, "trip_id"):
+        audited_arguments["trip_id"] = str(parsed_arguments.trip_id)
+    if hasattr(parsed_arguments, "visit_id"):
+        audited_arguments["visit_id"] = str(parsed_arguments.visit_id)
+    if hasattr(parsed_arguments, "tone"):
+        audited_arguments["tone"] = str(parsed_arguments.tone)
     if (
         isinstance(parsed_arguments, VisaPrepareChecklistArguments)
         and parsed_arguments.countries is not None
@@ -360,7 +465,16 @@ def execute_tool(
         input_snapshot=input_snapshot,
     )
     try:
-        result = executor(session, organization_id, parsed_arguments, actor_user_id)
+        if tool_name == "visit.draft_minutes":
+            result = executor(
+                session,
+                organization_id,
+                parsed_arguments,
+                actor_user_id,
+                agent_run=run,
+            )
+        else:
+            result = executor(session, organization_id, parsed_arguments, actor_user_id)
     except ApiError as exc:
         # Expected domain failures are durable AgentRun outcomes, not unhandled worker crashes.
         # The caller can commit the FAILED run and show the business-safe message in the Assistant.
@@ -373,18 +487,29 @@ def execute_tool(
                 "error_code": exc.code,
             },
         )
-        action = "创建" if tool_name == "visa.prepare_checklist" else "读取"
+        action = (
+            "起草"
+            if tool_name == "visit.draft_minutes"
+            else "创建"
+            if tool_name == "visa.prepare_checklist"
+            else "读取"
+        )
         label = (
-            "签证案件"
+            "会议纪要"
+            if tool_name == "visit.draft_minutes"
+            else "签证案件"
             if tool_name == "visa.prepare_checklist"
             else "签证材料清单"
             if tool_name == "visa.get_checklist"
             else "行程计划"
         )
+        target_trip_id = getattr(parsed_arguments, "trip_id", expected_trip_id)
+        if isinstance(parsed_arguments, VisitDraftMinutesArguments):
+            target_trip_id = expected_trip_id
         return AgentToolResult(
             tool_name=tool_name,
             status="FAILED",
-            trip_id=str(parsed_arguments.trip_id),
+            trip_id=str(target_trip_id or ""),
             trip_name="",
             detail=f"无法{action}{label}：{exc.message}",
         )
@@ -404,6 +529,7 @@ def execute_tool(
             "ready_item_count": result.ready_item_count,
             "missing_item_count": result.missing_item_count,
             "not_applicable_item_count": result.not_applicable_item_count,
+            **result.audit_output,
         },
     )
     return result
@@ -413,6 +539,7 @@ __all__ = [
     "AgentToolResult",
     "TripGetPlanArguments",
     "VisaPrepareChecklistArguments",
+    "VisitDraftMinutesArguments",
     "execute_tool",
     "list_executable_tools",
 ]
