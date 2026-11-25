@@ -120,6 +120,26 @@ def delete_conversation(
 def _explicit_visa_prepare_intent(message: str) -> bool:
     """A write-capable visa tool may be proposed only for an explicit create/prepare request."""
     normalized = message.lower()
+    negations = (
+        "不要创建",
+        "不想创建",
+        "不需要创建",
+        "无需创建",
+        "不用创建",
+        "暂不创建",
+        "先不创建",
+        "不要准备",
+        "不需要准备",
+        "不要生成",
+        "don't create",
+        "do not create",
+        "no need to create",
+        "don't prepare",
+        "do not prepare",
+        "no need to prepare",
+    )
+    if any(term in normalized for term in negations):
+        return False
     return any(
         term in normalized
         for term in (

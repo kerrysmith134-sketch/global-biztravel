@@ -71,6 +71,24 @@ def test_model_can_suggest_write_tool_after_explicit_user_request() -> None:
     assert [item["name"] for item in proposals] == ["visa.prepare_checklist"]
 
 
+def test_model_write_suggestion_is_rejected_when_user_negates_creation() -> None:
+    proposals = _merge_tool_proposals(
+        policy_proposals=[],
+        model_candidates=["visa.prepare_checklist"],
+        available_tools=AVAILABLE_TOOLS,
+        message="不要创建签证材料清单，只查看现有清单",
+    )
+    english_proposals = _merge_tool_proposals(
+        policy_proposals=[],
+        model_candidates=["visa.prepare_checklist"],
+        available_tools=AVAILABLE_TOOLS,
+        message="Do not create a visa checklist; only show the existing one.",
+    )
+
+    assert proposals == []
+    assert english_proposals == []
+
+
 def test_policy_and_model_proposals_are_merged_without_duplicates() -> None:
     policy = [
         {
