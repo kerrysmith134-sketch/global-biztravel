@@ -12,6 +12,7 @@ final class MarketOpportunityWorkspaceViewModel: ObservableObject {
 
     let workspaceId: String
     let repository: ResearchRepository
+    private var loadRevision = 0
 
     init(workspaceId: String, repository: ResearchRepository) {
         self.workspaceId = workspaceId
@@ -23,18 +24,24 @@ final class MarketOpportunityWorkspaceViewModel: ObservableObject {
         return MarketOpportunityStatusLabel.label(for: statusFilter)
     }
 
-    func load(reset: Bool = true) async {
-        guard !isLoading, !isLoadingMore else { return }
+    func load(reset: Bool = true, force: Bool = false) async {
+        guard force || (!isLoading && !isLoadingMore) else { return }
+        if !reset && nextCursor == nil { return }
+
+        loadRevision += 1
+        let revision = loadRevision
         if reset {
             isLoading = true
+            isLoadingMore = false
         } else {
-            guard nextCursor != nil else { return }
             isLoadingMore = true
         }
         errorMessage = nil
         defer {
-            isLoading = false
-            isLoadingMore = false
+            if revision == loadRevision {
+                isLoading = false
+                isLoadingMore = false
+            }
         }
 
         do {
@@ -43,14 +50,16 @@ final class MarketOpportunityWorkspaceViewModel: ObservableObject {
                 page: PageRequest(limit: 40, cursor: reset ? nil : nextCursor),
                 statusFilter: statusFilter
             )
+            guard revision == loadRevision else { return }
             if reset {
                 opportunities = page.items
             } else {
-                let existing = Set(opportunities.map(\.id))
+                let existing = Set(opportunities.map { $0.id })
                 opportunities.append(contentsOf: page.items.filter { !existing.contains($0.id) })
             }
             nextCursor = page.nextCursor
         } catch {
+            guard revision == loadRevision else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -60,7 +69,7 @@ final class MarketOpportunityWorkspaceViewModel: ObservableObject {
         statusFilter = value
         nextCursor = nil
         opportunities = []
-        await load()
+        await load(force: true)
     }
 
     func createOpportunity(title: String, description: String, nextAction: String) async -> Bool {
@@ -75,7 +84,7 @@ final class MarketOpportunityWorkspaceViewModel: ObservableObject {
         defer { isSubmitting = false }
 
         do {
-            _ = try await repository.createMarketOpportunity(
+            let created = try await repository.createMarketOpportunity(
                 workspaceId: workspaceId,
                 request: MarketOpportunityCreateRequest(
                     title: normalizedTitle,
@@ -86,13 +95,19 @@ final class MarketOpportunityWorkspaceViewModel: ObservableObject {
             if statusFilter != nil && statusFilter != "DISCOVERED" {
                 statusFilter = nil
             }
-            await load()
+            await load(force: true)
+            // The server-confirmed create response remains visible even when the follow-up
+            // list request fails or supersedes an earlier in-flight initial load.
+            if !opportunities.contains(where: { $0.id == created.id }) {
+                opportunities.insert(created, at: 0)
+            }
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
     }
+
 }
 
 @MainActor
@@ -108,6 +123,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
     let workspaceId: String
     let opportunityId: String
     let repository: ResearchRepository
+    private var loadRevision = 0
 
     init(workspaceId: String, opportunityId: String, repository: ResearchRepository) {
         self.workspaceId = workspaceId
@@ -135,11 +151,15 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
         detail?.evidence.contains { $0.relationType.uppercased() == "CONTRADICTS" } ?? false
     }
 
-    func load() async {
-        guard !isLoading else { return }
+    func load(force: Bool = false) async {
+        guard force || !isLoading else { return }
+        loadRevision += 1
+        let revision = loadRevision
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            if revision == loadRevision { isLoading = false }
+        }
 
         async let detailRequest = repository.marketOpportunity(
             workspaceId: workspaceId,
@@ -159,25 +179,35 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
         )
 
         do {
-            detail = try await detailRequest
+            let value = try await detailRequest
+            guard revision == loadRevision else { return }
+            detail = value
         } catch {
+            guard revision == loadRevision else { return }
             errorMessage = error.localizedDescription
         }
         do {
-            let evidencePage = try await evidenceRequest
-            workspaceEvidence = evidencePage.items
+            let value = try await evidenceRequest
+            guard revision == loadRevision else { return }
+            workspaceEvidence = value.items
         } catch {
+            guard revision == loadRevision else { return }
             if errorMessage == nil { errorMessage = error.localizedDescription }
         }
         do {
-            execution = try await executionRequest
+            let value = try await executionRequest
+            guard revision == loadRevision else { return }
+            execution = value
         } catch {
+            guard revision == loadRevision else { return }
             if errorMessage == nil { errorMessage = error.localizedDescription }
         }
         do {
-            let entityPage = try await entitiesRequest
-            workspaceEntities = entityPage.items
+            let value = try await entitiesRequest
+            guard revision == loadRevision else { return }
+            workspaceEntities = value.items
         } catch {
+            guard revision == loadRevision else { return }
             if errorMessage == nil { errorMessage = error.localizedDescription }
         }
     }
@@ -197,7 +227,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                     rationale: rationale.nilIfBlank
                 )
             )
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -219,7 +249,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                     note: note?.nilIfBlank
                 )
             )
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -240,7 +270,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                     qualificationReason: reason.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
             )
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -262,7 +292,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                     outcomeNote: note.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
             )
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -276,11 +306,14 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isSubmitting = false }
         do {
-            _ = try await repository.createMarketWorkspaceEntity(
+            let created = try await repository.createMarketWorkspaceEntity(
                 workspaceId: workspaceId,
                 request: request
             )
-            await load()
+            await load(force: true)
+            if !workspaceEntities.contains(where: { $0.id == created.id }) {
+                workspaceEntities.insert(created, at: 0)
+            }
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -296,7 +329,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isSubmitting = false }
         do {
-            _ = try await repository.attachMarketOpportunityEntities(
+            let attachedEntities = try await repository.attachMarketOpportunityEntities(
                 workspaceId: workspaceId,
                 opportunityId: opportunityId,
                 request: MarketOpportunityEntitiesAttachRequest(
@@ -304,7 +337,15 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                     relationshipNote: note.nilIfBlank
                 )
             )
-            await load()
+            if var currentDetail = detail {
+                let confirmedEntities = attachedEntities.isEmpty ? [candidate.entity] : attachedEntities
+                for entity in confirmedEntities where !currentDetail.entities.contains(where: { $0.id == entity.id }) {
+                    currentDetail.entities.append(entity)
+                }
+                detail = currentDetail
+            }
+            workspaceEntities.removeAll { $0.id == candidate.id }
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -327,7 +368,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                     linkNote: note.nilIfBlank
                 )
             )
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -347,7 +388,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                 visitId: link.visitId,
                 unlinkNote: "用户从商业机会工作台解除关联"
             )
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription

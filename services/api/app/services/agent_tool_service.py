@@ -128,6 +128,27 @@ def _execute_visa_prepare_checklist(
     actor_user_id: UUID | str | None = None,
 ) -> AgentToolResult:
     trip = trip_service.require_trip(session, organization_id, arguments.trip_id)
+    destination_codes = {
+        str(code).strip().upper()
+        for code in (trip.countries or [])
+        if str(code).strip()
+    }
+    requested_codes = {
+        str(code).strip().upper()
+        for code in (arguments.countries or [])
+        if str(code).strip()
+    }
+    outside_destinations = sorted(requested_codes - destination_codes)
+    if outside_destinations:
+        raise Unprocessable(
+            "签证案件目的国必须属于当前出行已登记的目的国",
+            details={
+                "trip_id": str(trip.id),
+                "requested_countries": sorted(requested_codes),
+                "outside_destinations": outside_destinations,
+            },
+        )
+
     cases = visa_service.ensure_cases(
         session,
         organization_id,
@@ -313,6 +334,11 @@ def execute_tool(
         raise Forbidden(
             "当前角色无权执行该工具",
             details={"tool_name": tool_name, "required_role": minimum_role, "actor_role": role},
+        )
+    if action != "read" and actor_user_id is None:
+        raise Forbidden(
+            "执行写工具必须提供当前操作人的身份",
+            details={"tool_name": tool_name},
         )
 
     executor, arguments_model = handler
