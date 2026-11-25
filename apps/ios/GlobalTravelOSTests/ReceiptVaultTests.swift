@@ -117,6 +117,65 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertEqual(try vault.originalData(assetId: localAsset.id), draft.data)
     }
 
+    func testLocalCloseoutFlagsCorruptedOriginalReceipt() async throws {
+        let database = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("trip-local.sqlite3")
+        )
+        let vaultDirectory = temporaryDirectory.appendingPathComponent("vault-store", isDirectory: true)
+        let vault = try ReceiptVault.open(
+            directory: vaultDirectory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        let repository = LocalTripRepository(database: database, receiptVault: vault)
+        let trip = try await repository.createTrip(
+            CreateTripRequest(
+                name: "票据完整性校验",
+                purpose: "客户拜访",
+                originPlace: PlaceRef(
+                    name: "Berlin",
+                    countryCode: "DE",
+                    timezone: "Europe/Berlin",
+                    latitude: 52.52,
+                    longitude: 13.405
+                ),
+                window: TripWindow(
+                    start: Date(timeIntervalSinceNow: 86_400),
+                    end: Date(timeIntervalSinceNow: 172_800)
+                )
+            )
+        )
+        let asset = try vault.capture(
+            tripId: trip.id,
+            draft: ReceiptDraft(filename: "receipt.png", data: pngFixture())
+        )
+        let expense = try await repository.createExpense(
+            tripId: trip.id,
+            body: TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: "12.50")!,
+                currency: "EUR",
+                occurredOn: ISO8601.dayString(from: Date()),
+                note: "客户午餐",
+                receiptAssetId: asset.expenseReceiptAssetId
+            )
+        )
+        XCTAssertEqual(expense.receiptAssetId, asset.id)
+
+        let valid = try await repository.closeoutReadiness(tripId: trip.id)
+        XCTAssertEqual(valid.summary.receiptAssetUnavailableCount, 0)
+        XCTAssertEqual(valid.summary.expensesWithoutReceiptCount, 0)
+
+        let originalURL = vaultDirectory
+            .appendingPathComponent("receipt-vault", isDirectory: true)
+            .appendingPathComponent(asset.storageKey)
+        try Data("corrupted-original".utf8).write(to: originalURL, options: .atomic)
+
+        let invalid = try await repository.closeoutReadiness(tripId: trip.id)
+        XCTAssertEqual(invalid.summary.receiptAssetUnavailableCount, 1)
+        XCTAssertTrue(invalid.warnings.contains { $0.code == "RECEIPT_UNAVAILABLE" })
+    }
+
     private func pngFixture() -> Data {
         Data([
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
