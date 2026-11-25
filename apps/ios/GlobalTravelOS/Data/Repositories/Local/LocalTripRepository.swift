@@ -205,7 +205,7 @@ final class LocalTripRepository: TripRepository {
 
     func visaCases(tripId: String) async throws -> [VisaCase] {
         let payloads = try database.loadPayloads(
-            table: "visa_cases", where: "trip_id = ?", bindings: [tripId], order: "created_at"
+            table: "visa_cases", where: "trip_id = ?", bindings: [tripId], order: "rowid ASC"
         )
         return try payloads.map { try decode(VisaCase.self, from: $0) }
     }
@@ -577,7 +577,7 @@ final class LocalTripRepository: TripRepository {
 
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {
         let payloads = try database.loadPayloads(
-            table: "expense_reports", where: "trip_id = ?", bindings: [tripId], order: "created_at"
+            table: "expense_reports", where: "trip_id = ?", bindings: [tripId], order: "rowid ASC"
         )
         return try payloads.map { try decode(ExpenseReport.self, from: $0) }
     }
@@ -623,7 +623,6 @@ final class LocalTripRepository: TripRepository {
             table: "expense_reports", id: reportId,
             columns: [
                 "trip_id": tripId, "status": ExpenseReportStatus.draft.rawValue,
-                "created_at": SQLTimestamp.basics.string(from: now),
             ],
             payload: try DateCoding.encode(report)
         )
@@ -647,7 +646,7 @@ final class LocalTripRepository: TripRepository {
         report.updatedAt = Date()
         try database.upsert(
             table: "expense_reports", id: id,
-            columns: ["status": "SUBMITTED", "updated_at": SQLTimestamp.basics.string(from: Date())],
+            columns: ["status": "SUBMITTED"],
             payload: try DateCoding.encode(report)
         )
         return report
@@ -655,7 +654,7 @@ final class LocalTripRepository: TripRepository {
 
     func entryAssessments(tripId: String) async throws -> [EntryAssessment] {
         let payloads = try database.loadPayloads(
-            table: "entry_assessments", where: "trip_id = ?", bindings: [tripId], order: "created_at"
+            table: "entry_assessments", where: "trip_id = ?", bindings: [tripId], order: "rowid ASC"
         )
         return try payloads.map { try decode(EntryAssessment.self, from: $0) }
     }
