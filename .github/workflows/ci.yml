@@ -3,7 +3,7 @@ name: ci
 # Versioned concurrency key: release stale H2.12 cleanup runners while still
 # cancelling superseded runs for the same PR/ref on the current validation lane.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-13-local-storage-closeout
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-14-real-backend-ui
   cancel-in-progress: true
 
 on:
@@ -57,6 +57,26 @@ jobs:
 
   ios:
     runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      GBT_ENV: test
+      GBT_DATABASE_URL: postgresql+psycopg://gbt_app:gbt_app_pw@127.0.0.1:5432/gbt_os
+      GBT_MIGRATION_DATABASE_URL: postgresql+psycopg://gbt_owner:gbt_owner_pw@127.0.0.1:5432/gbt_os
+      GBT_DEV_AUTH: "true"
+      GBT_DEV_ORG_ID: 11111111-1111-1111-1111-111111111111
+      GBT_DEV_USER_ID: 22222222-2222-2222-2222-222222222222
+      GBT_PLANNING_SOLVER: ortools
+      GBT_LLM_PROVIDER: stub
+      GBT_TRAVEL_PROVIDER: offline
+      GBT_FX_PROVIDER: unavailable
+      GBT_WEATHER_PROVIDER: unavailable
+      GBT_FLIGHT_PROVIDER: unavailable
+      GBT_RESEARCH_SEARCH_PROVIDER: unavailable
+      GBT_RECEIPT_STORAGE_PROVIDER: filesystem
+      GBT_RECEIPT_STORAGE_ROOT: ${{ runner.temp }}/gbt-ui-receipts
+      GBT_RECEIPT_ORPHAN_CLEANUP_ENABLED: "false"
+      GBT_WORKER_POLL_SECONDS: "1"
+      GBT_E2E_USE_RUNNING_WORKER: "true"
     steps:
       - uses: actions/checkout@v4
       - name: Verify reviewed SwiftLint baseline
@@ -80,3 +100,40 @@ jobs:
           xcodebuild -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -only-testing:GlobalTravelOSUITests build-for-testing
+      - name: Install PostgreSQL 18 with PostGIS and pgvector
+        run: brew install postgresql@18 postgis pgvector
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Start real PostgreSQL, API, and persistent Worker
+        run: bash scripts/ci_ios_ui_backend.sh
+      - name: Run backend acceptance flow through the persistent Worker
+        run: make e2e
+      - name: Run iOS UI automation against the live backend
+        env:
+          DEST: platform=iOS Simulator,name=iPhone 16
+          ONLY_TESTING: GlobalTravelOSUITests
+          MAX_ATTEMPTS: "1"
+          STALL_SECONDS: "900"
+          XCODEBUILD_ACTION: test
+          RESULT_BUNDLE_PATH: ${{ runner.temp }}/GlobalTravelOS-UI-E2E.xcresult
+          LOG_DIR: ${{ runner.temp }}/globalbiztravel-ui
+        run: bash scripts/ios_test_guard.sh
+      - name: Upload live backend and UI test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-real-backend-ui-diagnostics
+          path: |
+            ${{ runner.temp }}/globalbiztravel-ui/
+            ${{ runner.temp }}/GlobalTravelOS-UI-E2E.xcresult
+            /tmp/ios-test-attempt-*.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Stop live backend services
+        if: always()
+        run: bash scripts/ci_cleanup_ios_ui_backend.sh
