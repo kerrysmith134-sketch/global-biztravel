@@ -8,8 +8,8 @@ import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
 from typing import Any, Protocol
+from uuid import UUID
 
 from app.config import get_settings
 
@@ -139,29 +139,6 @@ class FilesystemReceiptStorage:
         except OSError as exc:
             raise ReceiptStorageUnavailable("无法检查私有票据文件") from exc
 
-    def stat_object(self, key: str) -> StoredReceiptObject | None:
-        _validate_key(key)
-        try:
-            response = self.client.head_object(Bucket=self.bucket, Key=key)
-            modified = response.get("LastModified")
-            if modified is None:
-                raise ReceiptStorageUnavailable("S3 票据对象缺少 LastModified 元数据")
-            if modified.tzinfo is None:
-                modified = modified.replace(tzinfo=UTC)
-            return StoredReceiptObject(
-                key=key,
-                size=int(response.get("ContentLength", 0)),
-                last_modified=modified.astimezone(UTC),
-            )
-        except Exception as exc:
-            response = getattr(exc, "response", None)
-            error = response.get("Error", {}) if isinstance(response, dict) else {}
-            code = str(error.get("Code", ""))
-            status = response.get("ResponseMetadata", {}).get("HTTPStatusCode") if isinstance(response, dict) else None
-            if code in {"404", "NoSuchKey", "NotFound"} or status == 404:
-                return None
-            raise ReceiptStorageUnavailable("无法检查 S3 票据对象") from exc
-
     def list_objects(self, prefix: str) -> list[StoredReceiptObject]:
         _validate_org_prefix(prefix)
         directory = (self.root / prefix.rstrip("/")).resolve()
@@ -249,6 +226,29 @@ class S3ReceiptStorage:
             self.client.delete_object(Bucket=self.bucket, Key=key)
         except Exception as exc:
             raise ReceiptStorageUnavailable("无法删除 S3 票据对象") from exc
+
+    def stat_object(self, key: str) -> StoredReceiptObject | None:
+        _validate_key(key)
+        try:
+            response = self.client.head_object(Bucket=self.bucket, Key=key)
+            modified = response.get("LastModified")
+            if modified is None:
+                raise ReceiptStorageUnavailable("S3 票据对象缺少 LastModified 元数据")
+            if modified.tzinfo is None:
+                modified = modified.replace(tzinfo=UTC)
+            return StoredReceiptObject(
+                key=key,
+                size=int(response.get("ContentLength", 0)),
+                last_modified=modified.astimezone(UTC),
+            )
+        except Exception as exc:
+            response = getattr(exc, "response", None)
+            error = response.get("Error", {}) if isinstance(response, dict) else {}
+            code = str(error.get("Code", ""))
+            status = response.get("ResponseMetadata", {}).get("HTTPStatusCode") if isinstance(response, dict) else None
+            if code in {"404", "NoSuchKey", "NotFound"} or status == 404:
+                return None
+            raise ReceiptStorageUnavailable("无法检查 S3 票据对象") from exc
 
     def list_objects(self, prefix: str) -> list[StoredReceiptObject]:
         _validate_org_prefix(prefix)
