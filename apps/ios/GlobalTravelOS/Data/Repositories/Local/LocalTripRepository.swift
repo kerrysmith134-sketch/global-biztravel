@@ -347,6 +347,234 @@ final class LocalTripRepository: TripRepository {
         return nil
     }
 
+    /// Read-only assessment from the current local facts. A local receipt ID means the
+    /// original was captured in the private vault before expense submission; it does not
+    /// claim that the asset has been uploaded to a server.
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        let trip = try await self.trip(id: tripId)
+        let visits = try self.visits(tripId: tripId)
+        let expenses = try await self.expenses(tripId: tripId)
+        let reports = try await self.expenseReports(tripId: tripId)
+
+        var recordedVisitIds = Set<String>()
+        for visit in visits {
+            let payloads = try database.loadPayloads(
+                table: "visit_records",
+                where: "visit_id = ?",
+                bindings: [visit.id]
+            )
+            let records = try payloads.map { try decode(VisitRecord.self, from: $0) }
+            if !records.isEmpty { recordedVisitIds.insert(visit.id) }
+        }
+
+        var blockers: [TripCloseoutIssue] = []
+        var warnings: [TripCloseoutIssue] = []
+
+        for visit in visits {
+            let status = (visit.status ?? "PLANNED").uppercased()
+            if status == "PLANNED" || status == "SCHEDULED" {
+                blockers.append(
+                    closeoutIssue(
+                        code: "VISIT_NOT_CLOSED",
+                        severity: .blocker,
+                        title: "拜访尚未完成",
+                        detail: "拜访状态为 \(status)，请完成、取消或更新真实拜访结果",
+                        sourceType: "VISIT",
+                        sourceId: visit.id,
+                        actionHint: "打开该拜访并记录真实结果；不要为结账虚构完成状态"
+                    )
+                )
+            } else if (status == "DONE" || status == "MISSED")
+                        && !recordedVisitIds.contains(visit.id) {
+                blockers.append(
+                    closeoutIssue(
+                        code: "VISIT_OUTCOME_MISSING",
+                        severity: .blocker,
+                        title: "缺少拜访结果记录",
+                        detail: "该拜访已标记完成或未能拜访，但没有本地现场记录",
+                        sourceType: "VISIT",
+                        sourceId: visit.id,
+                        actionHint: "补录并保存真实现场拜访结果"
+                    )
+                )
+            }
+        }
+
+        let reportItems = reports.flatMap(\.itemList)
+        let snapshottedExpenseIds = Set(reportItems.compactMap(\.expenseId))
+        let unreportedExpenses = expenses.filter { !snapshottedExpenseIds.contains($0.id) }
+        for expense in unreportedExpenses {
+            blockers.append(
+                closeoutIssue(
+                    code: "EXPENSE_NOT_IN_REPORT",
+                    severity: .blocker,
+                    title: "费用尚未纳入报销快照",
+                    detail: "\(expense.category) · \(expense.amount) \(expense.currency)",
+                    sourceType: "EXPENSE",
+                    sourceId: expense.id,
+                    actionHint: "将该费用加入报销单并重新检查报销快照"
+                )
+            )
+        }
+
+        let latestReport = reports.max {
+            ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast)
+        }
+        if let latestReport, latestReport.status == .rejected {
+            blockers.append(
+                closeoutIssue(
+                    code: "LATEST_REPORT_REJECTED",
+                    severity: .blocker,
+                    title: "最新报销单已被驳回",
+                    detail: "需要修正费用或凭证并创建新的报销快照",
+                    sourceType: "EXPENSE_REPORT",
+                    sourceId: latestReport.id,
+                    actionHint: "查看驳回原因，修正费用/票据后创建新的报销单"
+                )
+            )
+        }
+
+        var grouped: [String: (amount: Decimal, count: Int)] = [:]
+        for expense in expenses {
+            let currency = expense.currency.uppercased()
+            let current = grouped[currency] ?? (Decimal.zero, 0)
+            grouped[currency] = (current.amount + expense.amount, current.count + 1)
+        }
+        let totals = grouped.keys.sorted().map { currency in
+            let value = grouped[currency] ?? (Decimal.zero, 0)
+            return CurrencyTotal(
+                currency: currency,
+                amount: NSDecimalNumber(decimal: value.amount).doubleValue,
+                count: value.count
+            )
+        }
+        if totals.count > 1 {
+            warnings.append(
+                closeoutIssue(
+                    code: "MULTI_CURRENCY_REVIEW",
+                    severity: .warning,
+                    title: "费用包含多种币种",
+                    detail: "各币种金额分别核对；本评估不会使用估算或缺失汇率合并总额",
+                    sourceType: "TRIP",
+                    sourceId: trip.id,
+                    actionHint: "按原始币种分别核对金额与报销政策"
+                )
+            )
+        }
+
+        let expensesWithoutReceipt = expenses.filter { $0.receiptAssetId == nil }
+        for expense in expensesWithoutReceipt {
+            warnings.append(
+                closeoutIssue(
+                    code: "RECEIPT_MISSING",
+                    severity: .warning,
+                    title: "费用缺少原始票据",
+                    detail: "\(expense.category) · \(expense.amount) \(expense.currency)",
+                    sourceType: "EXPENSE",
+                    sourceId: expense.id,
+                    actionHint: "补充原始票据，或按组织适用政策记录例外"
+                )
+            )
+        }
+
+        // LocalFollowUp data is already persisted by the same local visit repository.
+        var openFollowUps: [VisitFollowUp] = []
+        let localVisits = LocalVisitRepository(database: database)
+        for visit in visits {
+            let feed = try await localVisits.followUps(visitId: visit.id)
+            openFollowUps.append(contentsOf: feed.items.filter {
+                $0.status == "OPEN" || $0.status == "IN_PROGRESS"
+            })
+        }
+        for followUp in openFollowUps {
+            warnings.append(
+                closeoutIssue(
+                    code: "BUSINESS_FOLLOW_UP_OPEN",
+                    severity: .warning,
+                    title: "仍有商务跟进事项未完成",
+                    detail: followUp.title,
+                    sourceType: "VISIT_FOLLOW_UP",
+                    sourceId: followUp.id,
+                    actionHint: "打开拜访记录更新商务跟进进度；该事项不会阻断财务结账"
+                )
+            )
+        }
+
+        blockers.sort {
+            $0.code == $1.code ? $0.sourceId < $1.sourceId : $0.code < $1.code
+        }
+        warnings.sort {
+            $0.code == $1.code ? $0.sourceId < $1.sourceId : $0.code < $1.code
+        }
+
+        let status: TripCloseoutStatus
+        if !blockers.isEmpty {
+            status = .blocked
+        } else if latestReport?.status == .approved {
+            status = .reportApproved
+        } else if latestReport?.status == .submitted {
+            status = .reportSubmitted
+        } else if !warnings.isEmpty {
+            status = .readyWithExceptions
+        } else {
+            status = .readyForReview
+        }
+
+        let receiptAssetIds = Set(expenses.compactMap(\.receiptAssetId))
+        let missingOutcomeCount = visits.filter {
+            let value = ($0.status ?? "PLANNED").uppercased()
+            return (value == "DONE" || value == "MISSED") && !recordedVisitIds.contains($0.id)
+        }.count
+
+        return TripCloseoutReadiness(
+            tripId: trip.id,
+            status: status,
+            generatedAt: Date(),
+            summary: TripCloseoutSummary(
+                visitCount: visits.count,
+                visitOutcomeCount: recordedVisitIds.count,
+                visitsOpenCount: visits.filter { $0.isOpen }.count,
+                visitsMissingOutcomeCount: missingOutcomeCount,
+                expenseCount: expenses.count,
+                expensesInReportCount: expenses.count - unreportedExpenses.count,
+                expensesNotInReportCount: unreportedExpenses.count,
+                expensesWithoutReceiptCount: expensesWithoutReceipt.count,
+                receiptAssetCount: receiptAssetIds.count,
+                receiptAssetUnavailableCount: 0,
+                ocrNeedsReviewCount: 0,
+                openBusinessFollowUpCount: openFollowUps.count,
+                latestReportId: latestReport?.id,
+                latestReportStatus: latestReport?.status,
+                blockerCount: blockers.count,
+                warningCount: warnings.count
+            ),
+            totalsByCurrency: totals,
+            blockers: blockers,
+            warnings: warnings
+        )
+    }
+
+    private func closeoutIssue(
+        code: String,
+        severity: TripCloseoutIssueSeverity,
+        title: String,
+        detail: String,
+        sourceType: String,
+        sourceId: String,
+        actionHint: String
+    ) -> TripCloseoutIssue {
+        TripCloseoutIssue(
+            id: "\(code):\(sourceType):\(sourceId)",
+            code: code,
+            severity: severity,
+            title: title,
+            detail: detail,
+            sourceType: sourceType,
+            sourceId: sourceId,
+            actionHint: actionHint
+        )
+    }
+
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {
         let payloads = try database.loadPayloads(
             table: "expense_reports", where: "trip_id = ?", bindings: [tripId], order: "created_at"
@@ -369,11 +597,28 @@ final class LocalTripRepository: TripRepository {
         let totals = byCurrency.keys.sorted().map {
             CurrencyTotal(currency: $0, amount: byCurrency[$0]!.0, count: byCurrency[$0]!.1)
         }
-        var report = ExpenseReport(id: reportId, tripId: tripId)
-        report.status = .draft
-        report.totals = totals
-        report.createdAt = now
-        report.updatedAt = now
+        let items = expenses.map { expense in
+            ExpenseReportItem(
+                id: UUID().uuidString,
+                reportId: reportId,
+                expenseId: expense.id,
+                category: expense.category,
+                amount: expense.amount,
+                currency: expense.currency,
+                occurredOn: expense.occurredOn,
+                note: expense.note,
+                receiptRef: expense.receiptAssetId ?? expense.receiptRef
+            )
+        }
+        let report = ExpenseReport(
+            id: reportId,
+            tripId: tripId,
+            status: .draft,
+            items: items,
+            totals: totals,
+            createdAt: now,
+            updatedAt: now
+        )
         try database.upsert(
             table: "expense_reports", id: reportId,
             columns: [
