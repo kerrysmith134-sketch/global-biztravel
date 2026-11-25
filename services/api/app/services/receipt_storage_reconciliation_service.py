@@ -112,10 +112,10 @@ def reconcile_receipt_storage(
     # keys missing from the listing snapshot, HEAD the exact object before calling it
     # missing. This is metadata-only and never downloads the receipt bytes.
     for key, asset in known_assets.items():
-        if key in object_map:
-            continue
         if not _belongs_to_organization(key, org_id):
             report.errors.append(f"ReceiptAsset {asset.id} has a non-canonical storage key")
+            continue
+        if key in object_map:
             continue
         try:
             stored = storage.stat_object(key)
