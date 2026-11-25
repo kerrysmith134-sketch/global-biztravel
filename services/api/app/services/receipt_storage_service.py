@@ -79,7 +79,15 @@ class FilesystemReceiptStorage:
 
     def _path(self, key: str) -> Path:
         _validate_key(key)
-        path = (self.root / key).resolve()
+        candidate = self.root / key
+        # Never follow a tenant-directory or file symlink: even a link that remains
+        # below the root could alias another tenant's object.
+        cursor = self.root
+        for part in Path(key).parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise ValueError("receipt storage path must not contain symlinks")
+        path = candidate.resolve()
         if self.root not in path.parents:
             raise ValueError("receipt storage key escapes private root")
         return path
