@@ -78,3 +78,8 @@ jobs:
           xcodebuild -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -only-testing:GlobalTravelOSTests test
+      - name: Compile real-backend UI automation tests
+        run: |
+          xcodebuild -project apps/ios/GlobalTravelOS.xcodeproj -scheme GlobalTravelOS \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:GlobalTravelOSUITests build-for-testing
