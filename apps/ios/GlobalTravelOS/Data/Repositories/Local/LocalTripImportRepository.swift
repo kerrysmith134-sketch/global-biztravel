@@ -287,12 +287,7 @@ extension LocalTripRepository {
             }
 
             batch.status = "CONFIRMED"
-            // Keep the replay-protection tombstone, but remove source and normalized row data.
-            // Customer names and contact details should not remain duplicated in local staging KV.
-            batch.result.rows = []
-            for index in batch.rows.indices {
-                batch.rows[index].normalized = nil
-            }
+            minimizeConfirmedBatch(&batch)
             let updated = try DateCoding.encoder().encode(batch)
             guard let updatedText = String(bytes: updated, encoding: .utf8) else {
                 throw APIError.invalidResponse("无法保存导入确认状态")
@@ -315,6 +310,18 @@ extension LocalTripRepository {
             reusedPlaces: reusedPlaces,
             warnings: Array(warnings.prefix(50))
         )
+    }
+
+    private func minimizeConfirmedBatch(_ batch: inout LocalImportBatch) {
+        batch.result.rows = []
+        batch.rows = batch.rows.map { row in
+            LocalImportStagedRow(
+                rowNumber: row.rowNumber,
+                status: row.status,
+                normalized: nil,
+                confirmationStatus: row.confirmationStatus
+            )
+        }
     }
 
     private func resolveImportedCustomer(
