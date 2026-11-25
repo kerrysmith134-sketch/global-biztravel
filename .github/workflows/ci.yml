@@ -73,7 +73,6 @@ jobs:
       GBT_FLIGHT_PROVIDER: unavailable
       GBT_RESEARCH_SEARCH_PROVIDER: unavailable
       GBT_RECEIPT_STORAGE_PROVIDER: filesystem
-      GBT_RECEIPT_STORAGE_ROOT: ${{ runner.temp }}/gbt-ui-receipts
       GBT_RECEIPT_ORPHAN_CLEANUP_ENABLED: "false"
       GBT_WORKER_POLL_SECONDS: "1"
       GBT_E2E_USE_RUNNING_WORKER: "true"
@@ -110,6 +109,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
       - name: Start real PostgreSQL, API, and persistent Worker
+        env:
+          GBT_RECEIPT_STORAGE_ROOT: ${{ runner.temp }}/gbt-ui-receipts
         run: bash scripts/ci_ios_ui_backend.sh
       - name: Run backend acceptance flow through the persistent Worker
         run: make e2e
