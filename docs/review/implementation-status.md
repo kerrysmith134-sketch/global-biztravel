@@ -1,6 +1,6 @@
 # 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
-- 核对时间：2026-11-22（市场情报 H1.9 增量更新）
+- 核对时间：2026-11-25（iOS 本地存储、票据证据快照与主动式触发可靠性增量更新）
 - 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
   规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
   后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
@@ -16,7 +16,7 @@
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；构建通过；46 单测（18 解码 + 28 契约样本）+ 8 UI 自动化 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；当前源码 150 个 XCTest 方法（33 契约样本解码），10 条真实后端 UI 自动化用例；本分支最新运行结果以 GitHub Actions 为准 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -117,7 +117,7 @@
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
 
-- **H2.13 票据资产与报销证据快照（进行中）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。新增迁移 `0047_receipt_ocr`：对已保存的图片 ReceiptAsset 执行 Tesseract OCR，保存 content hash、引擎版本、候选字段与 AgentRun 关联；不复制原始票据文本，不因识别结果创建/修改费用。用户可对一次 OCR 运行单独确认或驳回，确认字段写入只追加审阅记录，数据库撤销应用角色 UPDATE/DELETE。PDF 仍可保留与下载，但当前 OCR 明确只支持图片格式。仍待完成对象存储孤儿对账、Trip 结账就绪度与 iOS 离线票据入口；CI/真实数据库验收以本分支最新 Actions 为准。
+- **H2.13 票据资产与报销证据快照（核心闭环已实现，验收持续进行）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。新增迁移 `0047_receipt_ocr`：对已保存的图片 ReceiptAsset 执行 Tesseract OCR，保存 content hash、引擎版本、候选字段与 AgentRun 关联；不复制原始票据文本，不因识别结果创建/修改费用。用户可对一次 OCR 运行单独确认或驳回，确认字段写入只追加审阅记录，数据库撤销应用角色 UPDATE/DELETE。PDF 仍可保留与下载，但当前 OCR 明确只支持图片格式。iOS ExpenseEntrySheet 已提供 PhotosPicker/FileImporter，选择后先写入私有 ReceiptVault；云端模式在费用保存前上传并验证服务端确认，离线/本地模式保留原件。Trip Closeout Readiness 已接入服务端与 iOS 详情页；本地评估会校验票据归属与 SHA-256，报销快照固定 Asset ID、哈希、原始文件名、MIME 和字节数。仍待完成对象存储孤儿对账、iOS OCR 候选人工审阅体验及完整真实后端 UI 自动化运行门禁；当前 CI 的 UI 步骤只执行 build-for-testing，不等于运行 UI 用例。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
