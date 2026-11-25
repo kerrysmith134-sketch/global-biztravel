@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
 from app.api.errors import Conflict, NotFound
 from app.models.workflow import AgentRun
 from app.services.agent_runtime_service import (
