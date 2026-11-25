@@ -257,7 +257,13 @@ struct LocalDatabase {
         }
     }
 
-    func loadPayloads(table: String, where clause: String? = nil, bindings: [Any?] = [], order: String? = nil, limit: Int? = nil) throws -> [Data] {
+    func loadPayloads(
+        table: String,
+        where clause: String? = nil,
+        bindings: [Any?] = [],
+        order: String? = nil,
+        limit: Int? = nil
+    ) throws -> [Data] {
         var sql = "SELECT payload FROM \(table)"
         if let clause { sql += " WHERE \(clause)" }
         if let order { sql += " ORDER BY \(order)" }
