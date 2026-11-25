@@ -96,7 +96,7 @@ def plan_version_detail(
     # 重新校验嵌套字段，ORM 对象会一路带到序列化阶段再炸。
     detail.stops = [
         PlanStopRead.model_validate(stop)
-        for stop in plan_service.list_plan_stops(session, organization_id, version.id)
+        for stop in list_plan_stops(session, organization_id, version.id)
     ]
     visit_ids = [stop.visit_id for stop in detail.stops]
     if visit_ids:
@@ -125,12 +125,11 @@ def plan_version_detail(
                 stop.longitude = info[6]
     detail.legs = [
         PlanTravelLegRead.model_validate(leg)
-        for leg in plan_service.list_plan_legs(session, organization_id, version.id)
+        for leg in list_plan_legs(session, organization_id, version.id)
     ]
     detail.stop_count = len(detail.stops)
     detail.day_count = len({stop.day_index for stop in detail.stops})
     return detail
-
 
 
 def stop_stats(

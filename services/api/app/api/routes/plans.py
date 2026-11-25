@@ -43,8 +43,6 @@ from app.api.schemas import (
     PlanChangeCreate,
     PlanChangeRead,
     PlanGenerateRead,
-    PlanStopRead,
-    PlanTravelLegRead,
     PlanVersionDetailRead,
     PlanVersionDiffRead,
     PlanVersionRead,
