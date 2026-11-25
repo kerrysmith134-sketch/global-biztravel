@@ -40,6 +40,28 @@ struct ExpenseReportItem: Codable, Equatable, Identifiable {
         case id, reportId, expenseId, category, amount, currency, occurredOn, note, receiptRef
     }
 
+    init(
+        id: String,
+        reportId: String,
+        expenseId: String? = nil,
+        category: String,
+        amount: Decimal,
+        currency: String,
+        occurredOn: Date? = nil,
+        note: String? = nil,
+        receiptRef: String? = nil
+    ) {
+        self.id = id
+        self.reportId = reportId
+        self.expenseId = expenseId
+        self.category = category
+        self.amount = amount
+        self.currency = currency
+        self.occurredOn = occurredOn
+        self.note = note
+        self.receiptRef = receiptRef
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
