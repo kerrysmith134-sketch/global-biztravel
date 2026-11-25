@@ -59,13 +59,10 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify reviewed SwiftLint baseline
+        run: test -s swiftlint-baseline.json
       - name: SwiftLint
         run: brew install swiftlint && make lint-ios
-      # Temporary migration step: capture current repository-wide findings as a reviewed baseline.
-      - name: Generate SwiftLint baseline artifact
-        run: swiftlint --lenient
-      - name: Verify baseline file
-        run: test -s swiftlint-baseline.json
       - uses: actions/upload-artifact@v4
         with:
           name: swiftlint-baseline

@@ -1,9 +1,9 @@
-# SwiftLint 基线（PRD §8）。规则保持克制：先拦住明确的问题，不做风格大扫除。
+# SwiftLint 基线（PRD §8）。只记录已知历史问题；新增 fatal violation 仍由 CI 拦截。
 included:
   - apps/ios/GlobalTravelOS
   - apps/ios/GlobalTravelOSTests
   - apps/ios/GlobalTravelOSUITests
-write_baseline: swiftlint-baseline.json
+baseline: swiftlint-baseline.json
 excluded:
   - apps/ios/build
 line_length:

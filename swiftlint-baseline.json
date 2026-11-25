@@ -1,0 +1,167 @@
+[
+  {
+    "text": "enum Endpoints {",
+    "violation": {
+      "location": {
+        "file": "apps/ios/GlobalTravelOS/Core/Networking/Endpoints.swift",
+        "line": 5,
+        "character": 1
+      },
+      "ruleIdentifier": "type_body_length",
+      "ruleDescription": "Type bodies should not span too many lines",
+      "ruleName": "Type Body Length",
+      "severity": "warning",
+      "reason": "Enum body should span 600 lines or less excluding comments and whitespace: currently spans 733 lines"
+    }
+  },
+  {
+    "violation": {
+      "reason": "Function body should span 140 lines or less excluding comments and whitespace: currently spans 163 lines",
+      "ruleIdentifier": "function_body_length",
+      "ruleDescription": "Function bodies should not span too many lines",
+      "location": {
+        "line": 42,
+        "file": "apps/ios/GlobalTravelOS/Core/PlanningEngine/EngineValidator.swift",
+        "character": 12
+      },
+      "ruleName": "Function Body Length",
+      "severity": "warning"
+    },
+    "text": "    static func validate("
+  },
+  {
+    "violation": {
+      "ruleIdentifier": "file_length",
+      "ruleName": "File Length",
+      "ruleDescription": "Files should not span too many lines.",
+      "reason": "File should contain 1000 lines or less: currently contains 1043",
+      "severity": "warning",
+      "location": {
+        "character": 1,
+        "line": 1043,
+        "file": "apps/ios/GlobalTravelOS/Data/Repositories/Local/LocalRepositories.swift"
+      }
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "type_body_length",
+      "ruleName": "Type Body Length",
+      "reason": "Class body should span 600 lines or less excluding comments and whitespace: currently spans 655 lines",
+      "ruleDescription": "Type bodies should not span too many lines",
+      "location": {
+        "character": 7,
+        "line": 17,
+        "file": "apps/ios/GlobalTravelOS/Data/Repositories/Local/LocalTripRepository.swift"
+      }
+    },
+    "text": "final class LocalTripRepository: TripRepository {"
+  },
+  {
+    "violation": {
+      "location": {
+        "file": "apps/ios/GlobalTravelOS/Data/Repositories/Local/LocalTripRepository.swift",
+        "line": 355,
+        "character": 5
+      },
+      "ruleIdentifier": "function_body_length",
+      "ruleDescription": "Function bodies should not span too many lines",
+      "ruleName": "Function Body Length",
+      "severity": "warning",
+      "reason": "Function body should span 140 lines or less excluding comments and whitespace: currently spans 212 lines"
+    },
+    "text": "    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {"
+  },
+  {
+    "violation": {
+      "ruleIdentifier": "type_body_length",
+      "ruleName": "Type Body Length",
+      "ruleDescription": "Type bodies should not span too many lines",
+      "location": {
+        "character": 1,
+        "line": 7,
+        "file": "apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift"
+      },
+      "severity": "warning",
+      "reason": "Enum body should span 600 lines or less excluding comments and whitespace: currently spans 1116 lines"
+    },
+    "text": "enum ContractSamples {"
+  },
+  {
+    "violation": {
+      "location": {
+        "line": 1124,
+        "file": "apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift",
+        "character": 1
+      },
+      "ruleName": "File Length",
+      "ruleDescription": "Files should not span too many lines.",
+      "ruleIdentifier": "file_length",
+      "reason": "File should contain 1000 lines or less: currently contains 1124",
+      "severity": "warning"
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "reason": "Class body should span 600 lines or less excluding comments and whitespace: currently spans 935 lines",
+      "ruleName": "Type Body Length",
+      "ruleDescription": "Type bodies should not span too many lines",
+      "severity": "warning",
+      "ruleIdentifier": "type_body_length",
+      "location": {
+        "character": 7,
+        "line": 7,
+        "file": "apps/ios/GlobalTravelOSTests/LocalStoreTests.swift"
+      }
+    },
+    "text": "final class LocalStoreTests: XCTestCase {"
+  },
+  {
+    "violation": {
+      "ruleDescription": "Files should not span too many lines.",
+      "severity": "warning",
+      "location": {
+        "line": 1059,
+        "character": 1,
+        "file": "apps/ios/GlobalTravelOSTests/LocalStoreTests.swift"
+      },
+      "ruleName": "File Length",
+      "reason": "File should contain 1000 lines or less: currently contains 1059",
+      "ruleIdentifier": "file_length"
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "ruleDescription": "Files should not span too many lines.",
+      "severity": "warning",
+      "location": {
+        "character": 1,
+        "file": "apps/ios/GlobalTravelOSTests/ModelDecodingTests.swift",
+        "line": 1107
+      },
+      "ruleIdentifier": "file_length",
+      "reason": "File should contain 1000 lines or less: currently contains 1107",
+      "ruleName": "File Length"
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "reason": "Force tries should be avoided",
+      "ruleName": "Force Try",
+      "ruleDescription": "Force tries should be avoided",
+      "location": {
+        "character": 23,
+        "line": 96,
+        "file": "apps/ios/GlobalTravelOSTests/PlanningEngineTests.swift"
+      },
+      "severity": "warning",
+      "ruleIdentifier": "force_try"
+    },
+    "text": "        let outcome = try! EngineFeasibility.checkFeasibility(problem)"
+  }
+]
