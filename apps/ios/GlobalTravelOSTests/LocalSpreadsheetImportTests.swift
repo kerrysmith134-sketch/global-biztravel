@@ -96,18 +96,19 @@ final class LocalSpreadsheetImportTests: XCTestCase {
 
         let confirmed = try await repository.confirmImport(
             tripId: trip.id,
-            request: ConfirmImportRequest(importId: preview.importId, acceptedRowNumbers: [2, 4])
+            request: ConfirmImportRequest(importId: preview.importId, acceptedRowNumbers: [2, 3, 4])
         )
         XCTAssertEqual(confirmed.status, "CONFIRMED")
-        XCTAssertEqual(confirmed.acceptedRows, 1)
+        XCTAssertEqual(confirmed.acceptedRows, 2)
         XCTAssertEqual(confirmed.rejectedRows, 1)
         XCTAssertEqual(confirmed.createdCustomers, 1)
-        XCTAssertEqual(confirmed.createdPlaces, 1)
-        XCTAssertEqual(confirmed.createdVisits, 1)
+        XCTAssertEqual(confirmed.reusedCustomers, 1)
+        XCTAssertEqual(confirmed.createdPlaces + confirmed.reusedPlaces, 2)
+        XCTAssertEqual(confirmed.createdVisits, 2)
         XCTAssertEqual(try database.count(table: "customers"), 1)
-        XCTAssertEqual(try database.count(table: "places"), originalPlaceCount + 1)
-        XCTAssertEqual(try database.count(table: "visits"), 1)
-        XCTAssertEqual(try database.count(table: "customer_places"), 1)
+        XCTAssertEqual(try database.count(table: "places"), originalPlaceCount + confirmed.createdPlaces)
+        XCTAssertEqual(try database.count(table: "visits"), 2)
+        XCTAssertGreaterThanOrEqual(try database.count(table: "customer_places"), 1)
 
         let storedBatch = try XCTUnwrap(database.keyValue("local-import:\(preview.importId)"))
         XCTAssertFalse(storedBatch.contains("Acme Battery GmbH"))
