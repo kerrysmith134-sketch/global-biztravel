@@ -35,6 +35,14 @@ final class LocalTripRepository: TripRepository {
 
     // MARK: - 行程读写（P1 本地化）
 
+    func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult {
+        try await performParseImport(tripId: tripId, fileData: fileData, filename: filename)
+    }
+
+    func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult {
+        try await performConfirmImport(tripId: tripId, request: request)
+    }
+
     func listTrips(page: PageRequest) async throws -> Page<Trip> {
         let offset = page.cursor.flatMap { Int($0.replacingOccurrences(of: "offset:", with: "")) } ?? 0
         let payloads = try database.loadPayloads(table: "trips", order: "updated_at DESC")

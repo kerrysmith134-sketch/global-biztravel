@@ -24,7 +24,7 @@ private struct LocalImportBatch: Codable {
 }
 
 extension LocalTripRepository {
-    func parseImport(
+    func performParseImport(
         tripId: String,
         fileData: Data,
         filename: String
@@ -144,14 +144,14 @@ extension LocalTripRepository {
             rows: stagedRows
         )
         let encoded = try DateCoding.encoder().encode(batch)
-        try database.setKeyValue(
-            "local-import:\(importId)",
-            value: String(decoding: encoded, as: UTF8.self)
-        )
+        guard let encodedText = String(bytes: encoded, encoding: .utf8) else {
+            throw APIError.invalidResponse("无法暂存导入预览")
+        }
+        try database.setKeyValue("local-import:\(importId)", value: encodedText)
         return result
     }
 
-    func confirmImport(
+    func performConfirmImport(
         tripId: String,
         request: ConfirmImportRequest
     ) async throws -> ConfirmImportResult {
@@ -281,7 +281,10 @@ extension LocalTripRepository {
 
             batch.status = "CONFIRMED"
             let updated = try DateCoding.encoder().encode(batch)
-            try database.setKeyValue(storageKey, value: String(decoding: updated, as: UTF8.self))
+            guard let updatedText = String(bytes: updated, encoding: .utf8) else {
+                throw APIError.invalidResponse("无法保存导入确认状态")
+            }
+            try database.setKeyValue(storageKey, value: updatedText)
             if createdVisits > 0 {
                 try touchTripAfterImport(tripId: tripId)
             }
