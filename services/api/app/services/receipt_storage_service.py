@@ -38,6 +38,8 @@ class ReceiptStorage(Protocol):
 
     def list_objects(self, prefix: str) -> list[StoredReceiptObject]: ...
 
+    def stat_object(self, key: str) -> StoredReceiptObject | None: ...
+
 
 _KEY_PATTERN = re.compile(
     r"^receipts/[0-9a-f-]{36}/[0-9a-f-]{36}/[0-9a-f-]{36}$",
@@ -120,6 +122,45 @@ class FilesystemReceiptStorage:
             target.unlink(missing_ok=True)
         except OSError as exc:
             raise ReceiptStorageUnavailable("无法删除原始票据临时对象") from exc
+
+    def stat_object(self, key: str) -> StoredReceiptObject | None:
+        target = self._path(key)
+        try:
+            stat = target.stat()
+            if not target.is_file():
+                return None
+            return StoredReceiptObject(
+                key=key,
+                size=stat.st_size,
+                last_modified=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
+            )
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise ReceiptStorageUnavailable("无法检查私有票据文件") from exc
+
+    def stat_object(self, key: str) -> StoredReceiptObject | None:
+        _validate_key(key)
+        try:
+            response = self.client.head_object(Bucket=self.bucket, Key=key)
+            modified = response.get("LastModified")
+            if modified is None:
+                raise ReceiptStorageUnavailable("S3 票据对象缺少 LastModified 元数据")
+            if modified.tzinfo is None:
+                modified = modified.replace(tzinfo=UTC)
+            return StoredReceiptObject(
+                key=key,
+                size=int(response.get("ContentLength", 0)),
+                last_modified=modified.astimezone(UTC),
+            )
+        except Exception as exc:
+            response = getattr(exc, "response", None)
+            error = response.get("Error", {}) if isinstance(response, dict) else {}
+            code = str(error.get("Code", ""))
+            status = response.get("ResponseMetadata", {}).get("HTTPStatusCode") if isinstance(response, dict) else None
+            if code in {"404", "NoSuchKey", "NotFound"} or status == 404:
+                return None
+            raise ReceiptStorageUnavailable("无法检查 S3 票据对象") from exc
 
     def list_objects(self, prefix: str) -> list[StoredReceiptObject]:
         _validate_org_prefix(prefix)
