@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound, ServiceUnavailable
@@ -30,6 +30,13 @@ def create_receipt_asset(
     sha256: str,
     actor_user_id: UUID | str,
 ) -> ReceiptAsset:
+    # Serialize storage writes with the tenant-scoped orphan reconciler. The xact lock
+    # is held through the request's database commit, so a just-uploaded object cannot
+    # be mistaken for an orphan between object PUT and ReceiptAsset commit.
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:organization_id, 0))"),
+        {"organization_id": str(organization_id)},
+    )
     trip = trip_service.require_trip(session, organization_id, trip_id)
     asset_id = uuid.uuid4()
     storage = get_receipt_storage()
