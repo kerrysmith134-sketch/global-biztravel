@@ -101,7 +101,10 @@ struct ImportSheet: View {
             }
             .fileImporter(
                 isPresented: $showsPicker,
-                allowedContentTypes: [UTType(filenameExtension: "xlsx") ?? .data],
+                allowedContentTypes: [
+                    UTType(filenameExtension: "xlsx") ?? .data,
+                    UTType(filenameExtension: "xlsm") ?? .data,
+                ],
                 allowsMultipleSelection: false
             ) { result in
                 Task { await handleFile(result) }

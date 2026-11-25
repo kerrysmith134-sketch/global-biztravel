@@ -52,6 +52,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AAB0A111C0AE000000000001 /* CoreXLSX in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +113,7 @@
 			);
 			name = GlobalTravelOS;
 			packageProductDependencies = (
+				AAB0A111C0AE000000000003 /* CoreXLSX */,
 			);
 			productName = GlobalTravelOS;
 			productReference = A1B2C3D4E5F6000000000006 /* GlobalTravelOS.app */;
@@ -194,6 +196,9 @@
 				Base,
 			);
 			mainGroup = A1B2C3D4E5F6000000000002;
+			packageReferences = (
+				AAB0A111C0AE000000000002 /* XCRemoteSwiftPackageReference "CoreXLSX" */,
+			);
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A1B2C3D4E5F6000000000003 /* Products */;
@@ -582,6 +587,32 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+/* Begin PBXBuildFile section */
+		AAB0A111C0AE000000000001 /* CoreXLSX in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = AAB0A111C0AE000000000003 /* CoreXLSX */;
+		};
+/* End PBXBuildFile section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AAB0A111C0AE000000000002 /* XCRemoteSwiftPackageReference "CoreXLSX" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/CoreOffice/CoreXLSX.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.14.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AAB0A111C0AE000000000003 /* CoreXLSX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AAB0A111C0AE000000000002 /* XCRemoteSwiftPackageReference "CoreXLSX" */;
+			productName = CoreXLSX;
+		};
+/* End XCSwiftPackageProductDependency section */
+
 	};
 	rootObject = A1B2C3D4E5F6000000000001 /* Project object */;
 }

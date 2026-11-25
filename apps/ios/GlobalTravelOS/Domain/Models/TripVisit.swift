@@ -16,6 +16,8 @@ struct TripVisit: Codable, Equatable, Identifiable {
     var timeWindowStart: Date?
     var timeWindowEnd: Date?
     var priority: Int?
+    var businessValue: Double?
+    var isImmovable: Bool?
     var movementMode: String?
     var status: String?
     var createdAt: Date?
@@ -31,6 +33,8 @@ struct TripVisit: Codable, Equatable, Identifiable {
         timeWindowStart: Date? = nil,
         timeWindowEnd: Date? = nil,
         priority: Int? = nil,
+        businessValue: Double? = nil,
+        isImmovable: Bool? = nil,
         movementMode: String? = nil,
         status: String? = nil,
         createdAt: Date? = nil
@@ -45,6 +49,8 @@ struct TripVisit: Codable, Equatable, Identifiable {
         self.timeWindowStart = timeWindowStart
         self.timeWindowEnd = timeWindowEnd
         self.priority = priority
+        self.businessValue = businessValue
+        self.isImmovable = isImmovable
         self.movementMode = movementMode
         self.status = status
         self.createdAt = createdAt
