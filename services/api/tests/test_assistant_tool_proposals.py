@@ -114,3 +114,20 @@ def test_model_cannot_propose_any_tool_without_a_bound_trip_catalogue() -> None:
     )
 
     assert proposals == []
+
+
+def test_assistant_schema_accepts_only_array_for_model_tool_suggestions() -> None:
+    from app.llm.gateway import _validate
+    from app.llm.prompts import ASSISTANT_SCHEMA
+
+    valid = {
+        "reply": "我可以读取已生效的计划。",
+        "tool_suggestions": ["trip.get_plan"],
+    }
+    invalid = {
+        "reply": "我可以读取已生效的计划。",
+        "tool_suggestions": "trip.get_plan",
+    }
+
+    assert _validate(valid, ASSISTANT_SCHEMA) is None
+    assert _validate(invalid, ASSISTANT_SCHEMA) == "字段 tool_suggestions 应为 array"

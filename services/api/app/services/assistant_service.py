@@ -1,13 +1,9 @@
-"""AI 助手对话（PRD 页面 05，v1：只读上下文 + 结构化卡片，不代替执行）。
+"""AI 助手对话：只读事实、LLM 辅助提案与用户显式执行。
 
-分层（PRD 6.1「对话记录与工作流状态分离」）：
-
-- **对话**（本服务）：`assistant_conversations` / `assistant_messages` 只记录聊了什么；
-  删除对话只删这两张表，任务/计划/审批不受影响，审计也不受影响。
-- **事实卡片**：行程状态与行动中心计数由服务端**确定性**计算后随消息落库——卡片是事实快照，
-  不由模型生成，避免"模型说有 3 条待办"与真实状态漂移。
-- **执行边界**：助手只给入口与工具提案（`proposed_tools`，来自工具目录，带 requires_approval），
-  执行仍走业务接口与人审（不变量 I3），不声称"已经办完"。
+- 对话只记录聊天；任务、计划、审批仍由各自业务域持有权威状态。
+- 事实卡片由服务端确定性计算，不由模型编造。
+- LLM 可以从当前可执行工具目录中提出候选，但服务端会重新做白名单与写意图过滤。
+- 工具只生成用户可点击的提案卡片；执行仍经过服务端授权与现有业务用例，不自动调用。
 """
 
 from __future__ import annotations
@@ -777,7 +773,7 @@ def post_message(
         prompt_version=ASSISTANT_PROMPT_VERSION,
         variables=variables,
         schema=ASSISTANT_SCHEMA,
-        fallback={"reply": "助手暂不可用；请到行动中心或行程页查看权威状态。"},
+        fallback={"reply": "助手暂不可用；请到行动中心或行程页查看权威状态。", "tool_suggestions": []},
         system=ASSISTANT_SYSTEM,
     )
     response = get_gateway().complete(session, conversation.organization_id, request)
