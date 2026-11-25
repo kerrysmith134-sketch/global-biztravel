@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.llm.contracts import LLMRequest
@@ -53,8 +53,8 @@ class MinutesInsight:
 class MinutesDraft:
     invocation_id: UUID
     title: str
-    agent_run_id: UUID | None = None
     summary: str
+    agent_run_id: UUID | None = None
     decisions: list[str] = field(default_factory=list)
     follow_up_tasks: list[dict[str, Any]] = field(default_factory=list)
     insights: list[MinutesInsight] = field(default_factory=list)
@@ -236,7 +236,7 @@ def list_draftable_visits(
                 Visit.organization_id == str(organization_id),
                 Visit.trip_id == str(trip_id),
             )
-            .order_by(Visit.scheduled_start.asc(), Visit.id.asc())
+            .order_by(Visit.created_at.asc(), Visit.id.asc())
         )
     )
     if not visits:
