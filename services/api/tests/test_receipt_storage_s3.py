@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
-
 import pytest
 
 from app.services.receipt_storage_service import (
+    ReceiptStorageUnavailable,
     S3ReceiptStorage,
     StoredReceiptObject,
 )
@@ -161,6 +160,6 @@ def test_s3_stat_object_does_not_hide_permission_errors() -> None:
         "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
     )
 
-    with pytest.raises(Exception) as captured:
+    with pytest.raises(ReceiptStorageUnavailable) as captured:
         storage.stat_object(key)
     assert "无法检查 S3" in str(captured.value)
