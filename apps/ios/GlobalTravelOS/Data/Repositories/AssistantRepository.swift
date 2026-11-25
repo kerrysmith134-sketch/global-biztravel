@@ -7,7 +7,7 @@ protocol AssistantRepository {
     func send(id: String, content: String) async throws -> AssistantMessage
     func deleteConversation(id: String) async throws
     func runAction(conversationId: String, action: String, subjectId: String) async throws -> AssistantMessage
-    func runTool(conversationId: String, toolName: String, tripId: String) async throws -> AssistantMessage
+    func runTool(conversationId: String, toolName: String, arguments: AssistantToolExecuteArguments) async throws -> AssistantMessage
 }
 
 /// 助手对话是会话式数据：直接读写服务端，不做离线回退（发送失败原样抛出，可重试）。
@@ -58,12 +58,16 @@ final class RemoteAssistantRepository: AssistantRepository {
         )
     }
 
-    func runTool(conversationId: String, toolName: String, tripId: String) async throws -> AssistantMessage {
+    func runTool(
+        conversationId: String,
+        toolName: String,
+        arguments: AssistantToolExecuteArguments
+    ) async throws -> AssistantMessage {
         try await client.send(
             try Endpoints.assistantTool(
                 conversationId: conversationId,
                 toolName: toolName,
-                tripId: tripId
+                arguments: arguments
             ),
             as: AssistantMessage.self
         )
