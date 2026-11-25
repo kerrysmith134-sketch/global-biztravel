@@ -230,6 +230,8 @@ struct AssistantView: View {
                         } label: {
                             Image(systemName: "square.and.pencil")
                         }
+                        .accessibilityLabel("新建对话")
+                        .accessibilityIdentifier("assistant-new-conversation")
                     }
                 }
             }
@@ -303,12 +305,15 @@ struct AssistantView: View {
             HStack(alignment: .bottom) {
                 TextField("问行程状态、待办、建议…", text: $viewModel.draft, axis: .vertical)
                     .lineLimit(1 ... 4)
+                    .accessibilityIdentifier("assistant-message-input")
                 Button {
                     Task { await viewModel.send() }
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
                 }
+                .accessibilityLabel("发送消息")
+                .accessibilityIdentifier("assistant-send")
                 .disabled(
                     viewModel.isSending
                         || viewModel.draft.trimmingCharacters(in: .whitespaces).isEmpty
