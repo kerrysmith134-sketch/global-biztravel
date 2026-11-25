@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import re
 import tempfile
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -12,7 +14,16 @@ from app.config import get_settings
 
 
 class ReceiptStorageUnavailable(RuntimeError):
-    """私有票据存储暂时不可用。"""
+    """私有票据存储暂时不可用."""
+
+
+@dataclass(frozen=True)
+class StoredReceiptObject:
+    """Object-store listing metadata; never includes receipt bytes."""
+
+    key: str
+    size: int
+    last_modified: datetime
 
 
 class ReceiptStorage(Protocol):
@@ -24,6 +35,8 @@ class ReceiptStorage(Protocol):
 
     def delete(self, key: str) -> None: ...
 
+    def list_objects(self, prefix: str) -> list[StoredReceiptObject]: ...
+
 
 _KEY_PATTERN = re.compile(
     r"^receipts/[0-9a-f-]{36}/[0-9a-f-]{36}/[0-9a-f-]{36}$",
@@ -34,6 +47,13 @@ _KEY_PATTERN = re.compile(
 def _validate_key(key: str) -> None:
     if not _KEY_PATTERN.fullmatch(key):
         raise ValueError("invalid receipt storage key")
+
+
+def _validate_org_prefix(prefix: str) -> None:
+    """Listings are tenant-prefix scoped; a caller cannot request the bucket root."""
+    match = re.fullmatch(r"receipts/([0-9a-f-]{36})/", prefix, re.IGNORECASE)
+    if match is None:
+        raise ValueError("invalid receipt storage organization prefix")
 
 
 class FilesystemReceiptStorage:
@@ -95,6 +115,37 @@ class FilesystemReceiptStorage:
         except OSError as exc:
             raise ReceiptStorageUnavailable("无法删除原始票据临时对象") from exc
 
+    def list_objects(self, prefix: str) -> list[StoredReceiptObject]:
+        _validate_org_prefix(prefix)
+        directory = (self.root / prefix.rstrip("/")).resolve()
+        if self.root not in directory.parents:
+            raise ValueError("receipt storage prefix escapes private root")
+        if not directory.exists():
+            return []
+
+        objects: list[StoredReceiptObject] = []
+        try:
+            for path in directory.rglob("*"):
+                if not path.is_file() or path.name.startswith(".receipt-"):
+                    continue
+                key = path.relative_to(self.root).as_posix()
+                try:
+                    self._path(key)
+                except ValueError:
+                    # Symlinks or unexpected filenames are never eligible for cleanup.
+                    continue
+                stat = path.stat()
+                objects.append(
+                    StoredReceiptObject(
+                        key=key,
+                        size=stat.st_size,
+                        last_modified=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
+                    )
+                )
+        except OSError as exc:
+            raise ReceiptStorageUnavailable("无法枚举私有票据文件") from exc
+        return sorted(objects, key=lambda item: item.key)
+
 
 class S3ReceiptStorage:
     """S3-compatible private bucket adapter. No public ACL or presigned URL is issued."""
@@ -152,6 +203,35 @@ class S3ReceiptStorage:
         except Exception as exc:
             raise ReceiptStorageUnavailable("无法删除 S3 票据对象") from exc
 
+    def list_objects(self, prefix: str) -> list[StoredReceiptObject]:
+        _validate_org_prefix(prefix)
+        try:
+            paginator = self.client.get_paginator("list_objects_v2")
+            objects: list[StoredReceiptObject] = []
+            for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+                for item in page.get("Contents", []):
+                    key = item.get("Key")
+                    if not isinstance(key, str):
+                        continue
+                    _validate_key(key)
+                    modified = item.get("LastModified")
+                    if modified is None:
+                        continue
+                    if modified.tzinfo is None:
+                        modified = modified.replace(tzinfo=UTC)
+                    objects.append(
+                        StoredReceiptObject(
+                            key=key,
+                            size=int(item.get("Size", 0)),
+                            last_modified=modified.astimezone(UTC),
+                        )
+                    )
+            return sorted(objects, key=lambda item: item.key)
+        except ReceiptStorageUnavailable:
+            raise
+        except Exception as exc:
+            raise ReceiptStorageUnavailable("无法枚举 S3 票据对象") from exc
+
 
 def get_receipt_storage(provider: str | None = None) -> ReceiptStorage:
     settings = get_settings()
@@ -179,5 +259,6 @@ __all__ = [
     "ReceiptStorage",
     "ReceiptStorageUnavailable",
     "S3ReceiptStorage",
+    "StoredReceiptObject",
     "get_receipt_storage",
 ]
