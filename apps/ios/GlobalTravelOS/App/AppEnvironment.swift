@@ -73,14 +73,15 @@ final class AppEnvironment: ObservableObject {
         self.indicator = indicator
         self.offlineStore = offline
         self.apiClient = client
-        self.receiptVault = Self.makeReceiptVault(
+        let receiptVault = Self.makeReceiptVault(
             directory: directory, client: client, uploadsEnabled: loaded.runMode != "local"
         )
+        self.receiptVault = receiptVault
         self.localDatabase = nil
 
         let bundle = Self.makeBundle(
             settings: loaded, client: client, directory: directory,
-            offlineStore: offline, indicator: indicator
+            offlineStore: offline, indicator: indicator, receiptVault: receiptVault
         )
         self.tripRepository = bundle.trips
         self.planRepository = bundle.plans
@@ -164,12 +165,13 @@ final class AppEnvironment: ObservableObject {
         client: APIClient,
         directory: URL,
         offlineStore: OfflineStore,
-        indicator: OfflineIndicator
+        indicator: OfflineIndicator,
+        receiptVault: ReceiptVault?
     ) -> RepositoryBundle {
         if settings.runMode == "local" {
             do {
                 let database = try LocalDatabase.open(path: SQLiteStore.defaultPath())
-                let trips = LocalTripRepository(database: database)
+                let trips = LocalTripRepository(database: database, receiptVault: receiptVault)
                 let plans = LocalPlanRepository(database: database)
                 let visits = LocalVisitRepository(database: database)
                 return RepositoryBundle(
@@ -273,7 +275,7 @@ final class AppEnvironment: ObservableObject {
         offlineStore = OfflineStore(directory: directory)
         let bundle = Self.makeBundle(
             settings: next, client: client, directory: directory,
-            offlineStore: offlineStore, indicator: indicator
+            offlineStore: offlineStore, indicator: indicator, receiptVault: receiptVault
         )
         if next.runMode == "local" {
             // 重建时补挂本地库引用（bundle 内部持有，这里只留强引用）。
