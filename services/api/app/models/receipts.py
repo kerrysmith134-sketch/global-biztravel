@@ -6,8 +6,8 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    CheckConstraint,
     BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
