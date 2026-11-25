@@ -752,8 +752,21 @@ struct TripDetailView: View {
         .sheet(isPresented: $showsExpense) {
             ExpenseEntrySheet(
                 defaultCurrency: viewModel.trip?.currency ?? viewModel.budget?.budgetCurrency ?? "EUR",
+                receiptRecognitionEnabled: !environment.isLocalMode,
                 onCaptureReceipt: { draft in
                     try viewModel.storeReceiptDraft(draft)
+                },
+                onRecognizeReceipt: { assetId in
+                    guard let vault = environment.receiptVault else {
+                        throw ReceiptVaultError.ocrUnavailable
+                    }
+                    return try await vault.runOCR(assetId: assetId)
+                },
+                onReviewReceipt: { runId, request in
+                    guard let vault = environment.receiptVault else {
+                        throw ReceiptVaultError.ocrUnavailable
+                    }
+                    return try await vault.reviewOCR(runId: runId, request: request)
                 },
                 onSave: { category, amount, currency, date, note, localReceiptAssetId in
                     await viewModel.addExpense(

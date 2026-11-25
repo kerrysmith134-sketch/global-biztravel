@@ -316,6 +316,79 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertTrue(invalid.warnings.contains { $0.code == "RECEIPT_UNAVAILABLE" })
     }
 
+
+    func testReceiptOCRModelsDecodeCandidatesAndEncodeExplicitReview() throws {
+        let payload = Data("""
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "receipt_asset_id": "44444444-4444-4444-8444-444444444444",
+          "agent_run_id": "55555555-5555-4555-8555-555555555555",
+          "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "tesseract",
+          "engine_version": "tesseract 5.4.1",
+          "status": "SUCCEEDED",
+          "candidates": {
+            "merchant_hint": "Berlin Hotel",
+            "amount_candidates": ["EUR 128.50", "128.50"],
+            "date_candidates": ["2026-11-25"],
+            "text_length": 238
+          },
+          "started_at": "2026-11-25T08:00:00Z",
+          "finished_at": "2026-11-25T08:00:01Z",
+          "created_at": "2026-11-25T08:00:00Z",
+          "review": null
+        }
+        """.utf8)
+
+        let run = try DateCoding.decode(ReceiptOcrRun.self, from: payload)
+        XCTAssertEqual(run.status, "SUCCEEDED")
+        XCTAssertEqual(run.candidates.merchantHint, "Berlin Hotel")
+        XCTAssertEqual(run.candidates.amountCandidates, ["EUR 128.50", "128.50"])
+        XCTAssertEqual(run.candidates.dateCandidates, ["2026-11-25"])
+        XCTAssertNil(run.review)
+
+        let request = ReceiptOcrReviewRequest(
+            decision: "CONFIRMED",
+            merchant: "Berlin Hotel",
+            amount: Decimal(string: "128.50"),
+            currency: "EUR",
+            occurredOn: "2026-11-25"
+        )
+        let encoded = try DateCoding.encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["decision"] as? String, "CONFIRMED")
+        XCTAssertEqual(object["merchant"] as? String, "Berlin Hotel")
+        XCTAssertEqual(object["currency"] as? String, "EUR")
+        XCTAssertEqual(object["occurred_on"] as? String, "2026-11-25")
+        XCTAssertNotNil(object["amount"])
+    }
+
+    func testFailedReceiptOCRRunCanDecodeEmptyCandidatePayload() throws {
+        let payload = Data("""
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "receipt_asset_id": "44444444-4444-4444-8444-444444444444",
+          "agent_run_id": "55555555-5555-4555-8555-555555555555",
+          "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "tesseract",
+          "engine_version": "unavailable",
+          "status": "FAILED",
+          "candidates": {},
+          "error": "tesseract unavailable",
+          "started_at": "2026-11-25T08:00:00Z",
+          "finished_at": "2026-11-25T08:00:01Z",
+          "created_at": "2026-11-25T08:00:00Z",
+          "review": null
+        }
+        """.utf8)
+
+        let run = try DateCoding.decode(ReceiptOcrRun.self, from: payload)
+        XCTAssertEqual(run.status, "FAILED")
+        XCTAssertTrue(run.candidates.amountCandidates.isEmpty)
+        XCTAssertTrue(run.candidates.dateCandidates.isEmpty)
+        XCTAssertEqual(run.error, "tesseract unavailable")
+    }
+
     private func pngFixture() -> Data {
         Data([
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
