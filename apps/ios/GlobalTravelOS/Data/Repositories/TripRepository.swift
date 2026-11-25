@@ -49,6 +49,7 @@ protocol TripRepository {
     func createTrip(_ request: CreateTripRequest) async throws -> Trip
     func localGuide(tripId: String) async throws -> LocalGuide
     func tripOutcome(tripId: String) async throws -> TripOutcome
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness
     func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult
     func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult
 }
@@ -126,6 +127,13 @@ final class RemoteTripRepository: TripRepository {
 
     func tripOutcome(tripId: String) async throws -> TripOutcome {
         try await client.send(Endpoints.tripOutcome(tripId: tripId), as: TripOutcome.self)
+    }
+
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        try await client.send(
+            Endpoints.tripCloseoutReadiness(tripId: tripId),
+            as: TripCloseoutReadiness.self
+        )
     }
 
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {
@@ -319,6 +327,13 @@ final class OfflineTripRepository: TripRepository {
         let outcome = try await remote.tripOutcome(tripId: tripId)
         indicator.markServedFromServer()
         return outcome
+    }
+
+    /// Closeout is a live read model: never present a cached assessment as current readiness.
+    func closeoutReadiness(tripId: String) async throws -> TripCloseoutReadiness {
+        let readiness = try await remote.closeoutReadiness(tripId: tripId)
+        indicator.markServedFromServer()
+        return readiness
     }
 
     func expenseReports(tripId: String) async throws -> [ExpenseReport] {
