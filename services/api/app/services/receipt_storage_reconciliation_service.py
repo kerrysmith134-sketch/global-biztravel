@@ -126,10 +126,8 @@ def reconcile_receipt_storage(
             object_map[key] = stored
             continue
 
-        incident = None
         # A row may already exist from a prior orphan observation or a previous missing
         # reference diagnosis. Reuse it instead of creating duplicate audit history.
-        # The database UNIQUE constraint remains the final concurrency guard.
         incident = session.scalars(
             select(ReceiptStorageOrphan).where(
                 ReceiptStorageOrphan.organization_id == org_id,
