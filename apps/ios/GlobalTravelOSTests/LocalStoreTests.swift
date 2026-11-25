@@ -753,7 +753,6 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(
             try LocalProactiveEngine.dailyCapReached(
                 database: database,
-                userId: "local-user",
                 now: now,
                 cap: config.dailySuggestionCap
             )
