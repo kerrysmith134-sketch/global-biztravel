@@ -161,6 +161,10 @@ class Settings(BaseSettings):
     receipt_s3_region: str = "us-east-1"
     receipt_s3_access_key: str | None = None
     receipt_s3_secret_key: str | None = None
+    # Tenant-scoped object reconciliation. Discovery is always on; destructive cleanup is opt-in.
+    receipt_reconciliation_interval_seconds: int = 3600
+    receipt_orphan_grace_seconds: int = 86400
+    receipt_orphan_cleanup_enabled: bool = False
 
     # LLM 网关（第 7 章）
     llm_provider: str = "stub"                # stub | openai_compatible
