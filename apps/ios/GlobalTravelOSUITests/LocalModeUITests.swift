@@ -18,7 +18,8 @@ final class LocalModeUITests: XCTestCase {
             }
             return false
         }
-        // 不注入 GBT_UI_TEST_BASE_URL：保持默认的本地模式（App 内 SQLite）。
+        // 不依赖模拟器上一次 UI 测试留下的设置；显式强制 local（App 内 SQLite）。
+        app.launchEnvironment["GBT_UI_TEST_RUN_MODE"] = "local"
         app.launch()
         app.tap() // 触发中断监视器（若有系统弹窗在此关闭）。
     }
@@ -51,7 +52,9 @@ final class LocalModeUITests: XCTestCase {
         // Always select Mission explicitly before asserting its navigation/title content.
         let missionTab = app.buttons["任务"]
         XCTAssertTrue(missionTab.waitForExistence(timeout: 10), "缺少 Mission 一级入口")
-        missionTab.tap()
+        if !app.navigationBars["任务"].exists {
+            missionTab.tap()
+        }
         XCTAssertTrue(
             app.navigationBars["任务"].waitForExistence(timeout: 20),
             "本地模式首屏未出现"
@@ -85,13 +88,7 @@ final class LocalModeUITests: XCTestCase {
         cockpitShot.lifetime = .keepAlways
         add(cockpitShot)
 
-        let tripsTab = app.buttons["出行"]
-        XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")
-        tripsTab.tap()
-        XCTAssertTrue(
-            app.navigationBars["出行"].waitForExistence(timeout: 10),
-            "出行列表未加载"
-        )
+        XCTAssertTrue(openTripsWorkspace(), "未能通过任务菜单打开出行工作区")
 
         // 首启自动注入示例行程：列表必须非空。
         let firstTrip = app.cells.firstMatch
@@ -119,6 +116,23 @@ final class LocalModeUITests: XCTestCase {
             attachment.name = item.segment
             add(attachment)
         }
+    }
+
+    /// 出行是 Mission 下的工作区，不是一级 Tab：任务 -> 更多操作 -> 行程管理。
+    private func openTripsWorkspace(timeout: TimeInterval = 12) -> Bool {
+        let existingList = app.navigationBars["出行"]
+        if existingList.waitForExistence(timeout: 1) {
+            return true
+        }
+
+        let more = app.buttons["更多操作"].firstMatch
+        guard more.waitForExistence(timeout: timeout) else { return false }
+        more.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let tripsEntry = app.buttons["行程管理"].firstMatch
+        guard tripsEntry.waitForExistence(timeout: timeout) else { return false }
+        tripsEntry.tap()
+        return app.navigationBars["出行"].waitForExistence(timeout: timeout)
     }
 
     /// 列表是懒加载的：任一标签出现即视为该分区已渲染。
