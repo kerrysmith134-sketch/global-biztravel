@@ -43,6 +43,7 @@ from app.services import (
     action_center_service,
     expense_report_service,
     job_service,
+    minutes_service,
     proactive_service,
     trip_service,
 )
@@ -190,7 +191,8 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
             matched.add("visa.prepare_checklist")
         elif any(term in text for term in ("签证", "材料清单", "visa")):
             matched.add("visa.get_checklist")
-    for tool in list_executable_tools():
+    executable_tools = list_executable_tools()
+    for tool in executable_tools:
         if tool["name"] in matched:
             proposals.append(
                 {
@@ -198,6 +200,48 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
                     "description": tool["description"],
                     "requires_approval": tool["requires_approval"],
                     "scope": tool["scope"],
+                }
+            )
+
+    minutes_intent = any(
+        term in text
+        for term in ("会议纪要", "纪要草稿", "起草纪要", "meeting minutes", "draft minutes")
+    )
+    if trip is not None and minutes_intent:
+        minutes_tool = next(
+            (tool for tool in executable_tools if tool["name"] == "visit.draft_minutes"),
+            None,
+        )
+        draftable_visits = minutes_service.list_draftable_visits(
+            session, conversation.organization_id, trip.id
+        )
+        if minutes_tool is not None:
+            for visit in draftable_visits:
+                proposals.append(
+                    {
+                        "name": "visit.draft_minutes",
+                        "title": f"生成会议纪要草稿 · {visit.title or '商务拜访'}",
+                        "description": (
+                            "根据这次拜访已生效的现场记录起草纪要。"
+                            "提取的需求、承诺和跟进事项仍需人工确认。"
+                        ),
+                        "requires_approval": False,
+                        "scope": "visit:write",
+                        "entity_id": str(visit.id),
+                        "arguments": {
+                            "visit_id": str(visit.id),
+                            "tone": "PROFESSIONAL",
+                        },
+                    }
+                )
+        if not draftable_visits:
+            cards.append(
+                {
+                    "type": "VISIT_MINUTES_UNAVAILABLE",
+                    "title": "暂无可生成纪要的拜访",
+                    "detail": "先在具体拜访中保存并应用现场记录，再生成会议纪要草稿。",
+                    "entity_id": str(trip.id),
+                    "link": "trip",
                 }
             )
     return {"cards": cards, "counts": counts, "proposals": proposals}
@@ -239,7 +283,16 @@ def run_tool(
             {
                 "type": "TOOL_RESULT",
                 "title": (
-                    "签证材料清单"
+                    "会议纪要草稿"
+                    if result.tool_name == "visit.draft_minutes"
+                    and result.status == "MINUTES_DRAFTED"
+                    else "缺少现场记录"
+                    if result.tool_name == "visit.draft_minutes"
+                    and result.status == "NO_APPLIED_RECORD"
+                    else "会议纪要生成失败"
+                    if result.tool_name == "visit.draft_minutes"
+                    and result.status == "FAILED"
+                    else "签证材料清单"
                     if result.tool_name == "visa.get_checklist"
                     and result.status == "CHECKLIST_LOADED"
                     else "尚未建立签证清单"
@@ -699,10 +752,13 @@ def post_message(
         cards = cards + [
             {
                 "type": "TOOL_PROPOSAL",
-                "title": proposal["name"],
+                "title": proposal.get("title") or proposal["name"],
                 "detail": f"{proposal['description']}（执行时仍会校验当前用户权限）",
-                "entity_id": proposal["name"],
+                "entity_id": proposal.get("entity_id") or proposal["name"],
                 "link": "tool",
+                "tool_name": proposal["name"],
+                "tool_arguments": proposal.get("arguments")
+                or {"trip_id": str(conversation.trip_id)},
             }
             for proposal in facts["proposals"]
         ]
