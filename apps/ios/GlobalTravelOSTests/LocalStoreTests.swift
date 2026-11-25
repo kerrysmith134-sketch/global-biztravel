@@ -568,6 +568,94 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertNotNil(submitted.submittedAt)
     }
 
+    func testLocalVisaReminderApprovalCreatesCompleteCasesAndIsIdempotent() async throws {
+        var request = makeRequest(name: "签证提醒执行")
+        request.countries = ["DE", "FR"]
+        let trip = try await makeRepository().createTrip(request)
+        let suggestionId = try seedLocalVisaReminderSuggestion(tripId: trip.id)
+        let proactive = LocalProactiveRepository(database: database)
+
+        let approved = try await proactive.approve(suggestionId: suggestionId)
+        XCTAssertEqual(approved.status, "EXECUTED")
+
+        let cases = try await makeRepository().visaCases(tripId: trip.id)
+        XCTAssertEqual(cases.map(\.countryCode), ["DE", "FR"])
+        XCTAssertTrue(cases.allSatisfy { $0.status == .new && $0.checklistItems.count == 7 })
+
+        let payloads = try database.loadPayloads(
+            table: "proactive_suggestions",
+            where: "id = ?",
+            bindings: [suggestionId]
+        )
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: XCTUnwrap(payloads.first)) as? [String: Any]
+        )
+        let execution = try XCTUnwrap(object["execution_result"] as? [String: Any])
+        let recordedIds = try XCTUnwrap(execution["visa_cases"] as? [String])
+        XCTAssertEqual(Set(recordedIds), Set(cases.map(\.id)))
+
+        let repeated = try await proactive.approve(suggestionId: suggestionId)
+        XCTAssertEqual(repeated.status, "EXECUTED")
+        let casesAfterRetry = try await makeRepository().visaCases(tripId: trip.id)
+        XCTAssertEqual(casesAfterRetry.map(\.id), cases.map(\.id))
+    }
+
+    func testLocalVisaReminderApprovalRollsBackWhenTripIsMissing() async throws {
+        let suggestionId = try seedLocalVisaReminderSuggestion(tripId: "missing-local-trip")
+        let proactive = LocalProactiveRepository(database: database)
+
+        do {
+            _ = try await proactive.approve(suggestionId: suggestionId)
+            XCTFail("缺少行程时不得把签证提醒标记为已执行")
+        } catch let error as APIError {
+            XCTAssertEqual(error.errorCode, "NOT_FOUND")
+        }
+
+        let payloads = try database.loadPayloads(
+            table: "proactive_suggestions",
+            where: "id = ?",
+            bindings: [suggestionId]
+        )
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: XCTUnwrap(payloads.first)) as? [String: Any]
+        )
+        XCTAssertEqual(object["status"] as? String, "PENDING")
+        XCTAssertEqual(
+            try database.count(
+                table: "visa_cases",
+                where: "trip_id = ?",
+                bindings: ["missing-local-trip"]
+            ),
+            0
+        )
+    }
+
+    private func seedLocalVisaReminderSuggestion(tripId: String) throws -> String {
+        let id = UUID().uuidString
+        let now = SQLTimestamp.basics.string(from: Date())
+        let payload: [String: Any] = [
+            "id": id,
+            "trip_id": tripId,
+            "suggestion_type": "VISA_REQUIREMENT_REMINDER",
+            "status": "PENDING",
+        ]
+        try database.upsert(
+            table: "proactive_suggestions",
+            id: id,
+            columns: [
+                "trip_id": tripId,
+                "type": "VISA_REQUIREMENT_REMINDER",
+                "status": "PENDING",
+                "push_status": "WITHHELD",
+                "dedupe_key": "local-visa-reminder-\(id)",
+                "severity": "MEDIUM",
+                "created_at": now,
+            ],
+            payload: try JSONSerialization.data(withJSONObject: payload)
+        )
+        return id
+    }
+
     // MARK: - P7 聚合（复盘/简报/版本比较）
 
     func testLocalCloseoutReadinessUsesPersistedVisitsExpensesAndReportSnapshots() async throws {
