@@ -4,6 +4,23 @@ import XCTest
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
 
+    func testTripExpenseConnectivityTriggersRetryOnlyAfterNetworkRecovery() {
+        var state = TripExpenseConnectivityState()
+
+        // Initial connectivity is handled by TripDetailViewModel.load(), not as a recovery.
+        XCTAssertFalse(state.update(isReachable: true))
+        XCTAssertTrue(state.isReachable)
+        XCTAssertFalse(state.update(isReachable: true), "Repeated satisfied paths are not recoveries")
+
+        XCTAssertFalse(state.update(isReachable: false))
+        XCTAssertFalse(state.isReachable)
+        XCTAssertTrue(state.update(isReachable: true), "Offline-to-online must request a queue drain")
+        XCTAssertFalse(state.update(isReachable: true), "A stable online path must not retrigger")
+
+        XCTAssertFalse(state.update(isReachable: false))
+        XCTAssertTrue(state.update(isReachable: true), "A later reconnect must request another drain")
+    }
+
     func testPlanStopCoordinatesRequireValidGeographicRanges() {
         let valid = PlanStop(
             visitId: "visit-valid",

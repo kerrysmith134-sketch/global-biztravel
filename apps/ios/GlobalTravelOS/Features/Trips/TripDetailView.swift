@@ -1,4 +1,20 @@
+import Network
 import SwiftUI
+
+
+/// Detects only genuine offline-to-online transitions. The first path update is initialization:
+/// the Trip's initial load already drains an existing queue when the app starts online.
+struct TripExpenseConnectivityState {
+    private(set) var hasObservedPath = false
+    private(set) var isReachable = false
+
+    mutating func update(isReachable newValue: Bool) -> Bool {
+        let recovered = hasObservedPath && !isReachable && newValue
+        hasObservedPath = true
+        isReachable = newValue
+        return recovered
+    }
+}
 
 @MainActor
 final class TripDetailViewModel: ObservableObject {
@@ -25,11 +41,35 @@ final class TripDetailViewModel: ObservableObject {
     private let expenseOutbox: TripExpenseOutbox?
     /// Coalesces retry requests made while an earlier FIFO drain is awaiting network I/O.
     private var pendingExpenseRetryRequested = false
+    private let pathMonitor = NWPathMonitor()
+    private let pathMonitorQueue = DispatchQueue(label: "com.anari.globaltravelos.trip-expense-reachability")
+    private var connectivityState = TripExpenseConnectivityState()
 
     init(tripId: String, environment: AppEnvironment) {
         self.tripId = tripId
         self.environment = environment
         self.expenseOutbox = environment.receiptVault?.makeTripExpenseOutbox()
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let isReachable = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.connectivityState.update(isReachable: isReachable) {
+                    await self.retryPendingExpenses()
+                }
+            }
+        }
+        pathMonitor.start(queue: pathMonitorQueue)
+    }
+
+    deinit {
+        pathMonitor.cancel()
+    }
+
+    /// App foregrounding can be another recovery boundary if the device regained network
+    /// while iOS suspended this screen's work.
+    func retryPendingExpensesIfReachable() async {
+        guard connectivityState.isReachable else { return }
+        await retryPendingExpenses()
     }
 
     /// 分域加载错误（审计七·额外可靠性）：空区块必须能区分"确实没有"与"加载失败"。
@@ -512,6 +552,7 @@ enum TripSection: String, CaseIterable, Identifiable {
 
 struct TripDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: TripDetailViewModel
     @State private var selectedVisit: TripVisit?
     @State private var selectedFollowUpId: String?
@@ -973,6 +1014,10 @@ struct TripDetailView: View {
         }
         .refreshable { await viewModel.load() }
         .task { await viewModel.load() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await viewModel.retryPendingExpensesIfReachable() }
+        }
         .sheet(item: $selectedVisit) { visit in
             VisitRecordSheet(visit: visit, focusFollowUpId: selectedFollowUpId)
         }
