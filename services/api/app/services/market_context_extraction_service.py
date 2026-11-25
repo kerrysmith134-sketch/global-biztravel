@@ -29,7 +29,8 @@ from app.models.market import (
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
-from app.models.workflow import AgentRun, WorkflowInstance
+from app.models.workflow import WorkflowInstance
+from app.services.agent_runtime_service import fail_agent_run, start_agent_run, succeed_agent_run
 
 AGENT_TYPE = "market_context_extraction"
 WORKFLOW_TYPE = "market_context_extraction"
@@ -206,12 +207,12 @@ def extract_context_snapshot(
             linked_by_user_id=actor_user_id,
         )
     )
-    run = AgentRun(
-        organization_id=organization_id,
+    run = start_agent_run(
+        session,
+        organization_id,
         workflow_id=workflow.id,
         agent_type=AGENT_TYPE,
-        status="RUNNING",
-        input={
+        input_snapshot={
             "workspace_id": str(workspace_id),
             "context_snapshot_id": str(context_id),
             "context_version": snapshot.version,
@@ -221,7 +222,6 @@ def extract_context_snapshot(
             "prompt_version": MARKET_CONTEXT_EXTRACT_PROMPT_VERSION,
         },
     )
-    session.add(run)
     snapshot.extraction_status = "PENDING"
     snapshot.extraction_prompt_id = MARKET_CONTEXT_EXTRACT_TEMPLATE_ID
     snapshot.extraction_prompt_version = MARKET_CONTEXT_EXTRACT_PROMPT_VERSION
@@ -247,7 +247,6 @@ def extract_context_snapshot(
         ),
     )
 
-    run.finished_at = datetime.now(UTC)
     audit = {
         "agent_run_id": str(run.id),
         "workflow_id": str(workflow.id),
@@ -266,9 +265,11 @@ def extract_context_snapshot(
         provenance["extraction"]["status"] = "FAILED"
         provenance["extraction"]["error"] = response.error or "LLM Gateway degraded"
         snapshot.provenance = provenance
-        run.status = "FAILED"
-        run.error = (response.error or "LLM Gateway degraded")[:2000]
-        run.output = {"status": "FAILED", "input_sha256": input_digest}
+        fail_agent_run(
+            run,
+            error=response.error or "LLM Gateway degraded",
+            output_snapshot={"status": "FAILED", "input_sha256": input_digest},
+        )
         workflow.status = "FAILED"
         workflow.payload = {**(workflow.payload or {}), "extraction_status": "FAILED"}
         event_type = "CONTEXT_EXTRACTION_FAILED"
@@ -292,15 +293,19 @@ def extract_context_snapshot(
         snapshot.unknowns = unknowns
         snapshot.provenance = provenance
         snapshot.extraction_status = "COMPLETED"
-        run.status = "SUCCEEDED"
-        run.output = {
-            "status": "COMPLETED",
-            "input_sha256": input_digest,
-            "field_item_counts": {
-                key: len(value) for key, value in extracted.items() if isinstance(value, list)
+        succeed_agent_run(
+            run,
+            output_snapshot={
+                "status": "COMPLETED",
+                "input_sha256": input_digest,
+                "field_item_counts": {
+                    key: len(value)
+                    for key, value in extracted.items()
+                    if isinstance(value, list)
+                },
+                "unknown_count": len(unknowns),
             },
-            "unknown_count": len(unknowns),
-        }
+        )
         workflow.status = "COMPLETED"
         workflow.payload = {**(workflow.payload or {}), "extraction_status": "COMPLETED"}
         event_type = "CONTEXT_EXTRACTION_COMPLETED"
