@@ -1,4 +1,4 @@
-# ADR-0039: Shared Agent execution lifecycle
+# ADR-0042: Shared Agent execution lifecycle
 
 - Status: Accepted
 - Date: 2026-11-25

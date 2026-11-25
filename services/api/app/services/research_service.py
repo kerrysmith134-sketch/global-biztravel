@@ -41,7 +41,6 @@ from app.models.market import (
     MarketWorkspaceWorkflow,
 )
 from app.models.workflow import WorkflowInstance
-from app.services.agent_runtime_service import start_agent_run, succeed_agent_run
 from app.services import (
     customer_service,
     evidence_service,
@@ -50,6 +49,7 @@ from app.services import (
     market_research_graph_service,
     trip_service,
 )
+from app.services.agent_runtime_service import start_agent_run, succeed_agent_run
 
 WORKFLOW_TYPE = "research_plan"
 AGENT_TYPE = "research_planner"
