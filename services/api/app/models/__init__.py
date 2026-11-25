@@ -57,7 +57,7 @@ from app.models.proactive import (
     ProactiveTrigger,
     SuggestionAudit,
 )
-from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun
+from app.models.receipts import ReceiptAsset, ReceiptOcrReview, ReceiptOcrRun, ReceiptStorageOrphan
 from app.models.records import VisitFollowUp, VisitFollowUpEvent, VisitRecord
 from app.models.reliability import (
     BackgroundJob,
@@ -142,8 +142,7 @@ __all__ = [
     "ProactiveSuggestion",
     "ProactiveTrigger",
     "ReceiptAsset",
-    "ReceiptOcrRun",
-    "ReceiptOcrReview",
+    "ReceiptStorageOrphan",
     "ReceiptOcrRun",
     "ReceiptOcrReview",
     "SuggestionAudit",
