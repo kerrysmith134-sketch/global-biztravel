@@ -468,25 +468,26 @@ def run_cycle(
             if receipt_report is not None:
                 if (
                     receipt_report.orphans_discovered
+                    or receipt_report.orphans_eligible
                     or receipt_report.objects_deleted
                     or receipt_report.delete_failures
                     or receipt_report.resolved
                     or receipt_report.missing
                 ):
                     did_work = True
-                    logger.info(
-                        "组织 %s 票据对象对账：扫描 %d、发现孤儿 %d、满足清理条件 %d、"
-                        "删除 %d、删除失败 %d、恢复关联 %d、对象缺失 %d（清理启用=%s）",
-                        org_id,
-                        receipt_report.objects_scanned,
-                        receipt_report.orphans_discovered,
-                        receipt_report.orphans_eligible,
-                        receipt_report.objects_deleted,
-                        receipt_report.delete_failures,
-                        receipt_report.resolved,
-                        receipt_report.missing,
-                        receipt_report.cleanup_enabled,
-                    )
+                logger.info(
+                    "组织 %s 票据对象对账：扫描 %d、发现孤儿 %d、满足清理条件 %d、"
+                    "删除 %d、删除失败 %d、恢复关联 %d、对象缺失 %d（清理启用=%s）",
+                    org_id,
+                    receipt_report.objects_scanned,
+                    receipt_report.orphans_discovered,
+                    receipt_report.orphans_eligible,
+                    receipt_report.objects_deleted,
+                    receipt_report.delete_failures,
+                    receipt_report.resolved,
+                    receipt_report.missing,
+                    receipt_report.cleanup_enabled,
+                )
                 if receipt_report.errors:
                     logger.warning(
                         "组织 %s 票据对象对账有 %d 条存储错误",
