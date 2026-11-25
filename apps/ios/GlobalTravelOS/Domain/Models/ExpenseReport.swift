@@ -121,3 +121,76 @@ struct ExpenseReportCreateRequest: Codable, Equatable {
     var notes: String?
     var expenseIds: [String]?
 }
+
+
+// Read-only, evidence-backed closeout assessment returned by
+// GET /v1/trips/{trip_id}/closeout-readiness.
+enum TripCloseoutStatus: String, Codable {
+    case blocked = "BLOCKED"
+    case readyForReview = "READY_FOR_REVIEW"
+    case reportSubmitted = "REPORT_SUBMITTED"
+    case reportApproved = "REPORT_APPROVED"
+    case readyWithExceptions = "READY_WITH_EXCEPTIONS"
+    case unknown = "UNKNOWN"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = TripCloseoutStatus(rawValue: raw) ?? .unknown
+    }
+
+    var label: String {
+        switch self {
+        case .blocked: return "存在待处理事项"
+        case .readyForReview: return "可以提交复核"
+        case .reportSubmitted: return "报销单已提交"
+        case .reportApproved: return "报销单已批准"
+        case .readyWithExceptions: return "存在例外，需核对"
+        case .unknown: return "状态未知"
+        }
+    }
+}
+
+enum TripCloseoutIssueSeverity: String, Codable {
+    case blocker = "BLOCKER"
+    case warning = "WARNING"
+}
+
+struct TripCloseoutIssue: Codable, Equatable, Identifiable {
+    var id: String
+    var code: String
+    var severity: TripCloseoutIssueSeverity
+    var title: String
+    var detail: String
+    var sourceType: String
+    var sourceId: String
+    var actionHint: String
+}
+
+struct TripCloseoutSummary: Codable, Equatable {
+    var visitCount: Int
+    var visitOutcomeCount: Int
+    var visitsOpenCount: Int
+    var visitsMissingOutcomeCount: Int
+    var expenseCount: Int
+    var expensesInReportCount: Int
+    var expensesNotInReportCount: Int
+    var expensesWithoutReceiptCount: Int
+    var receiptAssetCount: Int
+    var receiptAssetUnavailableCount: Int
+    var ocrNeedsReviewCount: Int
+    var openBusinessFollowUpCount: Int
+    var latestReportId: String?
+    var latestReportStatus: ExpenseReportStatus?
+    var blockerCount: Int
+    var warningCount: Int
+}
+
+struct TripCloseoutReadiness: Codable, Equatable {
+    var tripId: String
+    var status: TripCloseoutStatus
+    var generatedAt: Date
+    var summary: TripCloseoutSummary
+    var totalsByCurrency: [CurrencyTotal]
+    var blockers: [TripCloseoutIssue]
+    var warnings: [TripCloseoutIssue]
+}
