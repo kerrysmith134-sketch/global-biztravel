@@ -325,7 +325,6 @@ enum LocalProactiveEngine {
             pushReason = "LOW_CONFIDENCE"
         } else if try dailyCapReached(
             database: database,
-            userId: userId,
             now: now,
             cap: config.dailySuggestionCap
         ) {
@@ -461,7 +460,6 @@ enum LocalProactiveEngine {
     /// 每日推送上限。Local mode is single-user; created_at is the persisted push-time proxy.
     static func dailyCapReached(
         database: LocalDatabase,
-        userId: String,
         now: Date,
         cap: Int
     ) throws -> Bool {
