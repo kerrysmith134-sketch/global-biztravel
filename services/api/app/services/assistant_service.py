@@ -182,6 +182,9 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
         "计划": "trip.get_plan",
         "plan": "trip.get_plan",
         "简报": "trip.get_plan",
+        "签证": "visa.get_checklist",
+        "材料清单": "visa.get_checklist",
+        "visa": "visa.get_checklist",
     }
     matched = {name for kw, name in keywords.items() if kw in text} if trip is not None else set()
     for tool in list_executable_tools():
@@ -238,7 +241,15 @@ def run_tool(
             {
                 "type": "TOOL_RESULT",
                 "title": (
-                    "已读取行程计划"
+                    "签证材料清单"
+                    if result.tool_name == "visa.get_checklist"
+                    and result.status == "CHECKLIST_LOADED"
+                    else "尚未建立签证清单"
+                    if result.tool_name == "visa.get_checklist"
+                    and result.status == "NO_VISA_CASES"
+                    else "签证清单读取失败"
+                    if result.tool_name == "visa.get_checklist"
+                    else "已读取行程计划"
                     if result.status == "PLAN_LOADED"
                     else "尚无生效计划"
                     if result.status == "NO_ACTIVE_PLAN"

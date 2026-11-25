@@ -25,6 +25,19 @@ TOOL_CATALOG: tuple[dict[str, Any], ...] = (
         "handler": "usecase:GetTripPlan",
     },
     {
+        "name": "visa.get_checklist",
+        "description": "读取本次出行已建立的签证案件与材料清单进度（只读，不推断签证要求）",
+        "input_schema": {
+            "type": "object",
+            "required": ["trip_id"],
+            "properties": {"trip_id": {"type": "string"}},
+        },
+        "scope": "trip:read",
+        "requires_approval": False,
+        "idempotent": True,
+        "handler": "usecase:GetVisaChecklist",
+    },
+    {
         "name": "visa.prepare_checklist",
         "description": "生成签证/证件核对清单草稿（不提交）",
         "input_schema": {
