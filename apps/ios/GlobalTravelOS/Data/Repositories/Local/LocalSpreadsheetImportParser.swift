@@ -320,7 +320,7 @@ enum LocalSpreadsheetImportParser {
         return LocalImportValidation(normalized: normalized, status: status, issues: issues)
     }
 
-    private static func issue(_ code: String, _ field: String?, _ severity: String, _ message: String) -> ImportIssue {
+    static func issue(_ code: String, _ field: String?, _ severity: String, _ message: String) -> ImportIssue {
         ImportIssue(code: code, field: field, message: message, severity: severity)
     }
 
