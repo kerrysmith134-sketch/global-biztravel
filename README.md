@@ -116,4 +116,4 @@ Input Normalizer → Feasibility Checker → Candidate Generator
 - `AT-S01`：组织 A 会话访问组织 B 数据必须全部失败（数据库级 RLS）。
 
 验收必须在**真实客户端、后端与数据库**之间完成，不得以静态页面、模拟 API 返回值或预置演示数据替代。
-当前自动化验收基线：后端最新 CI（2026-11-25）为 **473 passed / 1 skipped**（真实 PostgreSQL）；iOS 152 个 XCTest 在同一轮 CI **全部通过**（0 failures）；真实后端 UI 自动化目标含 10 条用例，当前 CI 已成功编译测试 target（`build-for-testing`），但该轮未执行 UI 运行时。最近一次完整真实后端 UI 运行记录为 2026-11-09：9 条 UI 用例通过。`make e2e` 真实后端全链路、`make contract-check` 契约漂移检查持续作为后端验收门禁。
+当前自动化验收基线：后端最新 H2.14 CI（2026-11-25）为 **488 passed / 1 skipped**（真实 PostgreSQL，迁移至 0048）；iOS 154 个 XCTest **全部通过**（0 failures）；真实后端 UI 自动化目标含 10 条用例，当前 CI 已成功编译测试 target（`build-for-testing`），但该轮未执行 UI 运行时。最近一次完整真实后端 UI 运行记录为 2026-11-09：9 条 UI 用例通过。`make e2e` 真实后端全链路、`make contract-check` 契约漂移检查持续作为后端验收门禁。
