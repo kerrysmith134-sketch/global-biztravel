@@ -6,7 +6,6 @@ market research, invents facts, or writes to formal Customer / Trip records.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 from uuid import UUID
@@ -30,7 +29,11 @@ from app.models.market import (
     MarketWorkspaceWorkflow,
 )
 from app.models.workflow import WorkflowInstance
-from app.services.agent_runtime_service import fail_agent_run, start_agent_run, succeed_agent_run
+from app.services.agent_runtime_service import (
+    fail_agent_run,
+    start_agent_run,
+    succeed_agent_run,
+)
 
 AGENT_TYPE = "market_context_extraction"
 WORKFLOW_TYPE = "market_context_extraction"
