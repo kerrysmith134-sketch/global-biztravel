@@ -107,6 +107,16 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertEqual(try database.count(table: "visits"), 1)
         XCTAssertEqual(try database.count(table: "customer_places"), 1)
 
+        let storedBatch = try XCTUnwrap(database.keyValue("local-import:\(preview.importId)"))
+        XCTAssertFalse(storedBatch.contains("Acme Battery GmbH"))
+        let batchJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(storedBatch.utf8)) as? [String: Any]
+        )
+        let storedResult = try XCTUnwrap(batchJSON["result"] as? [String: Any])
+        XCTAssertEqual((storedResult["rows"] as? [Any])?.count, 0)
+        let stagedRows = try XCTUnwrap(batchJSON["rows"] as? [[String: Any]])
+        XCTAssertTrue(stagedRows.allSatisfy { $0["normalized"] == nil })
+
         let visitPayloads = try database.loadPayloads(table: "visits", where: "trip_id = ?", bindings: [trip.id])
         let visitData = try XCTUnwrap(visitPayloads.first)
         let visit = try DateCoding.decoder().decode(TripVisit.self, from: visitData)

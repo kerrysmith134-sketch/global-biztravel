@@ -19,7 +19,7 @@ private struct LocalImportBatch: Codable {
     let tripId: String
     let filename: String
     var status: String
-    let result: ImportParseResult
+    var result: ImportParseResult
     var rows: [LocalImportStagedRow]
 }
 
@@ -280,6 +280,12 @@ extension LocalTripRepository {
             }
 
             batch.status = "CONFIRMED"
+            // Keep the replay-protection tombstone, but remove source and normalized row data.
+            // Customer names and contact details should not remain duplicated in local staging KV.
+            batch.result.rows = []
+            for index in batch.rows.indices {
+                batch.rows[index].normalized = nil
+            }
             let updated = try DateCoding.encoder().encode(batch)
             guard let updatedText = String(bytes: updated, encoding: .utf8) else {
                 throw APIError.invalidResponse("无法保存导入确认状态")
