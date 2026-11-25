@@ -81,6 +81,32 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(place.id, trip.originPlaceId)
     }
 
+    func testPartialUpsertUpdatesExistingDocumentWithoutReinsertingRequiredColumns() async throws {
+        let repository = makeRepository()
+        let trip = try await repository.createTrip(makeRequest(name: "部分字段更新"))
+        var updatedTrip = trip
+        updatedTrip.status = "COMPLETED"
+
+        try database.transaction {
+            try database.upsert(
+                table: "trips",
+                id: trip.id,
+                columns: ["status": "COMPLETED"],
+                payload: try DateCoding.encode(updatedTrip)
+            )
+        }
+
+        let persisted = try await repository.trip(id: trip.id)
+        XCTAssertEqual(persisted.status, "COMPLETED")
+        XCTAssertEqual(persisted.name, trip.name)
+        let scalarColumns = try database.store.query(
+            "SELECT name, updated_at FROM trips WHERE id = ?",
+            bindings: [trip.id]
+        ) { ($0.string(0), $0.string(1)) }.first
+        XCTAssertEqual(scalarColumns?.0, trip.name)
+        XCTAssertFalse(scalarColumns?.1.isEmpty ?? true)
+    }
+
     func testListTripsIsOrderedByUpdatedAtDescAndPaginates() async throws {
         let repository = makeRepository()
         for index in 1...3 {
