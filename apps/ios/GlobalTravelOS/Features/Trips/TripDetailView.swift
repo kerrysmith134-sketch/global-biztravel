@@ -200,6 +200,27 @@ final class TripDetailViewModel: ObservableObject {
         }
     }
 
+    /// Refreshes the visible expense workspace after the app-wide coordinator completes a
+    /// path-triggered drain while this Trip screen remains mounted.
+    func refreshAfterBackgroundExpenseSync(syncedCount: Int) async {
+        refreshPendingExpenses()
+        guard syncedCount > 0 else { return }
+        do {
+            expenses = try await environment.tripRepository.expenses(tripId: tripId)
+        } catch {
+            sectionErrors["expenses"] = environment.errorMessage(error)
+        }
+        do {
+            budget = try await environment.tripRepository.budgetSummary(
+                tripId: tripId,
+                baseCurrency: trip?.currency
+            )
+        } catch {
+            sectionErrors["budget"] = environment.errorMessage(error)
+        }
+        await refreshCloseoutReadiness()
+    }
+
     func storeReceiptDraft(_ draft: ReceiptDraft) throws -> LocalReceiptAsset {
         guard let receiptVault = environment.receiptVault else {
             throw ReceiptVaultError.originalFileUnavailable
@@ -929,6 +950,13 @@ struct TripDetailView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await viewModel.retryPendingExpensesIfReachable() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tripExpenseSyncDidChange)) { notification in
+            guard !viewModel.isSyncingPendingExpenses,
+                  let tripId = notification.userInfo?["tripId"] as? String,
+                  tripId == viewModel.tripId else { return }
+            let syncedCount = notification.userInfo?["syncedCount"] as? Int ?? 0
+            Task { await viewModel.refreshAfterBackgroundExpenseSync(syncedCount: syncedCount) }
         }
         .sheet(item: $selectedVisit) { visit in
             VisitRecordSheet(visit: visit, focusFollowUpId: selectedFollowUpId)

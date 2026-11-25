@@ -90,7 +90,17 @@ final class TripExpenseSyncCoordinator {
             return
         }
         for tripID in tripIDs {
-            _ = await syncPendingExpenses(tripId: tripID)
+            let syncedCount = await syncPendingExpenses(tripId: tripID)
+            let pendingCount = (try? outbox.pending(tripId: tripID).count) ?? 0
+            NotificationCenter.default.post(
+                name: .tripExpenseSyncDidChange,
+                object: self,
+                userInfo: [
+                    "tripId": tripID,
+                    "syncedCount": syncedCount,
+                    "pendingCount": pendingCount
+                ]
+            )
         }
     }
 
@@ -157,4 +167,11 @@ final class TripExpenseSyncCoordinator {
         }
         return syncedCount
     }
+}
+
+
+extension Notification.Name {
+    static let tripExpenseSyncDidChange = Notification.Name(
+        "com.anari.globaltravelos.trip-expense-sync-did-change"
+    )
 }
