@@ -306,11 +306,14 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isSubmitting = false }
         do {
-            _ = try await repository.createMarketWorkspaceEntity(
+            let created = try await repository.createMarketWorkspaceEntity(
                 workspaceId: workspaceId,
                 request: request
             )
             await load(force: true)
+            if !workspaceEntities.contains(where: { $0.id == created.id }) {
+                workspaceEntities.insert(created, at: 0)
+            }
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -326,7 +329,7 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isSubmitting = false }
         do {
-            _ = try await repository.attachMarketOpportunityEntities(
+            let attachedEntities = try await repository.attachMarketOpportunityEntities(
                 workspaceId: workspaceId,
                 opportunityId: opportunityId,
                 request: MarketOpportunityEntitiesAttachRequest(
@@ -334,6 +337,14 @@ final class MarketOpportunityDetailViewModel: ObservableObject {
                     relationshipNote: note.nilIfBlank
                 )
             )
+            if var currentDetail = detail {
+                let confirmedEntities = attachedEntities.isEmpty ? [candidate.entity] : attachedEntities
+                for entity in confirmedEntities where !currentDetail.entities.contains(where: { $0.id == entity.id }) {
+                    currentDetail.entities.append(entity)
+                }
+                detail = currentDetail
+            }
+            workspaceEntities.removeAll { $0.id == candidate.id }
             await load(force: true)
             return true
         } catch {
