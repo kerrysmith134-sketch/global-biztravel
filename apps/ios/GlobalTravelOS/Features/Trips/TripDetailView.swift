@@ -774,10 +774,10 @@ struct TripDetailView: View {
         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
             HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.sm) {
                 Text(issue.title)
-                .accessibilityIdentifier("trip.closeout.issue.\\(issue.code)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(issue.severity == .blocker ? DS.ColorToken.danger : DS.ColorToken.warning)
-                Spacer(minLength: DS.Spacing.xs)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(issue.severity == .blocker ? DS.ColorToken.danger : DS.ColorToken.warning)
+                .accessibilityIdentifier("trip.closeout.issue.\(issue.code)")
+            Spacer(minLength: DS.Spacing.xs)
                 DSBadge(
                     text: issue.severity == .blocker ? "阻塞" : "提醒",
                     color: issue.severity == .blocker ? DS.ColorToken.danger : DS.ColorToken.warning
@@ -799,7 +799,7 @@ struct TripDetailView: View {
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(DS.ColorToken.brand)
-            .accessibilityIdentifier("trip.closeout.action.\\(issue.code)")
+            .accessibilityIdentifier("trip.closeout.action.\(issue.code)")
         }
         .padding(.vertical, DS.Spacing.xs)
     }
