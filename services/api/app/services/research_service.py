@@ -40,7 +40,7 @@ from app.models.market import (
     MarketWorkspace,
     MarketWorkspaceWorkflow,
 )
-from app.models.workflow import AgentRun, WorkflowInstance
+from app.models.workflow import WorkflowInstance
 from app.services import (
     customer_service,
     evidence_service,
@@ -49,6 +49,7 @@ from app.services import (
     market_research_graph_service,
     trip_service,
 )
+from app.services.agent_runtime_service import start_agent_run, succeed_agent_run
 
 WORKFLOW_TYPE = "research_plan"
 AGENT_TYPE = "research_planner"
@@ -496,15 +497,13 @@ def create_research_plan(
         agent_input["user_provided_context_sha256"] = _sha256(payload.context_text)
         agent_input["user_provided_context_character_count"] = len(payload.context_text)
 
-    agent_run = AgentRun(
-        organization_id=str(organization_id),
+    agent_run = start_agent_run(
+        session,
+        organization_id,
         workflow_id=workflow.id,
         agent_type=AGENT_TYPE,
-        status="RUNNING",
-        input=agent_input,
+        input_snapshot=agent_input,
     )
-    session.add(agent_run)
-    session.flush()
 
     response = get_gateway().complete(
         session,
@@ -536,9 +535,16 @@ def create_research_plan(
         "degraded": response.degraded,
         "error": response.error,
     }
-    agent_run.output = {"plan": plan, "recommended_scope": recommended_scope, "planner": audit}
-    agent_run.status = "SUCCEEDED"
-    agent_run.finished_at = now
+    succeed_agent_run(
+        session,
+        agent_run,
+        output_snapshot={
+            "plan": plan,
+            "recommended_scope": recommended_scope,
+            "planner": audit,
+        },
+        finished_at=now,
+    )
 
     generated_question_ids: list[UUID] = []
     # A question-targeted ResearchPlan only proposes sources for that existing node;
