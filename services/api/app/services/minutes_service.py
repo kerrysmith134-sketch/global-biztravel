@@ -30,9 +30,10 @@ from app.llm.prompts import (
 )
 from app.models.geo import Customer, Place
 from app.models.records import VisitRecord
-from app.models.trip import Trip
+from app.models.trip import Trip, Visit
 from app.models.workflow import AgentRun
 from app.services import record_service, visit_service
+from app.services.agent_runtime_service import fail_agent_run, start_agent_run, succeed_agent_run
 
 
 @dataclass
@@ -52,6 +53,7 @@ class MinutesInsight:
 class MinutesDraft:
     invocation_id: UUID
     title: str
+    agent_run_id: UUID | None = None
     summary: str
     decisions: list[str] = field(default_factory=list)
     follow_up_tasks: list[dict[str, Any]] = field(default_factory=list)
@@ -132,6 +134,7 @@ def draft_minutes(
     visit_id: UUID | str,
     *,
     tone: str = "PROFESSIONAL",
+    agent_run: AgentRun | None = None,
 ) -> MinutesDraft:
     visit = visit_service.require_visit(session, organization_id, UUID(str(visit_id)))
     trip = session.get(Trip, visit.trip_id)
@@ -165,27 +168,43 @@ def draft_minutes(
         fallback={**fallback, "insights": []},
         system=MEETING_MINUTES_V2_SYSTEM,
     )
-    run = AgentRun(
-        organization_id=str(organization_id),
-        agent_type="MEETING_MINUTES_DRAFT",
-        status="RUNNING",
-        input=variables,
-    )
-    session.add(run)
-    session.flush()
+    owns_agent_run = agent_run is None
+    run = agent_run
+    if run is None:
+        run = start_agent_run(
+            session,
+            organization_id,
+            workflow_id=None,
+            agent_type="MEETING_MINUTES_DRAFT",
+            input_snapshot={
+                "visit_id": str(visit.id),
+                "trip_id": str(visit.trip_id),
+                "source_record_id": str(record.id) if record is not None else None,
+                "source_record_version": record.server_version if record is not None else None,
+                "source_record_updated_at": (
+                    record.client_updated_at.isoformat() if record is not None else None
+                ),
+                "notes_character_count": len(notes),
+                "follow_up_task_count": len(tasks),
+                "tone": tone,
+                "prompt_template_id": MEETING_MINUTES_TEMPLATE_ID,
+                "prompt_version": MEETING_MINUTES_V2_PROMPT_VERSION,
+            },
+        )
     try:
         response = get_gateway().complete(session, organization_id, request)
     except Exception as exc:
-        run.status = "FAILED"
-        run.error = f"{type(exc).__name__}: {exc}"
-        run.finished_at = session.scalar(select(func.clock_timestamp()))
-        session.flush()
+        if owns_agent_run:
+            fail_agent_run(
+                session,
+                run,
+                error=f"{type(exc).__name__}: {exc}",
+                output_snapshot={"status": "FAILED"},
+            )
         raise
     output = response.output or fallback
-    run.status = "SUCCEEDED"
-    run.output = output
-    run.finished_at = session.scalar(select(func.clock_timestamp()))
-    session.flush()
+    if owns_agent_run:
+        succeed_agent_run(session, run, output_snapshot=output)
 
     title = str(output.get("title") or fallback["title"])
     summary = str(output.get("summary") or fallback["summary"])
@@ -197,6 +216,7 @@ def draft_minutes(
     return MinutesDraft(
         invocation_id=response.invocation_id,
         title=title,
+        agent_run_id=run.id,
         summary=summary,
         decisions=decisions,
         follow_up_tasks=follow_ups,
@@ -205,4 +225,35 @@ def draft_minutes(
     )
 
 
-__all__ = ["MinutesDraft", "MinutesInsight", "draft_minutes"]
+def list_draftable_visits(
+    session: Session, organization_id: UUID | str, trip_id: UUID | str
+) -> list[Visit]:
+    """Return only visits with an applied field record eligible for minute drafting."""
+    visits = list(
+        session.scalars(
+            select(Visit)
+            .where(
+                Visit.organization_id == str(organization_id),
+                Visit.trip_id == str(trip_id),
+            )
+            .order_by(Visit.scheduled_start.asc(), Visit.id.asc())
+        )
+    )
+    if not visits:
+        return []
+    visit_ids = [visit.id for visit in visits]
+    recorded_visit_ids = set(
+        session.scalars(
+            select(VisitRecord.visit_id)
+            .where(
+                VisitRecord.organization_id == str(organization_id),
+                VisitRecord.visit_id.in_(visit_ids),
+                VisitRecord.applied.is_(True),
+            )
+            .distinct()
+        )
+    )
+    return [visit for visit in visits if visit.id in recorded_visit_ids]
+
+
+__all__ = ["MinutesDraft", "MinutesInsight", "draft_minutes", "list_draftable_visits"]
