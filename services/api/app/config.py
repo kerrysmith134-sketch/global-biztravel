@@ -43,6 +43,10 @@ class Settings(BaseSettings):
             raise ValueError("GBT_RECEIPT_STORAGE_PROVIDER 只允许 filesystem 或 s3")
         if self.receipt_max_upload_bytes < 1 or self.receipt_max_upload_bytes > 50 * 1024 * 1024:
             raise ValueError("GBT_RECEIPT_MAX_UPLOAD_BYTES 必须在 1 至 50 MiB 之间")
+        if self.receipt_reconciliation_interval_seconds < 60:
+            raise ValueError("GBT_RECEIPT_RECONCILIATION_INTERVAL_SECONDS 不能低于 60 秒")
+        if self.receipt_orphan_grace_seconds < 3600:
+            raise ValueError("GBT_RECEIPT_ORPHAN_GRACE_SECONDS 不能低于 1 小时")
         if environment not in ("local", "docker", "test") and self.receipt_storage_provider != "s3":
             raise ValueError("非本地环境必须使用持久化 S3 兼容票据存储")
         if self.receipt_storage_provider == "s3" and not all(
