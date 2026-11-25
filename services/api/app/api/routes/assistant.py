@@ -169,6 +169,7 @@ def execute_tool(
         conversation_id,
         payload.tool_name,
         payload.arguments,
+        actor_user_id=context.user_id,
         actor_role=context.role,
     )
     return guard.finish(status_code=status.HTTP_200_OK, body=_message_read(row))

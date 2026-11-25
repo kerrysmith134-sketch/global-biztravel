@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.errors import NotFound, Unprocessable
+from app.api.errors import Forbidden, NotFound, Unprocessable
 from app.api.schemas import ExpenseReportCreate, TripCreate
 from app.llm.contracts import LLMRequest
 from app.llm.gateway import get_gateway
@@ -205,10 +205,13 @@ def run_tool(
     tool_name: str,
     arguments: dict[str, Any],
     *,
+    actor_user_id: UUID | str,
     actor_role: str | None,
 ) -> AssistantMessage:
-    """Execute one registered tool for the trip bound to this conversation."""
+    """Execute one registered tool for the owner and trip bound to this conversation."""
     conversation = get_conversation(session, organization_id, conversation_id)
+    if conversation.user_id is None or str(conversation.user_id) != str(actor_user_id):
+        raise Forbidden("当前用户无权在该对话中执行工具")
     if conversation.trip_id is None:
         raise Unprocessable("对话未绑定行程，无法执行该工具", details={"tool_name": tool_name})
 

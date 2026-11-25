@@ -120,3 +120,31 @@ def test_no_read_permission_means_no_tool_run_is_started(monkeypatch) -> None:
             tool_name="trip.get_plan",
             arguments={"trip_id": str(uuid4())},
         )
+
+
+def test_assistant_tool_requires_conversation_owner(monkeypatch) -> None:
+    from app.services import assistant_service
+
+    trip_id = uuid4()
+    owner_id = uuid4()
+    conversation = SimpleNamespace(id=uuid4(), user_id=owner_id, trip_id=trip_id)
+    monkeypatch.setattr(
+        assistant_service,
+        "get_conversation",
+        lambda *args, **kwargs: conversation,
+    )
+
+    def unexpected_execute(*args, **kwargs):
+        raise AssertionError("conversation ownership must be checked before tool execution")
+
+    monkeypatch.setattr(assistant_service, "execute_tool", unexpected_execute)
+    with pytest.raises(Forbidden):
+        assistant_service.run_tool(
+            object(),  # type: ignore[arg-type]
+            uuid4(),
+            conversation.id,
+            "trip.get_plan",
+            {"trip_id": str(trip_id)},
+            actor_user_id=uuid4(),
+            actor_role="OWNER",
+        )
