@@ -904,6 +904,72 @@ final class GlobalTravelOSUITests: XCTestCase {
             "新建出行未出现在列表中"
         )
     }
+    func testTripCloseoutReadinessFlow() throws {
+        let setup = try makeBriefingTrip()
+        _ = try postJSON(
+            "http://127.0.0.1:8080/v1/trips/\\(setup.tripId)/expenses",
+            body: [
+                "category": "MEALS",
+                "amount": "34.20",
+                "currency": "EUR",
+                "occurred_on": String(ISO8601DateFormatter().string(from: Date()).prefix(10)),
+            ]
+        )
+
+        let app = XCUIApplication()
+        app.launchEnvironment["GBT_UI_TEST_BASE_URL"] = "http://127.0.0.1:8080"
+        app.launchEnvironment["GBT_UI_TEST_ORG"] = "11111111-1111-1111-1111-111111111111"
+        app.launchEnvironment["GBT_UI_TEST_USER"] = "22222222-2222-2222-2222-222222222222"
+        app.launchEnvironment["GBT_UI_TEST_LAST_TRIP"] = setup.tripId
+        app.launch()
+
+        XCTAssertTrue(app.buttons["出行"].waitForExistence(timeout: 15), "阶段失守：出行入口")
+        app.buttons["出行"].tap()
+        let trip = app.staticTexts[setup.tripName]
+        XCTAssertTrue(trip.waitForExistence(timeout: 15), "测试出行未出现在列表")
+        trip.tap()
+        expectNav(app, setup.tripName, stage: "打开结账测试出行")
+
+        let money = app.buttons["费用"].firstMatch
+        XCTAssertTrue(money.waitForExistence(timeout: 10), "未找到费用分区")
+        money.tap()
+
+        let readinessStatus = app.staticTexts["trip.closeout.status"]
+        for _ in 0 ..< 14 where !readinessStatus.isHittable {
+            dragContent(app, up: true)
+        }
+        XCTAssertTrue(readinessStatus.waitForExistence(timeout: 25), "结账评估未加载")
+        XCTAssertEqual(readinessStatus.label, "存在待处理事项")
+        XCTAssertEqual(app.staticTexts["trip.closeout.blocker-count"].label, "阻塞 2")
+        XCTAssertEqual(app.staticTexts["trip.closeout.warning-count"].label, "提醒 1")
+
+        XCTAssertTrue(
+            app.staticTexts["trip.closeout.issue.VISIT_NOT_CLOSED"].waitForExistence(timeout: 10),
+            "未显示未完成拜访阻塞项"
+        )
+        XCTAssertTrue(
+            app.staticTexts["trip.closeout.issue.EXPENSE_NOT_IN_REPORT"].exists,
+            "未显示费用未纳入报销快照阻塞项"
+        )
+        XCTAssertTrue(
+            app.staticTexts["trip.closeout.issue.RECEIPT_MISSING"].exists,
+            "未显示缺少原始票据提醒"
+        )
+        XCTAssertTrue(app.staticTexts["EUR"].exists, "未显示原始币种汇总")
+
+        let visitAction = app.buttons["trip.closeout.action.VISIT_NOT_CLOSED"]
+        XCTAssertTrue(revealAndTap(app, visitAction), "无法从结账问题跳转到拜访区块")
+        XCTAssertTrue(
+            app.buttons["新增拜访（新建客户地点）"].waitForExistence(timeout: 10),
+            "结账问题没有把用户带到拜访区块"
+        )
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "出差结账就绪度"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
 }
 
 extension GlobalTravelOSUITests {
