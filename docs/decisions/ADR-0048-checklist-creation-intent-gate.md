@@ -10,7 +10,7 @@ The previous write-intent matcher treated broad phrases such as “准备签证�
 
 ## Decision
 
-1. Only tool-specific phrases that clearly ask to create, generate, establish, or prepare a checklist/case qualify as positive intent.
+1. Only tool-specific phrases that clearly ask to create, generate, establish, or prepare a checklist/case qualify as positive intent, including an explicit request to create a visa case.
 2. Generic questions about what documents to prepare, requirements, or process must not propose the checklist-creation tool.
 3. Existing negation filtering remains fail-closed.
 4. Read tools and write tools continue to use the same executor allow-list; this gate only controls whether a write proposal card is shown.

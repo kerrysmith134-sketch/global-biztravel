@@ -593,6 +593,7 @@ def test_information_request_does_not_propose_checklist_creation(message: str) -
     [
         "请帮我准备签证材料清单",
         "准备签证清单",
+        "请帮我创建签证案件并准备签证材料",
         "Prepare a visa checklist for Germany.",
     ],
 )
