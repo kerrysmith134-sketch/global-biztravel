@@ -14,7 +14,7 @@ from app.db import org_session
 from app.main import app
 from app.models.receipts import ReceiptAsset, ReceiptStorageOrphan
 from app.models.trip import Trip
-from app.services import receipt_storage_reconciliation_service
+from app.services import receipt_asset_service, receipt_storage_reconciliation_service
 from app.services.receipt_storage_service import (
     FilesystemReceiptStorage,
     ReceiptStorageUnavailable,
@@ -262,6 +262,102 @@ def test_delete_failure_is_audited_and_retried(
     assert retried.objects_deleted == 1
     assert orphan_state(key).status == "DELETED"
     assert orphan_state(key).delete_attempts == 2
+
+
+
+def test_database_backed_asset_missing_from_listing_is_checked_with_stat(
+    client: TestClient,
+    private_storage: FilesystemReceiptStorage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trip_id = create_trip(client)
+    now = datetime.now(UTC)
+    asset_id = uuid.uuid4()
+    key = f"receipts/{ORG_A}/{trip_id}/{asset_id}"
+    content = b"valid object that should not be diagnosed as missing"
+    private_storage.put(key, content, "application/pdf")
+    with org_session(UUID(ORG_A)) as session:
+        session.add(
+            ReceiptAsset(
+                id=asset_id,
+                organization_id=UUID(ORG_A),
+                trip_id=UUID(trip_id),
+                storage_provider="filesystem",
+                storage_key=key,
+                original_filename="receipt.pdf",
+                mime_type="application/pdf",
+                byte_length=len(content),
+                sha256="a" * 64,
+                storage_status="AVAILABLE",
+                uploaded_at=now,
+            )
+        )
+
+    # Simulate a listing snapshot that missed an object committed immediately before
+    # reconciliation acquired the tenant lock. Exact-key stat must recover it.
+    monkeypatch.setattr(private_storage, "list_objects", lambda prefix: [])
+    try:
+        report = reconcile(now=now, cleanup_enabled=True, grace_seconds=1)
+        assert report.objects_scanned == 1
+        assert report.missing == 0
+        with org_session(UUID(ORG_A)) as session:
+            incidents = session.scalars(
+                select(ReceiptStorageOrphan).where(
+                    ReceiptStorageOrphan.organization_id == ORG_A,
+                    ReceiptStorageOrphan.storage_key == key,
+                )
+            ).all()
+        assert incidents == []
+        assert private_storage.stat_object(key) is not None
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+
+
+def test_missing_object_for_existing_asset_is_audited_not_deleted(
+    client: TestClient,
+    private_storage: FilesystemReceiptStorage,
+) -> None:
+    trip_id = create_trip(client)
+    now = datetime.now(UTC)
+    asset_id = uuid.uuid4()
+    key = f"receipts/{ORG_A}/{trip_id}/{asset_id}"
+    content = b"receipt object that disappears"
+    private_storage.put(key, content, "application/pdf")
+    with org_session(UUID(ORG_A)) as session:
+        session.add(
+            ReceiptAsset(
+                id=asset_id,
+                organization_id=UUID(ORG_A),
+                trip_id=UUID(trip_id),
+                storage_provider="filesystem",
+                storage_key=key,
+                original_filename="missing.pdf",
+                mime_type="application/pdf",
+                byte_length=len(content),
+                sha256="b" * 64,
+                storage_status="AVAILABLE",
+                uploaded_at=now,
+            )
+        )
+    private_storage.delete(key)
+    try:
+        report = reconcile(now=now, cleanup_enabled=True, grace_seconds=1)
+        assert report.missing == 1
+        assert report.objects_deleted == 0
+        with org_session(UUID(ORG_A)) as session:
+            incident = session.scalars(
+                select(ReceiptStorageOrphan).where(
+                    ReceiptStorageOrphan.organization_id == ORG_A,
+                    ReceiptStorageOrphan.storage_key == key,
+                )
+            ).one()
+            assert incident.status == "MISSING"
+            asset = session.get(ReceiptAsset, asset_id)
+            assert asset is not None
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
 
 
 def test_filesystem_listing_cannot_escape_requested_tenant_prefix(
