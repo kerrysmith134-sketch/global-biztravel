@@ -69,7 +69,7 @@
 | `make bench` | N3 实例族 8 实例全门禁通过（覆盖/能力声明/确定性/金目标基线，2026-11-10 实测）：启发式全族 p50 ≤1.8ms；ortools 快实例 6.5ms~8.9s、corridor_rhine_12 39.4s。**实测发现**：`solver_budget_seconds` 是解数量预算而非墙钟，DFS+GLS 在 n≥12 后墙钟指数级（详见 `docs/architecture/performance.md` §3）。快速跑：`make bench ARGS="--skip-ortools"` |
 | `make ios-build` | BUILD SUCCEEDED |
 | `make ios-test` | **46 单测 + 9 条 UI 用例整轮全绿**（598s，连接真实后端，经 `scripts/ios_test_guard.sh` 保护；链式 207s、AT-007/008 专项 131s）。2026-11-09 八轮完整套件实证并修掉：费用横幅谓词过宽（误匹配正常区块头）、AT-006 加载时序、AT-011 同步 Tab 被 sheet 关闭动画吞掉、AT-007 计划版本区定位、`PlanDiff` 模型与契约漂移（契约样本门禁首次实战命中）、`backToTripDetail` 多元素匹配、Excel 文件选择器重试 |
-| `swiftlint lint` | 0 violations（配置见 `.swiftlint.yml`） |
+| `swiftlint lint` | 84 条历史 warning 已由 CI baseline artifact 记录；本地/CI 执行真实 lint，fatal error 传播失败；当前不是 0-warning 严格门禁 |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
 ## 5. 迁移清单（当前源码 head `0047`；部署库版本以 `alembic current` 为准）
