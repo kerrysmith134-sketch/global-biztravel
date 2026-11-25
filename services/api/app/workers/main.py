@@ -333,11 +333,23 @@ def reconcile_receipts(
     previous = _last_receipt_reconciliation.get(org_id)
     if not force and previous is not None and now - previous < interval:
         return None
-    _last_receipt_reconciliation[org_id] = now
-    with org_session(org_id) as session:
-        return receipt_storage_reconciliation_service.reconcile_receipt_storage(
-            session, org_id
-        )
+    try:
+        with org_session(org_id) as session:
+            report = receipt_storage_reconciliation_service.reconcile_receipt_storage(
+                session, org_id
+            )
+    except Exception:
+        # A failed storage listing/transaction should retry after a short backoff,
+        # not suppress this tenant's next reconciliation for a full hour.
+        retry_backoff = min(interval, 300)
+        _last_receipt_reconciliation[org_id] = now - interval + retry_backoff
+        raise
+    if report.errors:
+        retry_backoff = min(interval, 300)
+        _last_receipt_reconciliation[org_id] = now - interval + retry_backoff
+    else:
+        _last_receipt_reconciliation[org_id] = now
+    return report
 
 
 def dispatch_notifications(
