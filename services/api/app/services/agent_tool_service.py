@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.deps import ROLE_RANK
@@ -27,6 +27,15 @@ class TripGetPlanArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     trip_id: UUID
+
+
+class VisaPrepareChecklistArguments(BaseModel):
+    """Create local draft cases only after an explicit Assistant card tap."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trip_id: UUID
+    countries: list[str] | None = Field(default=None, max_length=20)
 
 
 @dataclass(frozen=True)
@@ -51,6 +60,7 @@ def _execute_visa_get_checklist(
     session: Session,
     organization_id: UUID | str,
     arguments: TripGetPlanArguments,
+    _actor_user_id: UUID | str | None = None,
 ) -> AgentToolResult:
     trip = trip_service.require_trip(session, organization_id, arguments.trip_id)
     cases = visa_service.list_cases(session, organization_id, trip.id)
@@ -110,10 +120,76 @@ def _execute_visa_get_checklist(
     )
 
 
+def _execute_visa_prepare_checklist(
+    session: Session,
+    organization_id: UUID | str,
+    arguments: VisaPrepareChecklistArguments,
+    actor_user_id: UUID | str | None = None,
+) -> AgentToolResult:
+    trip = trip_service.require_trip(session, organization_id, arguments.trip_id)
+    cases = visa_service.ensure_cases(
+        session,
+        organization_id,
+        trip,
+        countries=arguments.countries,
+        actor_user_id=actor_user_id,
+    )
+    if not cases:
+        return AgentToolResult(
+            tool_name="visa.prepare_checklist",
+            status="NO_DESTINATIONS",
+            trip_id=str(trip.id),
+            trip_name=trip.name,
+            detail=(
+                f"「{trip.name}」没有可建立签证案件的目的国。"
+                "请先在行程中添加目的国；此操作不会提交签证申请。"
+            ),
+        )
+
+    total = sum(len(case.checklist or []) for case in cases)
+    ready = sum(
+        1
+        for case in cases
+        for item in (case.checklist or [])
+        if str(item.get("status") or "MISSING").upper() == "READY"
+    )
+    missing = sum(
+        1
+        for case in cases
+        for item in (case.checklist or [])
+        if str(item.get("status") or "MISSING").upper() == "MISSING"
+    )
+    not_applicable = sum(
+        1
+        for case in cases
+        for item in (case.checklist or [])
+        if str(item.get("status") or "MISSING").upper() == "NOT_APPLICABLE"
+    )
+    countries = ", ".join(case.country_code for case in cases)
+    return AgentToolResult(
+        tool_name="visa.prepare_checklist",
+        status="VISA_CASES_PREPARED",
+        trip_id=str(trip.id),
+        trip_name=trip.name,
+        detail=(
+            f"已就绪 {len(cases)} 个目的国签证案件（{countries}），"
+            f"包含 {total} 项材料清单：已备齐 {ready} 项、缺失 {missing} 项、"
+            f"不适用 {not_applicable} 项。重复执行不会重复建单；这只是本地准备记录，"
+            "不会提交申请或确认签证资格。"
+        ),
+        visa_case_count=len(cases),
+        checklist_item_count=total,
+        ready_item_count=ready,
+        missing_item_count=missing,
+        not_applicable_item_count=not_applicable,
+    )
+
+
 def _execute_trip_get_plan(
     session: Session,
     organization_id: UUID | str,
     arguments: TripGetPlanArguments,
+    _actor_user_id: UUID | str | None = None,
 ) -> AgentToolResult:
     trip = trip_service.require_trip(session, organization_id, arguments.trip_id)
     if trip.active_plan_version_id is None:
@@ -158,6 +234,7 @@ def _execute_trip_get_plan(
 EXECUTORS = {
     "trip.get_plan": (_execute_trip_get_plan, TripGetPlanArguments),
     "visa.get_checklist": (_execute_visa_get_checklist, TripGetPlanArguments),
+    "visa.prepare_checklist": (_execute_visa_prepare_checklist, VisaPrepareChecklistArguments),
 }
 
 SCOPE_MINIMUM_ROLES = {
@@ -168,6 +245,7 @@ SCOPE_MINIMUM_ROLES = {
 SCOPE_RESOURCE_BY_TOOL = {
     "trip.get_plan": "trip",
     "visa.get_checklist": "trip",
+    "visa.prepare_checklist": "trip",
 }
 
 
@@ -187,8 +265,10 @@ def execute_tool(
     actor_role: str | None,
     tool_name: str,
     arguments: dict[str, Any],
+    actor_user_id: UUID | str | None = None,
 ) -> AgentToolResult:
     """Validate, authorize, execute and audit one bounded tool invocation."""
+
     catalog_entry = next((item for item in list_tools() if item["name"] == tool_name), None)
     if catalog_entry is None:
         raise Forbidden("该工具未登记，不能执行", details={"tool_name": tool_name})
@@ -242,9 +322,17 @@ def execute_tool(
 
     # Never persist free-form conversation text as tool input. This handler currently needs
     # exactly one stable entity reference, which is safe to retain in the run audit.
+    audited_arguments: dict[str, Any] = {"trip_id": str(parsed_arguments.trip_id)}
+    if (
+        isinstance(parsed_arguments, VisaPrepareChecklistArguments)
+        and parsed_arguments.countries is not None
+    ):
+        audited_arguments["countries"] = [
+            str(country).strip().upper() for country in parsed_arguments.countries
+        ]
     input_snapshot = {
         "tool_name": tool_name,
-        "arguments": {"trip_id": str(parsed_arguments.trip_id)},
+        "arguments": audited_arguments,
     }
     run = start_agent_run(
         session,
@@ -254,7 +342,7 @@ def execute_tool(
         input_snapshot=input_snapshot,
     )
     try:
-        result = executor(session, organization_id, parsed_arguments)
+        result = executor(session, organization_id, parsed_arguments, actor_user_id)
     except ApiError as exc:
         # Expected domain failures are durable AgentRun outcomes, not unhandled worker crashes.
         # The caller can commit the FAILED run and show the business-safe message in the Assistant.
@@ -267,7 +355,11 @@ def execute_tool(
                 "error_code": exc.code,
             },
         )
-        label = "签证材料清单" if tool_name == "visa.get_checklist" else "行程计划"
+        label = (
+            "签证材料清单"
+            if tool_name in {"visa.get_checklist", "visa.prepare_checklist"}
+            else "行程计划"
+        )
         return AgentToolResult(
             tool_name=tool_name,
             status="FAILED",
@@ -299,6 +391,7 @@ def execute_tool(
 __all__ = [
     "AgentToolResult",
     "TripGetPlanArguments",
+    "VisaPrepareChecklistArguments",
     "execute_tool",
     "list_executable_tools",
 ]
