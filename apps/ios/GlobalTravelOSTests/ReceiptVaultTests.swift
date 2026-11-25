@@ -68,6 +68,127 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertEqual(try vault.assets(tripId: "trip-b").count, 1)
     }
 
+    func testLocalExpenseReportPinsVerifiedReceiptMetadata() async throws {
+        let mainDatabase = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("trip-store.sqlite3")
+        )
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory.appendingPathComponent("receipt-vault"),
+            client: nil,
+            uploadsEnabled: false
+        )
+        let repository = LocalTripRepository(database: mainDatabase, receiptVault: vault)
+        let trip = try await repository.createTrip(
+            CreateTripRequest(
+                name: "报销票据快照",
+                purpose: "客户拜访",
+                originPlace: PlaceRef(
+                    name: "Berlin",
+                    countryCode: "DE",
+                    timezone: "Europe/Berlin",
+                    latitude: 52.52,
+                    longitude: 13.405
+                ),
+                window: TripWindow(
+                    start: Date(timeIntervalSinceNow: 86_400),
+                    end: Date(timeIntervalSinceNow: 172_800)
+                )
+            )
+        )
+        let original = pngFixture()
+        let asset = try vault.capture(
+            tripId: trip.id,
+            draft: ReceiptDraft(filename: "hotel-invoice.png", data: original)
+        )
+        _ = try await repository.createExpense(
+            tripId: trip.id,
+            body: TripExpenseCreateRequest(
+                category: .lodging,
+                amount: Decimal(string: "120.00")!,
+                currency: "EUR",
+                occurredOn: ISO8601.dayString(from: Date()),
+                note: "客户现场住宿",
+                receiptAssetId: asset.id
+            )
+        )
+
+        let report = try await repository.createExpenseReport(tripId: trip.id)
+        let item = try XCTUnwrap(report.itemList.first)
+        XCTAssertEqual(item.receiptAssetId, asset.id)
+        XCTAssertEqual(item.receiptSha256, asset.sha256)
+        XCTAssertEqual(item.receiptOriginalFilename, "hotel-invoice.png")
+        XCTAssertEqual(item.receiptMimeType, "image/png")
+        XCTAssertEqual(item.receiptByteLength, original.count)
+
+        let reloaded = try await repository.expenseReports(tripId: trip.id)
+        let persistedItem = try XCTUnwrap(reloaded.first?.itemList.first)
+        XCTAssertEqual(persistedItem, item)
+    }
+
+    func testLocalExpenseReportRejectsCorruptedReceiptBeforeSnapshot() async throws {
+        let mainDatabase = try LocalDatabase.open(
+            path: temporaryDirectory.appendingPathComponent("trip-store.sqlite3")
+        )
+        let vaultDirectory = temporaryDirectory.appendingPathComponent("receipt-vault", isDirectory: true)
+        let vault = try ReceiptVault.open(
+            directory: vaultDirectory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        let repository = LocalTripRepository(database: mainDatabase, receiptVault: vault)
+        let trip = try await repository.createTrip(
+            CreateTripRequest(
+                name: "票据损坏阻断快照",
+                purpose: "客户拜访",
+                originPlace: PlaceRef(
+                    name: "Berlin",
+                    countryCode: "DE",
+                    timezone: "Europe/Berlin",
+                    latitude: 52.52,
+                    longitude: 13.405
+                ),
+                window: TripWindow(
+                    start: Date(timeIntervalSinceNow: 86_400),
+                    end: Date(timeIntervalSinceNow: 172_800)
+                )
+            )
+        )
+        let asset = try vault.capture(
+            tripId: trip.id,
+            draft: ReceiptDraft(filename: "receipt.png", data: pngFixture())
+        )
+        _ = try await repository.createExpense(
+            tripId: trip.id,
+            body: TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: "24.00")!,
+                currency: "EUR",
+                occurredOn: ISO8601.dayString(from: Date()),
+                note: "客户午餐",
+                receiptAssetId: asset.id
+            )
+        )
+        let originalURL = vaultDirectory
+            .appendingPathComponent("receipt-vault", isDirectory: true)
+            .appendingPathComponent(asset.storageKey)
+        try Data("damaged".utf8).write(to: originalURL, options: .atomic)
+
+        do {
+            _ = try await repository.createExpenseReport(tripId: trip.id)
+            XCTFail("原始票据损坏时不得创建报销证据快照")
+        } catch {
+            XCTAssertEqual(error as? ReceiptVaultError, .integrityCheckFailed)
+        }
+        XCTAssertEqual(
+            try mainDatabase.count(
+                table: "expense_reports",
+                where: "trip_id = ?",
+                bindings: [trip.id]
+            ),
+            0
+        )
+    }
+
     func testReceiptVerificationRequiresOwningTrip() throws {
         let vault = try ReceiptVault.open(
             directory: temporaryDirectory,
