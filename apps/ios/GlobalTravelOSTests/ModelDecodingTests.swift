@@ -1039,4 +1039,69 @@ final class ModelDecodingTests: XCTestCase {
     }
 
 
+    func testTripCloseoutReadinessDecodesEvidenceAndCurrencyBreakdown() throws {
+        let json = """
+        {
+          "trip_id": "trip-1",
+          "status": "BLOCKED",
+          "generated_at": "2026-11-25T08:30:00+00:00",
+          "summary": {
+            "visit_count": 3,
+            "visit_outcome_count": 2,
+            "visits_open_count": 1,
+            "visits_missing_outcome_count": 0,
+            "expense_count": 2,
+            "expenses_in_report_count": 1,
+            "expenses_not_in_report_count": 1,
+            "expenses_without_receipt_count": 1,
+            "receipt_asset_count": 1,
+            "receipt_asset_unavailable_count": 0,
+            "ocr_needs_review_count": 1,
+            "open_business_follow_up_count": 1,
+            "latest_report_id": "report-1",
+            "latest_report_status": "DRAFT",
+            "blocker_count": 1,
+            "warning_count": 2
+          },
+          "totals_by_currency": [
+            {"currency": "EUR", "amount": 88.5, "count": 2}
+          ],
+          "blockers": [
+            {
+              "id": "EXPENSE_NOT_IN_REPORT:EXPENSE:expense-1",
+              "code": "EXPENSE_NOT_IN_REPORT",
+              "severity": "BLOCKER",
+              "title": "费用尚未纳入报销快照",
+              "detail": "MEALS · 38.50 EUR",
+              "source_type": "EXPENSE",
+              "source_id": "expense-1",
+              "action_hint": "将该费用加入报销单"
+            }
+          ],
+          "warnings": []
+        }
+        """
+        let readiness = try DateCoding.decode(TripCloseoutReadiness.self, fromJSON: json)
+
+        XCTAssertEqual(readiness.tripId, "trip-1")
+        XCTAssertEqual(readiness.status, .blocked)
+        XCTAssertEqual(readiness.summary.expensesNotInReportCount, 1)
+        XCTAssertEqual(readiness.summary.latestReportStatus, .draft)
+        XCTAssertEqual(readiness.totalsByCurrency.first?.currency, "EUR")
+        XCTAssertEqual(readiness.totalsByCurrency.first?.amount, 88.5)
+        XCTAssertEqual(readiness.blockers.first?.sourceType, "EXPENSE")
+        XCTAssertEqual(readiness.blockers.first?.severity, .blocker)
+        XCTAssertEqual(readiness.status.label, "存在待处理事项")
+    }
+
+    func testTripCloseoutReadinessEndpointMatchesBackendContract() {
+        let request = Endpoints.tripCloseoutReadiness(tripId: "trip-123")
+
+        XCTAssertEqual(request.method, .get)
+        XCTAssertEqual(request.path, "/v1/trips/trip-123/closeout-readiness")
+        XCTAssertNil(request.idempotencyKey)
+    }
+
+
+
 }
