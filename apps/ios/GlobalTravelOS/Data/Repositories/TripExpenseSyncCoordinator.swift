@@ -44,10 +44,15 @@ final class TripExpenseSyncCoordinator {
         connectivityState.hasObservedPath && connectivityState.isPathAvailable
     }
 
-    init(receiptVault: ReceiptVault, createExpense: @escaping ExpenseCreator) {
+    init(
+        receiptVault: ReceiptVault,
+        startMonitoring: Bool = true,
+        createExpense: @escaping ExpenseCreator
+    ) {
         self.receiptVault = receiptVault
         self.outbox = receiptVault.makeTripExpenseOutbox()
         self.createExpense = createExpense
+        guard startMonitoring else { return }
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let available = path.status == .satisfied
             Task { @MainActor [weak self] in

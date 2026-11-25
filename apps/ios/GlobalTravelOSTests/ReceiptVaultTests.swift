@@ -263,6 +263,77 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertTrue(try reopenedOutbox.pending(tripId: queued.tripId).isEmpty)
     }
 
+    @MainActor
+    func testAppWideExpenseCoordinatorDrainsEveryTripOnInitialOnlinePath() async throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        let outbox = vault.makeTripExpenseOutbox()
+
+        func request(_ note: String) -> TripExpenseCreateRequest {
+            TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: "18.40") ?? .zero,
+                currency: "EUR",
+                occurredOn: "2026-11-25",
+                note: note,
+                receiptAssetId: nil
+            )
+        }
+
+        let first = try outbox.enqueue(
+            tripId: "trip-app-wide-a",
+            body: request("first Trip"),
+            localReceiptAssetId: nil
+        )
+        let second = try outbox.enqueue(
+            tripId: "trip-app-wide-a",
+            body: request("second command in first Trip"),
+            localReceiptAssetId: nil
+        )
+        let third = try outbox.enqueue(
+            tripId: "trip-app-wide-b",
+            body: request("another Trip"),
+            localReceiptAssetId: nil
+        )
+
+        var replayedCommands: [(tripId: String, idempotencyKey: String)] = []
+        let coordinator = TripExpenseSyncCoordinator(
+            receiptVault: vault,
+            startMonitoring: false
+        ) { tripId, body, idempotencyKey in
+            replayedCommands.append((tripId, idempotencyKey))
+            return TripExpense(
+                id: "server-\(idempotencyKey)",
+                tripId: tripId,
+                category: body.category.rawValue,
+                amount: body.amount,
+                currency: body.currency
+            )
+        }
+
+        // A first online observation after process startup must recover every account Trip.
+        await coordinator.handlePathUpdate(isPathAvailable: true)
+
+        XCTAssertEqual(
+            replayedCommands.map(\.idempotencyKey),
+            [first.id, second.id, third.id],
+            "Commands retain FIFO order within each Trip and their persisted idempotency keys"
+        )
+        XCTAssertEqual(
+            replayedCommands.map(\.tripId),
+            ["trip-app-wide-a", "trip-app-wide-a", "trip-app-wide-b"]
+        )
+        XCTAssertTrue(try outbox.pending(tripId: "trip-app-wide-a").isEmpty)
+        XCTAssertTrue(try outbox.pending(tripId: "trip-app-wide-b").isEmpty)
+
+        // Repeated satisfied path updates do not replay commands or produce duplicate writes.
+        await coordinator.handlePathUpdate(isPathAvailable: true)
+        XCTAssertEqual(replayedCommands.count, 3)
+    }
+
     func testTripExpenseOutboxEnumeratesAllTripsWithPendingCommandsAfterReopen() throws {
         let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
         let database = try LocalDatabase.open(path: path)
