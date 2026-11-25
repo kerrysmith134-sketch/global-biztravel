@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from app.services import assistant_service
 
 
-AVAILABLE_TOOLS = [
+AVAILABLE_TOOLS: list[dict[str, Any]] = [
     {
         "name": "trip.get_plan",
         "description": "读取生效计划",
