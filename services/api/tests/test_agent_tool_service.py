@@ -11,8 +11,12 @@ from app.services import agent_tool_service
 
 
 def test_only_tools_with_explicit_handlers_are_executable() -> None:
-    names = [item["name"] for item in agent_tool_service.list_executable_tools()]
-    assert names == ["trip.get_plan", "visa.get_checklist", "visa.prepare_checklist"]
+    catalogue = {item["name"]: item for item in agent_tool_service.list_executable_tools()}
+    assert list(catalogue) == ["trip.get_plan", "visa.get_checklist", "visa.prepare_checklist"]
+    prepare_schema = catalogue["visa.prepare_checklist"]["input_schema"]
+    assert prepare_schema["required"] == ["trip_id"]
+    assert "countries" not in prepare_schema["required"]
+    assert "countries" in prepare_schema["properties"]
 
 
 @pytest.mark.parametrize(
