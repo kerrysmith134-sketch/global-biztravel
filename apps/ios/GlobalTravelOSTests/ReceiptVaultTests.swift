@@ -263,6 +263,46 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertTrue(try reopenedOutbox.pending(tripId: queued.tripId).isEmpty)
     }
 
+    func testTripExpenseOutboxEnumeratesAllTripsWithPendingCommandsAfterReopen() throws {
+        let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
+        let database = try LocalDatabase.open(path: path)
+        let outbox = TripExpenseOutbox(database: database)
+
+        func request(_ note: String) -> TripExpenseCreateRequest {
+            TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: "12.00") ?? .zero,
+                currency: "EUR",
+                occurredOn: "2026-11-25",
+                note: note,
+                receiptAssetId: nil
+            )
+        }
+
+        _ = try outbox.enqueue(
+            tripId: "trip-global-sync-a",
+            body: request("first Trip"),
+            localReceiptAssetId: nil
+        )
+        _ = try outbox.enqueue(
+            tripId: "trip-global-sync-b",
+            body: request("second Trip"),
+            localReceiptAssetId: nil
+        )
+        _ = try outbox.enqueue(
+            tripId: "trip-global-sync-a",
+            body: request("another command in first Trip"),
+            localReceiptAssetId: nil
+        )
+
+        let reopened = try LocalDatabase.open(path: path)
+        let reopenedOutbox = TripExpenseOutbox(database: reopened)
+        let pendingTripIDs = try reopenedOutbox.pendingTripIDs()
+
+        XCTAssertEqual(Set(pendingTripIDs), Set(["trip-global-sync-a", "trip-global-sync-b"]))
+        XCTAssertEqual(pendingTripIDs.count, 2, "A Trip is enumerated once even with multiple commands")
+    }
+
     func testTripExpenseOutboxSerializesConcurrentFailureUpdatesAcrossDatabaseHandles() throws {
         let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
         let initialDatabase = try LocalDatabase.open(path: path)

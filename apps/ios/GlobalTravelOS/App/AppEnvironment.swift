@@ -19,6 +19,7 @@ final class AppEnvironment: ObservableObject {
 
     private(set) var apiClient: APIClient
     private(set) var receiptVault: ReceiptVault?
+    private(set) var tripExpenseSyncCoordinator: TripExpenseSyncCoordinator?
     private(set) var tripRepository: TripRepository
     private(set) var planRepository: PlanRepository
     private(set) var visitRepository: VisitRepository
@@ -77,6 +78,7 @@ final class AppEnvironment: ObservableObject {
             directory: directory, client: client, uploadsEnabled: loaded.runMode != "local"
         )
         self.localDatabase = nil
+        self.tripExpenseSyncCoordinator = nil
 
         let bundle = Self.makeBundle(
             settings: loaded, client: client, directory: directory,
@@ -98,6 +100,11 @@ final class AppEnvironment: ObservableObject {
         self.activatePlanUseCase = bundle.activatePlan
         self.submitVisitRecordUseCase = bundle.submitRecord
         self.syncPushUseCase = bundle.syncPush
+        self.tripExpenseSyncCoordinator = Self.makeTripExpenseSyncCoordinator(
+            receiptVault: self.receiptVault,
+            tripRepository: self.tripRepository,
+            runMode: loaded.runMode
+        )
 
         if loaded.runMode == "local" {
             // 本地模式的库引用必须在启动时就挂上：设置页与自动示例数据都依赖它。
@@ -228,6 +235,21 @@ final class AppEnvironment: ObservableObject {
         )
     }
 
+    private static func makeTripExpenseSyncCoordinator(
+        receiptVault: ReceiptVault?,
+        tripRepository: TripRepository,
+        runMode: String
+    ) -> TripExpenseSyncCoordinator? {
+        guard runMode != "local", let receiptVault else { return nil }
+        return TripExpenseSyncCoordinator(receiptVault: receiptVault) { tripId, body, idempotencyKey in
+            try await tripRepository.createExpense(
+                tripId: tripId,
+                body: body,
+                idempotencyKey: idempotencyKey
+            )
+        }
+    }
+
     private static func makeReceiptVault(
         directory: URL,
         client: APIClient,
@@ -263,6 +285,8 @@ final class AppEnvironment: ObservableObject {
         mutate(&next)
         settingsStore.save(next)
         settings = next
+        // Drop the previous account's monitor before rebuilding identity-bound clients.
+        tripExpenseSyncCoordinator = nil
         // Rebuild everything that carries the old identity / mode（P0-1：目录随身份切换）。
         let client = APIClient(configuration: next.apiConfiguration)
         apiClient = client
@@ -282,6 +306,11 @@ final class AppEnvironment: ObservableObject {
             localDatabase = nil
         }
         apply(bundle)
+        tripExpenseSyncCoordinator = Self.makeTripExpenseSyncCoordinator(
+            receiptVault: receiptVault,
+            tripRepository: tripRepository,
+            runMode: next.runMode
+        )
     }
 
     private static func localDatabase(from bundle: RepositoryBundle) -> LocalDatabase? {

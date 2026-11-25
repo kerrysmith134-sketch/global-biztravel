@@ -10,6 +10,7 @@ private enum RootTab: Hashable {
 
 struct RootView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection: RootTab = .mission
 
     var body: some View {
@@ -37,7 +38,14 @@ struct RootView: View {
         .tint(DS.ColorToken.brand)
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(DS.ColorToken.surface, for: .tabBar)
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await environment.tripExpenseSyncCoordinator?.applicationDidBecomeActive() }
+        }
         // Local mode first-run demo seed remains a one-time bootstrap for a fresh local store.
-        .task { await environment.seedDemoIfNeeded() }
+        .task {
+            await environment.seedDemoIfNeeded()
+            await environment.tripExpenseSyncCoordinator?.applicationDidBecomeActive()
+        }
     }
 }

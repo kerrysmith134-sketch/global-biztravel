@@ -1,20 +1,4 @@
-import Network
 import SwiftUI
-
-
-/// Detects only genuine offline-to-online transitions. The first path update is initialization:
-/// the Trip's initial load already drains an existing queue when the app starts online.
-struct TripExpenseConnectivityState {
-    private(set) var hasObservedPath = false
-    private(set) var isReachable = false
-
-    mutating func update(isReachable newValue: Bool) -> Bool {
-        let recovered = hasObservedPath && !isReachable && newValue
-        hasObservedPath = true
-        isReachable = newValue
-        return recovered
-    }
-}
 
 @MainActor
 final class TripDetailViewModel: ObservableObject {
@@ -39,36 +23,16 @@ final class TripDetailViewModel: ObservableObject {
     let tripId: String
     private let environment: AppEnvironment
     private let expenseOutbox: TripExpenseOutbox?
-    /// Coalesces retry requests made while an earlier FIFO drain is awaiting network I/O.
-    private var pendingExpenseRetryRequested = false
-    private let pathMonitor = NWPathMonitor()
-    private let pathMonitorQueue = DispatchQueue(label: "com.anari.globaltravelos.trip-expense-reachability")
-    private var connectivityState = TripExpenseConnectivityState()
-
     init(tripId: String, environment: AppEnvironment) {
         self.tripId = tripId
         self.environment = environment
         self.expenseOutbox = environment.receiptVault?.makeTripExpenseOutbox()
-        pathMonitor.pathUpdateHandler = { [weak self] path in
-            let isReachable = path.status == .satisfied
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if self.connectivityState.update(isReachable: isReachable) {
-                    await self.retryPendingExpenses()
-                }
-            }
-        }
-        pathMonitor.start(queue: pathMonitorQueue)
     }
 
-    deinit {
-        pathMonitor.cancel()
-    }
-
-    /// App foregrounding can be another recovery boundary if the device regained network
-    /// while iOS suspended this screen's work.
+    /// Foreground refresh is delegated to the account-scoped coordinator. The path flag is
+    /// only a local scheduling hint; it does not claim that the remote API is healthy.
     func retryPendingExpensesIfReachable() async {
-        guard connectivityState.isReachable else { return }
+        guard environment.tripExpenseSyncCoordinator?.isPathAvailable == true else { return }
         await retryPendingExpenses()
     }
 
@@ -200,71 +164,20 @@ final class TripDetailViewModel: ObservableObject {
 
     /// Replays durable financial commands in order. Receipt upload is a prerequisite; only the
     /// server-confirmed asset ID is allowed into the API request.
+    /// Delegates durable FIFO replay to the app-wide coordinator so pending commands do
+    /// not depend on this navigation screen remaining alive.
     func retryPendingExpenses() async {
         guard !environment.isLocalMode else { return }
-        guard !isSyncingPendingExpenses else {
-            pendingExpenseRetryRequested = true
-            return
-        }
-        guard let expenseOutbox else {
+        guard let coordinator = environment.tripExpenseSyncCoordinator else {
             errorMessage = "本地费用队列不可用，无法安全重试"
             return
         }
 
         isSyncingPendingExpenses = true
-        defer {
-            isSyncingPendingExpenses = false
-            if pendingExpenseRetryRequested {
-                pendingExpenseRetryRequested = false
-                Task { await retryPendingExpenses() }
-            }
-        }
-        var syncedCount = 0
-
-        // Re-read the FIFO head after every successful write. A new expense may be
-        // enqueued while an upload/API request is suspended; it must join this drain
-        // rather than waiting for the next Trip screen load.
-        while true {
-            let item: PendingTripExpense
-            do {
-                guard let next = try expenseOutbox.pending(tripId: tripId).first else {
-                    break
-                }
-                item = next
-            } catch {
-                errorMessage = environment.errorMessage(error)
-                break
-            }
-
-            do {
-                var request = item.body
-                if let localReceiptAssetId = item.localReceiptAssetId {
-                    guard let receiptVault = environment.receiptVault else {
-                        throw ReceiptVaultError.originalFileUnavailable
-                    }
-                    let asset = try await receiptVault.prepareForExpense(assetId: localReceiptAssetId)
-                    guard let serverAssetId = asset.serverAssetId else {
-                        throw ReceiptVaultError.serverAssetNotConfirmed
-                    }
-                    request.receiptAssetId = serverAssetId
-                }
-                _ = try await environment.tripRepository.createExpense(
-                    tripId: tripId,
-                    body: request,
-                    idempotencyKey: item.id
-                )
-                try expenseOutbox.remove(id: item.id)
-                syncedCount += 1
-            } catch {
-                try? expenseOutbox.recordFailure(
-                    id: item.id,
-                    message: environment.errorMessage(error)
-                )
-                break
-            }
-        }
-
+        defer { isSyncingPendingExpenses = false }
+        let syncedCount = await coordinator.syncPendingExpenses(tripId: tripId)
         refreshPendingExpenses()
+
         if syncedCount > 0 {
             do {
                 expenses = try await environment.tripRepository.expenses(tripId: tripId)
@@ -281,6 +194,7 @@ final class TripDetailViewModel: ObservableObject {
             }
             await refreshCloseoutReadiness()
         }
+
         if pendingExpenses.isEmpty {
             if syncedCount > 0 { statusMessage = "\(syncedCount) 笔费用已同步" }
         } else {
