@@ -61,16 +61,16 @@
 
 | 命令 | 结果 |
 |---|---|
-| `make test` | **473 passed / 1 skipped**（2026-11-25 GitHub Actions #681；真实 PostgreSQL；从空库执行迁移至 `0047_receipt_ocr`，随后 `alembic check` 无漂移；`make test` 自动先补种子数据） |
+| `make test` | **488 passed / 1 skipped**（2026-11-25 GitHub Actions #45690696356；真实 PostgreSQL；从空库执行迁移至 `0048_receipt_storage_reconciliation`，随后 `alembic check` 无漂移；`make test` 自动先补种子数据） |
 | `make typecheck` | MyPy：138 个源文件无问题 |
 | `make lint` / `make check` | Ruff 通过；迁移无漂移 |
 | `make contract-check` | 85 路径 / 141 schema；契约一致（S6：`unplaced`/`policy_violations`/`cards`/`data_gaps`/`actual_cost` 已从 `list[dict]` 收紧为显式模型，见 ADR-0030） |
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | N3 实例族 8 实例全门禁通过（覆盖/能力声明/确定性/金目标基线，2026-11-10 实测）：启发式全族 p50 ≤1.8ms；ortools 快实例 6.5ms~8.9s、corridor_rhine_12 39.4s。**实测发现**：`solver_budget_seconds` 是解数量预算而非墙钟，DFS+GLS 在 n≥12 后墙钟指数级（详见 `docs/architecture/performance.md` §3）。快速跑：`make bench ARGS="--skip-ortools"` |
 | `make ios-build` | BUILD SUCCEEDED（2026-11-25 GitHub Actions #681） |
-| iOS CI 单元测试 | **154 tests / 0 failures**（2026-11-25 GitHub Actions #681；`GlobalTravelOSTests.xctest` 实际执行完毕） |
+| iOS CI 单元测试 | **154 tests / 0 failures**（2026-11-25 GitHub Actions #45690696356；`GlobalTravelOSTests.xctest` 实际执行完毕） |
 | `make ios-test`（历史完整运行） | **46 单测 + 9 条 UI 用例整轮全绿**（598s，连接真实后端，经 `scripts/ios_test_guard.sh` 保护；链式 207s、AT-007/008 专项 131s）。这是 2026-11-09 的完整运行记录，不代表本轮 CI 执行了 UI 运行时。 |
-| `swiftlint lint` | 2026-11-25 CI #681：141 个 Swift 文件报告 **77 条 warning、0 serious**；11 条既有 serious violation 已固定在版本化 `swiftlint-baseline.json` 中；新增 serious violation 仍会失败，普通 warning debt 仍可见。 |
+| `swiftlint lint` | 2026-11-25 CI #45690696356：141 个 Swift 文件报告 **77 条 warning、0 serious**；11 条既有 serious violation 已固定在版本化 `swiftlint-baseline.json` 中；新增 serious violation 仍会失败，普通 warning debt 仍可见。 |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
 ## 5. 迁移清单（当前源码 head `0048`；部署库版本以 `alembic current` 为准）
@@ -218,7 +218,7 @@
 5. **AT-001~AT-012 按钮级 UI 自动化**：2026-11-09 已补齐最后两个 UI 缺口——计划调整入口
    （`PlanChangeCreate` 客户端模型 + 仓储 + 计划详情「调整拜访」，走真实
    `POST /v1/trips/{id}/plan-changes`）与版本比较页（`PlanDiffView`）。
-   **2026-11-09 最终验证：46 单测 + 9 条 UI 用例整轮全绿（598s）。2026-11-25 CI #681：152 XCTest 全绿，真实后端 UI automation target 编译成功（未运行 UI 测试）。**
+   **2026-11-09 最终验证：46 单测 + 9 条 UI 用例整轮全绿（598s）。2026-11-25 H2.14 CI #45690696356：154 XCTest 全绿，真实后端 UI automation target 编译成功（未运行 UI 测试）。**
    测试结构（按 8 轮完整套件实证调整）：`testAcceptanceJourneyChain` 单条串联
    **AT-001~006 + AT-010/012**（新建 → 导入 → 规划 → 激活 → 地图/日历/验证 → 费用 → 记录 → 纪要）；
    **AT-007/008** 由 `testPlanChangeAndDiffFlow` 覆盖（取消拜访 → 等重求解 → 版本比较页）；
