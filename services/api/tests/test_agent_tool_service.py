@@ -226,6 +226,47 @@ def test_visa_prepare_requires_traveler_and_records_created_by_user(monkeypatch)
     assert finished["output_snapshot"]["status"] == "VISA_CASES_PREPARED"
 
 
+def test_visa_prepare_rejects_country_outside_trip_destinations(monkeypatch) -> None:
+    trip_id = uuid4()
+    run = SimpleNamespace()
+    failure = {}
+
+    monkeypatch.setattr(agent_tool_service, "start_agent_run", lambda *args, **kwargs: run)
+    monkeypatch.setattr(
+        agent_tool_service,
+        "fail_agent_run",
+        lambda session, current_run, **kwargs: failure.update(kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.trip_service,
+        "require_trip",
+        lambda session, organization_id, requested_id: SimpleNamespace(
+            id=trip_id,
+            name="Germany work trip",
+            countries=["DE"],
+        ),
+    )
+
+    def unexpected_create(*args, **kwargs):
+        raise AssertionError("out-of-trip destination must be rejected before case creation")
+
+    monkeypatch.setattr(agent_tool_service.visa_service, "ensure_cases", unexpected_create)
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="TRAVELER",
+        tool_name="visa.prepare_checklist",
+        arguments={"trip_id": str(trip_id), "countries": ["US"]},
+        actor_user_id=uuid4(),
+    )
+
+    assert result.status == "FAILED"
+    assert "必须属于当前出行已登记的目的国" in result.detail
+    assert failure["output_snapshot"]["status"] == "FAILED"
+    assert failure["output_snapshot"]["error_code"] == "UNPROCESSABLE_ENTITY"
+
+
 def test_visa_prepare_without_destinations_does_not_create_cases(monkeypatch) -> None:
     trip_id = uuid4()
     run = SimpleNamespace()
