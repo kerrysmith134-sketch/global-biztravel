@@ -122,3 +122,27 @@ docker compose ... logs --tail 100 api
 
 结构化日志（`app.http`）包含 `trace_id/org_id/trip_id/latency_ms/status_code`，可直接与响应头
 `X-Trace-Id` 对照。
+
+## 私有票据对象存储与孤儿对账（H2.13 / H2.14）
+
+票据原件存储在 PostgreSQL 之外。local 环境可用私有 filesystem；Docker 开发栈将数据保存在 `gbt_os_receipt_data` 持久卷。预发/生产必须配置私有 S3 兼容 Bucket，禁止 public ACL。
+
+| 变量 | 默认值 | 说明 |
+|---|---:|---|
+| `GBT_RECEIPT_STORAGE_PROVIDER` | `filesystem` | 生产设置为 `s3` |
+| `GBT_RECEIPT_S3_BUCKET` / `GBT_RECEIPT_S3_REGION` | — / `us-east-1` | 私有 Bucket 与区域 |
+| `GBT_RECEIPT_S3_ENDPOINT_URL` | — | S3 兼容服务可选 endpoint |
+| `GBT_RECEIPT_RECONCILIATION_INTERVAL_SECONDS` | `3600` | 每租户对账间隔 |
+| `GBT_RECEIPT_ORPHAN_GRACE_SECONDS` | `86400` | 对象 LastModified 和首次孤儿观察时间都必须超过该宽限期 |
+| `GBT_RECEIPT_ORPHAN_CLEANUP_ENABLED` | `false` | false 只发现、审计和报告；true 才允许删除合格孤儿 |
+
+S3 运行身份按最小权限配置：`s3:ListBucket` 只允许 `receipts/{organization_id}/` 前缀；`s3:GetObject`、`s3:PutObject`、`s3:DeleteObject` 只允许 Bucket 下 `receipts/*` 对象。对账需要 `ListBucket` 和 `HeadObject`（通常由 `s3:GetObject` 授权）；403/AccessDenied 会记录错误，不能被当成对象不存在。上传时使用服务端 SHA-256 与 S3 `ServerSideEncryption=AES256`。
+
+**安全启用顺序：**
+
+1. 先在预发保持 `GBT_RECEIPT_ORPHAN_CLEANUP_ENABLED=false`，确认 Worker 每小时输出扫描数、首次发现数和“满足清理条件”数。
+2. 核对 `DISCOVERED` 记录、存储 Bucket 生命周期策略、备份/保留要求与租户前缀 IAM；确认没有合法历史对象被误判。
+3. 只有运维审批后，才把 cleanup 开关设为 true 并重启 Worker。开关不是 API 用户可控项。
+4. 观察 `DELETE_FAILED`、`MISSING` 和 `RESOLVED` 状态；`DELETE_FAILED` 会在后续周期重试，`MISSING` 表示对象缺失且系统没有证据证明是本对账器删除的。
+
+上传与对账共用 organization 级 PostgreSQL transaction advisory lock；对账列举完存储后取得锁，再读取数据库并对列表未包含的已登记 key 执行单对象 HEAD/stat，避免把并发完成的新上传误报为缺失。删除前会二次核验 `ReceiptAsset`；任何仍有元数据的资产都不会被当作孤儿清理。`receipt_storage_orphans` 保留对象 key、首次观察、删除尝试、状态和错误；不保存文件内容。
