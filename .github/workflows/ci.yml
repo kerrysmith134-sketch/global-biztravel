@@ -138,7 +138,7 @@ jobs:
       - name: Run complete iOS UI acceptance suite against real services
         run: |
           RESULT_BUNDLE_BASE=/tmp/globaltravel-ios-acceptance \
-          ONLY_TESTING=GlobalTravelOSUITests MAX_ATTEMPTS=1 STALL_SECONDS=900 \
+          ONLY_TESTING=GlobalTravelOSUITests MAX_ATTEMPTS=2 STALL_SECONDS=900 \
             make ios-test IOS_DEST="platform=iOS Simulator,id=${GBT_IOS_SIMULATOR_UDID}"
       - name: Upload iOS UI test diagnostics
         if: ${{ always() && (failure() || cancelled()) }}

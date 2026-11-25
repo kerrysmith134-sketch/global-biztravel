@@ -25,12 +25,12 @@ final class LocalModeUITests: XCTestCase {
     }
 
     func testFivePrimaryWorkspacesAreReachable() throws {
-        let mapTab = app.buttons["地图"]
+        let mapTab = app.tabBars.buttons["地图"].firstMatch
         XCTAssertTrue(mapTab.waitForExistence(timeout: 10), "缺少地图一级入口")
         mapTab.tap()
         XCTAssertTrue(app.navigationBars["地图"].waitForExistence(timeout: 10), "地图工作区未打开")
 
-        let briefTab = app.buttons["简报"]
+        let briefTab = app.tabBars.buttons["简报"].firstMatch
         XCTAssertTrue(briefTab.waitForExistence(timeout: 10), "缺少目的地简报一级入口")
         briefTab.tap()
         XCTAssertTrue(
@@ -38,19 +38,19 @@ final class LocalModeUITests: XCTestCase {
             "目的地简报工作区未打开"
         )
 
-        let customersTab = app.buttons["客户"]
+        let customersTab = app.tabBars.buttons["客户"].firstMatch
         XCTAssertTrue(customersTab.waitForExistence(timeout: 10), "缺少客户一级入口")
         customersTab.tap()
         XCTAssertTrue(app.navigationBars["客户"].waitForExistence(timeout: 10), "客户工作区未打开")
 
-        XCTAssertTrue(app.buttons["任务"].exists, "缺少 Mission 一级入口")
-        XCTAssertTrue(app.buttons["我的"].exists, "缺少个人设置一级入口")
+        XCTAssertTrue(app.tabBars.buttons["任务"].firstMatch.exists, "缺少 Mission 一级入口")
+        XCTAssertTrue(app.tabBars.buttons["我的"].firstMatch.exists, "缺少个人设置一级入口")
     }
 
     func testLocalModeSeededTripSections() throws {
         // SwiftUI TabView can restore the previously selected tab between UI tests.
         // Always select Mission explicitly before asserting its navigation/title content.
-        let missionTab = app.buttons["任务"]
+        let missionTab = app.tabBars.buttons["任务"].firstMatch
         XCTAssertTrue(missionTab.waitForExistence(timeout: 10), "缺少 Mission 一级入口")
         if !app.navigationBars["任务"].exists {
             missionTab.tap()
