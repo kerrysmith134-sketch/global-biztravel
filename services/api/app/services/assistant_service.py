@@ -221,13 +221,6 @@ def run_tool(
     if conversation.trip_id is None:
         raise Unprocessable("对话未绑定行程，无法执行该工具", details={"tool_name": tool_name})
 
-    requested_trip_id = arguments.get("trip_id")
-    if str(requested_trip_id) != str(conversation.trip_id):
-        raise Unprocessable(
-            "工具目标必须与当前对话绑定的出行一致",
-            details={"tool_name": tool_name, "conversation_trip_id": str(conversation.trip_id)},
-        )
-
     result = execute_tool(
         session,
         organization_id,
@@ -235,6 +228,7 @@ def run_tool(
         tool_name=tool_name,
         arguments=arguments,
         actor_user_id=actor_user_id,
+        expected_trip_id=conversation.trip_id,
     )
     row = AssistantMessage(
         organization_id=str(conversation.organization_id),
