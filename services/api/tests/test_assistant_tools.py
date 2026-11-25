@@ -109,8 +109,8 @@ def test_trip_get_plan_tool_is_executable_and_idempotent(client: TestClient) -> 
             endpoint,
             headers=headers(),
             json={
-                "tool_name": "visa.prepare_checklist",
-                "arguments": {"trip_id": trip_id, "countries": ["DE"]},
+                "tool_name": "place.prepare_geocoding",
+                "arguments": {"place_ids": []},
             },
         )
         assert approval_gated.status_code == 403, approval_gated.text
@@ -170,6 +170,138 @@ def test_trip_get_plan_tool_is_executable_and_idempotent(client: TestClient) -> 
                 delete(AgentRun).where(
                     AgentRun.organization_id == UUID(ORG_A),
                     AgentRun.agent_type == "tool:trip.get_plan",
+                    AgentRun.input["arguments"]["trip_id"].astext == trip_id,
+                )
+            )
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+
+
+def test_visa_prepare_tool_requires_user_click_and_is_idempotent(client: TestClient) -> None:
+    now = datetime.now(UTC)
+    trip = client.post(
+        "/v1/trips",
+        headers=headers(),
+        json={
+            "name": f"用户确认签证清单·{uuid.uuid4().hex[:8]}",
+            "window_start": (now + timedelta(days=8)).isoformat(),
+            "window_end": (now + timedelta(days=11)).isoformat(),
+            "countries": ["DE", "NL"],
+        },
+    )
+    assert trip.status_code == 201, trip.text
+    trip_id = trip.json()["id"]
+    conversation_id: str | None = None
+
+    try:
+        conversation = client.post(
+            "/v1/assistant/conversations",
+            headers=headers(),
+            json={"trip_id": trip_id, "title": "准备签证清单"},
+        )
+        assert conversation.status_code == 201, conversation.text
+        conversation_id = conversation.json()["id"]
+
+        proposed = client.post(
+            f"/v1/assistant/conversations/{conversation_id}/messages",
+            headers=headers(),
+            json={"content": "请帮我创建签证案件并准备签证材料"},
+        )
+        assert proposed.status_code == 200, proposed.text
+        proposals = [
+            card for card in proposed.json()["cards"]
+            if card.get("type") == "TOOL_PROPOSAL"
+        ]
+        assert any(card.get("entity_id") == "visa.prepare_checklist" for card in proposals)
+
+        # A proposal is not an execution: no VisaCase or AgentRun is created until the user taps.
+        with org_session(UUID(ORG_A)) as session:
+            cases_before_confirmation = list(
+                session.scalars(
+                    select(VisaCase).where(
+                        VisaCase.organization_id == UUID(ORG_A),
+                        VisaCase.trip_id == UUID(trip_id),
+                    )
+                )
+            )
+            runs_before_confirmation = list(
+                session.scalars(
+                    select(AgentRun).where(
+                        AgentRun.organization_id == UUID(ORG_A),
+                        AgentRun.agent_type == "tool:visa.prepare_checklist",
+                        AgentRun.input["arguments"]["trip_id"].astext == trip_id,
+                    )
+                )
+            )
+            assert cases_before_confirmation == []
+            assert runs_before_confirmation == []
+
+        endpoint = f"/v1/assistant/conversations/{conversation_id}/tools:execute"
+        request_headers = headers(str(uuid.uuid4()))
+        payload = {
+            "tool_name": "visa.prepare_checklist",
+            "arguments": {"trip_id": trip_id, "countries": ["DE", "NL"]},
+        }
+        first = client.post(endpoint, headers=request_headers, json=payload)
+        assert first.status_code == 200, first.text
+        result = first.json()
+        assert result["cards"][0]["type"] == "TOOL_RESULT"
+        assert result["cards"][0]["title"] == "签证案件已准备"
+        assert "2 个目的国签证案件" in result["content"]
+        assert "不会提交申请" in result["content"]
+
+        replay = client.post(endpoint, headers=request_headers, json=payload)
+        assert replay.status_code == 200, replay.text
+        assert replay.headers.get("Idempotent-Replay") == "true"
+        assert replay.json() == result
+
+        conversation_detail = client.get(
+            f"/v1/assistant/conversations/{conversation_id}",
+            headers=headers(),
+        )
+        assert conversation_detail.status_code == 200, conversation_detail.text
+        visa_result_messages = [
+            message
+            for message in conversation_detail.json()["messages"]
+            if any(card.get("type") == "TOOL_RESULT" for card in message.get("cards", []))
+        ]
+        assert len(visa_result_messages) == 1
+
+        with org_session(UUID(ORG_A)) as session:
+            cases = list(
+                session.scalars(
+                    select(VisaCase).where(
+                        VisaCase.organization_id == UUID(ORG_A),
+                        VisaCase.trip_id == UUID(trip_id),
+                    )
+                )
+            )
+            runs = list(
+                session.scalars(
+                    select(AgentRun).where(
+                        AgentRun.organization_id == UUID(ORG_A),
+                        AgentRun.agent_type == "tool:visa.prepare_checklist",
+                        AgentRun.input["arguments"]["trip_id"].astext == trip_id,
+                    )
+                )
+            )
+            assert {case.country_code for case in cases} == {"DE", "NL"}
+            assert all(case.status == "NEW" for case in cases)
+            assert all(case.created_by_user_id == UUID(USER_A) for case in cases)
+            assert len(runs) == 1
+            assert runs[0].status == "SUCCEEDED"
+            assert runs[0].input["arguments"]["countries"] == ["DE", "NL"]
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            if conversation_id is not None:
+                session.execute(
+                    delete(AssistantConversation).where(
+                        AssistantConversation.id == UUID(conversation_id)
+                    )
+                )
+            session.execute(
+                delete(AgentRun).where(
+                    AgentRun.organization_id == UUID(ORG_A),
+                    AgentRun.agent_type == "tool:visa.prepare_checklist",
                     AgentRun.input["arguments"]["trip_id"].astext == trip_id,
                 )
             )

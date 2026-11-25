@@ -178,15 +178,18 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
 
     text = message.lower()
     proposals: list[dict] = []
-    keywords = {
-        "计划": "trip.get_plan",
-        "plan": "trip.get_plan",
-        "简报": "trip.get_plan",
-        "签证": "visa.get_checklist",
-        "材料清单": "visa.get_checklist",
-        "visa": "visa.get_checklist",
-    }
-    matched = {name for kw, name in keywords.items() if kw in text} if trip is not None else set()
+    matched: set[str] = set()
+    if trip is not None:
+        if any(term in text for term in ("计划", "plan", "简报")):
+            matched.add("trip.get_plan")
+        create_visa_intent = any(
+            term in text
+            for term in ("创建签证", "建立签证", "准备签证材料", "生成签证清单", "新增签证案件")
+        )
+        if create_visa_intent:
+            matched.add("visa.prepare_checklist")
+        elif any(term in text for term in ("签证", "材料清单", "visa")):
+            matched.add("visa.get_checklist")
     for tool in list_executable_tools():
         if tool["name"] in matched:
             proposals.append(
@@ -218,19 +221,14 @@ def run_tool(
     if conversation.trip_id is None:
         raise Unprocessable("对话未绑定行程，无法执行该工具", details={"tool_name": tool_name})
 
-    requested_trip_id = arguments.get("trip_id")
-    if str(requested_trip_id) != str(conversation.trip_id):
-        raise Unprocessable(
-            "工具目标必须与当前对话绑定的出行一致",
-            details={"tool_name": tool_name, "conversation_trip_id": str(conversation.trip_id)},
-        )
-
     result = execute_tool(
         session,
         organization_id,
         actor_role=actor_role,
         tool_name=tool_name,
         arguments=arguments,
+        actor_user_id=actor_user_id,
+        expected_trip_id=conversation.trip_id,
     )
     row = AssistantMessage(
         organization_id=str(conversation.organization_id),
@@ -249,6 +247,14 @@ def run_tool(
                     and result.status == "NO_VISA_CASES"
                     else "签证清单读取失败"
                     if result.tool_name == "visa.get_checklist"
+                    else "签证案件已准备"
+                    if result.tool_name == "visa.prepare_checklist"
+                    and result.status == "VISA_CASES_PREPARED"
+                    else "缺少目的国"
+                    if result.tool_name == "visa.prepare_checklist"
+                    and result.status == "NO_DESTINATIONS"
+                    else "签证清单创建失败"
+                    if result.tool_name == "visa.prepare_checklist"
                     else "已读取行程计划"
                     if result.status == "PLAN_LOADED"
                     else "尚无生效计划"

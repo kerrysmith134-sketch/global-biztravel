@@ -39,17 +39,17 @@ TOOL_CATALOG: tuple[dict[str, Any], ...] = (
     },
     {
         "name": "visa.prepare_checklist",
-        "description": "生成签证/证件核对清单草稿（不提交）",
+        "description": "用户点击确认后按行程目的国创建签证案件与材料清单（本地草稿，不提交申请）",
         "input_schema": {
             "type": "object",
-            "required": ["trip_id", "countries"],
+            "required": ["trip_id"],
             "properties": {
                 "trip_id": {"type": "string"},
                 "countries": {"type": "array"},
             },
         },
         "scope": "trip:write",
-        "requires_approval": True,
+        "requires_approval": False,
         "idempotent": True,
         "handler": "usecase:PrepareVisaChecklist",
     },
