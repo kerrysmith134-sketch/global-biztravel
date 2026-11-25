@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 from app.api.errors import NotFound
 from app.api.schemas import PlanStopRead, PlanTravelLegRead, PlanVersionDetailRead
 from app.models.geo import Place
-from app.models.trip import Visit
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
+from app.models.trip import Visit
 
 
 def list_plan_versions(
