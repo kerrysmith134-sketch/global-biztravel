@@ -656,6 +656,70 @@ final class LocalStoreTests: XCTestCase {
         return id
     }
 
+    func testLocalProactiveScanPersistsTriggerAndDeduplicatesRepeatedCandidates() async throws {
+        var request = makeRequest(name: "本地主动触发审计")
+        request.countries = ["DE"]
+        let trip = try await makeRepository().createTrip(request)
+        let now = Date()
+        let config = ProactiveConfig(dailySuggestionCap: 0)
+
+        let first = LocalProactiveEngine.scan(
+            database: database,
+            userId: "local-user",
+            config: config,
+            now: now
+        )
+        XCTAssertEqual(first.triggers, 1)
+        XCTAssertEqual(first.suggestions, 1)
+        XCTAssertTrue(first.errors.isEmpty)
+
+        let triggerRows = try database.store.query(
+            """
+            SELECT rule_id, dedupe_key, status
+            FROM proactive_triggers
+            WHERE trip_id = ?
+            """,
+            bindings: [trip.id]
+        ) { ($0.string(0), $0.string(1), $0.string(2)) }
+        XCTAssertEqual(triggerRows.count, 1)
+        XCTAssertEqual(triggerRows.first?.0, "visa_check")
+        XCTAssertEqual(triggerRows.first?.2, "PROPOSED")
+        XCTAssertEqual(
+            try database.count(
+                table: "proactive_suggestions",
+                where: "trip_id = ?",
+                bindings: [trip.id]
+            ),
+            1
+        )
+
+        let second = LocalProactiveEngine.scan(
+            database: database,
+            userId: "local-user",
+            config: config,
+            now: now
+        )
+        XCTAssertEqual(second.triggers, 1)
+        XCTAssertEqual(second.deduped, 1)
+        XCTAssertEqual(second.suggestions, 0)
+        XCTAssertEqual(
+            try database.count(
+                table: "proactive_triggers",
+                where: "trip_id = ?",
+                bindings: [trip.id]
+            ),
+            1
+        )
+        XCTAssertEqual(
+            try database.count(
+                table: "proactive_suggestions",
+                where: "trip_id = ?",
+                bindings: [trip.id]
+            ),
+            1
+        )
+    }
+
     // MARK: - P7 聚合（复盘/简报/版本比较）
 
     func testLocalCloseoutReadinessUsesPersistedVisitsExpensesAndReportSnapshots() async throws {
