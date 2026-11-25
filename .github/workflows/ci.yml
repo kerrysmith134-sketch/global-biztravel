@@ -1,9 +1,9 @@
 name: ci
 
-# Versioned concurrency key: release the superseded H2.11 runner while still
-# cancelling superseded runs for the same PR/ref on this validation lane.
+# Versioned concurrency key: release stale H2.12 cleanup runners while still
+# cancelling superseded runs for the same PR/ref on the current validation lane.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-12-visit-follow-up
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-13-local-storage-closeout
   cancel-in-progress: true
 
 on:
