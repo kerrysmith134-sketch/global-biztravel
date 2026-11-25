@@ -38,6 +38,7 @@ from app.services import (
     notification_service,
     outbox_service,
     proactive_service,
+    receipt_storage_reconciliation_service,
     retention_service,
 )
 from app.workers.consumers import CONSUMER_HANDLERS
@@ -54,6 +55,8 @@ _last_memory_review: dict[str, float] = {}
 _last_metrics_snapshot: dict[str, float] = {}
 #: 每个租户上次留存清理的单调时钟。
 _last_retention: dict[str, float] = {}
+#: 每个租户上次私有票据对象对账的单调时钟。
+_last_receipt_reconciliation: dict[str, float] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +324,22 @@ def apply_retention(org_id: str, *, force: bool = False) -> retention_service.Re
         return retention_service.apply_retention(session, org_id)
 
 
+def reconcile_receipts(
+    org_id: str, *, force: bool = False
+) -> receipt_storage_reconciliation_service.ReceiptReconciliationReport | None:
+    """扫描当前租户的私有票据对象；清理默认关闭，且受双时钟宽限期保护。"""
+    interval = max(get_settings().receipt_reconciliation_interval_seconds, 1)
+    now = time.monotonic()
+    previous = _last_receipt_reconciliation.get(org_id)
+    if not force and previous is not None and now - previous < interval:
+        return None
+    _last_receipt_reconciliation[org_id] = now
+    with org_session(org_id) as session:
+        return receipt_storage_reconciliation_service.reconcile_receipt_storage(
+            session, org_id
+        )
+
+
 def dispatch_notifications(
     org_id: str, *, limit: int = 50
 ) -> notification_service.DispatchReport:
@@ -431,6 +450,39 @@ def run_cycle(
                 )
         except Exception:  # noqa: BLE001
             logger.exception("组织 %s 的留存清理失败", org_id)
+
+        try:
+            receipt_report = reconcile_receipts(org_id, force=proactive_force)
+            if receipt_report is not None:
+                if (
+                    receipt_report.orphans_discovered
+                    or receipt_report.objects_deleted
+                    or receipt_report.delete_failures
+                    or receipt_report.resolved
+                    or receipt_report.missing
+                ):
+                    did_work = True
+                    logger.info(
+                        "组织 %s 票据对象对账：扫描 %d、发现孤儿 %d、满足清理条件 %d、"
+                        "删除 %d、删除失败 %d、恢复关联 %d、对象缺失 %d（清理启用=%s）",
+                        org_id,
+                        receipt_report.objects_scanned,
+                        receipt_report.orphans_discovered,
+                        receipt_report.orphans_eligible,
+                        receipt_report.objects_deleted,
+                        receipt_report.delete_failures,
+                        receipt_report.resolved,
+                        receipt_report.missing,
+                        receipt_report.cleanup_enabled,
+                    )
+                if receipt_report.errors:
+                    logger.warning(
+                        "组织 %s 票据对象对账有 %d 条存储错误",
+                        org_id,
+                        len(receipt_report.errors),
+                    )
+        except Exception:  # noqa: BLE001 —— 单租户存储问题不应让整个 Worker 退出
+            logger.exception("组织 %s 的票据对象对账失败", org_id)
 
         try:
             snapshots = snapshot_metrics(org_id, force=proactive_force)
