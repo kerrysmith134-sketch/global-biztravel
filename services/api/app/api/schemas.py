@@ -1589,6 +1589,22 @@ class AssistantActionCreate(BaseModel):
     subject_id: UUID
 
 
+class AssistantToolExecuteCreate(BaseModel):
+    """Explicit request to execute one server-allow-listed Agent tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool_name: str = Field(min_length=1, max_length=120)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _normalise_tool_name(self) -> AssistantToolExecuteCreate:
+        self.tool_name = self.tool_name.strip()
+        if not self.tool_name:
+            raise ValueError("tool_name 不能为空")
+        return self
+
+
 # ------------------------------------------------------------ user-intent research
 ResearchSourceScope = Literal[
     "AUTO",

@@ -36,7 +36,6 @@ from app.llm.prompts import (
     TRIP_INTAKE_TEMPLATE_ID,
     trip_creation_intent,
 )
-from app.llm.tools import list_tools
 from app.models.assistant import AssistantConversation, AssistantMessage
 from app.models.proactive import ProactiveSuggestion
 from app.models.trip import Trip
@@ -47,6 +46,7 @@ from app.services import (
     proactive_service,
     trip_service,
 )
+from app.services.agent_tool_service import execute_tool, list_executable_tools
 
 HISTORY_LIMIT = 6
 MAX_CONTENT = 4000
@@ -181,12 +181,10 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
     keywords = {
         "计划": "trip.get_plan",
         "plan": "trip.get_plan",
-        "纪要": "visit.draft_minutes",
-        "签证": "visa.prepare_checklist",
         "简报": "trip.get_plan",
     }
-    matched = {name for kw, name in keywords.items() if kw in text}
-    for tool in list_tools():
+    matched = {name for kw, name in keywords.items() if kw in text} if trip is not None else set()
+    for tool in list_executable_tools():
         if tool["name"] in matched:
             proposals.append(
                 {
@@ -197,6 +195,55 @@ def _facts(session: Session, conversation: AssistantConversation, message: str) 
                 }
             )
     return {"cards": cards, "counts": counts, "proposals": proposals}
+
+
+
+def run_tool(
+    session: Session,
+    organization_id: UUID | str,
+    conversation_id: UUID | str,
+    tool_name: str,
+    arguments: dict[str, Any],
+    *,
+    actor_role: str | None,
+) -> AssistantMessage:
+    """Execute one registered tool for the trip bound to this conversation."""
+    conversation = get_conversation(session, organization_id, conversation_id)
+    if conversation.trip_id is None:
+        raise Unprocessable("对话未绑定行程，无法执行该工具", details={"tool_name": tool_name})
+
+    requested_trip_id = arguments.get("trip_id")
+    if str(requested_trip_id) != str(conversation.trip_id):
+        raise Unprocessable(
+            "工具目标必须与当前对话绑定的出行一致",
+            details={"tool_name": tool_name, "conversation_trip_id": str(conversation.trip_id)},
+        )
+
+    result = execute_tool(
+        session,
+        organization_id,
+        actor_role=actor_role,
+        tool_name=tool_name,
+        arguments=arguments,
+    )
+    row = AssistantMessage(
+        organization_id=str(conversation.organization_id),
+        conversation_id=conversation.id,
+        role="ASSISTANT",
+        content=result.detail,
+        cards=[
+            {
+                "type": "TOOL_RESULT",
+                "title": "已读取行程计划" if result.status == "PLAN_LOADED" else "尚无生效计划",
+                "detail": result.detail,
+                "entity_id": result.trip_id,
+                "link": "trip",
+            }
+        ],
+    )
+    session.add(row)
+    session.flush()
+    return row
 
 
 def run_action(
@@ -659,6 +706,7 @@ def post_message(
 __all__ = [
     "create_conversation",
     "run_action",
+    "run_tool",
     "get_conversation",
     "delete_conversation",
     "list_conversations",

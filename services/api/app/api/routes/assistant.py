@@ -6,7 +6,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, status
 
-from app.api.deps import ROLE_TRAVELER, ROLE_VIEWER, ContextDep, SessionDep, require_role
+from app.api.deps import (
+    ROLE_TRAVELER,
+    ROLE_VIEWER,
+    ContextDep,
+    IdempotencyKeyDep,
+    SessionDep,
+    require_role,
+)
 from app.api.schemas import (
     AssistantActionCreate,
     AssistantConversationCreate,
@@ -14,10 +21,13 @@ from app.api.schemas import (
     AssistantConversationRead,
     AssistantMessageCreate,
     AssistantMessageRead,
+    AssistantToolExecuteCreate,
 )
+from app.api.idempotent import IdempotentWrite
 from app.services import assistant_service
 
 router = APIRouter(tags=["assistant"])
+ASSISTANT_TOOL_EXECUTE_ENDPOINT = "POST /v1/assistant/conversations/{conversation_id}/tools:execute"
 
 
 def _conversation_read(row) -> AssistantConversationRead:
@@ -124,6 +134,44 @@ def run_action(
         actor_role=context.role,
     )
     return _message_read(row)
+
+
+@router.post(
+    "/assistant/conversations/{conversation_id}/tools:execute",
+    response_model=AssistantMessageRead,
+    summary="执行一个已登记、已授权的 Agent 工具",
+)
+def execute_tool(
+    conversation_id: UUID,
+    payload: AssistantToolExecuteCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_VIEWER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=ASSISTANT_TOOL_EXECUTE_ENDPOINT,
+        key=idempotency_key,
+        payload={
+            "conversation_id": str(conversation_id),
+            "tool_name": payload.tool_name,
+            "arguments": payload.arguments,
+        },
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+
+    row = assistant_service.run_tool(
+        session,
+        context.organization_id,
+        conversation_id,
+        payload.tool_name,
+        payload.arguments,
+        actor_role=context.role,
+    )
+    return guard.finish(status_code=status.HTTP_200_OK, body=_message_read(row))
 
 
 @router.delete(
