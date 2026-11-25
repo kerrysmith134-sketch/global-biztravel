@@ -720,6 +720,73 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testLocalProactiveDailyCapUsesPersistedPushTimestampColumn() async throws {
+        var request = makeRequest(name: "每日推送上限")
+        request.countries = ["DE"]
+        let trip = try await makeRepository().createTrip(request)
+        let now = Date()
+        let existingId = UUID().uuidString
+        let existingPayload: [String: Any] = [
+            "id": existingId,
+            "trip_id": "another-local-trip",
+            "suggestion_type": "VISA_REQUIREMENT_REMINDER",
+            "status": "PENDING",
+            "push_status": "PUSHED",
+            "created_at": SQLTimestamp.basics.string(from: now),
+        ]
+        try database.upsert(
+            table: "proactive_suggestions",
+            id: existingId,
+            columns: [
+                "trip_id": "another-local-trip",
+                "type": "VISA_REQUIREMENT_REMINDER",
+                "status": "PENDING",
+                "push_status": "PUSHED",
+                "dedupe_key": "existing-push",
+                "severity": "MEDIUM",
+                "created_at": SQLTimestamp.basics.string(from: now),
+            ],
+            payload: try JSONSerialization.data(withJSONObject: existingPayload)
+        )
+
+        let config = ProactiveConfig(dailySuggestionCap: 1)
+        XCTAssertTrue(
+            LocalProactiveEngine.dailyCapReached(
+                database: database,
+                userId: "local-user",
+                now: now,
+                cap: config.dailySuggestionCap
+            )
+        )
+        let candidate = try XCTUnwrap(
+            LocalProactiveEngine.visaCandidate(trip, config: config, now: now)
+        )
+        var report = ProactiveScanReport()
+        LocalProactiveEngine.record(
+            candidate,
+            trip: trip,
+            userId: "local-user",
+            database: database,
+            config: config,
+            now: now,
+            report: &report
+        )
+
+        XCTAssertEqual(report.suggestions, 1)
+        XCTAssertEqual(report.withheld, 1)
+        let payloads = try database.loadPayloads(
+            table: "proactive_suggestions",
+            where: "trip_id = ?",
+            bindings: [trip.id]
+        )
+        let payload = try XCTUnwrap(payloads.first)
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: payload) as? [String: Any]
+        )
+        XCTAssertEqual(object["push_status"] as? String, "WITHHELD")
+        XCTAssertEqual(object["push_reason"] as? String, "DAILY_CAP")
+    }
+
     // MARK: - P7 聚合（复盘/简报/版本比较）
 
     func testLocalCloseoutReadinessUsesPersistedVisitsExpensesAndReportSnapshots() async throws {
