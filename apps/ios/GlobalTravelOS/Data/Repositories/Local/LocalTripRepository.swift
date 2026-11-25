@@ -16,9 +16,11 @@ struct LocalStorePendingError: LocalizedError {
 /// - P4/P7 逐步替换标 `pending` 的领域方法（费用/报销/预算/签证/导入/指南/复盘）
 final class LocalTripRepository: TripRepository {
     let database: LocalDatabase
+    private let receiptVault: ReceiptVault?
 
-    init(database: LocalDatabase) {
+    init(database: LocalDatabase, receiptVault: ReceiptVault? = nil) {
         self.database = database
+        self.receiptVault = receiptVault
     }
 
     // MARK: - 编解码
@@ -477,6 +479,31 @@ final class LocalTripRepository: TripRepository {
             )
         }
 
+        var expensesWithUnavailableReceipt: [TripExpense] = []
+        for expense in expenses where expense.receiptAssetId != nil {
+            do {
+                guard let receiptVault, let assetId = expense.receiptAssetId else {
+                    throw ReceiptVaultError.assetNotFound
+                }
+                try receiptVault.verifyOriginal(assetId: assetId, tripId: tripId)
+            } catch {
+                expensesWithUnavailableReceipt.append(expense)
+            }
+        }
+        for expense in expensesWithUnavailableReceipt {
+            warnings.append(
+                closeoutIssue(
+                    code: "RECEIPT_UNAVAILABLE",
+                    severity: .warning,
+                    title: "原始票据不可用",
+                    detail: "\(expense.category) · \(expense.amount) \(expense.currency)",
+                    sourceType: "EXPENSE",
+                    sourceId: expense.id,
+                    actionHint: "重新采集原始票据，确认文件完整且归属于当前行程"
+                )
+            )
+        }
+
         // LocalFollowUp data is already persisted by the same local visit repository.
         var openFollowUps: [VisitFollowUp] = []
         let localVisits = LocalVisitRepository(database: database)
@@ -540,7 +567,7 @@ final class LocalTripRepository: TripRepository {
                 expensesNotInReportCount: unreportedExpenses.count,
                 expensesWithoutReceiptCount: expensesWithoutReceipt.count,
                 receiptAssetCount: receiptAssetIds.count,
-                receiptAssetUnavailableCount: 0,
+                receiptAssetUnavailableCount: expensesWithUnavailableReceipt.count,
                 ocrNeedsReviewCount: 0,
                 openBusinessFollowUpCount: openFollowUps.count,
                 latestReportId: latestReport?.id,
@@ -646,7 +673,7 @@ final class LocalTripRepository: TripRepository {
         report.updatedAt = Date()
         try database.upsert(
             table: "expense_reports", id: id,
-            columns: ["status": "SUBMITTED"],
+            columns: ["trip_id": report.tripId, "status": "SUBMITTED"],
             payload: try DateCoding.encode(report)
         )
         return report
