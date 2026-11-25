@@ -17,6 +17,7 @@ export PATH="$PG_BIN:$PATH"
 PSQL="$PG_BIN/psql"
 CREATEDB="$PG_BIN/createdb"
 PG_ISREADY="$PG_BIN/pg_isready"
+export PGPORT=55432
 
 # Homebrew initializes a default cluster on normal installs, but its own CI
 # install path can intentionally skip init_data_dir. Make runner provisioning
@@ -26,12 +27,15 @@ if [ ! -s "$PGDATA/PG_VERSION" ]; then
   mkdir -p "$PGDATA"
   "$PG_BIN/initdb" --locale=en_US.UTF-8 -E UTF-8 "$PGDATA"
 fi
+# Use a dedicated port so a preinstalled or user-started PostgreSQL service on
+# the hosted runner cannot make this disposable test database bind the wrong instance.
+printf '\nport = 55432\nlisten_addresses = 127.0.0.1\n' >> "$PGDATA/postgresql.conf"
 
 echo "== PostgreSQL service =="
 brew services start postgresql@18
 ready=0
 for attempt in $(seq 1 90); do
-  if "$PG_ISREADY" -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
+  if "$PG_ISREADY" -h 127.0.0.1 -p "$PGPORT" >/dev/null 2>&1; then
     ready=1
     break
   fi
