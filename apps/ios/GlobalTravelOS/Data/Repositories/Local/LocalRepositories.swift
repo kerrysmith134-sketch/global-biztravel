@@ -527,46 +527,39 @@ final class LocalProactiveRepository: ProactiveRepository {
             )
         }
 
-        // 执行器（本地只准备，不对外）：建签证案草稿 / 标记准备完成。
+        // Local approval prepares deterministic domain records; it never performs external actions.
         let tripId = object["trip_id"] as? String
         var execution: [String: Any] = ["status": "PREPARED"]
-        if type == "VISA_REQUIREMENT_REMINDER", let tripId,
-           let countries = (try? database.loadPayloads(
-               table: "trips", where: "id = ?", bindings: [tripId]
-           ))?.first
-               .flatMap({ try? DateCoding.decoder().decode(Trip.self, from: $0) })?.countries {
-            for code in countries {
-                let caseId = UUID().uuidString
-                let casePayload: [String: Any] = [
-                    "id": caseId,
-                    "trip_id": tripId,
-                    "country": code,
-                    "status": "NEW",
-                    "note": "MANUAL_REVIEW_REQUIRED：按官方渠道核验签证要求",
-                    "created_at": SQLTimestamp.basics.string(from: Date()),
-                ]
-                try? database.upsert(
-                    table: "visa_cases", id: caseId,
-                    columns: [
-                        "trip_id": tripId, "country": code, "status": "NEW",
-                        "created_at": SQLTimestamp.basics.string(from: Date()),
-                    ],
-                    payload: try JSONSerialization.data(withJSONObject: casePayload)
-                )
-                execution["visa_cases"] = (execution["visa_cases"] as? [String]) ?? [] + [caseId]
-            }
-        }
-
         var updated = object
         updated["status"] = "EXECUTED"
-        updated["execution_result"] = execution
         updated["executed_at"] = SQLTimestamp.basics.string(from: Date())
         updated["approved_by"] = "local-user"
-        try database.upsert(
-            table: "proactive_suggestions", id: suggestionId,
-            columns: ["status": "EXECUTED"],
-            payload: try JSONSerialization.data(withJSONObject: updated)
-        )
+
+        try database.transaction {
+            if type == "VISA_REQUIREMENT_REMINDER" {
+                guard let tripId, !tripId.isEmpty else {
+                    throw APIError.serverError(
+                        code: "VALIDATION_ERROR",
+                        message: "签证提醒缺少行程关联",
+                        traceId: nil,
+                        details: [:]
+                    )
+                }
+                let cases = try LocalVisaService.createCases(
+                    database: database,
+                    tripId: tripId,
+                    countries: nil
+                )
+                execution["visa_cases"] = cases.map(\.id)
+            }
+            updated["execution_result"] = execution
+            try database.upsert(
+                table: "proactive_suggestions",
+                id: suggestionId,
+                columns: ["status": "EXECUTED"],
+                payload: try JSONSerialization.data(withJSONObject: updated)
+            )
+        }
         return SuggestionApprovalResponse(id: suggestionId, status: "EXECUTED")
     }
 
