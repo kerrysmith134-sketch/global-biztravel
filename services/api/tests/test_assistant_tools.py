@@ -213,6 +213,28 @@ def test_visa_prepare_tool_requires_user_click_and_is_idempotent(client: TestCli
         ]
         assert any(card.get("entity_id") == "visa.prepare_checklist" for card in proposals)
 
+        # A proposal is not an execution: no VisaCase or AgentRun is created until the user taps.
+        with org_session(UUID(ORG_A)) as session:
+            cases_before_confirmation = list(
+                session.scalars(
+                    select(VisaCase).where(
+                        VisaCase.organization_id == UUID(ORG_A),
+                        VisaCase.trip_id == UUID(trip_id),
+                    )
+                )
+            )
+            runs_before_confirmation = list(
+                session.scalars(
+                    select(AgentRun).where(
+                        AgentRun.organization_id == UUID(ORG_A),
+                        AgentRun.agent_type == "tool:visa.prepare_checklist",
+                        AgentRun.input["arguments"]["trip_id"].astext == trip_id,
+                    )
+                )
+            )
+            assert cases_before_confirmation == []
+            assert runs_before_confirmation == []
+
         endpoint = f"/v1/assistant/conversations/{conversation_id}/tools:execute"
         request_headers = headers(str(uuid.uuid4()))
         payload = {
