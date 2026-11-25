@@ -36,6 +36,8 @@ final class TripExpenseSyncCoordinator {
     )
     private var connectivityState = TripExpenseConnectivityState()
     private var inFlight: [String: Task<Int, Never>] = [:]
+    private var syncErrorsByTrip: [String: String] = [:]
+    private var isStopped = false
 
     private(set) var lastSyncError: String?
     private(set) var lastSyncAt: Date?
@@ -65,10 +67,22 @@ final class TripExpenseSyncCoordinator {
 
     deinit {
         pathMonitor.cancel()
+        inFlight.values.forEach { $0.cancel() }
+    }
+
+    /// Stops account-scoped observation and cancels in-flight requests before the app switches
+    /// identity or run mode. Durable commands are intentionally left in SQLite for that account.
+    func shutdown() {
+        guard !isStopped else { return }
+        isStopped = true
+        pathMonitor.cancel()
+        inFlight.values.forEach { $0.cancel() }
+        inFlight.removeAll()
     }
 
     /// Called on initial path observation, subsequent reconnection, and app foreground.
     func handlePathUpdate(isPathAvailable: Bool) async {
+        guard !isStopped else { return }
         if connectivityState.update(isPathAvailable: isPathAvailable) {
             await syncAllPending()
         }
@@ -82,6 +96,7 @@ final class TripExpenseSyncCoordinator {
     /// Enumerates all Trips in this account's local outbox, including Trips that are not
     /// represented in the current navigation stack.
     func syncAllPending() async {
+        guard !isStopped else { return }
         let tripIDs: [String]
         do {
             tripIDs = try outbox.pendingTripIDs()
@@ -108,6 +123,7 @@ final class TripExpenseSyncCoordinator {
     /// The FIFO head is re-read after each successful request, so newly queued commands join
     /// the same drain without waiting for another app lifecycle event.
     func syncPendingExpenses(tripId: String) async -> Int {
+        guard !isStopped else { return 0 }
         if let task = inFlight[tripId] {
             return await task.value
         }
@@ -122,10 +138,15 @@ final class TripExpenseSyncCoordinator {
         return syncedCount
     }
 
+    private func refreshLastSyncError() {
+        // A successful Trip must not erase another Trip's unresolved sync failure.
+        lastSyncError = syncErrorsByTrip.keys.sorted().compactMap { syncErrorsByTrip[$0] }.first
+    }
+
     private func drain(tripId: String) async -> Int {
         var syncedCount = 0
-        var encounteredFailure = false
-        while true {
+        var encounteredFailure: String?
+        while !Task.isCancelled {
             let item: PendingTripExpense
             do {
                 guard let next = try outbox.pending(tripId: tripId).first else {
@@ -150,20 +171,28 @@ final class TripExpenseSyncCoordinator {
                 try outbox.remove(id: item.id)
                 syncedCount += 1
             } catch {
-                encounteredFailure = true
+                guard !Task.isCancelled else { break }
+                encounteredFailure = error.localizedDescription
                 try? outbox.recordFailure(
                     id: item.id,
                     message: String(error.localizedDescription.prefix(500))
                 )
-                lastSyncError = error.localizedDescription
                 break
             }
         }
+
+        if let encounteredFailure {
+            syncErrorsByTrip[tripId] = encounteredFailure
+        } else {
+            let hasPendingCommands = (try? outbox.pending(tripId: tripId).isEmpty) == false
+            if !hasPendingCommands {
+                syncErrorsByTrip.removeValue(forKey: tripId)
+            }
+        }
+        refreshLastSyncError()
+
         if syncedCount > 0 {
             lastSyncAt = Date()
-            if !encounteredFailure {
-                lastSyncError = nil
-            }
         }
         return syncedCount
     }

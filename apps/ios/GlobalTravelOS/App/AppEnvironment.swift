@@ -285,7 +285,9 @@ final class AppEnvironment: ObservableObject {
         mutate(&next)
         settingsStore.save(next)
         settings = next
-        // Drop the previous account's monitor before rebuilding identity-bound clients.
+        // Stop the old account's network observer and in-flight expense writes before rebuilding
+        // identity-bound clients. The durable old-account outbox remains available on disk.
+        tripExpenseSyncCoordinator?.shutdown()
         tripExpenseSyncCoordinator = nil
         // Rebuild everything that carries the old identity / mode（P0-1：目录随身份切换）。
         let client = APIClient(configuration: next.apiConfiguration)
