@@ -155,6 +155,7 @@ def execute_tool(
         endpoint=ASSISTANT_TOOL_EXECUTE_ENDPOINT,
         key=idempotency_key,
         payload={
+            "actor_user_id": str(context.user_id),
             "conversation_id": str(conversation_id),
             "tool_name": payload.tool_name,
             "arguments": payload.arguments,
