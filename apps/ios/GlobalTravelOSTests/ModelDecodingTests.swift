@@ -4,21 +4,21 @@ import XCTest
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
 
-    func testTripExpenseConnectivityTriggersRetryOnlyAfterNetworkRecovery() {
+    func testTripExpenseConnectivityDrainsOnStartupAndAfterNetworkRecovery() {
         var state = TripExpenseConnectivityState()
 
-        // Initial connectivity is handled by TripDetailViewModel.load(), not as a recovery.
-        XCTAssertFalse(state.update(isReachable: true))
-        XCTAssertTrue(state.isReachable)
-        XCTAssertFalse(state.update(isReachable: true), "Repeated satisfied paths are not recoveries")
+        // Initial online state must drain commands left by a previous terminated app process.
+        XCTAssertTrue(state.update(isPathAvailable: true))
+        XCTAssertTrue(state.isPathAvailable)
+        XCTAssertFalse(state.update(isPathAvailable: true), "Stable online paths do not retrigger")
 
-        XCTAssertFalse(state.update(isReachable: false))
-        XCTAssertFalse(state.isReachable)
-        XCTAssertTrue(state.update(isReachable: true), "Offline-to-online must request a queue drain")
-        XCTAssertFalse(state.update(isReachable: true), "A stable online path must not retrigger")
+        XCTAssertFalse(state.update(isPathAvailable: false))
+        XCTAssertFalse(state.isPathAvailable)
+        XCTAssertTrue(state.update(isPathAvailable: true), "Offline-to-online must drain the queue")
+        XCTAssertFalse(state.update(isPathAvailable: true), "Repeated online updates are ignored")
 
-        XCTAssertFalse(state.update(isReachable: false))
-        XCTAssertTrue(state.update(isReachable: true), "A later reconnect must request another drain")
+        XCTAssertFalse(state.update(isPathAvailable: false))
+        XCTAssertTrue(state.update(isPathAvailable: true), "A later reconnect drains again")
     }
 
     func testPlanStopCoordinatesRequireValidGeographicRanges() {

@@ -421,6 +421,19 @@ final class TripExpenseOutbox {
         ).map { try DateCoding.decode(PendingTripExpense.self, from: $0) }
     }
 
+    /// Distinct Trips with durable commands, in oldest-command-first order. This lets the
+    /// app-level sync coordinator recover work even when no Trip detail screen is mounted.
+    func pendingTripIDs() throws -> [String] {
+        try database.store.query(
+            """
+            SELECT trip_id
+            FROM pending_trip_expenses
+            GROUP BY trip_id
+            ORDER BY MIN(created_at) ASC, trip_id ASC
+            """
+        ) { $0.string(0) }
+    }
+
     func recordFailure(id: String, message: String) throws {
         // Read-modify-write must share one SQLite writer transaction across database handles.
         // Otherwise concurrent retries can lose attempt increments, or recreate a queue row

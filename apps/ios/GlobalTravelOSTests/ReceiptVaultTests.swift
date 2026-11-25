@@ -263,6 +263,212 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertTrue(try reopenedOutbox.pending(tripId: queued.tripId).isEmpty)
     }
 
+    @MainActor
+    func testAppWideExpenseCoordinatorDrainsEveryTripOnInitialOnlinePath() async throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        let outbox = vault.makeTripExpenseOutbox()
+
+        func request(_ note: String) -> TripExpenseCreateRequest {
+            TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: "18.40") ?? .zero,
+                currency: "EUR",
+                occurredOn: "2026-11-25",
+                note: note,
+                receiptAssetId: nil
+            )
+        }
+
+        let first = try outbox.enqueue(
+            tripId: "trip-app-wide-a",
+            body: request("first Trip"),
+            localReceiptAssetId: nil
+        )
+        let second = try outbox.enqueue(
+            tripId: "trip-app-wide-a",
+            body: request("second command in first Trip"),
+            localReceiptAssetId: nil
+        )
+        let third = try outbox.enqueue(
+            tripId: "trip-app-wide-b",
+            body: request("another Trip"),
+            localReceiptAssetId: nil
+        )
+
+        var replayedTripIDs: [String] = []
+        var replayedIdempotencyKeys: [String] = []
+        let coordinator = TripExpenseSyncCoordinator(
+            receiptVault: vault,
+            startMonitoring: false
+        ) { tripId, body, idempotencyKey in
+            replayedTripIDs.append(tripId)
+            replayedIdempotencyKeys.append(idempotencyKey)
+            return TripExpense(
+                id: "server-\(idempotencyKey)",
+                tripId: tripId,
+                category: body.category.rawValue,
+                amount: body.amount,
+                currency: body.currency
+            )
+        }
+
+        // A first online observation after process startup must recover every account Trip.
+        await coordinator.handlePathUpdate(isPathAvailable: true)
+
+        XCTAssertEqual(
+            replayedIdempotencyKeys,
+            [first.id, second.id, third.id],
+            "Commands retain FIFO order within each Trip and their persisted idempotency keys"
+        )
+        XCTAssertEqual(
+            replayedTripIDs,
+            ["trip-app-wide-a", "trip-app-wide-a", "trip-app-wide-b"]
+        )
+        XCTAssertTrue(try outbox.pending(tripId: "trip-app-wide-a").isEmpty)
+        XCTAssertTrue(try outbox.pending(tripId: "trip-app-wide-b").isEmpty)
+
+        // Repeated satisfied path updates do not replay commands or produce duplicate writes.
+        await coordinator.handlePathUpdate(isPathAvailable: true)
+        XCTAssertEqual(replayedIdempotencyKeys.count, 3)
+    }
+
+    @MainActor
+    func testAppWideExpenseCoordinatorShutdownLeavesPendingCommandsDurable() async throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        let outbox = vault.makeTripExpenseOutbox()
+        let queued = try outbox.enqueue(
+            tripId: "trip-shutdown",
+            body: TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: "9.90") ?? .zero,
+                currency: "EUR",
+                occurredOn: "2026-11-25",
+                note: "Must remain queued after account switch",
+                receiptAssetId: nil
+            ),
+            localReceiptAssetId: nil
+        )
+
+        var writeCount = 0
+        let coordinator = TripExpenseSyncCoordinator(
+            receiptVault: vault,
+            startMonitoring: false
+        ) { tripId, body, key in
+            writeCount += 1
+            return TripExpense(
+                id: "server-\(key)",
+                tripId: tripId,
+                category: body.category.rawValue,
+                amount: body.amount,
+                currency: body.currency
+            )
+        }
+
+        coordinator.shutdown()
+        await coordinator.handlePathUpdate(isPathAvailable: true)
+        _ = await coordinator.syncPendingExpenses(tripId: queued.tripId)
+
+        XCTAssertEqual(writeCount, 0)
+        XCTAssertEqual(try outbox.pending(tripId: queued.tripId).map(\.id), [queued.id])
+    }
+
+    @MainActor
+    func testSuccessfulTripDoesNotClearAnotherTripsSyncFailure() async throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        let outbox = vault.makeTripExpenseOutbox()
+        func enqueue(_ tripId: String) throws {
+            _ = try outbox.enqueue(
+                tripId: tripId,
+                body: TripExpenseCreateRequest(
+                    category: .meals,
+                    amount: Decimal(string: "15.00") ?? .zero,
+                    currency: "EUR",
+                    occurredOn: "2026-11-25",
+                    note: tripId,
+                    receiptAssetId: nil
+                ),
+                localReceiptAssetId: nil
+            )
+        }
+        // The first Trip is queued first, so its failure is observed before the second succeeds.
+        try enqueue("trip-a-fails")
+        try enqueue("trip-b-succeeds")
+
+        let coordinator = TripExpenseSyncCoordinator(
+            receiptVault: vault,
+            startMonitoring: false
+        ) { tripId, body, key in
+            if tripId == "trip-a-fails" {
+                throw APIError.transport("network unavailable")
+            }
+            return TripExpense(
+                id: "server-\(key)",
+                tripId: tripId,
+                category: body.category.rawValue,
+                amount: body.amount,
+                currency: body.currency
+            )
+        }
+
+        await coordinator.handlePathUpdate(isPathAvailable: true)
+
+        XCTAssertNotNil(coordinator.lastSyncError)
+        XCTAssertEqual(try outbox.pending(tripId: "trip-a-fails").count, 1)
+        XCTAssertTrue(try outbox.pending(tripId: "trip-b-succeeds").isEmpty)
+    }
+
+    func testTripExpenseOutboxEnumeratesAllTripsWithPendingCommandsAfterReopen() throws {
+        let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
+        let database = try LocalDatabase.open(path: path)
+        let outbox = TripExpenseOutbox(database: database)
+
+        func request(_ note: String) -> TripExpenseCreateRequest {
+            TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: "12.00") ?? .zero,
+                currency: "EUR",
+                occurredOn: "2026-11-25",
+                note: note,
+                receiptAssetId: nil
+            )
+        }
+
+        _ = try outbox.enqueue(
+            tripId: "trip-global-sync-a",
+            body: request("first Trip"),
+            localReceiptAssetId: nil
+        )
+        _ = try outbox.enqueue(
+            tripId: "trip-global-sync-b",
+            body: request("second Trip"),
+            localReceiptAssetId: nil
+        )
+        _ = try outbox.enqueue(
+            tripId: "trip-global-sync-a",
+            body: request("another command in first Trip"),
+            localReceiptAssetId: nil
+        )
+
+        let reopened = try LocalDatabase.open(path: path)
+        let reopenedOutbox = TripExpenseOutbox(database: reopened)
+        let pendingTripIDs = try reopenedOutbox.pendingTripIDs()
+
+        XCTAssertEqual(Set(pendingTripIDs), Set(["trip-global-sync-a", "trip-global-sync-b"]))
+        XCTAssertEqual(pendingTripIDs.count, 2, "A Trip is enumerated once even with multiple commands")
+    }
+
     func testTripExpenseOutboxSerializesConcurrentFailureUpdatesAcrossDatabaseHandles() throws {
         let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
         let initialDatabase = try LocalDatabase.open(path: path)
