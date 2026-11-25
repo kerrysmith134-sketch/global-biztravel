@@ -35,6 +35,93 @@ struct LocalReceiptAsset: Codable, Equatable, Identifiable {
     }
 }
 
+
+struct ReceiptOcrCandidates: Codable, Equatable {
+    private enum CodingKeys: String, CodingKey {
+        case merchantHint, amountCandidates, dateCandidates, textLength
+    }
+
+    var merchantHint: String?
+    var amountCandidates: [String]
+    var dateCandidates: [String]
+    var textLength: Int?
+
+    init(
+        merchantHint: String? = nil,
+        amountCandidates: [String] = [],
+        dateCandidates: [String] = [],
+        textLength: Int? = nil
+    ) {
+        self.merchantHint = merchantHint
+        self.amountCandidates = amountCandidates
+        self.dateCandidates = dateCandidates
+        self.textLength = textLength
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        merchantHint = try container.decodeIfPresent(String.self, forKey: .merchantHint)
+        amountCandidates = try container.decodeIfPresent([String].self, forKey: .amountCandidates) ?? []
+        dateCandidates = try container.decodeIfPresent([String].self, forKey: .dateCandidates) ?? []
+        textLength = try container.decodeIfPresent(Int.self, forKey: .textLength)
+    }
+}
+
+struct ReceiptOcrReview: Codable, Equatable {
+    var id: String
+    var receiptOcrRunId: String
+    var decision: String
+    var note: String?
+    var reviewedByUserId: String?
+    var reviewedAt: Date
+}
+
+struct ReceiptOcrRun: Codable, Equatable, Identifiable {
+    var id: String
+    var receiptAssetId: String
+    var agentRunId: String
+    var contentSha256: String
+    var engine: String
+    var engineVersion: String
+    var status: String
+    var candidates: ReceiptOcrCandidates
+    var error: String?
+    var startedAt: Date
+    var finishedAt: Date?
+    var createdAt: Date
+    var review: ReceiptOcrReview?
+}
+
+struct ReceiptOcrReviewRequest: Codable, Equatable {
+    var decision: String
+    var merchant: String?
+    var amount: Decimal?
+    var currency: String?
+    var occurredOn: String?
+    var note: String?
+
+    init(
+        decision: String,
+        merchant: String? = nil,
+        amount: Decimal? = nil,
+        currency: String? = nil,
+        occurredOn: String? = nil,
+        note: String? = nil
+    ) {
+        self.decision = decision
+        self.merchant = merchant
+        self.amount = amount
+        self.currency = currency
+        self.occurredOn = occurredOn
+        self.note = note
+    }
+}
+
+struct ReceiptOcrExecution: Equatable {
+    var asset: LocalReceiptAsset
+    var run: ReceiptOcrRun
+}
+
 private struct ReceiptAssetUploadResponse: Decodable {
     let id: String
     let tripId: String
@@ -241,6 +328,49 @@ final class ReceiptVault {
         }
     }
 
+
+    /// Uploads the local original if needed, then asks the server to OCR that exact immutable asset.
+    /// OCR candidates are suggestions only and are never written to a TripExpense here.
+    func runOCR(assetId: String) async throws -> ReceiptOcrExecution {
+        guard uploadsEnabled, let client else {
+            throw ReceiptVaultError.ocrUnavailable
+        }
+        let asset = try await prepareForExpense(assetId: assetId)
+        guard let serverAssetId = asset.serverAssetId else {
+            throw ReceiptVaultError.serverAssetNotConfirmed
+        }
+        let request = APIRequest(
+            method: .post,
+            path: "/v1/receipt-assets/\(serverAssetId):ocr",
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+        let run = try await client.send(request, as: ReceiptOcrRun.self)
+        guard run.receiptAssetId == serverAssetId, run.contentSha256 == asset.sha256 else {
+            throw ReceiptVaultError.serverAssetMismatch
+        }
+        return ReceiptOcrExecution(asset: asset, run: run)
+    }
+
+    /// Appends an explicit human review to one OCR run. This endpoint never writes expense data.
+    func reviewOCR(
+        runId: String,
+        request: ReceiptOcrReviewRequest
+    ) async throws -> ReceiptOcrReview {
+        guard uploadsEnabled, let client else {
+            throw ReceiptVaultError.ocrUnavailable
+        }
+        let body = try DateCoding.encode(request)
+        let apiRequest = APIRequest(
+            method: .post,
+            path: "/v1/receipt-ocr-runs/\(runId):review",
+            body: body,
+            // One immutable review per OCR run: retries after a lost response must replay
+            // the original review instead of surfacing a false "already reviewed" conflict.
+            idempotencyKey: runId
+        )
+        return try await client.send(apiRequest, as: ReceiptOcrReview.self)
+    }
+
     /// Best-effort retry for a Trip's durable pending uploads. A failure leaves each original in
     /// place with PENDING_UPLOAD state and a visible diagnostic; no state is marked uploaded early.
     func retryPendingUploads(tripId: String) async {
@@ -370,6 +500,7 @@ enum ReceiptVaultError: LocalizedError, Equatable {
     case uploadUnavailable
     case serverAssetNotConfirmed
     case serverAssetMismatch
+    case ocrUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -383,6 +514,7 @@ enum ReceiptVaultError: LocalizedError, Equatable {
         case .uploadUnavailable: return "当前未配置票据上传服务"
         case .serverAssetNotConfirmed: return "服务端尚未确认票据资产，费用未保存"
         case .serverAssetMismatch: return "服务端返回的票据内容与本地原件不一致"
+        case .ocrUnavailable: return "票据 OCR 需要云端模式；本机原件已保留，可继续手工录入费用"
         }
     }
 }
