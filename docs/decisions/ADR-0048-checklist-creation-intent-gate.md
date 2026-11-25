@@ -11,8 +11,8 @@ The previous write-intent matcher treated broad phrases such as “准备签证�
 ## Decision
 
 1. Only tool-specific phrases that clearly ask to create, generate, establish, or prepare a checklist/case qualify as positive intent, including an explicit request to create a visa case.
-2. Generic questions about what documents to prepare, requirements, or process must not propose the checklist-creation tool.
-3. Existing negation filtering remains fail-closed.
+2. Generic questions about documents, requirements, process, and how-to steps must not propose the checklist-creation tool, even when they contain words such as “create”.
+3. Existing negation filtering and a dedicated information-request phrase gate both fail closed.
 4. Read tools and write tools continue to use the same executor allow-list; this gate only controls whether a write proposal card is shown.
 5. Extend the LLM gateway's bounded schema validator to validate array item types, and declare `tool_suggestions` as an array of strings.
 

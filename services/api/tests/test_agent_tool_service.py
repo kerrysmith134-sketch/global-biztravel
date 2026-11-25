@@ -587,6 +587,27 @@ def test_information_request_does_not_propose_checklist_creation(message: str) -
 
     assert proposals == []
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "签证清单怎么创建？",
+        "如何创建签证案件？",
+        "创建签证材料清单有哪些步骤？",
+        "How do I create a visa checklist?",
+        "What are the requirements for a visa checklist?",
+    ],
+)
+def test_how_to_question_does_not_propose_checklist_creation(message: str) -> None:
+    proposals = assistant_service._merge_tool_proposals(
+        policy_proposals=[],
+        model_candidates=["visa.prepare_checklist"],
+        available_tools=AVAILABLE_TOOLS,
+        message=message,
+    )
+
+    assert proposals == []
+
+
 
 @pytest.mark.parametrize(
     "message",

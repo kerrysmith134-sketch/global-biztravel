@@ -138,6 +138,26 @@ WRITE_TOOL_INTENT_TERMS: dict[str, tuple[str, ...]] = {
         "create visa case",
     ),
 }
+WRITE_TOOL_INFORMATION_REQUEST_TERMS = (
+    "怎么",
+    "如何",
+    "怎样",
+    "哪些步骤",
+    "什么步骤",
+    "办理流程",
+    "创建流程",
+    "要求是什么",
+    "需要什么材料",
+    "怎么做",
+    "how to",
+    "how do i",
+    "how can i",
+    "what are the steps",
+    "what documents",
+    "requirements",
+    "process",
+    "steps to",
+)
 WRITE_TOOL_NEGATIONS = (
     "不要创建",
     "不想创建",
@@ -165,6 +185,8 @@ def _has_explicit_write_intent(tool_name: str, message: str) -> bool:
         return False
     normalized = message.lower()
     if any(term in normalized for term in WRITE_TOOL_NEGATIONS):
+        return False
+    if any(term in normalized for term in WRITE_TOOL_INFORMATION_REQUEST_TERMS):
         return False
     return any(term in normalized for term in terms)
 
