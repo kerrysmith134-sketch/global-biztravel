@@ -16,7 +16,7 @@
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；当前源码 152 个 XCTest 方法（33 契约样本解码），10 条真实后端 UI 自动化用例；本分支最新运行结果以 GitHub Actions 为准 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；当前源码 154 个 XCTest 方法（33 契约样本解码），10 条真实后端 UI 自动化用例；本分支最新运行结果以 GitHub Actions 为准 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -68,9 +68,9 @@
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | N3 实例族 8 实例全门禁通过（覆盖/能力声明/确定性/金目标基线，2026-11-10 实测）：启发式全族 p50 ≤1.8ms；ortools 快实例 6.5ms~8.9s、corridor_rhine_12 39.4s。**实测发现**：`solver_budget_seconds` 是解数量预算而非墙钟，DFS+GLS 在 n≥12 后墙钟指数级（详见 `docs/architecture/performance.md` §3）。快速跑：`make bench ARGS="--skip-ortools"` |
 | `make ios-build` | BUILD SUCCEEDED（2026-11-25 GitHub Actions #681） |
-| iOS CI 单元测试 | **152 tests / 0 failures**（2026-11-25 GitHub Actions #681；`GlobalTravelOSTests.xctest` 实际执行完毕） |
+| iOS CI 单元测试 | **154 tests / 0 failures**（2026-11-25 GitHub Actions #681；`GlobalTravelOSTests.xctest` 实际执行完毕） |
 | `make ios-test`（历史完整运行） | **46 单测 + 9 条 UI 用例整轮全绿**（598s，连接真实后端，经 `scripts/ios_test_guard.sh` 保护；链式 207s、AT-007/008 专项 131s）。这是 2026-11-09 的完整运行记录，不代表本轮 CI 执行了 UI 运行时。 |
-| `swiftlint lint` | 2026-11-25 CI #681：141 个 Swift 文件报告 **73 条 warning、0 serious**；11 条既有 serious violation 已固定在版本化 `swiftlint-baseline.json` 中；新增 serious violation 仍会失败，普通 warning debt 仍可见。 |
+| `swiftlint lint` | 2026-11-25 CI #681：141 个 Swift 文件报告 **77 条 warning、0 serious**；11 条既有 serious violation 已固定在版本化 `swiftlint-baseline.json` 中；新增 serious violation 仍会失败，普通 warning debt 仍可见。 |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
 ## 5. 迁移清单（当前源码 head `0048`；部署库版本以 `alembic current` 为准）
