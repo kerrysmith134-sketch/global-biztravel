@@ -294,7 +294,7 @@ private struct MessageBubble: View {
                             Label(
                                 toolName == "visa.get_checklist" ? "查看签证清单" : "读取计划",
                                 systemImage: toolName == "visa.get_checklist"
-                                    ? "checklist"
+                                    ? "doc.text"
                                     : "doc.text.magnifyingglass"
                             )
                             .font(.caption)

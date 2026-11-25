@@ -17,7 +17,7 @@ An Agent must not create visa cases, infer official entry rules, or silently tur
 3. If no cases exist, return `NO_VISA_CASES` and a truthful explanation. Do not synthesize checklist items.
 4. Summaries count persisted `READY`, `MISSING`, and `NOT_APPLICABLE` values and report case statuses by destination country.
 5. The tool records minimized trip-reference input and aggregated result counts in `AgentRun`; no passport details or raw notes are copied into the run snapshot.
-6. Assistant keyword proposals are displayed only when the tool has a concrete handler. The iOS action opens the existing trip detail screen after the result card, where the visa workflow remains authoritative.
+6. Assistant keyword proposals are displayed only when the tool has a concrete handler. The iOS action opens the existing trip detail screen after the result card; its 签证与入境 section remains the authoritative create/update surface.
 7. `visa.prepare_checklist` remains blocked until its actual approval semantics are connected.
 
 ## Consequences

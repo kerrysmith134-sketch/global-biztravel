@@ -267,12 +267,13 @@ def execute_tool(
                 "error_code": exc.code,
             },
         )
+        label = "签证材料清单" if tool_name == "visa.get_checklist" else "行程计划"
         return AgentToolResult(
             tool_name=tool_name,
             status="FAILED",
             trip_id=str(parsed_arguments.trip_id),
             trip_name="",
-            detail=f"无法读取该行程计划：{exc.message}",
+            detail=f"无法读取{label}：{exc.message}",
         )
 
     succeed_agent_run(
