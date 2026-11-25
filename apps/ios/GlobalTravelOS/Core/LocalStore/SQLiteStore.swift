@@ -117,14 +117,14 @@ final class SQLiteStore {
         }
     }
 
-    /// 事务内执行多条变更；抛错则回滚。队列内的嵌套写入加入外层事务。
+    /// 事务内执行多条变更；嵌套调用用 SAVEPOINT 隔离，抛错只回滚当前层。
     func transaction(_ work: () throws -> Void) throws {
         if isOnQueue {
             if transactionDepth > 0 {
-                try work()
-                return
+                try nestedTransactionUnlocked(work)
+            } else {
+                try transactionUnlocked(work)
             }
-            try transactionUnlocked(work)
             return
         }
         try queue.sync { try transactionUnlocked(work) }
@@ -139,6 +139,21 @@ final class SQLiteStore {
             try runUnlocked("COMMIT")
         } catch {
             try? runUnlocked("ROLLBACK")
+            throw error
+        }
+    }
+
+    private func nestedTransactionUnlocked(_ work: () throws -> Void) throws {
+        let savepoint = "localstore_sp_\(transactionDepth)"
+        try runUnlocked("SAVEPOINT \(savepoint)")
+        transactionDepth += 1
+        defer { transactionDepth -= 1 }
+        do {
+            try work()
+            try runUnlocked("RELEASE SAVEPOINT \(savepoint)")
+        } catch {
+            try? runUnlocked("ROLLBACK TO SAVEPOINT \(savepoint)")
+            try? runUnlocked("RELEASE SAVEPOINT \(savepoint)")
             throw error
         }
     }
