@@ -119,15 +119,45 @@ def delete_conversation(
 
 WRITE_TOOL_INTENT_TERMS: dict[str, tuple[str, ...]] = {
     "visa.prepare_checklist": (
-        "创建签证",
-        "建立签证",
-        "准备签证材料",
-        "生成签证清单",
+        "创建签证清单",
+        "创建签证案件",
+        "创建签证材料清单",
+        "新建签证清单",
+        "新建签证案件",
+        "建立签证案件",
         "新增签证案件",
+        "生成签证清单",
+        "生成签证材料清单",
+        "准备签证清单",
+        "准备签证材料清单",
+        "帮我准备签证清单",
         "create visa checklist",
-        "prepare visa documents",
+        "create a visa checklist",
+        "generate visa checklist",
+        "prepare a visa checklist",
+        "create visa case",
     ),
 }
+WRITE_TOOL_INFORMATION_REQUEST_TERMS = (
+    "怎么",
+    "如何",
+    "怎样",
+    "哪些步骤",
+    "什么步骤",
+    "办理流程",
+    "创建流程",
+    "要求是什么",
+    "需要什么材料",
+    "怎么做",
+    "how to",
+    "how do i",
+    "how can i",
+    "what are the steps",
+    "what documents",
+    "requirements",
+    "process",
+    "steps to",
+)
 WRITE_TOOL_NEGATIONS = (
     "不要创建",
     "不想创建",
@@ -155,6 +185,8 @@ def _has_explicit_write_intent(tool_name: str, message: str) -> bool:
         return False
     normalized = message.lower()
     if any(term in normalized for term in WRITE_TOOL_NEGATIONS):
+        return False
+    if any(term in normalized for term in WRITE_TOOL_INFORMATION_REQUEST_TERMS):
         return False
     return any(term in normalized for term in terms)
 

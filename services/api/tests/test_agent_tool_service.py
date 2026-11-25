@@ -571,6 +571,67 @@ def test_model_can_suggest_write_tool_after_explicit_user_request() -> None:
 @pytest.mark.parametrize(
     "message",
     [
+        "请准备签证材料需要什么？",
+        "准备签证材料有哪些要求？",
+        "我要了解准备签证材料的流程。",
+        "What visa documents should I prepare?",
+    ],
+)
+def test_information_request_does_not_propose_checklist_creation(message: str) -> None:
+    proposals = assistant_service._merge_tool_proposals(
+        policy_proposals=[],
+        model_candidates=["visa.prepare_checklist"],
+        available_tools=AVAILABLE_TOOLS,
+        message=message,
+    )
+
+    assert proposals == []
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "签证清单怎么创建？",
+        "如何创建签证案件？",
+        "创建签证材料清单有哪些步骤？",
+        "How do I create a visa checklist?",
+        "What are the requirements for a visa checklist?",
+    ],
+)
+def test_how_to_question_does_not_propose_checklist_creation(message: str) -> None:
+    proposals = assistant_service._merge_tool_proposals(
+        policy_proposals=[],
+        model_candidates=["visa.prepare_checklist"],
+        available_tools=AVAILABLE_TOOLS,
+        message=message,
+    )
+
+    assert proposals == []
+
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "请帮我准备签证材料清单",
+        "准备签证清单",
+        "请帮我创建签证案件并准备签证材料",
+        "Prepare a visa checklist for Germany.",
+    ],
+)
+def test_explicit_checklist_preparation_can_propose_write_tool(message: str) -> None:
+    proposals = assistant_service._merge_tool_proposals(
+        policy_proposals=[],
+        model_candidates=["visa.prepare_checklist"],
+        available_tools=AVAILABLE_TOOLS,
+        message=message,
+    )
+
+    assert [item["name"] for item in proposals] == ["visa.prepare_checklist"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
         "不要创建签证材料清单，只查看现有清单",
         "Do not create a visa checklist; only show the existing one.",
     ],
@@ -702,6 +763,13 @@ def test_assistant_schema_accepts_only_array_for_model_tool_suggestions() -> Non
         "reply": "我可以读取已生效的计划。",
         "tool_suggestions": "trip.get_plan",
     }
+    invalid_item = {
+        "reply": "我可以读取已生效的计划。",
+        "tool_suggestions": ["trip.get_plan", {"name": "trip.delete"}],
+    }
 
     assert _validate(valid, ASSISTANT_SCHEMA) is None
     assert _validate(invalid, ASSISTANT_SCHEMA) == "字段 tool_suggestions 应为 array"
+    assert _validate(invalid_item, ASSISTANT_SCHEMA) == (
+        "字段 tool_suggestions[1] 应为 string"
+    )
