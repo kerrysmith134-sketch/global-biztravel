@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from app.api.errors import Forbidden, Unprocessable
+from app.api.errors import Forbidden, NotFound, Unprocessable
 from app.services import agent_tool_service
 
 
@@ -212,6 +212,39 @@ def test_active_plan_tool_returns_real_version_summary(monkeypatch) -> None:
     assert "第 3 版生效计划" in result.detail
     assert finished["output_snapshot"]["status"] == "PLAN_LOADED"
     assert finished["output_snapshot"]["plan_version_id"] == str(plan_id)
+
+
+def test_domain_read_error_is_persisted_as_a_failed_agent_run(monkeypatch) -> None:
+    trip_id = uuid4()
+    run = SimpleNamespace()
+    failure = {}
+
+    monkeypatch.setattr(agent_tool_service, "start_agent_run", lambda *args, **kwargs: run)
+    monkeypatch.setattr(
+        agent_tool_service,
+        "fail_agent_run",
+        lambda session, current_run, **kwargs: failure.update(kwargs),
+    )
+
+    def missing_trip(*args, **kwargs):
+        raise NotFound("出行不存在")
+
+    monkeypatch.setattr(agent_tool_service.trip_service, "require_trip", missing_trip)
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="VIEWER",
+        tool_name="trip.get_plan",
+        arguments={"trip_id": str(trip_id)},
+    )
+
+    assert result.status == "FAILED"
+    assert result.trip_id == str(trip_id)
+    assert "出行不存在" in result.detail
+    assert failure["error"] == "出行不存在"
+    assert failure["output_snapshot"]["status"] == "FAILED"
+    assert failure["output_snapshot"]["error_code"] == "NOT_FOUND"
 
 
 def test_assistant_tool_requires_conversation_owner(monkeypatch) -> None:

@@ -237,7 +237,13 @@ def run_tool(
         cards=[
             {
                 "type": "TOOL_RESULT",
-                "title": "已读取行程计划" if result.status == "PLAN_LOADED" else "尚无生效计划",
+                "title": (
+                    "已读取行程计划"
+                    if result.status == "PLAN_LOADED"
+                    else "尚无生效计划"
+                    if result.status == "NO_ACTIVE_PLAN"
+                    else "读取计划失败"
+                ),
                 "detail": result.detail,
                 "entity_id": result.trip_id,
                 "link": "trip",

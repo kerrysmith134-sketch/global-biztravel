@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.deps import ROLE_RANK
-from app.api.errors import Conflict, Forbidden, Unprocessable
+from app.api.errors import ApiError, Conflict, Forbidden, Unprocessable
 from app.llm.tools import list_tools
 from app.services import plan_service, trip_service
 from app.services.agent_runtime_service import start_agent_run, succeed_agent_run
@@ -183,7 +183,28 @@ def execute_tool(
         agent_type=f"tool:{tool_name}",
         input_snapshot=input_snapshot,
     )
-    result = executor(session, organization_id, parsed_arguments)
+    try:
+        result = executor(session, organization_id, parsed_arguments)
+    except ApiError as exc:
+        # Expected domain failures are durable AgentRun outcomes, not unhandled worker crashes.
+        # The caller can commit the FAILED run and show the business-safe message in the Assistant.
+        fail_agent_run(
+            session,
+            run,
+            error=exc.message,
+            output_snapshot={
+                "status": "FAILED",
+                "error_code": exc.code,
+            },
+        )
+        return AgentToolResult(
+            tool_name=tool_name,
+            status="FAILED",
+            trip_id=str(parsed_arguments.trip_id),
+            trip_name="",
+            detail=f"无法读取该行程计划：{exc.message}",
+        )
+
     succeed_agent_run(
         session,
         run,
