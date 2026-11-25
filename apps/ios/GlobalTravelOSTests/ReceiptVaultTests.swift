@@ -421,7 +421,7 @@ final class ExpenseOutboxNetworkTests: XCTestCase {
         defer { session.invalidateAndCancel() }
 
         let apiConfiguration = APIConfiguration(
-            baseURL: URL(string: "https://expense.test")!,
+            baseURL: try XCTUnwrap(URL(string: "https://expense.test")),
             orgId: "org-test",
             userId: "user-test",
             deviceId: "device-test",
