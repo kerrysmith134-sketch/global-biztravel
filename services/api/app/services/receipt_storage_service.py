@@ -8,6 +8,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 from typing import Any, Protocol
 
 from app.config import get_settings
@@ -54,6 +55,11 @@ def _validate_org_prefix(prefix: str) -> None:
     match = re.fullmatch(r"receipts/([0-9a-f-]{36})/", prefix, re.IGNORECASE)
     if match is None:
         raise ValueError("invalid receipt storage organization prefix")
+    try:
+        if str(UUID(match.group(1))) != match.group(1).lower():
+            raise ValueError("invalid receipt storage organization UUID")
+    except ValueError as exc:
+        raise ValueError("invalid receipt storage organization prefix") from exc
 
 
 class FilesystemReceiptStorage:
