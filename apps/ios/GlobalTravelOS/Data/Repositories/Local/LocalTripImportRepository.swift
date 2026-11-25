@@ -203,6 +203,13 @@ extension LocalTripRepository {
         var warnings: [String] = []
 
         try database.transaction {
+            // Decode each business table once per import, then update the in-memory snapshots as
+            // rows are created. Avoid a full SQLite table scan for every spreadsheet row.
+            var customerCache = try database.loadPayloads(table: "customers")
+                .map { try DateCoding.decoder().decode(Customer.self, from: $0) }
+            var placeCache = try database.loadPayloads(table: "places")
+                .map { try DateCoding.decoder().decode(Place.self, from: $0) }
+
             for index in batch.rows.indices {
                 var row = batch.rows[index]
                 let explicitlySelected = requestedSet.contains(row.rowNumber)
@@ -225,11 +232,11 @@ extension LocalTripRepository {
                     continue
                 }
 
-                let customerResult = try resolveImportedCustomer(normalized)
+                let customerResult = try resolveImportedCustomer(normalized, cache: &customerCache)
                 if customerResult.reused { reusedCustomers += 1 } else { createdCustomers += 1 }
                 let customer = customerResult.customer
 
-                let placeResult = try resolveImportedPlace(normalized)
+                let placeResult = try resolveImportedPlace(normalized, cache: &placeCache)
                 if placeResult.reused { reusedPlaces += 1 } else { createdPlaces += 1 }
                 let place = placeResult.place
                 guard let placeId = place.id else {
@@ -311,10 +318,10 @@ extension LocalTripRepository {
     }
 
     private func resolveImportedCustomer(
-        _ value: LocalImportNormalizedRow
+        _ value: LocalImportNormalizedRow,
+        cache: inout [Customer]
     ) throws -> (customer: Customer, reused: Bool) {
-        let customers = try database.loadPayloads(table: "customers")
-            .map { try DateCoding.decoder().decode(Customer.self, from: $0) }
+        let customers = cache
         if let externalRef = value.externalRef,
            let match = customers.first(where: {
                $0.externalRef?.localizedCaseInsensitiveCompare(externalRef) == .orderedSame
@@ -350,15 +357,16 @@ extension LocalTripRepository {
             columns: ["name": customer.name, "tier": customer.tier],
             payload: try DateCoding.encode(customer)
         )
+        cache.append(customer)
         return (customer, false)
     }
 
     private func resolveImportedPlace(
-        _ value: LocalImportNormalizedRow
+        _ value: LocalImportNormalizedRow,
+        cache: inout [Place]
     ) throws -> (place: Place, reused: Bool) {
         let name = value.addressLine ?? value.customerName
-        let places = try database.loadPayloads(table: "places")
-            .map { try DateCoding.decoder().decode(Place.self, from: $0) }
+        let places = cache
         if let match = places.first(where: {
             $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
                 && sameOptionalText($0.city, value.city)
@@ -387,6 +395,7 @@ extension LocalTripRepository {
             columns: ["name": place.name, "city": place.city],
             payload: try DateCoding.encode(place)
         )
+        cache.append(place)
         return (place, false)
     }
 
