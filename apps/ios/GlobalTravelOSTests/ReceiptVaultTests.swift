@@ -68,6 +68,25 @@ final class ReceiptVaultTests: XCTestCase {
         XCTAssertEqual(try vault.assets(tripId: "trip-b").count, 1)
     }
 
+    func testReceiptVerificationRequiresOwningTrip() throws {
+        let vault = try ReceiptVault.open(
+            directory: temporaryDirectory,
+            client: nil,
+            uploadsEnabled: false
+        )
+        let asset = try vault.capture(
+            tripId: "trip-owner",
+            draft: ReceiptDraft(filename: "receipt.png", data: pngFixture())
+        )
+
+        XCTAssertNoThrow(try vault.verifyOriginal(assetId: asset.id, tripId: "trip-owner"))
+        XCTAssertThrowsError(
+            try vault.verifyOriginal(assetId: asset.id, tripId: "another-trip")
+        ) { error in
+            XCTAssertEqual(error as? ReceiptVaultError, .assetTripMismatch)
+        }
+    }
+
     func testUnsupportedAndEmptyFilesAreRejectedBeforePersistence() throws {
         let vault = try ReceiptVault.open(
             directory: temporaryDirectory,
