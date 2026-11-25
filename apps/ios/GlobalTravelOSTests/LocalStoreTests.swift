@@ -554,6 +554,18 @@ final class LocalStoreTests: XCTestCase {
         } catch let error as APIError {
             XCTAssertEqual(error.errorCode, "CASE_TRANSITION_INVALID")
         }
+
+        let preparing = try await repository.updateVisaCase(
+            id: cases.first!.id,
+            status: .preparing
+        )
+        XCTAssertEqual(preparing.status, .preparing)
+        let submitted = try await repository.updateVisaCase(
+            id: cases.first!.id,
+            status: .submitted
+        )
+        XCTAssertEqual(submitted.status, .submitted)
+        XCTAssertNotNil(submitted.submittedAt)
     }
 
     // MARK: - P7 聚合（复盘/简报/版本比较）
