@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, Unprocessable
@@ -92,16 +92,22 @@ def _candidate_suggestions(
         select(AgentRun)
         .where(
             AgentRun.organization_id == organization_id,
-            AgentRun.agent_type == "MEETING_MINUTES_DRAFT",
+            AgentRun.agent_type.in_(["MEETING_MINUTES_DRAFT", "tool:visit.draft_minutes"]),
             AgentRun.status == "SUCCEEDED",
-            AgentRun.input["visit_id"].as_string() == str(visit_id),
+            or_(
+                AgentRun.input["visit_id"].as_string() == str(visit_id),
+                AgentRun.input["arguments"]["visit_id"].as_string() == str(visit_id),
+            ),
         )
         .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
         .limit(30)
     )
     for run in runs:
         run_input = run.input if isinstance(run.input, dict) else {}
-        if str(run_input.get("visit_id") or "") != str(visit_id):
+        arguments = run_input.get("arguments")
+        tool_visit_id = arguments.get("visit_id") if isinstance(arguments, dict) else None
+        source_visit_id = run_input.get("visit_id") or tool_visit_id
+        if str(source_visit_id or "") != str(visit_id):
             continue
         output = run.output if isinstance(run.output, dict) else {}
         tasks = output.get("follow_up_tasks")
@@ -234,14 +240,17 @@ def _task_from_minutes(
         select(AgentRun).where(
             AgentRun.organization_id == organization_id,
             AgentRun.id == run_id,
-            AgentRun.agent_type == "MEETING_MINUTES_DRAFT",
+            AgentRun.agent_type.in_(["MEETING_MINUTES_DRAFT", "tool:visit.draft_minutes"]),
             AgentRun.status == "SUCCEEDED",
         )
     ).one_or_none()
     if run is None:
         raise NotFound("成功的会议纪要 AgentRun 不存在")
     run_input = run.input if isinstance(run.input, dict) else {}
-    if str(run_input.get("visit_id") or "") != str(visit_id):
+    arguments = run_input.get("arguments")
+    tool_visit_id = arguments.get("visit_id") if isinstance(arguments, dict) else None
+    source_visit_id = run_input.get("visit_id") or tool_visit_id
+    if str(source_visit_id or "") != str(visit_id):
         raise NotFound("会议纪要草稿不属于当前拜访")
     output = run.output if isinstance(run.output, dict) else {}
     tasks = output.get("follow_up_tasks")
