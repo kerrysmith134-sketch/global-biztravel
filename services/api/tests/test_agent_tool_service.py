@@ -475,7 +475,6 @@ def test_domain_read_error_is_persisted_as_a_failed_agent_run(monkeypatch) -> No
 
 
 def test_assistant_tool_requires_conversation_owner(monkeypatch) -> None:
-    from app.services import assistant_service
 
     trip_id = uuid4()
     owner_id = uuid4()
