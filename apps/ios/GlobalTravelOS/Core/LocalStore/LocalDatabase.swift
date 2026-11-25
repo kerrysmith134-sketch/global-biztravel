@@ -231,17 +231,30 @@ struct LocalDatabase {
     // MARK: - 通用 document 操作
 
     func upsert(table: String, id: String, columns: [String: Any?], payload: Data) throws {
-        let names = ["id"] + columns.keys.sorted() + ["payload"]
-        let values: [Any?] = [id] + columns.keys.sorted().map { columns[$0] ?? nil } + [String(decoding: payload, as: UTF8.self)]
-        let placeholders = names.map { _ in "?" }.joined(separator: ",")
-        let updates = (columns.keys.sorted() + ["payload"])
-            .map { "\($0) = excluded.\($0)" }
+        let columnNames = columns.keys.sorted()
+        let payloadValue = String(decoding: payload, as: UTF8.self)
+        let assignments = (columnNames + ["payload"])
+            .map { "\($0) = ?" }
             .joined(separator: ", ")
-        try store.run(
-            "INSERT INTO \(table) (\(names.joined(separator: ", "))) VALUES (\(placeholders)) " +
-                "ON CONFLICT(id) DO UPDATE SET \(updates)",
-            bindings: values
-        )
+        let updateValues: [Any?] = columnNames.map { columns[$0] ?? nil } + [payloadValue, id]
+
+        try store.transaction {
+            let changed = try store.run(
+                "UPDATE \(table) SET \(assignments) WHERE id = ?",
+                bindings: updateValues
+            )
+            guard changed == 0 else { return }
+
+            // New rows still need every schema-required scalar column. Existing rows are updated
+            // first, so partial domain updates do not reinsert them and trip NOT NULL constraints.
+            let names = ["id"] + columnNames + ["payload"]
+            let values: [Any?] = [id] + columnNames.map { columns[$0] ?? nil } + [payloadValue]
+            let placeholders = names.map { _ in "?" }.joined(separator: ",")
+            try store.run(
+                "INSERT INTO \(table) (\(names.joined(separator: ", "))) VALUES (\(placeholders))",
+                bindings: values
+            )
+        }
     }
 
     func loadPayloads(table: String, where clause: String? = nil, bindings: [Any?] = [], order: String? = nil, limit: Int? = nil) throws -> [Data] {
