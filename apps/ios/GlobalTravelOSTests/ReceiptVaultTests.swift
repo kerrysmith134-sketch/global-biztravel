@@ -377,7 +377,25 @@ final class ReceiptVaultTests: XCTestCase {
     }
 }
 
-extension ReceiptVaultTests {
+final class ExpenseOutboxNetworkTests: XCTestCase {
+    private var temporaryDirectory: URL!
+
+    override func setUpWithError() throws {
+        temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "expense-outbox-network-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: temporaryDirectory,
+            withIntermediateDirectories: true
+        )
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: temporaryDirectory)
+    }
+
     func testExpenseOutboxReplaysCommittedWriteAfterResponseLossAcrossRelaunch() async throws {
         let path = temporaryDirectory.appendingPathComponent("receipt-vault.sqlite3")
         let database = try LocalDatabase.open(path: path)
