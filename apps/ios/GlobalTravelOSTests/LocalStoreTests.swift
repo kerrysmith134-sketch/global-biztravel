@@ -497,6 +497,72 @@ final class LocalStoreTests: XCTestCase {
 
     // MARK: - P7 聚合（复盘/简报/版本比较）
 
+    func testLocalCloseoutReadinessUsesPersistedVisitsExpensesAndReportSnapshots() async throws {
+        let repository = makeRepository()
+        let trip = try await repository.createTrip(makeRequest(name: "本地结账评估"))
+        let visitRepository = LocalVisitRepository(database: database)
+        let visit = try await visitRepository.createVisit(
+            tripId: trip.id,
+            request: VisitCreateRequest(
+                placeName: "Berlin Buyer",
+                city: "Berlin",
+                countryCode: "DE",
+                title: "合同条款复核"
+            )
+        )
+        _ = try await repository.createExpense(
+            tripId: trip.id,
+            body: TripExpenseCreateRequest(
+                category: .meals,
+                amount: Decimal(string: "34.20")!,
+                currency: "EUR",
+                occurredOn: ISO8601.dayString(from: Date()),
+                note: "客户会议午餐",
+                receiptAssetId: nil
+            )
+        )
+
+        let initial = try await repository.closeoutReadiness(tripId: trip.id)
+        XCTAssertEqual(initial.status, .blocked)
+        XCTAssertEqual(initial.summary.blockerCount, 2)
+        XCTAssertEqual(initial.summary.warningCount, 1)
+        XCTAssertEqual(initial.summary.expensesNotInReportCount, 1)
+        XCTAssertEqual(initial.summary.expensesWithoutReceiptCount, 1)
+        XCTAssertTrue(initial.blockers.contains { $0.code == "VISIT_NOT_CLOSED" })
+        XCTAssertTrue(initial.blockers.contains { $0.code == "EXPENSE_NOT_IN_REPORT" })
+        XCTAssertEqual(initial.totalsByCurrency.first?.currency, "EUR")
+        XCTAssertEqual(initial.totalsByCurrency.first?.amount, 34.2)
+
+        let report = try await repository.createExpenseReport(tripId: trip.id)
+        XCTAssertEqual(report.itemList.count, 1)
+        XCTAssertEqual(report.itemList.first?.expenseId, try XCTUnwrap(
+            (try await repository.expenses(tripId: trip.id)).first?.id
+        ))
+
+        var completedVisit = visit
+        completedVisit.status = "DONE"
+        try repository.saveVisit(completedVisit)
+        _ = try await visitRepository.submitRecord(
+            visitId: visit.id,
+            request: VisitRecordRequest(
+                clientRecordId: VisitRecordRequest.newClientRecordId(),
+                outcome: .met,
+                notes: "合同条款已确认"
+            )
+        )
+
+        let resolved = try await repository.closeoutReadiness(tripId: trip.id)
+        XCTAssertEqual(resolved.status, .readyWithExceptions)
+        XCTAssertEqual(resolved.summary.blockerCount, 0)
+        XCTAssertEqual(resolved.summary.warningCount, 1)
+        XCTAssertEqual(resolved.summary.visitOutcomeCount, 1)
+        XCTAssertEqual(resolved.summary.expensesInReportCount, 1)
+        XCTAssertEqual(resolved.warnings.first?.code, "RECEIPT_MISSING")
+
+        let persistedTrip = try await repository.trip(id: trip.id)
+        XCTAssertEqual(persistedTrip.version, trip.version, "只读结账评估不得改写 Trip 版本")
+    }
+
     func testLocalTripOutcomeAggregatesLocalFacts() async throws {
         let repository = makeRepository()
         let trip = try await repository.createTrip(makeRequest(name: "复盘行程"))
