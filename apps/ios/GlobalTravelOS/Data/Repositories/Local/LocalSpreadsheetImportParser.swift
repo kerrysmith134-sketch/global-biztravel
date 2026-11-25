@@ -124,7 +124,9 @@ enum LocalSpreadsheetImportParser {
             }
             let worksheet = try file.parseWorksheet(at: sheet.path)
             let sharedStrings = try file.parseSharedStrings()
-            let sheetRows = (worksheet.data?.rows ?? []).sorted { $0.reference < $1.reference }
+            let sheetRows = (worksheet.data?.rows ?? []).sorted {
+                (Int($0.reference) ?? Int.max) < (Int($1.reference) ?? Int.max)
+            }
 
             var headerLabels: [String] = []
             var headerMap: [Int: String] = [:]

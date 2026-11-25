@@ -84,7 +84,9 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertEqual(preview.rowList.map(\.rowNumber), [2, 3, 4])
         XCTAssertEqual(preview.rowList[0].status, .valid)
         XCTAssertEqual(preview.rowList[1].status, .duplicate)
+        XCTAssertTrue(preview.rowList[1].status.selectableForImport)
         XCTAssertEqual(preview.rowList[2].status, .invalid)
+        XCTAssertFalse(preview.rowList[2].status.selectableForImport)
         XCTAssertEqual(preview.importableRowNumbers, [2])
 
         XCTAssertEqual(try database.count(table: "customers"), 0)
