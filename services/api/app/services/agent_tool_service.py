@@ -7,6 +7,7 @@ and does not require an approval workflow that has not been connected yet.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -231,7 +232,9 @@ def _execute_trip_get_plan(
     )
 
 
-EXECUTORS = {
+EXECUTORS: dict[
+    str, tuple[Callable[..., AgentToolResult], type[BaseModel]]
+] = {
     "trip.get_plan": (_execute_trip_get_plan, TripGetPlanArguments),
     "visa.get_checklist": (_execute_visa_get_checklist, TripGetPlanArguments),
     "visa.prepare_checklist": (_execute_visa_prepare_checklist, VisaPrepareChecklistArguments),
