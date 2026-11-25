@@ -751,7 +751,7 @@ final class LocalStoreTests: XCTestCase {
 
         let config = ProactiveConfig(dailySuggestionCap: 1)
         XCTAssertTrue(
-            LocalProactiveEngine.dailyCapReached(
+            try LocalProactiveEngine.dailyCapReached(
                 database: database,
                 userId: "local-user",
                 now: now,
