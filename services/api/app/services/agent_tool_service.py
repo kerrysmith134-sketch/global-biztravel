@@ -18,7 +18,7 @@ from app.api.deps import ROLE_RANK
 from app.api.errors import ApiError, Conflict, Forbidden, Unprocessable
 from app.llm.tools import list_tools
 from app.services import plan_service, trip_service
-from app.services.agent_runtime_service import start_agent_run, succeed_agent_run
+from app.services.agent_runtime_service import fail_agent_run, start_agent_run, succeed_agent_run
 
 
 class TripGetPlanArguments(BaseModel):
