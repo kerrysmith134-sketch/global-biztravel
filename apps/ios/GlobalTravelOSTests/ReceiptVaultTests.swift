@@ -299,12 +299,14 @@ final class ReceiptVaultTests: XCTestCase {
             localReceiptAssetId: nil
         )
 
-        var replayedCommands: [(tripId: String, idempotencyKey: String)] = []
+        var replayedTripIDs: [String] = []
+        var replayedIdempotencyKeys: [String] = []
         let coordinator = TripExpenseSyncCoordinator(
             receiptVault: vault,
             startMonitoring: false
         ) { tripId, body, idempotencyKey in
-            replayedCommands.append((tripId, idempotencyKey))
+            replayedTripIDs.append(tripId)
+            replayedIdempotencyKeys.append(idempotencyKey)
             return TripExpense(
                 id: "server-\(idempotencyKey)",
                 tripId: tripId,
@@ -318,12 +320,12 @@ final class ReceiptVaultTests: XCTestCase {
         await coordinator.handlePathUpdate(isPathAvailable: true)
 
         XCTAssertEqual(
-            replayedCommands.map(\.idempotencyKey),
+            replayedIdempotencyKeys,
             [first.id, second.id, third.id],
             "Commands retain FIFO order within each Trip and their persisted idempotency keys"
         )
         XCTAssertEqual(
-            replayedCommands.map(\.tripId),
+            replayedTripIDs,
             ["trip-app-wide-a", "trip-app-wide-a", "trip-app-wide-b"]
         )
         XCTAssertTrue(try outbox.pending(tripId: "trip-app-wide-a").isEmpty)
@@ -331,7 +333,7 @@ final class ReceiptVaultTests: XCTestCase {
 
         // Repeated satisfied path updates do not replay commands or produce duplicate writes.
         await coordinator.handlePathUpdate(isPathAvailable: true)
-        XCTAssertEqual(replayedCommands.count, 3)
+        XCTAssertEqual(replayedIdempotencyKeys.count, 3)
     }
 
     func testTripExpenseOutboxEnumeratesAllTripsWithPendingCommandsAfterReopen() throws {
