@@ -89,8 +89,10 @@ final class AssistantViewModel: ObservableObject {
             )
             // Clear only after the tool endpoint returns successfully. A lost response keeps
             // the key on disk so a manual retry or app relaunch replays the first response.
-            clearToolRetryIdentity(retryIdentity.storageKey)
             detail = try await environment.assistantRepository.detail(id: conversation.id)
+            // Keep the key until both execution and conversation refresh succeed. If the POST
+            // committed but the follow-up GET fails, a retry must replay the same tool result.
+            clearToolRetryIdentity(retryIdentity.storageKey)
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -108,9 +110,11 @@ final class AssistantViewModel: ObservableObject {
         let retentionWindow: TimeInterval = 23 * 60 * 60
 
         if let token = defaults.string(forKey: tokenKey),
-           let createdAt = defaults.object(forKey: createdAtKey) as? Date,
-           Date().timeIntervalSince(createdAt) < retentionWindow {
-            return (storageKey, token)
+           let createdAt = defaults.object(forKey: createdAtKey) as? Date {
+            let age = Date().timeIntervalSince(createdAt)
+            if age >= 0, age < retentionWindow {
+                return (storageKey, token)
+            }
         }
 
         let token = APIRequest.newIdempotencyKey()
