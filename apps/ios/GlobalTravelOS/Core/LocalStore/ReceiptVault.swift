@@ -364,7 +364,9 @@ final class ReceiptVault {
             method: .post,
             path: "/v1/receipt-ocr-runs/\(runId):review",
             body: body,
-            idempotencyKey: APIRequest.newIdempotencyKey()
+            // One immutable review per OCR run: retries after a lost response must replay
+            // the original review instead of surfacing a false "already reviewed" conflict.
+            idempotencyKey: runId
         )
         return try await client.send(apiRequest, as: ReceiptOcrReview.self)
     }
