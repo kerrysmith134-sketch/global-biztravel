@@ -105,6 +105,45 @@ def test_model_candidates_must_be_a_list() -> None:
     assert proposals == []
 
 
+def test_admin_scope_is_never_offered_as_an_assistant_tool() -> None:
+    available = AVAILABLE_TOOLS + [
+        {
+            "name": "trip.admin_action",
+            "description": "Administrative action",
+            "scope": "trip:admin",
+            "requires_approval": False,
+        }
+    ]
+
+    proposals = _merge_tool_proposals(
+        policy_proposals=[{"name": "trip.admin_action"}],
+        model_candidates=["trip.admin_action"],
+        available_tools=available,
+        message="请处理这个行程",
+    )
+
+    assert proposals == []
+
+
+def test_policy_and_model_candidates_share_the_same_write_intent_gate() -> None:
+    proposal = {"name": "visa.prepare_checklist"}
+    denied = _merge_tool_proposals(
+        policy_proposals=[proposal],
+        model_candidates=["visa.prepare_checklist"],
+        available_tools=AVAILABLE_TOOLS,
+        message="请查看签证材料清单",
+    )
+    allowed = _merge_tool_proposals(
+        policy_proposals=[proposal],
+        model_candidates=["visa.prepare_checklist"],
+        available_tools=AVAILABLE_TOOLS,
+        message="请创建签证材料清单",
+    )
+
+    assert denied == []
+    assert [item["name"] for item in allowed] == ["visa.prepare_checklist"]
+
+
 def test_model_cannot_propose_any_tool_without_a_bound_trip_catalogue() -> None:
     proposals = _merge_tool_proposals(
         policy_proposals=[],

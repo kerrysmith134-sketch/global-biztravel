@@ -144,50 +144,62 @@ def _merge_tool_proposals(
     """Merge deterministic policy hints with model suggestions, failing closed.
 
     The model can nominate only tools already backed by a concrete server executor.
-    Write-scoped tools are proposed only when the user's message explicitly requests
-    the corresponding creation/preparation action. A proposal is not execution; the
-    user must still tap its card and the executor re-checks actor, scope and trip.
+    Read tools may be proposed when relevant. Write tools require explicit user intent;
+    admin/unknown scope actions remain hidden. A proposal is not execution: the user must
+    still tap its card and the executor re-checks actor, scope and trip.
     """
     available_by_name = {
         str(tool.get("name")): tool
         for tool in available_tools
-        if isinstance(tool.get("name"), str) and tool.get("name")
+        if (
+            isinstance(tool.get("name"), str)
+            and tool.get("name")
+            and tool.get("requires_approval") is False
+        )
     }
+    explicit_write_intent = _explicit_visa_prepare_intent(message)
     merged: dict[str, dict] = {}
 
-    for proposal in policy_proposals:
-        name = proposal.get("name")
-        if isinstance(name, str) and name in available_by_name:
-            merged.setdefault(name, dict(proposal))
-
-    if not isinstance(model_candidates, list):
-        return list(merged.values())
-
-    explicit_write_intent = _explicit_visa_prepare_intent(message)
-    for candidate in model_candidates:
-        if not isinstance(candidate, str):
-            continue
-        name = candidate.strip()
-        tool = available_by_name.get(name)
-        if tool is None or name in merged:
-            continue
+    def include(name: object) -> None:
+        if not isinstance(name, str):
+            return
+        tool = available_by_name.get(name.strip())
+        if tool is None:
+            return
 
         scope = str(tool.get("scope") or "")
         try:
-            _resource, action = scope.split(":", maxsplit=1)
+            resource, action = scope.split(":", maxsplit=1)
         except ValueError:
-            continue
-        if action == "write" and not explicit_write_intent:
-            continue
+            return
+        if not resource.strip():
+            return
+        if action == "write":
+            if not explicit_write_intent:
+                return
+        elif action != "read":
+            return
 
-        merged[name] = {
-            "name": name,
-            "description": str(tool.get("description") or ""),
-            "requires_approval": bool(tool.get("requires_approval")),
-            "scope": scope,
-        }
+        canonical_name = str(tool["name"])
+        merged.setdefault(
+            canonical_name,
+            {
+                "name": canonical_name,
+                "description": str(tool.get("description") or ""),
+                "requires_approval": False,
+                "scope": scope,
+            },
+        )
+
+    for proposal in policy_proposals:
+        include(proposal.get("name"))
+
+    if isinstance(model_candidates, list):
+        for candidate in model_candidates:
+            include(candidate)
 
     return list(merged.values())
+
 
 
 def _facts(session: Session, conversation: AssistantConversation, message: str) -> dict:
