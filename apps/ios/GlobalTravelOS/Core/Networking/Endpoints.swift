@@ -776,7 +776,12 @@ enum Endpoints {
         )
     }
 
-    static func assistantTool(conversationId: String, toolName: String, tripId: String) throws -> APIRequest {
+    static func assistantTool(
+        conversationId: String,
+        toolName: String,
+        tripId: String,
+        idempotencyKey: String
+    ) throws -> APIRequest {
         APIRequest(
             method: .post,
             path: "/v1/assistant/conversations/\(conversationId)/tools:execute",
@@ -786,7 +791,7 @@ enum Endpoints {
                     arguments: AssistantToolExecuteArguments(tripId: tripId)
                 )
             ),
-            idempotencyKey: APIRequest.newIdempotencyKey()
+            idempotencyKey: idempotencyKey
         )
     }
 

@@ -74,16 +74,54 @@ final class AssistantViewModel: ObservableObject {
         isSending = true
         errorMessage = nil
         defer { isSending = false }
+
+        let retryIdentity = toolRetryIdentity(
+            conversationId: conversation.id,
+            toolName: toolName,
+            tripId: tripId
+        )
         do {
             _ = try await environment.assistantRepository.runTool(
                 conversationId: conversation.id,
                 toolName: toolName,
-                tripId: tripId
+                tripId: tripId,
+                idempotencyKey: retryIdentity.token
             )
+            // Clear only after the tool endpoint returns successfully. A lost response keeps
+            // the key on disk so a manual retry or app relaunch replays the first response.
+            clearToolRetryIdentity(retryIdentity.storageKey)
             detail = try await environment.assistantRepository.detail(id: conversation.id)
         } catch {
             errorMessage = environment.errorMessage(error)
         }
+    }
+
+    private func toolRetryIdentity(
+        conversationId: String,
+        toolName: String,
+        tripId: String
+    ) -> (storageKey: String, token: String) {
+        let storageKey = "assistant.tool.retry.\(conversationId).\(toolName).\(tripId)"
+        let defaults = UserDefaults.standard
+        let tokenKey = "\(storageKey).token"
+        let createdAtKey = "\(storageKey).created_at"
+        let retentionWindow: TimeInterval = 23 * 60 * 60
+
+        if let token = defaults.string(forKey: tokenKey),
+           let createdAt = defaults.object(forKey: createdAtKey) as? Date,
+           Date().timeIntervalSince(createdAt) < retentionWindow {
+            return (storageKey, token)
+        }
+
+        let token = APIRequest.newIdempotencyKey()
+        defaults.set(token, forKey: tokenKey)
+        defaults.set(Date(), forKey: createdAtKey)
+        return (storageKey, token)
+    }
+
+    private func clearToolRetryIdentity(_ storageKey: String) {
+        UserDefaults.standard.removeObject(forKey: "\(storageKey).token")
+        UserDefaults.standard.removeObject(forKey: "\(storageKey).created_at")
     }
 
     func send() async {
@@ -276,10 +314,18 @@ private struct MessageBubble: View {
                     in: RoundedRectangle(cornerRadius: 12)
                 )
             ForEach(message.cardList) { card in
-                if card.link == "trip", let tripId = card.entityId {
-                    // 卡片是执行入口：行程卡片直达行程详情，而不是声称"已办完"。
+                if let link = card.link,
+                   ["trip", "trip_plan", "trip_visa"].contains(link),
+                   let tripId = card.entityId {
+                    // 工具结果打开其权威业务分区；普通行程卡默认进入概览。
                     NavigationLink {
-                        TripDetailView(tripId: tripId, environment: environment)
+                        TripDetailView(
+                            tripId: tripId,
+                            environment: environment,
+                            initialSection: link == "trip_visa"
+                                ? .visa
+                                : link == "trip_plan" ? .plan : .overview
+                        )
                     } label: {
                         cardFace(card)
                     }

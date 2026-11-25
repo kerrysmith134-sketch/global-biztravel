@@ -263,7 +263,13 @@ def run_tool(
                 ),
                 "detail": result.detail,
                 "entity_id": result.trip_id,
-                "link": "trip",
+                "link": (
+                    "trip_visa"
+                    if result.tool_name in {"visa.get_checklist", "visa.prepare_checklist"}
+                    else "trip_plan"
+                    if result.tool_name == "trip.get_plan"
+                    else "trip"
+                ),
             }
         ],
     )

@@ -497,10 +497,15 @@ struct TripDetailView: View {
     @State private var reportToCancel: ExpenseReport?
     @State private var section: TripSection = .overview
 
-    init(tripId: String, environment: AppEnvironment) {
+    init(
+        tripId: String,
+        environment: AppEnvironment,
+        initialSection: TripSection = .overview
+    ) {
         _viewModel = StateObject(
             wrappedValue: TripDetailViewModel(tripId: tripId, environment: environment)
         )
+        _section = State(initialValue: initialSection)
     }
 
     var body: some View {

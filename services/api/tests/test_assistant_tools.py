@@ -88,6 +88,7 @@ def test_trip_get_plan_tool_is_executable_and_idempotent(client: TestClient) -> 
         assert result["role"] == "ASSISTANT"
         assert result["cards"][0]["type"] == "TOOL_RESULT"
         assert result["cards"][0]["entity_id"] == trip_id
+        assert result["cards"][0]["link"] == "trip_plan"
         assert "没有生效计划" in result["content"]
 
         replay = client.post(endpoint, headers=request_headers, json=payload)
@@ -246,6 +247,7 @@ def test_visa_prepare_tool_requires_user_click_and_is_idempotent(client: TestCli
         result = first.json()
         assert result["cards"][0]["type"] == "TOOL_RESULT"
         assert result["cards"][0]["title"] == "签证案件已准备"
+        assert result["cards"][0]["link"] == "trip_visa"
         assert "2 个目的国签证案件" in result["content"]
         assert "不会提交申请" in result["content"]
 
@@ -364,6 +366,7 @@ def test_visa_get_checklist_tool_reads_existing_cases(client: TestClient) -> Non
         result = first.json()
         assert result["cards"][0]["type"] == "TOOL_RESULT"
         assert result["cards"][0]["title"] == "签证材料清单"
+        assert result["cards"][0]["link"] == "trip_visa"
         assert "1 个国家案件" in result["content"]
         assert "DE" in result["content"]
         assert "不代表签证资格" in result["content"]
