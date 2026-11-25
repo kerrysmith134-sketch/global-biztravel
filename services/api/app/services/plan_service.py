@@ -16,7 +16,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound
+from app.api.schemas import PlanStopRead, PlanTravelLegRead, PlanVersionDetailRead
+from app.models.geo import Place
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
+from app.models.trip import Visit
 
 
 def list_plan_versions(
@@ -84,6 +87,51 @@ def list_plan_legs(
     )
 
 
+
+def plan_version_detail(
+    session: Session, organization_id, version
+) -> PlanVersionDetailRead:
+    detail = PlanVersionDetailRead.model_validate(version)
+    # 逐条显式转换，而不是直接把 ORM 对象塞进 stops：Pydantic 校验已构造的同类实例时不会
+    # 重新校验嵌套字段，ORM 对象会一路带到序列化阶段再炸。
+    detail.stops = [
+        PlanStopRead.model_validate(stop)
+        for stop in list_plan_stops(session, organization_id, version.id)
+    ]
+    visit_ids = [stop.visit_id for stop in detail.stops]
+    if visit_ids:
+        place_rows = session.execute(
+            select(
+                Visit.id,
+                Visit.place_id,
+                Place.name,
+                Place.city,
+                Place.country_code,
+                Place.lat,
+                Place.lon,
+            )
+            .join(Place, Place.id == Visit.place_id)
+            .where(Visit.organization_id == str(organization_id), Visit.id.in_(visit_ids))
+        ).all()
+        place_by_visit = {row[0]: row for row in place_rows}
+        for stop in detail.stops:
+            info = place_by_visit.get(stop.visit_id)
+            if info is not None:
+                stop.place_id = info[1]
+                stop.place_name = info[2]
+                stop.city = info[3]
+                stop.country_code = info[4]
+                stop.latitude = info[5]
+                stop.longitude = info[6]
+    detail.legs = [
+        PlanTravelLegRead.model_validate(leg)
+        for leg in list_plan_legs(session, organization_id, version.id)
+    ]
+    detail.stop_count = len(detail.stops)
+    detail.day_count = len({stop.day_index for stop in detail.stops})
+    return detail
+
+
 def stop_stats(
     session: Session, organization_id: UUID | str, plan_version_ids: list[UUID]
 ) -> dict[UUID, tuple[int, int]]:
@@ -109,6 +157,7 @@ __all__ = [
     "list_plan_legs",
     "list_plan_stops",
     "list_plan_versions",
+    "plan_version_detail",
     "require_plan_version",
     "stop_stats",
 ]

@@ -44,3 +44,22 @@ struct AssistantConversationDetail: Codable, Equatable {
 struct AssistantMessageCreate: Codable, Equatable {
     var content: String
 }
+
+
+struct AssistantToolExecuteArguments: Codable, Equatable {
+    var tripId: String
+
+    enum CodingKeys: String, CodingKey {
+        case tripId = "trip_id"
+    }
+}
+
+struct AssistantToolExecuteCreate: Codable, Equatable {
+    var toolName: String
+    var arguments: AssistantToolExecuteArguments
+
+    enum CodingKeys: String, CodingKey {
+        case toolName = "tool_name"
+        case arguments
+    }
+}

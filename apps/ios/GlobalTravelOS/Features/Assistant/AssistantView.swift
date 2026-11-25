@@ -68,6 +68,24 @@ final class AssistantViewModel: ObservableObject {
         }
     }
 
+
+    func runTool(toolName: String) async {
+        guard let conversation = detail?.conversation, let tripId = conversation.tripId else { return }
+        isSending = true
+        errorMessage = nil
+        defer { isSending = false }
+        do {
+            _ = try await environment.assistantRepository.runTool(
+                conversationId: conversation.id,
+                toolName: toolName,
+                tripId: tripId
+            )
+            detail = try await environment.assistantRepository.detail(id: conversation.id)
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
     func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let conversation = detail?.conversation else { return }
@@ -204,7 +222,11 @@ struct AssistantView: View {
                                 environment: environment,
                                 runAction: { action, subject in
                                     await viewModel.runAction(action: action, subjectId: subject)
-                                }
+                                },
+                                runTool: { toolName in
+                                    await viewModel.runTool(toolName: toolName)
+                                },
+                                isSending: viewModel.isSending
                             )
                         }
                         if let error = viewModel.errorMessage {
@@ -240,6 +262,8 @@ private struct MessageBubble: View {
     let message: AssistantMessage
     let environment: AppEnvironment
     let runAction: (String, String) async -> Void
+    let runTool: (String) async -> Void
+    let isSending: Bool
 
     var body: some View {
         VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: 4) {
@@ -261,6 +285,16 @@ private struct MessageBubble: View {
                     }
                 } else {
                     cardFace(card)
+                    if card.link == "tool", let toolName = card.entityId, toolName == "trip.get_plan" {
+                        Button {
+                            Task { await runTool(toolName) }
+                        } label: {
+                            Label("读取计划", systemImage: "doc.text.magnifyingglass")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isSending)
+                    }
                     if card.link == "trip_proposal", let subject = card.entityId {
                         // 提案卡是待确认动作：点按才创建草稿行程（服务端二次校验 + 幂等）。
                         Button {
