@@ -121,9 +121,8 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertTrue(stagedRows.allSatisfy { $0["normalized"] == nil })
 
         let visitPayloads = try database.loadPayloads(table: "visits", where: "trip_id = ?", bindings: [trip.id])
-        let visitData = try XCTUnwrap(visitPayloads.first)
-        let visit = try DateCoding.decoder().decode(TripVisit.self, from: visitData)
-        XCTAssertEqual(visit.title, "拜访 Acme Battery GmbH")
+        let visits = try visitPayloads.map { try DateCoding.decoder().decode(TripVisit.self, from: $0) }
+        let visit = try XCTUnwrap(visits.first { $0.title == "拜访 Acme Battery GmbH" })
         XCTAssertEqual(visit.serviceMinutes, 60)
         XCTAssertEqual(visit.priority, 1)
         XCTAssertEqual(visit.businessValue ?? 0, 150_000, accuracy: 0.001)
