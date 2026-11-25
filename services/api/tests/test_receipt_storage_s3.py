@@ -101,6 +101,13 @@ def test_s3_list_objects_rejects_bucket_wide_or_invalid_prefix() -> None:
     with pytest.raises(ValueError):
         storage.list_objects("receipts/not-a-uuid/")
 
+    with pytest.raises(ValueError):
+        storage.stat_object(
+            "receipts/11111111-1111-1111-1111-111111111111/"
+            "not-a-trip-uuid/"
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        )
+
 
 def test_s3_stat_object_returns_head_metadata() -> None:
     modified = datetime(2026, 11, 25, 12, 30, tzinfo=UTC)
