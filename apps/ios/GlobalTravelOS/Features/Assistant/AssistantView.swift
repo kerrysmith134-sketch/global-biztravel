@@ -225,7 +225,8 @@ struct AssistantView: View {
                                 },
                                 runTool: { toolName in
                                     await viewModel.runTool(toolName: toolName)
-                                }
+                                },
+                                isSending: viewModel.isSending
                             )
                         }
                         if let error = viewModel.errorMessage {
@@ -262,6 +263,7 @@ private struct MessageBubble: View {
     let environment: AppEnvironment
     let runAction: (String, String) async -> Void
     let runTool: (String) async -> Void
+    let isSending: Bool
 
     var body: some View {
         VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: 4) {
@@ -291,6 +293,7 @@ private struct MessageBubble: View {
                                 .font(.caption)
                         }
                         .buttonStyle(.borderedProminent)
+                        .disabled(isSending)
                     }
                     if card.link == "trip_proposal", let subject = card.entityId {
                         // 提案卡是待确认动作：点按才创建草稿行程（服务端二次校验 + 幂等）。

@@ -677,7 +677,7 @@ def post_message(
             {
                 "type": "TOOL_PROPOSAL",
                 "title": proposal["name"],
-                "detail": f"{proposal['description']}（需人审：{proposal['requires_approval']}）",
+                "detail": f"{proposal['description']}（执行时仍会校验当前用户权限）",
                 "entity_id": proposal["name"],
                 "link": "tool",
             }

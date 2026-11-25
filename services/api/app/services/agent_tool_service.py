@@ -96,6 +96,9 @@ SCOPE_MINIMUM_ROLES = {
     "write": "TRAVELER",
     "admin": "ADMIN",
 }
+SCOPE_RESOURCE_BY_TOOL = {
+    "trip.get_plan": "trip",
+}
 
 
 def list_executable_tools() -> list[dict[str, Any]]:
@@ -135,7 +138,11 @@ def execute_tool(
     scope = str(catalog_entry.get("scope") or "")
     try:
         resource, action = scope.split(":", maxsplit=1)
-        if not resource.strip() or action not in SCOPE_MINIMUM_ROLES:
+        if (
+            not resource.strip()
+            or resource != SCOPE_RESOURCE_BY_TOOL[tool_name]
+            or action not in SCOPE_MINIMUM_ROLES
+        ):
             raise ValueError
         minimum_role = SCOPE_MINIMUM_ROLES[action]
     except ValueError as exc:

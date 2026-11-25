@@ -122,6 +122,87 @@ def test_no_read_permission_means_no_tool_run_is_started(monkeypatch) -> None:
         )
 
 
+
+def test_tool_scope_resource_must_match_registered_handler(monkeypatch) -> None:
+    original = agent_tool_service.list_tools
+
+    def mismatched_scope():
+        entries = original()
+        for entry in entries:
+            if entry["name"] == "trip.get_plan":
+                entry["scope"] = "place:read"
+        return entries
+
+    monkeypatch.setattr(agent_tool_service, "list_tools", mismatched_scope)
+    with pytest.raises(Forbidden, match="权限范围配置无效"):
+        agent_tool_service.execute_tool(
+            object(),  # type: ignore[arg-type]
+            uuid4(),
+            actor_role="VIEWER",
+            tool_name="trip.get_plan",
+            arguments={"trip_id": str(uuid4())},
+        )
+
+
+def test_active_plan_tool_returns_real_version_summary(monkeypatch) -> None:
+    trip_id = uuid4()
+    plan_id = uuid4()
+    run = SimpleNamespace()
+    finished = {}
+
+    monkeypatch.setattr(agent_tool_service, "start_agent_run", lambda *args, **kwargs: run)
+    monkeypatch.setattr(
+        agent_tool_service,
+        "succeed_agent_run",
+        lambda session, current_run, **kwargs: finished.update(kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.trip_service,
+        "require_trip",
+        lambda session, organization_id, requested_id: SimpleNamespace(
+            id=trip_id,
+            name="Berlin work trip",
+            active_plan_version_id=plan_id,
+        ),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.plan_service,
+        "require_plan_version",
+        lambda session, organization_id, version_id: SimpleNamespace(
+            id=plan_id,
+            trip_id=trip_id,
+            status="ACTIVE",
+            version_number=3,
+        ),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.plan_service,
+        "plan_version_detail",
+        lambda session, organization_id, version: SimpleNamespace(
+            stop_count=8,
+            day_count=4,
+            legs=[object(), object(), object()],
+        ),
+    )
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="VIEWER",
+        tool_name="trip.get_plan",
+        arguments={"trip_id": str(trip_id)},
+    )
+
+    assert result.status == "PLAN_LOADED"
+    assert result.plan_version_id == str(plan_id)
+    assert result.version_number == 3
+    assert result.stop_count == 8
+    assert result.day_count == 4
+    assert "第 3 版生效计划" in result.detail
+    assert finished["output_snapshot"]["status"] == "PLAN_LOADED"
+    assert finished["output_snapshot"]["plan_version_id"] == str(plan_id)
+
+
 def test_assistant_tool_requires_conversation_owner(monkeypatch) -> None:
     from app.services import assistant_service
 
