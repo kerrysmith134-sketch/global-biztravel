@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-
 from app.services.receipt_storage_service import (
     ReceiptStorageUnavailable,
     S3ReceiptStorage,
