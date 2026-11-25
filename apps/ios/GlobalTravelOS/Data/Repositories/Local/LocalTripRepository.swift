@@ -612,6 +612,7 @@ final class LocalTripRepository: TripRepository {
     /// 报销单 = 费用快照（不可变）；提交后状态机 DRAFT→SUBMITTED。
     func createExpenseReport(tripId: String) async throws -> ExpenseReport {
         let expenses = try await self.expenses(tripId: tripId)
+        let receiptAssets = try verifiedReceiptAssets(tripId: tripId, expenses: expenses)
         let reportId = UUID().uuidString
         let now = Date()
         var byCurrency: [String: (Double, Int)] = [:]
@@ -625,7 +626,8 @@ final class LocalTripRepository: TripRepository {
             CurrencyTotal(currency: $0, amount: byCurrency[$0]!.0, count: byCurrency[$0]!.1)
         }
         let items = expenses.map { expense in
-            ExpenseReportItem(
+            let asset = expense.receiptAssetId.flatMap { receiptAssets[$0] }
+            return ExpenseReportItem(
                 id: UUID().uuidString,
                 reportId: reportId,
                 expenseId: expense.id,
@@ -634,7 +636,12 @@ final class LocalTripRepository: TripRepository {
                 currency: expense.currency,
                 occurredOn: expense.occurredOn,
                 note: expense.note,
-                receiptRef: expense.receiptAssetId ?? expense.receiptRef
+                receiptRef: expense.receiptAssetId ?? expense.receiptRef,
+                receiptAssetId: expense.receiptAssetId,
+                receiptSha256: asset?.sha256,
+                receiptOriginalFilename: asset?.originalFilename,
+                receiptMimeType: asset?.mimeType,
+                receiptByteLength: asset?.byteLength
             )
         }
         let report = ExpenseReport(
@@ -654,6 +661,34 @@ final class LocalTripRepository: TripRepository {
             payload: try DateCoding.encode(report)
         )
         return report
+    }
+
+    /// Resolve and verify every referenced original before pinning it into an immutable report.
+    private func verifiedReceiptAssets(
+        tripId: String,
+        expenses: [TripExpense]
+    ) throws -> [String: LocalReceiptAsset] {
+        let references = Set(expenses.compactMap(\.receiptAssetId))
+        guard !references.isEmpty else { return [:] }
+        guard let receiptVault else {
+            throw ReceiptVaultError.assetNotFound
+        }
+
+        let assets = try receiptVault.assets(tripId: tripId)
+        var indexed: [String: LocalReceiptAsset] = [:]
+        for asset in assets {
+            indexed[asset.id] = asset
+            if let serverAssetId = asset.serverAssetId {
+                indexed[serverAssetId] = asset
+            }
+        }
+        for reference in references.sorted() {
+            guard let asset = indexed[reference] else {
+                throw ReceiptVaultError.assetNotFound
+            }
+            try receiptVault.verifyOriginal(assetId: asset.id, tripId: tripId)
+        }
+        return indexed
     }
 
     func submitExpenseReport(id: String) async throws -> ExpenseReport {
