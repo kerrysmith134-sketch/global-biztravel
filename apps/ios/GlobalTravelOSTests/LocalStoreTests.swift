@@ -535,9 +535,8 @@ final class LocalStoreTests: XCTestCase {
 
         let report = try await repository.createExpenseReport(tripId: trip.id)
         XCTAssertEqual(report.itemList.count, 1)
-        XCTAssertEqual(report.itemList.first?.expenseId, try XCTUnwrap(
-            (try await repository.expenses(tripId: trip.id)).first?.id
-        ))
+        let persistedExpenses = try await repository.expenses(tripId: trip.id)
+        XCTAssertEqual(report.itemList.first?.expenseId, persistedExpenses.first?.id)
 
         var completedVisit = visit
         completedVisit.status = "DONE"
