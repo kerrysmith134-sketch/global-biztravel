@@ -14,7 +14,7 @@ from app.db import org_session
 from app.main import app
 from app.models.receipts import ReceiptAsset, ReceiptStorageOrphan
 from app.models.trip import Trip
-from app.services import receipt_asset_service, receipt_storage_reconciliation_service
+from app.services import receipt_storage_reconciliation_service
 from app.services.receipt_storage_service import (
     FilesystemReceiptStorage,
     ReceiptStorageUnavailable,
@@ -373,6 +373,24 @@ def test_filesystem_listing_cannot_escape_requested_tenant_prefix(
     assert [item.key for item in listed] == [key_a]
     with pytest.raises(ValueError):
         private_storage.list_objects("receipts/")
+
+
+def test_filesystem_listing_ignores_symlinks_and_delete_refuses_them(
+    private_storage: FilesystemReceiptStorage,
+) -> None:
+    real_key = make_storage_key()
+    alias_key = make_storage_key()
+    modified = datetime.now(UTC) - timedelta(days=2)
+    put_orphan(private_storage, real_key, modified_at=modified)
+    alias_path = private_storage.root / alias_key
+    alias_path.parent.mkdir(parents=True, exist_ok=True)
+    alias_path.symlink_to(private_storage.root / real_key)
+
+    listed = private_storage.list_objects(f"receipts/{ORG_A}/")
+    assert [item.key for item in listed] == [real_key]
+    with pytest.raises(ReceiptStorageUnavailable):
+        private_storage.delete(alias_key)
+    assert private_storage.get(real_key) == b"private receipt orphan candidate"
 
 
 def test_orphan_service_only_records_objects_from_the_bound_organization(
