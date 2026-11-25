@@ -107,6 +107,41 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertFalse(scalarColumns?.1.isEmpty ?? true)
     }
 
+    func testNestedTransactionSavepointRollsBackOnlyInnerChanges() async throws {
+        let repository = makeRepository()
+        let trip = try await repository.createTrip(makeRequest(name: "嵌套事务回滚"))
+        var outerTrip = trip
+        outerTrip.status = "ACTIVE"
+
+        try database.transaction {
+            try database.upsert(
+                table: "trips",
+                id: trip.id,
+                columns: ["status": "ACTIVE"],
+                payload: try DateCoding.encode(outerTrip)
+            )
+
+            do {
+                try database.transaction {
+                    var innerTrip = outerTrip
+                    innerTrip.status = "COMPLETED"
+                    try database.upsert(
+                        table: "trips",
+                        id: trip.id,
+                        columns: ["status": "COMPLETED"],
+                        payload: try DateCoding.encode(innerTrip)
+                    )
+                    throw NSError(domain: "LocalStoreTests", code: 1)
+                }
+            } catch {
+                // The caller intentionally recovers; the failed savepoint must still roll back.
+            }
+        }
+
+        let persisted = try await repository.trip(id: trip.id)
+        XCTAssertEqual(persisted.status, "ACTIVE")
+    }
+
     func testListTripsIsOrderedByUpdatedAtDescAndPaginates() async throws {
         let repository = makeRepository()
         for index in 1...3 {
