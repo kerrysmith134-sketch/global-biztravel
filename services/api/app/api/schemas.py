@@ -1555,6 +1555,10 @@ class AssistantCardRead(BaseModel):
     proposal_id: str | None = None
     #: 仅 ``TRIP_PROPOSAL`` 卡片携带：提案载荷（国家/日期/名称/用途），确认创建时使用。
     payload: dict[str, Any] | None = None
+    #: 工具建议卡使用稳定工具名；entity_id 可单独指向具体业务对象（如 visit_id）。
+    tool_name: str | None = None
+    #: 工具调用参数由服务端生成并由执行器再次严格校验。
+    tool_arguments: dict[str, Any] | None = None
 
     #: 卡片是多态展示面：未来新增卡片字段不能被响应模型静默丢弃（否则客户端拿不到）。
     model_config = ConfigDict(extra="allow")
