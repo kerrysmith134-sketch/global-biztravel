@@ -46,8 +46,12 @@ final class AppEnvironment: ObservableObject {
         var loaded = store.load()
         let directory = Self.accountDirectory(root: settingsRoot, settings: loaded)
 
-        // UI 测试用启动参数覆盖身份/地址：不写回磁盘，避免测试污染用户设置。
+        // UI 测试启动参数覆盖身份/运行模式：不写回磁盘，避免测试污染用户设置。
         let overrides = ProcessInfo.processInfo.environment
+        if let testRunMode = overrides["GBT_UI_TEST_RUN_MODE"]?.lowercased(),
+           ["local", "cloud"].contains(testRunMode) {
+            loaded.runMode = testRunMode
+        }
         if let value = overrides["GBT_UI_TEST_BASE_URL"], !value.isEmpty {
             loaded.baseURLString = value
             // UI 冒烟全部针对真实后端：地址覆盖隐含云端模式（否则默认 local 会让用例
