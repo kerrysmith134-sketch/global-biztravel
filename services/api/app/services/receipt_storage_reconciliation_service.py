@@ -85,11 +85,13 @@ def reconcile_receipt_storage(
     storage = get_receipt_storage()
     provider = storage.provider
     prefix = f"receipts/{org_id}/"
-    objects = storage.list_objects(prefix)
-    report.objects_scanned = len(objects)
 
-    # Same lock as receipt_asset_service.create_receipt_asset. An upload takes the
-    # transaction-scoped lock before PUT and holds it until its ReceiptAsset commits.
+    # Listing happens outside the DB lock to keep uploads fast. It is only a snapshot;
+    # all destructive decisions happen after the shared tenant advisory lock is acquired.
+    object_map = {item.key: item for item in storage.list_objects(prefix)}
+
+    # Same lock as receipt_asset_service.create_receipt_asset. Upload holds this
+    # transaction-scoped lock from before PUT through ReceiptAsset commit.
     session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:organization_id, 0))"),
         {"organization_id": org_id},
@@ -105,22 +107,36 @@ def reconcile_receipt_storage(
         )
     }
     known_keys = set(known_assets)
-    incidents = session.scalars(
-        select(ReceiptStorageOrphan).where(
-            ReceiptStorageOrphan.organization_id == org_id,
-            ReceiptStorageOrphan.storage_provider == provider,
-        )
-    ).all()
-    by_key = {row.storage_key: row for row in incidents}
-    listed_keys: set[str] = set()
-    cutoff = current - timedelta(seconds=grace)
 
-    # Detect broken references as well as storage-only orphans. A missing object with a
-    # live ReceiptAsset is never deleted; it gets an auditable MISSING incident.
+    # A new upload may finish between ListObjects and lock acquisition. For DB-backed
+    # keys missing from the listing snapshot, HEAD the exact object before calling it
+    # missing. This is metadata-only and never downloads the receipt bytes.
     for key, asset in known_assets.items():
-        if key in {item.key for item in objects}:
+        if key in object_map:
             continue
-        incident = by_key.get(key)
+        if not _belongs_to_organization(key, org_id):
+            report.errors.append(f"ReceiptAsset {asset.id} has a non-canonical storage key")
+            continue
+        try:
+            stored = storage.stat_object(key)
+        except ReceiptStorageUnavailable as exc:
+            report.errors.append(f"{key}: metadata check failed: {str(exc)[:300]}")
+            continue
+        if stored is not None:
+            object_map[key] = stored
+            continue
+
+        incident = None
+        # A row may already exist from a prior orphan observation or a previous missing
+        # reference diagnosis. Reuse it instead of creating duplicate audit history.
+        # The database UNIQUE constraint remains the final concurrency guard.
+        incident = session.scalars(
+            select(ReceiptStorageOrphan).where(
+                ReceiptStorageOrphan.organization_id == org_id,
+                ReceiptStorageOrphan.storage_provider == provider,
+                ReceiptStorageOrphan.storage_key == key,
+            )
+        ).one_or_none()
         if incident is None:
             incident = ReceiptStorageOrphan(
                 organization_id=UUID(org_id),
@@ -134,11 +150,27 @@ def reconcile_receipt_storage(
                 last_error="ReceiptAsset metadata exists but its storage object is absent",
             )
             session.add(incident)
-            by_key[key] = incident
+            report.missing += 1
         elif incident.status != "MISSING":
             incident.status = "MISSING"
+            incident.last_seen_at = current
             incident.last_error = "ReceiptAsset metadata exists but its storage object is absent"
-        report.missing += 1
+            report.missing += 1
+        else:
+            incident.last_seen_at = current
+
+    objects = list(object_map.values())
+    report.objects_scanned = len(objects)
+
+    incidents = session.scalars(
+        select(ReceiptStorageOrphan).where(
+            ReceiptStorageOrphan.organization_id == org_id,
+            ReceiptStorageOrphan.storage_provider == provider,
+        )
+    ).all()
+    by_key = {row.storage_key: row for row in incidents}
+    listed_keys: set[str] = set()
+    cutoff = current - timedelta(seconds=grace)
 
     for stored in objects:
         if not _belongs_to_organization(stored.key, org_id):
