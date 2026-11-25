@@ -396,12 +396,12 @@ enum LocalProactiveEngine {
         }
     }
 
-    /// 每出差人每日推送上限（本地单用户：按 userId 计）。
+    /// 每日推送上限。Local mode is single-user; created_at is the persisted push-time proxy.
     static func dailyCapReached(database: LocalDatabase, userId: String, now: Date, cap: Int) -> Bool {
         guard let startOfDay = proactiveDayStart(now) else { return false }
         let used = (try? database.count(
             table: "proactive_suggestions",
-            where: "push_status = 'PUSHED' AND notified_at >= ?",
+            where: "push_status = 'PUSHED' AND created_at >= ?",
             bindings: [startOfDay]
         )) ?? 0
         return used >= cap
