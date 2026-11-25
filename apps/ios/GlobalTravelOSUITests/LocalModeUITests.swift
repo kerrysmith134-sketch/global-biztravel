@@ -47,6 +47,11 @@ final class LocalModeUITests: XCTestCase {
     }
 
     func testLocalModeSeededTripSections() throws {
+        // SwiftUI TabView can restore the previously selected tab between UI tests.
+        // Always select Mission explicitly before asserting its navigation/title content.
+        let missionTab = app.buttons["任务"]
+        XCTAssertTrue(missionTab.waitForExistence(timeout: 10), "缺少 Mission 一级入口")
+        missionTab.tap()
         XCTAssertTrue(
             app.navigationBars["任务"].waitForExistence(timeout: 20),
             "本地模式首屏未出现"
