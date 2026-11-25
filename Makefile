@@ -33,8 +33,16 @@ install: ## 安装依赖
 
 db-up: ## 构建镜像并启动 PostgreSQL16+PostGIS+pgvector
 	$(COMPOSE) up -d --build
-	@until docker exec zhi-tu-pg pg_isready -U postgres -d gbt_os >/dev/null 2>&1; do sleep 1; done
-	@echo "db ready on localhost:55432"
+	@attempt=0; until $(PY) -c "import psycopg; c=psycopg.connect('postgresql://gbt_owner:gbt_owner_pw@127.0.0.1:55432/gbt_os', connect_timeout=2); c.execute('SELECT 1'); c.close()" >/dev/null 2>&1; do \
+		attempt=$((attempt+1)); \
+		if [ $attempt -ge 60 ]; then \
+			echo "PostgreSQL did not accept authenticated TCP connections on localhost:55432" >&2; \
+			docker logs --tail=200 zhi-tu-pg >&2 || true; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done
+	@echo "db ready on localhost:55432 (authenticated TCP query succeeded)"
 
 db-down: ## 停止数据库（保留数据卷）
 	$(COMPOSE) down
