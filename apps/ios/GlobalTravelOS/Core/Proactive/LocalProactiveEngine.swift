@@ -298,52 +298,25 @@ enum LocalProactiveEngine {
             return
         }
 
-        // Trigger rows are an index/audit table without a document payload column.
-        // Persist the trigger and its suggestion atomically so neither can claim half-success.
         do {
-            try database.transaction {
-                try database.run(
-                    """
-                    INSERT INTO proactive_triggers (
-                        id, trip_id, rule_id, dedupe_key, status, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(trip_id, rule_id, dedupe_key) DO NOTHING
-                    """,
-                    bindings: [
-                        UUID().uuidString,
-                        trip.id,
-                        candidate.ruleId,
-                        candidate.dedupeKey,
-                        status == "SUPPRESSED" ? "SUPPRESSED" : "PROPOSED",
-                        proactiveISO(now),
-                    ]
-                )
-                try database.upsert(
-                    table: "proactive_suggestions",
-                    id: suggestionId,
-                    columns: [
-                        "trip_id": trip.id,
-                        "type": candidate.suggestionType,
-                        "status": status,
-                        "push_status": pushStatus,
-                        "dedupe_key": candidate.dedupeKey,
-                        "severity": candidate.severity,
-                        "created_at": proactiveISO(now),
-                    ],
-                    payload: payloadData
-                )
-            }
+            try persistTriggerAndSuggestion(
+                candidate: candidate,
+                trip: trip,
+                suggestionId: suggestionId,
+                status: status,
+                pushStatus: pushStatus,
+                payload: payloadData,
+                database: database,
+                now: now
+            )
         } catch {
-            let existing = (try? database.count(
-                table: "proactive_suggestions",
-                where: "trip_id = ? AND type = ? AND dedupe_key = ?",
-                bindings: [trip.id, candidate.suggestionType, candidate.dedupeKey]
-            )) ?? 0
-            if existing > 0 {
-                report.deduped += 1
-            } else {
-                report.errors.append("主动建议落库失败：\(error.localizedDescription)")
-            }
+            handlePersistenceFailure(
+                error,
+                candidate: candidate,
+                tripId: trip.id,
+                database: database,
+                report: &report
+            )
             return
         }
 
@@ -352,10 +325,74 @@ enum LocalProactiveEngine {
             report.suppressed += 1
         } else if pushStatus == "PUSHED" {
             report.pushed += 1
-            _ = payload
             notifyPushed(title: candidate.title, body: candidate.rationale, suggestionId: suggestionId, severity: candidate.severity)
         } else {
             report.withheld += 1
+        }
+    }
+
+    /// Trigger rows are index/audit records without a document payload column.
+    /// Keep trigger and suggestion persistence atomic.
+    private static func persistTriggerAndSuggestion(
+        candidate: ProactiveCandidate,
+        trip: Trip,
+        suggestionId: String,
+        status: String,
+        pushStatus: String,
+        payload: Data,
+        database: LocalDatabase,
+        now: Date
+    ) throws {
+        try database.transaction {
+            try database.run(
+                """
+                INSERT INTO proactive_triggers (
+                    id, trip_id, rule_id, dedupe_key, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(trip_id, rule_id, dedupe_key) DO NOTHING
+                """,
+                bindings: [
+                    UUID().uuidString,
+                    trip.id,
+                    candidate.ruleId,
+                    candidate.dedupeKey,
+                    status == "SUPPRESSED" ? "SUPPRESSED" : "PROPOSED",
+                    proactiveISO(now),
+                ]
+            )
+            try database.upsert(
+                table: "proactive_suggestions",
+                id: suggestionId,
+                columns: [
+                    "trip_id": trip.id,
+                    "type": candidate.suggestionType,
+                    "status": status,
+                    "push_status": pushStatus,
+                    "dedupe_key": candidate.dedupeKey,
+                    "severity": candidate.severity,
+                    "created_at": proactiveISO(now),
+                ],
+                payload: payload
+            )
+        }
+    }
+
+    private static func handlePersistenceFailure(
+        _ error: Error,
+        candidate: ProactiveCandidate,
+        tripId: String,
+        database: LocalDatabase,
+        report: inout ProactiveScanReport
+    ) {
+        let existing = (try? database.count(
+            table: "proactive_suggestions",
+            where: "trip_id = ? AND type = ? AND dedupe_key = ?",
+            bindings: [tripId, candidate.suggestionType, candidate.dedupeKey]
+        )) ?? 0
+        if existing > 0 {
+            report.deduped += 1
+        } else {
+            report.errors.append("主动建议落库失败：\(error.localizedDescription)")
         }
     }
 
