@@ -49,10 +49,13 @@ def start_agent_run(
     if workflow_id is not None:
         normalized_workflow_id = str(workflow_id)
         workflow = session.scalars(
-            select(WorkflowInstance).where(
+            select(WorkflowInstance)
+            .where(
                 WorkflowInstance.organization_id == str(organization_id),
                 WorkflowInstance.id == normalized_workflow_id,
             )
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).one_or_none()
         if workflow is None:
             raise NotFound(
@@ -78,25 +81,28 @@ def start_agent_run(
 
 
 def succeed_agent_run(
+    session: Session,
     run: AgentRun,
     *,
     output_snapshot: dict[str, Any],
     finished_at: datetime | None = None,
 ) -> AgentRun:
-    """Finalize one running AgentRun successfully."""
-    _require_running(run)
+    """Finalize one running AgentRun successfully under a database row lock."""
+    persisted = _lock_agent_run(session, run)
+    _require_running(persisted)
     _validate_timestamp(finished_at)
     if not isinstance(output_snapshot, dict):
         raise TypeError("output_snapshot must be a dictionary")
 
-    run.status = "SUCCEEDED"
-    run.output = output_snapshot
-    run.error = None
-    run.finished_at = finished_at or datetime.now(UTC)
-    return run
+    persisted.status = "SUCCEEDED"
+    persisted.output = output_snapshot
+    persisted.error = None
+    persisted.finished_at = finished_at or datetime.now(UTC)
+    return persisted
 
 
 def fail_agent_run(
+    session: Session,
     run: AgentRun,
     *,
     error: str,
@@ -104,17 +110,38 @@ def fail_agent_run(
     finished_at: datetime | None = None,
 ) -> AgentRun:
     """Finalize one running AgentRun as failed, retaining a bounded diagnostic."""
-    _require_running(run)
+    persisted = _lock_agent_run(session, run)
+    _require_running(persisted)
     _validate_timestamp(finished_at)
     message = str(error).strip()
     if not message:
         raise ValueError("error must not be empty")
 
-    run.status = "FAILED"
-    run.error = message[:2000]
-    run.output = output_snapshot
-    run.finished_at = finished_at or datetime.now(UTC)
-    return run
+    persisted.status = "FAILED"
+    persisted.error = message[:2000]
+    persisted.output = output_snapshot
+    persisted.finished_at = finished_at or datetime.now(UTC)
+    return persisted
+
+
+def _lock_agent_run(session: Session, run: AgentRun) -> AgentRun:
+    if run.id is None:
+        raise NotFound("AgentRun 尚未持久化，无法结束")
+    persisted = session.scalars(
+        select(AgentRun)
+        .where(
+            AgentRun.organization_id == str(run.organization_id),
+            AgentRun.id == run.id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if persisted is None:
+        raise NotFound(
+            "AgentRun 不存在或不属于当前组织",
+            details={"agent_run_id": str(run.id)},
+        )
+    return persisted
 
 
 def _require_running(run: AgentRun) -> None:

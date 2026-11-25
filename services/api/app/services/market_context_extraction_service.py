@@ -269,6 +269,7 @@ def extract_context_snapshot(
         provenance["extraction"]["error"] = response.error or "LLM Gateway degraded"
         snapshot.provenance = provenance
         fail_agent_run(
+            session,
             run,
             error=response.error or "LLM Gateway degraded",
             output_snapshot={"status": "FAILED", "input_sha256": input_digest},
@@ -297,6 +298,7 @@ def extract_context_snapshot(
         snapshot.provenance = provenance
         snapshot.extraction_status = "COMPLETED"
         succeed_agent_run(
+            session,
             run,
             output_snapshot={
                 "status": "COMPLETED",

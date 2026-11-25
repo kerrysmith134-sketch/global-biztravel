@@ -27,12 +27,12 @@ class _ScalarResult:
 
 
 class _Session:
-    def __init__(self, workflow):
-        self.workflow = workflow
+    def __init__(self, result):
+        self.result = result
         self.added = []
 
     def scalars(self, _statement):
-        return _ScalarResult(self.workflow)
+        return _ScalarResult(self.result)
 
     def add(self, value):
         self.added.append(value)
@@ -42,12 +42,14 @@ class _Session:
 
 
 def _running_run() -> AgentRun:
-    return AgentRun(
+    run = AgentRun(
         organization_id=uuid4(),
         agent_type="test_agent",
         status="RUNNING",
         input={"source_sha256": "abc123"},
     )
+    run.id = uuid4()
+    return run
 
 
 def test_start_agent_run_is_scoped_to_an_active_workflow() -> None:
@@ -89,7 +91,7 @@ def test_start_agent_run_rejects_missing_or_terminal_parent_workflow() -> None:
             input_snapshot={},
         )
 
-    session.workflow = SimpleNamespace(status="COMPLETED")
+    session.result = SimpleNamespace(status="COMPLETED")
     with pytest.raises(Conflict):
         start_agent_run(
             session,  # type: ignore[arg-type]
@@ -105,6 +107,7 @@ def test_succeed_agent_run_records_output_and_aware_finish_time() -> None:
     finished_at = datetime(2026, 11, 25, 10, 30, tzinfo=UTC)
 
     result = succeed_agent_run(
+        _Session(run),  # type: ignore[arg-type]
         run,
         output_snapshot={"answer_count": 3},
         finished_at=finished_at,
@@ -121,6 +124,7 @@ def test_fail_agent_run_preserves_bounded_error_and_diagnostic() -> None:
     run = _running_run()
 
     fail_agent_run(
+        _Session(run),  # type: ignore[arg-type]
         run,
         error="x" * 2400,
         output_snapshot={"status": "FAILED"},
@@ -135,13 +139,14 @@ def test_fail_agent_run_preserves_bounded_error_and_diagnostic() -> None:
 
 def test_agent_run_terminal_state_cannot_be_overwritten() -> None:
     run = _running_run()
-    succeed_agent_run(run, output_snapshot={"ok": True})
+    session = _Session(run)
+    succeed_agent_run(session, run, output_snapshot={"ok": True})
 
     with pytest.raises(AgentRunTransitionError):
-        fail_agent_run(run, error="late failure")
+        fail_agent_run(session, run, error="late failure")
 
     with pytest.raises(AgentRunTransitionError):
-        succeed_agent_run(run, output_snapshot={"ok": False})
+        succeed_agent_run(session, run, output_snapshot={"ok": False})
 
 
 def test_agent_run_rejects_naive_terminal_timestamp() -> None:
@@ -149,6 +154,7 @@ def test_agent_run_rejects_naive_terminal_timestamp() -> None:
 
     with pytest.raises(ValueError, match="timezone-aware"):
         succeed_agent_run(
+            _Session(run),  # type: ignore[arg-type]
             run,
             output_snapshot={},
             finished_at=datetime(2026, 11, 25, 10, 30),

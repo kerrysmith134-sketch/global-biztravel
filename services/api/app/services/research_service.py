@@ -536,6 +536,7 @@ def create_research_plan(
         "error": response.error,
     }
     succeed_agent_run(
+        session,
         agent_run,
         output_snapshot={
             "plan": plan,
