@@ -1069,7 +1069,7 @@ final class GlobalTravelOSUITests: XCTestCase {
     // This must not create or mutate a formal CRM Customer record.
     // swiftlint:disable:next function_body_length
     func testOpportunityEntityWorkflow() throws {
-        let suffix = Int(Date().timeIntervalSince1970)
+        let suffix = String(UUID().uuidString.prefix(8))
         let workspaceName = "UI 商机企业工作区 \(suffix)"
         let opportunityTitle = "UI 区域渠道机会 \(suffix)"
         let entityName = "UI 区域能源经销商 \(suffix)"
@@ -1406,6 +1406,7 @@ extension GlobalTravelOSUITests {
         )
         XCTAssertTrue(app.staticTexts["还没有计划版本。"].exists, "计划空状态没有准确显示")
     }
+}
 
 private extension GlobalTravelOSUITests {
     struct BriefingSetup {
