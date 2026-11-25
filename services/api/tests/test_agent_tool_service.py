@@ -501,13 +501,6 @@ def test_assistant_tool_requires_conversation_owner(monkeypatch) -> None:
         )
 
 
-from __future__ import annotations
-
-from typing import Any
-
-import pytest
-from app.services import assistant_service
-
 
 AVAILABLE_TOOLS = [
     {
