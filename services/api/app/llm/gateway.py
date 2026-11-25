@@ -237,8 +237,8 @@ def _validate(output: Any, schema: dict[str, Any] | None) -> str | None:
         item_spec = spec.get("items")
         if spec_type == "array" and isinstance(output[key], list) and isinstance(item_spec, dict):
             item_type = item_spec.get("type")
-            item_allowed = _TYPE_MAP.get(item_type)
-            if item_type is not None and item_allowed is not None:
+            item_allowed = _TYPE_MAP.get(item_type) if isinstance(item_type, str) else None
+            if isinstance(item_type, str) and item_allowed is not None:
                 for index, item in enumerate(output[key]):
                     if not isinstance(item, item_allowed):
                         return f"字段 {key}[{index}] 应为 {item_type}"
