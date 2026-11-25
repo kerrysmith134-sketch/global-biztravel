@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -20,9 +21,17 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, created_at, uuid_pk
+from app.models.base import Base, created_at, updated_at, uuid_pk
 
 RECEIPT_STORAGE_STATUSES = ("AVAILABLE", "QUARANTINED", "DELETE_PENDING")
+RECEIPT_ORPHAN_STATUSES = (
+    "DISCOVERED",
+    "DELETE_PENDING",
+    "DELETE_FAILED",
+    "DELETED",
+    "MISSING",
+    "RESOLVED",
+)
 
 
 class ReceiptAsset(Base):
@@ -78,6 +87,60 @@ class ReceiptAsset(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     created_at: Mapped[datetime] = created_at()
+
+
+class ReceiptStorageOrphan(Base):
+    """Auditable orphan-object observation scoped to one tenant and provider.
+
+    The object key remains private. DISCOVERED/DELETE_FAILED rows are retained
+    after cleanup so operators can inspect what the reconciler observed.
+    """
+
+    __tablename__ = "receipt_storage_orphans"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "storage_provider",
+            "storage_key",
+            name="uq_receipt_storage_orphans_org_provider_key",
+        ),
+        CheckConstraint(
+            "storage_provider IN ('filesystem','s3')",
+            name="storage_provider_allowed",
+        ),
+        CheckConstraint(
+            "status IN ('DISCOVERED','DELETE_PENDING','DELETE_FAILED','DELETED','MISSING','RESOLVED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("object_size >= 0", name="object_size_non_negative"),
+        CheckConstraint("delete_attempts >= 0", name="delete_attempts_non_negative"),
+        Index(
+            "ix_receipt_storage_orphans_org_status_first_seen",
+            "organization_id",
+            "status",
+            "first_seen_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    storage_provider: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    object_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    object_last_modified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="DISCOVERED")
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    delete_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
 
 
 class ReceiptOcrRun(Base):
@@ -170,8 +233,10 @@ class ReceiptOcrReview(Base):
 
 
 __all__ = [
+    "RECEIPT_ORPHAN_STATUSES",
     "RECEIPT_STORAGE_STATUSES",
     "ReceiptAsset",
+    "ReceiptStorageOrphan",
     "ReceiptOcrRun",
     "ReceiptOcrReview",
 ]

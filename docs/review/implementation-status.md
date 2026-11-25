@@ -16,7 +16,7 @@
 | MS-3 | 规划引擎 + 独立验证器 + Outbox/Worker | ✅ | 六段流水线、双轨求解器、严格覆盖不变量（ADR-0007）、状态枚举、交通段/费用 |
 | MS-4 | 计划版本/差异/激活 + 并发冲突 | ✅ | 不可变守卫、`If-Match`、单个 ACTIVE、diff、嵌套详情路径 |
 | MS-5 | 现场记录 + 离线同步 + 主动式 + 记忆 | ✅ | `visit_records`、`sync:push`、四类触发、三层记忆与复盘、`sync_operations` 审计 |
-| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；当前源码 152 个 XCTest 方法（33 契约样本解码），10 条真实后端 UI 自动化用例；本分支最新运行结果以 GitHub Actions 为准 |
+| MS-6 | iOS 客户端 | ✅ | Today/行动中心/Trips/计划/地图/日历/现场记录/CRM/费用/简报/同步/记忆/设置；当前源码 154 个 XCTest 方法（33 契约样本解码），10 条真实后端 UI 自动化用例；本分支最新运行结果以 GitHub Actions 为准 |
 | MS-7 | 交付校验 | ✅ | `make e2e` 真实后端全链路；iOS UI 冒烟；CI 脚本与门禁 |
 
 ## 2. 批次 1（MVP-1.1）
@@ -68,12 +68,12 @@
 | `make e2e` | 创建 → 导入 → 求解 → 激活 → 记录 → 同步 → 纪要 → 复盘 → 指标 → 审计，全部通过 |
 | `make bench` | N3 实例族 8 实例全门禁通过（覆盖/能力声明/确定性/金目标基线，2026-11-10 实测）：启发式全族 p50 ≤1.8ms；ortools 快实例 6.5ms~8.9s、corridor_rhine_12 39.4s。**实测发现**：`solver_budget_seconds` 是解数量预算而非墙钟，DFS+GLS 在 n≥12 后墙钟指数级（详见 `docs/architecture/performance.md` §3）。快速跑：`make bench ARGS="--skip-ortools"` |
 | `make ios-build` | BUILD SUCCEEDED（2026-11-25 GitHub Actions #681） |
-| iOS CI 单元测试 | **152 tests / 0 failures**（2026-11-25 GitHub Actions #681；`GlobalTravelOSTests.xctest` 实际执行完毕） |
+| iOS CI 单元测试 | **154 tests / 0 failures**（2026-11-25 GitHub Actions #681；`GlobalTravelOSTests.xctest` 实际执行完毕） |
 | `make ios-test`（历史完整运行） | **46 单测 + 9 条 UI 用例整轮全绿**（598s，连接真实后端，经 `scripts/ios_test_guard.sh` 保护；链式 207s、AT-007/008 专项 131s）。这是 2026-11-09 的完整运行记录，不代表本轮 CI 执行了 UI 运行时。 |
-| `swiftlint lint` | 2026-11-25 CI #681：141 个 Swift 文件报告 **73 条 warning、0 serious**；11 条既有 serious violation 已固定在版本化 `swiftlint-baseline.json` 中；新增 serious violation 仍会失败，普通 warning debt 仍可见。 |
+| `swiftlint lint` | 2026-11-25 CI #681：141 个 Swift 文件报告 **77 条 warning、0 serious**；11 条既有 serious violation 已固定在版本化 `swiftlint-baseline.json` 中；新增 serious violation 仍会失败，普通 warning debt 仍可见。 |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0047`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0048`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -114,11 +114,12 @@
                            0045_receipt_assets
                            0046_report_receipt_snapshot
                            0047_receipt_ocr
+                           0048_receipt_storage_reconciliation
 ```
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
 
-- **H2.13 票据资产与报销证据快照（核心闭环已实现，验收持续进行）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。新增迁移 `0045_receipt_assets`。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。新增迁移 `0047_receipt_ocr`：对已保存的图片 ReceiptAsset 执行 Tesseract OCR，保存 content hash、引擎版本、候选字段与 AgentRun 关联；不复制原始票据文本，不因识别结果创建/修改费用。用户可对一次 OCR 运行单独确认或驳回，确认字段写入只追加审阅记录，数据库撤销应用角色 UPDATE/DELETE。PDF 仍可保留与下载，但当前 OCR 明确只支持图片格式。iOS ExpenseEntrySheet 已提供 PhotosPicker/FileImporter，选择后先写入私有 ReceiptVault；云端模式在费用保存前上传并验证服务端确认，离线/本地模式保留原件。Trip Closeout Readiness 已接入服务端与 iOS 详情页；本地评估会校验票据归属与 SHA-256，报销快照固定 Asset ID、哈希、原始文件名、MIME 和字节数。仍待完成对象存储孤儿对账、iOS OCR 候选人工审阅体验及完整真实后端 UI 自动化运行门禁；当前 CI 的 UI 步骤只执行 build-for-testing，不等于运行 UI 用例。
+- **H2.13 票据资产与报销证据快照（核心闭环已实现，持续进行生产化验收）**：新增私有 ReceiptAsset 元数据、原始文件私有存储适配器（本地原子文件存储 / S3 兼容 Bucket）、组织与 Trip 授权的上传/下载 API、签名嗅探与大小限制、SHA-256 和幂等重放；TripExpense 通过同组织/同 Trip 复合外键关联票据。迁移 `0046_report_receipt_snapshot` 为报销明细固定票据 Asset ID、内容 SHA-256、原始文件名、MIME 与字节数；复合外键保护相同组织/行程，延迟 NO ACTION 约束防止删除仍被报销快照引用的原件。原始二进制不进入 PostgreSQL，storage key 不暴露给客户端；Docker API/Worker 共用持久卷 `gbt_os_receipt_data`，重建容器不会清空本地票据对象。迁移 `0047_receipt_ocr`：对已保存图片 ReceiptAsset 执行 Tesseract OCR，保存 content hash、引擎版本、候选字段与 AgentRun 关联；不复制原始票据文本，不因识别结果创建/修改费用。用户可确认或驳回 OCR 候选，确认字段写入只追加审阅记录；iOS ExpenseEntrySheet 已展示候选、支持编辑商户/金额/币种/日期及显式确认/驳回，审核请求以 OCR Run ID 作为稳定幂等键。PDF 可保留与下载，但不显示图片 OCR 操作。iOS 云端模式先上传并核对服务端 Asset ID 与哈希，离线/本地模式保留原件；Trip Closeout Readiness 与报销证据快照已接入 iOS。迁移 `0048_receipt_storage_reconciliation` 新增组织级对象孤儿审计表；Worker 每小时按租户前缀对账，双 24 小时观察宽限、上传/对账 advisory lock、删除前二次查询，审计 DISCOVERED/DELETE_FAILED/DELETED/MISSING/RESOLVED。`GBT_RECEIPT_ORPHAN_CLEANUP_ENABLED` 默认 false，未显式开启时仅发现和 dry-run，不删除对象。生产启用前须验证 S3 ListBucket 的租户前缀权限。当前 CI 的 UI 步骤只执行 build-for-testing，不等于运行 UI 用例；完整真实后端 UI 自动化运行仍待补齐。
 
 ## 6. MVP 之后已开始推进（PRD 方向二 / 六）
 
