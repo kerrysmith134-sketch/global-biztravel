@@ -97,7 +97,7 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertEqual(try database.count(table: "visits"), 2)
         XCTAssertGreaterThanOrEqual(try database.count(table: "customer_places"), 1)
         try assertConfirmedBatchWasScrubbed(preview.importId)
-        try assertImportedVisit(repository, tripId: trip.id)
+        try assertImportedVisit(tripId: trip.id)
 
         let updatedTrip = try await repository.trip(id: trip.id)
         XCTAssertEqual(updatedTrip.version, originalVersion + 1)
@@ -107,6 +107,27 @@ final class LocalSpreadsheetImportTests: XCTestCase {
             request: ConfirmImportRequest(importId: preview.importId, acceptedRowNumbers: [2])
         )
         XCTAssertEqual(replay, "IMPORT_ALREADY_CONFIRMED")
+    }
+
+    func testRejectedOnlyConfirmationStillInvalidatesPlan() async throws {
+        let repository = LocalTripRepository(database: database)
+        let trip = try await makeTestTrip(repository, name: "拒绝行导入验收")
+        let preview = try await parseWorkbook(
+            repository,
+            tripId: trip.id,
+            filename: "customers-rejected-only.xlsx"
+        )
+
+        let result = try await repository.confirmImport(
+            tripId: trip.id,
+            request: ConfirmImportRequest(importId: preview.importId, acceptedRowNumbers: [4])
+        )
+        XCTAssertEqual(result.acceptedRows, 0)
+        XCTAssertEqual(result.rejectedRows, 1)
+        XCTAssertEqual(try database.count(table: "visits"), 0)
+
+        let updatedTrip = try await repository.trip(id: trip.id)
+        XCTAssertEqual(updatedTrip.version, trip.version + 1)
     }
 
     func testConcurrentImportConfirmationOnlyCommitsOnce() async throws {
@@ -187,7 +208,7 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertTrue(stagedRows.allSatisfy { $0["normalized"] == nil })
     }
 
-    private func assertImportedVisit(_ repository: LocalTripRepository, tripId: String) throws {
+    private func assertImportedVisit(tripId: String) throws {
         let visitPayloads = try database.loadPayloads(
             table: "visits",
             where: "trip_id = ?",
