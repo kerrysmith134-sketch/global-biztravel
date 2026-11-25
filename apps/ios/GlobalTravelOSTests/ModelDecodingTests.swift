@@ -6,7 +6,10 @@ final class ModelDecodingTests: XCTestCase {
 
     func testAssistantToolRetryKeySurvivesStoreRecreationUntil24HourBoundary() {
         let suiteName = "AssistantToolRetryKeyTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Unable to create isolated retry-key preferences")
+            return
+        }
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let now = Date(timeIntervalSince1970: 1_795_586_400)
@@ -40,7 +43,10 @@ final class ModelDecodingTests: XCTestCase {
 
     func testAssistantToolRetryKeyFailsClosedWhenDeviceClockMovesBackward() {
         let suiteName = "AssistantToolRetryClockTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Unable to create isolated retry-key preferences")
+            return
+        }
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = AssistantToolRetryKeyStore(defaults: defaults)
@@ -63,7 +69,10 @@ final class ModelDecodingTests: XCTestCase {
 
     func testCompletedAssistantToolInvocationCanClearItsRetryKey() {
         let suiteName = "AssistantToolRetryClearTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Unable to create isolated retry-key preferences")
+            return
+        }
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = AssistantToolRetryKeyStore(defaults: defaults)
