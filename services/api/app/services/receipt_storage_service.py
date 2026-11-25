@@ -155,7 +155,13 @@ class FilesystemReceiptStorage:
 
     def list_objects(self, prefix: str) -> list[StoredReceiptObject]:
         _validate_org_prefix(prefix)
-        directory = (self.root / prefix.rstrip("/")).resolve()
+        raw_directory = self.root / prefix.rstrip("/")
+        cursor = self.root
+        for part in Path(prefix.rstrip("/")).parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise ReceiptStorageUnavailable("拒绝枚举符号链接票据目录")
+        directory = raw_directory.resolve()
         if self.root not in directory.parents:
             raise ValueError("receipt storage prefix escapes private root")
         if not directory.exists():
