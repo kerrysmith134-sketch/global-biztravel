@@ -19,6 +19,8 @@ struct AssistantCard: Codable, Equatable, Identifiable {
     var detail: String
     var entityId: String?
     var link: String?
+    var toolName: String?
+    var toolArguments: AssistantToolExecuteArguments?
 
     var id: String { "\(type):\(entityId ?? title)" }
 }
@@ -47,10 +49,14 @@ struct AssistantMessageCreate: Codable, Equatable {
 
 
 struct AssistantToolExecuteArguments: Codable, Equatable {
-    var tripId: String
+    var tripId: String? = nil
+    var visitId: String? = nil
+    var tone: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case tripId = "trip_id"
+        case visitId = "visit_id"
+        case tone
     }
 }
 
