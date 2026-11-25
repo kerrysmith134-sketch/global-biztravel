@@ -182,7 +182,7 @@ def test_object_becomes_resolved_when_receipt_metadata_is_committed(
     trip_id = create_trip(client)
     now = datetime.now(UTC)
     asset_id = uuid.uuid4()
-    key = make_storage_key(trip_id)
+    key = f"receipts/{ORG_A}/{trip_id}/{asset_id}"
     content = put_orphan(
         private_storage,
         key,
