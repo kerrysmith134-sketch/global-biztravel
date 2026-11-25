@@ -35,9 +35,15 @@ struct ExpenseReportItem: Codable, Equatable, Identifiable {
     var occurredOn: Date?
     var note: String?
     var receiptRef: String?
+    var receiptAssetId: String?
+    var receiptSha256: String?
+    var receiptOriginalFilename: String?
+    var receiptMimeType: String?
+    var receiptByteLength: Int?
 
     private enum CodingKeys: String, CodingKey {
         case id, reportId, expenseId, category, amount, currency, occurredOn, note, receiptRef
+        case receiptAssetId, receiptSha256, receiptOriginalFilename, receiptMimeType, receiptByteLength
     }
 
     init(
@@ -49,7 +55,12 @@ struct ExpenseReportItem: Codable, Equatable, Identifiable {
         currency: String,
         occurredOn: Date? = nil,
         note: String? = nil,
-        receiptRef: String? = nil
+        receiptRef: String? = nil,
+        receiptAssetId: String? = nil,
+        receiptSha256: String? = nil,
+        receiptOriginalFilename: String? = nil,
+        receiptMimeType: String? = nil,
+        receiptByteLength: Int? = nil
     ) {
         self.id = id
         self.reportId = reportId
@@ -60,6 +71,11 @@ struct ExpenseReportItem: Codable, Equatable, Identifiable {
         self.occurredOn = occurredOn
         self.note = note
         self.receiptRef = receiptRef
+        self.receiptAssetId = receiptAssetId
+        self.receiptSha256 = receiptSha256
+        self.receiptOriginalFilename = receiptOriginalFilename
+        self.receiptMimeType = receiptMimeType
+        self.receiptByteLength = receiptByteLength
     }
 
     init(from decoder: Decoder) throws {
@@ -73,6 +89,11 @@ struct ExpenseReportItem: Codable, Equatable, Identifiable {
         occurredOn = try container.decodeIfPresent(Date.self, forKey: .occurredOn)
         note = try container.decodeIfPresent(String.self, forKey: .note)
         receiptRef = try container.decodeIfPresent(String.self, forKey: .receiptRef)
+        receiptAssetId = try container.decodeIfPresent(String.self, forKey: .receiptAssetId)
+        receiptSha256 = try container.decodeIfPresent(String.self, forKey: .receiptSha256)
+        receiptOriginalFilename = try container.decodeIfPresent(String.self, forKey: .receiptOriginalFilename)
+        receiptMimeType = try container.decodeIfPresent(String.self, forKey: .receiptMimeType)
+        receiptByteLength = try container.decodeIfPresent(Int.self, forKey: .receiptByteLength)
     }
 
     var categoryLabel: String {
