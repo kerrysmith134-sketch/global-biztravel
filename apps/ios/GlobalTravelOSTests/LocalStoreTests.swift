@@ -537,6 +537,12 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(report.itemList.count, 1)
         let persistedExpenses = try await repository.expenses(tripId: trip.id)
         XCTAssertEqual(report.itemList.first?.expenseId, persistedExpenses.first?.id)
+        let listedReports = try await repository.expenseReports(tripId: trip.id)
+        XCTAssertEqual(listedReports.first?.id, report.id)
+        let submittedReport = try await repository.submitExpenseReport(id: report.id)
+        XCTAssertEqual(submittedReport.status, .submitted)
+        let reloadedReport = try await repository.expenseReports(tripId: trip.id)
+        XCTAssertEqual(reloadedReport.first?.status, .submitted)
 
         var completedVisit = visit
         completedVisit.status = "DONE"
@@ -551,7 +557,7 @@ final class LocalStoreTests: XCTestCase {
         )
 
         let resolved = try await repository.closeoutReadiness(tripId: trip.id)
-        XCTAssertEqual(resolved.status, .readyWithExceptions)
+        XCTAssertEqual(resolved.status, .reportSubmitted)
         XCTAssertEqual(resolved.summary.blockerCount, 0)
         XCTAssertEqual(resolved.summary.warningCount, 1)
         XCTAssertEqual(resolved.summary.visitOutcomeCount, 1)
