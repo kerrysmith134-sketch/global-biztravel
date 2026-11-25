@@ -107,7 +107,7 @@ final class AssistantViewModel: ObservableObject {
         let defaults = UserDefaults.standard
         let tokenKey = "\(storageKey).token"
         let createdAtKey = "\(storageKey).created_at"
-        let retentionWindow: TimeInterval = 23 * 60 * 60
+        let retentionWindow: TimeInterval = 24 * 60 * 60
 
         if let token = defaults.string(forKey: tokenKey),
            let createdAt = defaults.object(forKey: createdAtKey) as? Date {

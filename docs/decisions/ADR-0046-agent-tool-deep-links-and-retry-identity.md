@@ -17,7 +17,7 @@ Agent tool execution is an explicit user action backed by a server-side 24-hour 
 2. `TripDetailView` accepts an optional initial section. Existing callers keep the default overview; Assistant result cards select the relevant plan or visa section.
 3. The iOS Assistant stores a generated idempotency token and creation time in UserDefaults under a key scoped to conversation, tool and trip.
 4. The same token is reused after uncertain network failures and app relaunch. It is removed only after the tool endpoint returns successfully.
-5. The client rotates the token after 23 hours, leaving a one-hour safety margin before the server's 24-hour idempotency retention expires.
+5. The client reuses the token for the full 24-hour server idempotency retention window; a later tap is treated as a new invocation.
 6. The server continues to bind the idempotency fingerprint to the acting user. No server task model or schema migration is introduced.
 
 ## Consequences
