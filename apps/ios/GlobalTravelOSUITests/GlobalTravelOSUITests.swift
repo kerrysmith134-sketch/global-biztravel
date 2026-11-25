@@ -1353,7 +1353,6 @@ extension GlobalTravelOSUITests {
         }
         return true
     }
-}
 
     func testAssistantReadsPlanAndDeepLinksToPlanSection() throws {
         let setup = try makeBriefingTrip()
