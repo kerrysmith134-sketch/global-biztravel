@@ -381,7 +381,7 @@ def main() -> int:
             any(item["kind"] == "CRM_SYNC" for item in prepared),
             "待导入 CRM 记录出现在行动中心",
         )
-        external = (crm_detail.json().get("result") or {}).get("external_id", "")
+        external = (crm_detail.get("result") or {}).get("external_id", "")
         if external.startswith("file:"):
             Path(external.removeprefix("file:")).unlink(missing_ok=True)
 
