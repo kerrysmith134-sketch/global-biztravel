@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app.services.assistant_service import _merge_tool_proposals
+import pytest
+from app.services import assistant_service
 
 
 AVAILABLE_TOOLS = [
@@ -28,7 +29,7 @@ AVAILABLE_TOOLS = [
 
 
 def test_model_candidates_are_filtered_to_executable_tool_allowlist() -> None:
-    proposals = _merge_tool_proposals(
+    proposals = assistant_service._merge_tool_proposals(
         policy_proposals=[],
         model_candidates=[
             "visa.get_checklist",
@@ -50,7 +51,7 @@ def test_model_candidates_are_filtered_to_executable_tool_allowlist() -> None:
 
 
 def test_model_cannot_suggest_write_tool_without_explicit_creation_intent() -> None:
-    proposals = _merge_tool_proposals(
+    proposals = assistant_service._merge_tool_proposals(
         policy_proposals=[],
         model_candidates=["visa.prepare_checklist"],
         available_tools=AVAILABLE_TOOLS,
@@ -61,7 +62,7 @@ def test_model_cannot_suggest_write_tool_without_explicit_creation_intent() -> N
 
 
 def test_model_can_suggest_write_tool_after_explicit_user_request() -> None:
-    proposals = _merge_tool_proposals(
+    proposals = assistant_service._merge_tool_proposals(
         policy_proposals=[],
         model_candidates=["visa.prepare_checklist"],
         available_tools=AVAILABLE_TOOLS,
@@ -71,22 +72,22 @@ def test_model_can_suggest_write_tool_after_explicit_user_request() -> None:
     assert [item["name"] for item in proposals] == ["visa.prepare_checklist"]
 
 
-def test_model_write_suggestion_is_rejected_when_user_negates_creation() -> None:
-    proposals = _merge_tool_proposals(
+@pytest.mark.parametrize(
+    "message",
+    [
+        "不要创建签证材料清单，只查看现有清单",
+        "Do not create a visa checklist; only show the existing one.",
+    ],
+)
+def test_model_write_suggestion_is_rejected_when_user_negates_creation(message: str) -> None:
+    proposals = assistant_service._merge_tool_proposals(
         policy_proposals=[],
         model_candidates=["visa.prepare_checklist"],
         available_tools=AVAILABLE_TOOLS,
-        message="不要创建签证材料清单，只查看现有清单",
-    )
-    english_proposals = _merge_tool_proposals(
-        policy_proposals=[],
-        model_candidates=["visa.prepare_checklist"],
-        available_tools=AVAILABLE_TOOLS,
-        message="Do not create a visa checklist; only show the existing one.",
+        message=message,
     )
 
     assert proposals == []
-    assert english_proposals == []
 
 
 def test_policy_and_model_proposals_are_merged_without_duplicates() -> None:
@@ -98,7 +99,7 @@ def test_policy_and_model_proposals_are_merged_without_duplicates() -> None:
             "requires_approval": False,
         }
     ]
-    proposals = _merge_tool_proposals(
+    proposals = assistant_service._merge_tool_proposals(
         policy_proposals=policy,
         model_candidates=["visa.get_checklist", "trip.get_plan", "unknown.tool"],
         available_tools=AVAILABLE_TOOLS,
@@ -113,7 +114,7 @@ def test_policy_and_model_proposals_are_merged_without_duplicates() -> None:
 
 
 def test_model_candidates_must_be_a_list() -> None:
-    proposals = _merge_tool_proposals(
+    proposals = assistant_service._merge_tool_proposals(
         policy_proposals=[],
         model_candidates="trip.get_plan",
         available_tools=AVAILABLE_TOOLS,
@@ -133,7 +134,7 @@ def test_admin_scope_is_never_offered_as_an_assistant_tool() -> None:
         }
     ]
 
-    proposals = _merge_tool_proposals(
+    proposals = assistant_service._merge_tool_proposals(
         policy_proposals=[{"name": "trip.admin_action"}],
         model_candidates=["trip.admin_action"],
         available_tools=available,
@@ -145,13 +146,13 @@ def test_admin_scope_is_never_offered_as_an_assistant_tool() -> None:
 
 def test_policy_and_model_candidates_share_the_same_write_intent_gate() -> None:
     proposal = {"name": "visa.prepare_checklist"}
-    denied = _merge_tool_proposals(
+    denied = assistant_service._merge_tool_proposals(
         policy_proposals=[proposal],
         model_candidates=["visa.prepare_checklist"],
         available_tools=AVAILABLE_TOOLS,
         message="请查看签证材料清单",
     )
-    allowed = _merge_tool_proposals(
+    allowed = assistant_service._merge_tool_proposals(
         policy_proposals=[proposal],
         model_candidates=["visa.prepare_checklist"],
         available_tools=AVAILABLE_TOOLS,
@@ -163,7 +164,7 @@ def test_policy_and_model_candidates_share_the_same_write_intent_gate() -> None:
 
 
 def test_model_cannot_propose_any_tool_without_a_bound_trip_catalogue() -> None:
-    proposals = _merge_tool_proposals(
+    proposals = assistant_service._merge_tool_proposals(
         policy_proposals=[],
         model_candidates=["trip.get_plan", "visa.get_checklist"],
         available_tools=[],
