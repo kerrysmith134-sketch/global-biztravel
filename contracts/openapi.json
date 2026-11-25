@@ -11057,6 +11057,75 @@
           }
         }
       }
+    },
+    "/v1/assistant/conversations/{conversation_id}/tools:execute": {
+      "post": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "执行一个已登记、已授权的 Agent 工具",
+        "operationId": "execute_tool_v1_assistant_conversations__conversation_id__tools_execute_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantToolExecuteCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantMessageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -28222,6 +28291,28 @@
           "summary"
         ],
         "title": "TripCloseoutReadinessRead"
+      },
+      "AssistantToolExecuteCreate": {
+        "properties": {
+          "tool_name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Tool Name"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Arguments"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tool_name"
+        ],
+        "title": "AssistantToolExecuteCreate",
+        "description": "Explicit request to execute one server-allow-listed Agent tool."
       }
     }
   }
