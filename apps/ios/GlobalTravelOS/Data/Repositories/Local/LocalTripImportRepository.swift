@@ -157,41 +157,11 @@ extension LocalTripRepository {
     ) async throws -> ConfirmImportResult {
         _ = try await self.trip(id: tripId)
         let storageKey = "local-import:\(request.importId)"
-        guard let encoded = database.keyValue(storageKey), let data = encoded.data(using: .utf8) else {
-            throw APIError.serverError(
-                code: "NOT_FOUND", message: "导入批次不存在", traceId: nil,
-                details: ["import_id": .string(request.importId)]
-            )
-        }
-        var batch: LocalImportBatch
-        do {
-            batch = try DateCoding.decoder().decode(LocalImportBatch.self, from: data)
-        } catch {
-            throw APIError.invalidResponse("本地导入批次损坏，无法确认")
-        }
-        guard batch.tripId == tripId else {
-            throw APIError.serverError(
-                code: "NOT_FOUND", message: "导入批次不属于当前出行", traceId: nil,
-                details: ["import_id": .string(request.importId)]
-            )
-        }
-        guard batch.status == "PARSED" else {
-            throw APIError.serverError(
-                code: "IMPORT_ALREADY_CONFIRMED", message: "该导入批次已处理，不能重复确认",
-                traceId: nil, details: ["import_id": .string(request.importId), "status": .string(batch.status)]
-            )
-        }
-
         let requested = request.acceptedRowNumbers
         let requestedSet = Set(requested)
         guard requestedSet.count == requested.count else {
             throw APIError.serverError(code: "VALIDATION_ERROR", message: "确认行号包含重复值", traceId: nil, details: [:])
         }
-        let knownRows = Set(batch.rows.map(\.rowNumber))
-        guard requestedSet.isSubset(of: knownRows) else {
-            throw APIError.serverError(code: "VALIDATION_ERROR", message: "确认行号不属于该导入批次", traceId: nil, details: [:])
-        }
-
         let autoAcceptValidRows = requestedSet.isEmpty
         var acceptedRows = 0
         var rejectedRows = 0
@@ -203,6 +173,24 @@ extension LocalTripRepository {
         var warnings: [String] = []
 
         try database.transaction {
+            // BEGIN IMMEDIATE serializes concurrent confirmations. Always re-read the batch only
+            // after acquiring the write lock so a second caller observes CONFIRMED and cannot
+            // create a duplicate set of customer/visit rows.
+            var batch = try loadConfirmableImportBatch(
+                storageKey: storageKey,
+                tripId: tripId,
+                importId: request.importId
+            )
+            let knownRows = Set(batch.rows.map(\.rowNumber))
+            guard requestedSet.isSubset(of: knownRows) else {
+                throw APIError.serverError(
+                    code: "VALIDATION_ERROR",
+                    message: "确认行号不属于该导入批次",
+                    traceId: nil,
+                    details: [:]
+                )
+            }
+
             // Decode each business table once per import, then update the in-memory snapshots as
             // rows are created. Avoid a full SQLite table scan for every spreadsheet row.
             var customerCache = try database.loadPayloads(table: "customers")
@@ -310,6 +298,44 @@ extension LocalTripRepository {
             reusedPlaces: reusedPlaces,
             warnings: Array(warnings.prefix(50))
         )
+    }
+
+    private func loadConfirmableImportBatch(
+        storageKey: String,
+        tripId: String,
+        importId: String
+    ) throws -> LocalImportBatch {
+        guard let encoded = database.keyValue(storageKey), let data = encoded.data(using: .utf8) else {
+            throw APIError.serverError(
+                code: "NOT_FOUND",
+                message: "导入批次不存在",
+                traceId: nil,
+                details: ["import_id": .string(importId)]
+            )
+        }
+        let batch: LocalImportBatch
+        do {
+            batch = try DateCoding.decoder().decode(LocalImportBatch.self, from: data)
+        } catch {
+            throw APIError.invalidResponse("本地导入批次损坏，无法确认")
+        }
+        guard batch.tripId == tripId else {
+            throw APIError.serverError(
+                code: "NOT_FOUND",
+                message: "导入批次不属于当前出行",
+                traceId: nil,
+                details: ["import_id": .string(importId)]
+            )
+        }
+        guard batch.status == "PARSED" else {
+            throw APIError.serverError(
+                code: "IMPORT_ALREADY_CONFIRMED",
+                message: "该导入批次已处理，不能重复确认",
+                traceId: nil,
+                details: ["import_id": .string(importId), "status": .string(batch.status)]
+            )
+        }
+        return batch
     }
 
     private func minimizeConfirmedBatch(_ batch: inout LocalImportBatch) {
