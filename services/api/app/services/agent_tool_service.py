@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import ROLE_RANK
 from app.api.errors import ApiError, Conflict, Forbidden, Unprocessable
 from app.llm.tools import list_tools
-from app.services import plan_service, trip_service
+from app.services import plan_service, trip_service, visa_service
 from app.services.agent_runtime_service import fail_agent_run, start_agent_run, succeed_agent_run
 
 
@@ -40,6 +40,74 @@ class AgentToolResult:
     version_number: int | None = None
     stop_count: int = 0
     day_count: int = 0
+    visa_case_count: int = 0
+    checklist_item_count: int = 0
+    ready_item_count: int = 0
+    missing_item_count: int = 0
+    not_applicable_item_count: int = 0
+
+
+def _execute_visa_get_checklist(
+    session: Session,
+    organization_id: UUID | str,
+    arguments: TripGetPlanArguments,
+) -> AgentToolResult:
+    trip = trip_service.require_trip(session, organization_id, arguments.trip_id)
+    cases = visa_service.list_cases(session, organization_id, trip.id)
+    if not cases:
+        return AgentToolResult(
+            tool_name="visa.get_checklist",
+            status="NO_VISA_CASES",
+            trip_id=str(trip.id),
+            trip_name=trip.name,
+            detail=(
+                f"「{trip.name}」尚未建立签证案件或材料清单。"
+                "可以在行程详情中创建案件；本工具不会根据离线目录推断签证要求。"
+            ),
+        )
+
+    total = 0
+    ready = 0
+    missing = 0
+    not_applicable = 0
+    country_summaries: list[str] = []
+    for case in cases:
+        items = case.checklist or []
+        country_ready = 0
+        country_missing = 0
+        for item in items:
+            status = str(item.get("status") or "MISSING").upper()
+            total += 1
+            if status == "READY":
+                ready += 1
+                country_ready += 1
+            elif status == "NOT_APPLICABLE":
+                not_applicable += 1
+            else:
+                missing += 1
+                country_missing += 1
+        country_summaries.append(
+            f"{case.country_code}：案件 {case.status}，已备齐 {country_ready}/{len(items)}，"
+            f"缺失 {country_missing} 项"
+        )
+
+    return AgentToolResult(
+        tool_name="visa.get_checklist",
+        status="CHECKLIST_LOADED",
+        trip_id=str(trip.id),
+        trip_name=trip.name,
+        detail=(
+            f"签证材料清单共 {len(cases)} 个国家案件、{total} 项："
+            f"已备齐 {ready} 项、缺失 {missing} 项、不适用 {not_applicable} 项。"
+            + "；".join(country_summaries)
+            + "。这里只汇总已有案件记录，不代表签证资格或官方入境要求已核实。"
+        ),
+        visa_case_count=len(cases),
+        checklist_item_count=total,
+        ready_item_count=ready,
+        missing_item_count=missing,
+        not_applicable_item_count=not_applicable,
+    )
 
 
 def _execute_trip_get_plan(
@@ -89,6 +157,7 @@ def _execute_trip_get_plan(
 
 EXECUTORS = {
     "trip.get_plan": (_execute_trip_get_plan, TripGetPlanArguments),
+    "visa.get_checklist": (_execute_visa_get_checklist, TripGetPlanArguments),
 }
 
 SCOPE_MINIMUM_ROLES = {
@@ -98,6 +167,7 @@ SCOPE_MINIMUM_ROLES = {
 }
 SCOPE_RESOURCE_BY_TOOL = {
     "trip.get_plan": "trip",
+    "visa.get_checklist": "trip",
 }
 
 
@@ -197,12 +267,13 @@ def execute_tool(
                 "error_code": exc.code,
             },
         )
+        label = "签证材料清单" if tool_name == "visa.get_checklist" else "行程计划"
         return AgentToolResult(
             tool_name=tool_name,
             status="FAILED",
             trip_id=str(parsed_arguments.trip_id),
             trip_name="",
-            detail=f"无法读取该行程计划：{exc.message}",
+            detail=f"无法读取{label}：{exc.message}",
         )
 
     succeed_agent_run(
@@ -215,6 +286,11 @@ def execute_tool(
             "version_number": result.version_number,
             "stop_count": result.stop_count,
             "day_count": result.day_count,
+            "visa_case_count": result.visa_case_count,
+            "checklist_item_count": result.checklist_item_count,
+            "ready_item_count": result.ready_item_count,
+            "missing_item_count": result.missing_item_count,
+            "not_applicable_item_count": result.not_applicable_item_count,
         },
     )
     return result

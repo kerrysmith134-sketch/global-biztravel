@@ -12,7 +12,7 @@ from app.services import agent_tool_service
 
 def test_only_tools_with_explicit_handlers_are_executable() -> None:
     names = [item["name"] for item in agent_tool_service.list_executable_tools()]
-    assert names == ["trip.get_plan"]
+    assert names == ["trip.get_plan", "visa.get_checklist"]
 
 
 @pytest.mark.parametrize(
@@ -105,6 +105,107 @@ def test_no_active_plan_is_audited_as_an_explicit_empty_result(monkeypatch) -> N
     assert result.trip_id == str(trip_id)
     assert "没有生效计划" in result.detail
     assert finished["output_snapshot"]["status"] == "NO_ACTIVE_PLAN"
+
+
+def test_visa_tool_without_cases_returns_an_explicit_empty_result(monkeypatch) -> None:
+    trip_id = uuid4()
+    run = SimpleNamespace()
+    finished = {}
+
+    monkeypatch.setattr(agent_tool_service, "start_agent_run", lambda *args, **kwargs: run)
+    monkeypatch.setattr(
+        agent_tool_service,
+        "succeed_agent_run",
+        lambda session, current_run, **kwargs: finished.update(kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.trip_service,
+        "require_trip",
+        lambda session, organization_id, requested_id: SimpleNamespace(
+            id=trip_id,
+            name="Berlin work trip",
+        ),
+    )
+    monkeypatch.setattr(agent_tool_service.visa_service, "list_cases", lambda *args: [])
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="VIEWER",
+        tool_name="visa.get_checklist",
+        arguments={"trip_id": str(trip_id)},
+    )
+
+    assert result.status == "NO_VISA_CASES"
+    assert result.visa_case_count == 0
+    assert "尚未建立签证案件" in result.detail
+    assert "不会根据离线目录推断签证要求" in result.detail
+    assert finished["output_snapshot"]["status"] == "NO_VISA_CASES"
+
+
+def test_visa_tool_summarizes_only_persisted_checklist_items(monkeypatch) -> None:
+    trip_id = uuid4()
+    run = SimpleNamespace()
+    finished = {}
+    cases = [
+        SimpleNamespace(
+            country_code="DE",
+            status="PREPARING",
+            checklist=[
+                {"key": "passport", "label": "护照", "status": "READY"},
+                {"key": "invitation", "label": "邀请函", "status": "MISSING"},
+                {"key": "photo", "label": "照片", "status": "NOT_APPLICABLE"},
+            ],
+        ),
+        SimpleNamespace(
+            country_code="NL",
+            status="NEW",
+            checklist=[
+                {"key": "passport", "label": "护照", "status": "MISSING"},
+                {"key": "insurance", "label": "保险", "status": "READY"},
+            ],
+        ),
+    ]
+
+    monkeypatch.setattr(agent_tool_service, "start_agent_run", lambda *args, **kwargs: run)
+    monkeypatch.setattr(
+        agent_tool_service,
+        "succeed_agent_run",
+        lambda session, current_run, **kwargs: finished.update(kwargs),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.trip_service,
+        "require_trip",
+        lambda session, organization_id, requested_id: SimpleNamespace(
+            id=trip_id,
+            name="Europe work trip",
+        ),
+    )
+    monkeypatch.setattr(
+        agent_tool_service.visa_service,
+        "list_cases",
+        lambda session, organization_id, requested_trip_id: cases,
+    )
+
+    result = agent_tool_service.execute_tool(
+        object(),  # type: ignore[arg-type]
+        uuid4(),
+        actor_role="VIEWER",
+        tool_name="visa.get_checklist",
+        arguments={"trip_id": str(trip_id)},
+    )
+
+    assert result.status == "CHECKLIST_LOADED"
+    assert result.visa_case_count == 2
+    assert result.checklist_item_count == 5
+    assert result.ready_item_count == 2
+    assert result.missing_item_count == 2
+    assert result.not_applicable_item_count == 1
+    assert "DE" in result.detail and "NL" in result.detail
+    snapshot = finished["output_snapshot"]
+    assert snapshot["status"] == "CHECKLIST_LOADED"
+    assert snapshot["ready_item_count"] == 2
+    assert snapshot["missing_item_count"] == 2
 
 
 def test_no_read_permission_means_no_tool_run_is_started(monkeypatch) -> None:

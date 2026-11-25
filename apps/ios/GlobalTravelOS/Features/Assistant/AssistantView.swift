@@ -285,12 +285,19 @@ private struct MessageBubble: View {
                     }
                 } else {
                     cardFace(card)
-                    if card.link == "tool", let toolName = card.entityId, toolName == "trip.get_plan" {
+                    if card.link == "tool",
+                       let toolName = card.entityId,
+                       ["trip.get_plan", "visa.get_checklist"].contains(toolName) {
                         Button {
                             Task { await runTool(toolName) }
                         } label: {
-                            Label("读取计划", systemImage: "doc.text.magnifyingglass")
-                                .font(.caption)
+                            Label(
+                                toolName == "visa.get_checklist" ? "查看签证清单" : "读取计划",
+                                systemImage: toolName == "visa.get_checklist"
+                                    ? "doc.text"
+                                    : "doc.text.magnifyingglass"
+                            )
+                            .font(.caption)
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(isSending)
