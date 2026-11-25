@@ -116,5 +116,5 @@ Input Normalizer → Feasibility Checker → Candidate Generator
 - `AT-S01`：组织 A 会话访问组织 B 数据必须全部失败（数据库级 RLS）。
 
 验收必须在**真实客户端、后端与数据库**之间完成，不得以静态页面、模拟 API 返回值或预置演示数据替代。
-当前源码自动化覆盖基线：后端 240 条（含真实 PostgreSQL）、iOS 150 个单元测试方法（含 33 条契约样本解码）+ 10 条真实后端 UI 自动化；
+当前源码自动化覆盖基线：后端 240 条（含真实 PostgreSQL）、iOS 151 个单元测试方法（含 33 条契约样本解码）+ 10 条真实后端 UI 自动化；
 `make e2e` 真实后端全链路、`make contract-check` 契约漂移检查；iOS 客户端已在模拟器中连接真实后端验证。
