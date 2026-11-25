@@ -4,6 +4,96 @@ import XCTest
 // swiftlint:disable:next type_body_length
 final class ModelDecodingTests: XCTestCase {
 
+    func testAssistantToolRetryKeySurvivesStoreRecreationUntil24HourBoundary() {
+        let suiteName = "AssistantToolRetryKeyTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Unable to create isolated retry-key preferences")
+            return
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = Date(timeIntervalSince1970: 1_795_586_400)
+        let originalStore = AssistantToolRetryKeyStore(defaults: defaults)
+        let first = originalStore.identity(
+            conversationId: "conversation-1",
+            toolName: "visa.prepare_checklist",
+            tripId: "trip-1",
+            now: now
+        )
+
+        // A newly-created store represents a relaunch; it must reuse the durable key.
+        let afterRelaunch = AssistantToolRetryKeyStore(defaults: defaults).identity(
+            conversationId: "conversation-1",
+            toolName: "visa.prepare_checklist",
+            tripId: "trip-1",
+            now: now.addingTimeInterval(23 * 60 * 60 + 59 * 60)
+        )
+        XCTAssertEqual(afterRelaunch, first)
+
+        // At the server's 24-hour retention boundary, the client starts a new invocation.
+        let afterExpiry = AssistantToolRetryKeyStore(defaults: defaults).identity(
+            conversationId: "conversation-1",
+            toolName: "visa.prepare_checklist",
+            tripId: "trip-1",
+            now: now.addingTimeInterval(AssistantToolRetryKeyStore.retentionWindow)
+        )
+        XCTAssertNotEqual(afterExpiry.token, first.token)
+        XCTAssertEqual(afterExpiry.storageKey, first.storageKey)
+    }
+
+    func testAssistantToolRetryKeyFailsClosedWhenDeviceClockMovesBackward() {
+        let suiteName = "AssistantToolRetryClockTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Unable to create isolated retry-key preferences")
+            return
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = AssistantToolRetryKeyStore(defaults: defaults)
+        let now = Date(timeIntervalSince1970: 1_795_586_400)
+        let first = store.identity(
+            conversationId: "conversation-2",
+            toolName: "trip.get_plan",
+            tripId: "trip-2",
+            now: now
+        )
+        let clockRollback = store.identity(
+            conversationId: "conversation-2",
+            toolName: "trip.get_plan",
+            tripId: "trip-2",
+            now: now.addingTimeInterval(-60)
+        )
+
+        XCTAssertNotEqual(clockRollback.token, first.token)
+    }
+
+    func testCompletedAssistantToolInvocationCanClearItsRetryKey() {
+        let suiteName = "AssistantToolRetryClearTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Unable to create isolated retry-key preferences")
+            return
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = AssistantToolRetryKeyStore(defaults: defaults)
+        let now = Date(timeIntervalSince1970: 1_795_586_400)
+        let first = store.identity(
+            conversationId: "conversation-3",
+            toolName: "visa.get_checklist",
+            tripId: "trip-3",
+            now: now
+        )
+        store.clear(first)
+        let second = store.identity(
+            conversationId: "conversation-3",
+            toolName: "visa.get_checklist",
+            tripId: "trip-3",
+            now: now.addingTimeInterval(60)
+        )
+
+        XCTAssertNotEqual(second.token, first.token)
+    }
+
     func testTripExpenseConnectivityDrainsOnStartupAndAfterNetworkRecovery() {
         var state = TripExpenseConnectivityState()
 

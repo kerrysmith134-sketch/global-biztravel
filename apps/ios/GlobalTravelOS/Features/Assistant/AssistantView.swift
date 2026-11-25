@@ -1,5 +1,53 @@
 import SwiftUI
 
+struct AssistantToolRetryIdentity: Equatable {
+    let storageKey: String
+    let token: String
+}
+
+/// Device-local retry identity for one logical Assistant tool invocation.
+///
+/// The server retains Idempotency-Key records for 24 hours. Persist the key before the
+/// first request so a response-loss retry after app relaunch can replay the original result.
+struct AssistantToolRetryKeyStore {
+    static let retentionWindow: TimeInterval = 24 * 60 * 60
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func identity(
+        conversationId: String,
+        toolName: String,
+        tripId: String,
+        now: Date = Date()
+    ) -> AssistantToolRetryIdentity {
+        let storageKey = "assistant.tool.retry.\(conversationId).\(toolName).\(tripId)"
+        let tokenKey = "\(storageKey).token"
+        let createdAtKey = "\(storageKey).created_at"
+
+        if let token = defaults.string(forKey: tokenKey),
+           let createdAt = defaults.object(forKey: createdAtKey) as? Date {
+            let age = now.timeIntervalSince(createdAt)
+            if age >= 0, age < Self.retentionWindow {
+                return AssistantToolRetryIdentity(storageKey: storageKey, token: token)
+            }
+        }
+
+        let token = APIRequest.newIdempotencyKey()
+        defaults.set(token, forKey: tokenKey)
+        defaults.set(now, forKey: createdAtKey)
+        return AssistantToolRetryIdentity(storageKey: storageKey, token: token)
+    }
+
+    func clear(_ identity: AssistantToolRetryIdentity) {
+        defaults.removeObject(forKey: "\(identity.storageKey).token")
+        defaults.removeObject(forKey: "\(identity.storageKey).created_at")
+    }
+}
+
 @MainActor
 final class AssistantViewModel: ObservableObject {
     @Published private(set) var conversations: [AssistantConversation] = []
@@ -10,6 +58,7 @@ final class AssistantViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let environment: AppEnvironment
+    private let toolRetryKeyStore = AssistantToolRetryKeyStore()
     /// 当前行程上下文（PRD 6.1）：从行程详情进入时，新对话自动绑定该行程。
     let tripId: String?
 
@@ -74,13 +123,25 @@ final class AssistantViewModel: ObservableObject {
         isSending = true
         errorMessage = nil
         defer { isSending = false }
+
+        let retryIdentity = toolRetryKeyStore.identity(
+            conversationId: conversation.id,
+            toolName: toolName,
+            tripId: tripId
+        )
         do {
             _ = try await environment.assistantRepository.runTool(
                 conversationId: conversation.id,
                 toolName: toolName,
-                tripId: tripId
+                tripId: tripId,
+                idempotencyKey: retryIdentity.token
             )
+            // Clear only after the tool endpoint returns successfully. A lost response keeps
+            // the key on disk so a manual retry or app relaunch replays the first response.
             detail = try await environment.assistantRepository.detail(id: conversation.id)
+            // Keep the key until both execution and conversation refresh succeed. If the POST
+            // committed but the follow-up GET fails, a retry must replay the same tool result.
+            toolRetryKeyStore.clear(retryIdentity)
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -276,10 +337,18 @@ private struct MessageBubble: View {
                     in: RoundedRectangle(cornerRadius: 12)
                 )
             ForEach(message.cardList) { card in
-                if card.link == "trip", let tripId = card.entityId {
-                    // 卡片是执行入口：行程卡片直达行程详情，而不是声称"已办完"。
+                if let link = card.link,
+                   ["trip", "trip_plan", "trip_visa"].contains(link),
+                   let tripId = card.entityId {
+                    // 工具结果打开其权威业务分区；普通行程卡默认进入概览。
                     NavigationLink {
-                        TripDetailView(tripId: tripId, environment: environment)
+                        TripDetailView(
+                            tripId: tripId,
+                            environment: environment,
+                            initialSection: link == "trip_visa"
+                                ? .visa
+                                : link == "trip_plan" ? .plan : .overview
+                        )
                     } label: {
                         cardFace(card)
                     }
