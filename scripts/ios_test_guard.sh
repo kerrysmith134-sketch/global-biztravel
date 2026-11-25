@@ -37,6 +37,7 @@ fi
 ONLY_TESTING="${ONLY_TESTING:-}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 STALL_SECONDS="${STALL_SECONDS:-900}"
+RESULT_BUNDLE_BASE="${RESULT_BUNDLE_BASE:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/../apps/ios"
 DERIVED="$HOME/Library/Developer/Xcode/DerivedData"
@@ -51,10 +52,17 @@ clean_build_state() {
 
 # 返回 0=通过 / 1=真失败 / 2=挂死
 run_attempt() {
-  local log="$1" pid now last
+  local log="$1" attempt_number="$2" pid now last
+  local result_bundle_args=()
+  if [ -n "$RESULT_BUNDLE_BASE" ]; then
+    local result_bundle="${RESULT_BUNDLE_BASE}.attempt-${attempt_number}.xcresult"
+    rm -rf "$result_bundle"
+    result_bundle_args=(-resultBundlePath "$result_bundle")
+  fi
   ( cd "$PROJECT_DIR" && xcodebuild test -project GlobalTravelOS.xcodeproj \
       -scheme GlobalTravelOS -destination "$DEST" \
       -parallel-testing-enabled NO -destination-timeout 120 \
+      "${result_bundle_args[@]}" \
       ${ONLY_TESTING:+-only-testing:"$ONLY_TESTING"} \
       >"$log" 2>&1 ) &
   pid=$!
@@ -86,7 +94,7 @@ attempt=1
 while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
   log="/tmp/ios-test-attempt-${attempt}-$(date +%s).log"
   echo "[guard] 第 ${attempt}/${MAX_ATTEMPTS} 次 xcodebuild test（日志：${log}）"
-  run_attempt "$log"
+  run_attempt "$log" "$attempt"
   status=$?
   if [ "$status" -eq 0 ]; then
     grep -E "Executed [0-9]+ tests" "$log" | tail -1 | sed 's/^/    /'
