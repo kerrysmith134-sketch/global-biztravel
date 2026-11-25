@@ -50,6 +50,18 @@ clean_build_state() {
          "$DERIVED"/GlobalTravelOS-*/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules 2>/dev/null
 }
 
+
+reset_simulator() {
+  local simulator_id=""
+  if [[ "$DEST" =~ id=([^,]+) ]]; then
+    simulator_id="${BASH_REMATCH[1]}"
+  fi
+  [ -n "$simulator_id" ] || return 0
+  xcrun simctl shutdown "$simulator_id" 2>/dev/null || true
+  xcrun simctl boot "$simulator_id" 2>/dev/null || true
+  xcrun simctl bootstatus "$simulator_id" -b
+}
+
 # 返回 0=通过 / 1=真失败 / 2=挂死
 run_attempt() {
   local log="$1" attempt_number="$2" pid now last
@@ -81,6 +93,16 @@ run_attempt() {
   wait "$pid"
   local status=$?
   if [ "$status" -ne 0 ]; then
+    # XCTest can terminate its runner before test execution starts. This is an infrastructure
+    # bootstrap failure, not a product assertion failure, and is safe to retry once.
+    if grep -Eqi \
+      'Early unexpected exit, operation never finished bootstrapping|Test crashed with signal kill before starting test execution' \
+      "$log"; then
+      echo "[guard] 检测到 XCTest Runner 启动失败；清理构建状态并重启模拟器后重试" >&2
+      clean_build_state
+      reset_simulator
+      return 2
+    fi
     return 1
   fi
   if grep -q "TEST SUCCEEDED" "$log"; then
@@ -106,7 +128,9 @@ while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
     continue
   fi
   echo "[guard] 测试失败（非挂死，不重试）：" >&2
-  grep -E "error:|Test Case .* failed|Executed [0-9]+ tests" "$log" | tail -20 >&2
+  # Match actual compiler diagnostics (file:line:column: error:) rather than source-code
+  # arguments such as "error: message", which previously polluted the report.
+  grep -E '^/.*:[0-9]+:[0-9]+: error:|^error:|Test Case .* failed|Executed [0-9]+ tests|Early unexpected exit|Test crashed with signal kill before starting test execution' "$log" | tail -30 >&2
   exit 1
 done
 echo "[guard] 连续 ${MAX_ATTEMPTS} 次挂死，放弃。检查是否有其他项目的 xcodebuild/模拟器占用：" >&2
