@@ -10,7 +10,9 @@ final class TripDetailViewModel: ObservableObject {
     @Published private(set) var expenses: [TripExpense] = []
     @Published private(set) var budget: BudgetSummary?
     @Published private(set) var expenseReports: [ExpenseReport] = []
+    @Published private(set) var closeoutReadiness: TripCloseoutReadiness?
     @Published private(set) var isLoading = false
+    @Published private(set) var isRefreshingCloseout = false
     @Published private(set) var generating = false
     @Published var errorMessage: String?
     @Published var statusMessage: String?
@@ -58,6 +60,9 @@ final class TripDetailViewModel: ObservableObject {
         async let reportsResult = capture {
             try await environment.tripRepository.expenseReports(tripId: tripId)
         }
+        async let closeoutResult = capture {
+            try await environment.tripRepository.closeoutReadiness(tripId: tripId)
+        }
 
         switch await tripResult {
         case .success(let loaded):
@@ -90,6 +95,10 @@ final class TripDetailViewModel: ObservableObject {
         case .success(let value): expenseReports = value
         case .failure(let error): sectionErrors["reports"] = environment.errorMessage(error)
         }
+        switch await closeoutResult {
+        case .success(let value): closeoutReadiness = value
+        case .failure(let error): sectionErrors["closeout"] = environment.errorMessage(error)
+        }
         // 预算单独加载（依赖 trip.currency，本就在 trip 之后执行）。
         do {
             budget = try await environment.tripRepository.budgetSummary(
@@ -104,6 +113,17 @@ final class TripDetailViewModel: ObservableObject {
             Task {
                 await receiptVault.retryPendingUploads(tripId: tripId)
             }
+        }
+    }
+
+    func refreshCloseoutReadiness() async {
+        isRefreshingCloseout = true
+        defer { isRefreshingCloseout = false }
+        do {
+            closeoutReadiness = try await environment.tripRepository.closeoutReadiness(tripId: tripId)
+            sectionErrors["closeout"] = nil
+        } catch {
+            sectionErrors["closeout"] = environment.errorMessage(error)
         }
     }
 
@@ -171,6 +191,7 @@ final class TripDetailViewModel: ObservableObject {
         do {
             let report = try await environment.tripRepository.createExpenseReport(tripId: tripId)
             expenseReports.insert(report, at: 0)
+            await refreshCloseoutReadiness()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -181,6 +202,7 @@ final class TripDetailViewModel: ObservableObject {
         do {
             _ = try await environment.tripRepository.submitExpenseReport(id: report.id)
             expenseReports = try await environment.tripRepository.expenseReports(tripId: tripId)
+            await refreshCloseoutReadiness()
         } catch {
             errorMessage = environment.errorMessage(error)
         }
@@ -556,6 +578,73 @@ struct TripDetailView: View {
                     }
                 }
 
+                Section("结账就绪度") {
+                    if let error = viewModel.sectionError("closeout") {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(DS.ColorToken.danger)
+                        Button("重试检查") {
+                            Task { await viewModel.refreshCloseoutReadiness() }
+                        }
+                        .disabled(viewModel.isRefreshingCloseout)
+                    }
+                    if let readiness = viewModel.closeoutReadiness {
+                        HStack(alignment: .center, spacing: DS.Spacing.md) {
+                            VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                                Text(readiness.status.label)
+                                    .font(.headline)
+                                    .foregroundStyle(closeoutStatusColor(readiness.status))
+                                Text("检查于 " + readiness.generatedAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption2)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                            }
+                            Spacer(minLength: DS.Spacing.sm)
+                            VStack(alignment: .trailing, spacing: DS.Spacing.xxs) {
+                                Text("阻塞 " + String(readiness.summary.blockerCount))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(readiness.summary.blockerCount > 0 ? DS.ColorToken.danger : DS.ColorToken.success)
+                                Text("提醒 " + String(readiness.summary.warningCount))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(readiness.summary.warningCount > 0 ? DS.ColorToken.warning : DS.ColorToken.textSecondary)
+                            }
+                        }
+                        if !readiness.totalsByCurrency.isEmpty {
+                            Divider()
+                            Text("费用合计（按原币种）")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(DS.ColorToken.textSecondary)
+                            ForEach(readiness.totalsByCurrency) { total in
+                                LabeledContent(
+                                    total.currency,
+                                    value: String(format: "%.2f · %d 笔", total.amount, total.count)
+                                )
+                            }
+                        }
+                        if readiness.blockers.isEmpty && readiness.warnings.isEmpty {
+                            Label("未发现未解决的结账事项", systemImage: "checkmark.seal")
+                                .font(.footnote)
+                                .foregroundStyle(DS.ColorToken.success)
+                        }
+                        ForEach(readiness.blockers) { issue in
+                            closeoutIssueRow(issue)
+                        }
+                        ForEach(readiness.warnings) { issue in
+                            closeoutIssueRow(issue)
+                        }
+                        Button {
+                            Task { await viewModel.refreshCloseoutReadiness() }
+                        } label: {
+                            Label(
+                                viewModel.isRefreshingCloseout ? "检查中…" : "重新检查",
+                                systemImage: "arrow.clockwise"
+                            )
+                        }
+                        .disabled(viewModel.isRefreshingCloseout)
+                    } else if viewModel.sectionError("closeout") == nil {
+                        DSLoadingState(message: "正在评估费用、票据与拜访证据…")
+                    }
+                }
+
             }
             if section == .visa {
                 Section("签证与入境") {
@@ -669,4 +758,46 @@ struct TripDetailView: View {
             )
         }
     }
+
+    @ViewBuilder
+    private func closeoutIssueRow(_ issue: TripCloseoutIssue) -> some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.sm) {
+                Text(issue.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(issue.severity == .blocker ? DS.ColorToken.danger : DS.ColorToken.warning)
+                Spacer(minLength: DS.Spacing.xs)
+                DSBadge(
+                    text: issue.severity == .blocker ? "阻塞" : "提醒",
+                    color: issue.severity == .blocker ? DS.ColorToken.danger : DS.ColorToken.warning
+                )
+            }
+            Text(issue.detail)
+                .font(.caption)
+                .foregroundStyle(DS.ColorToken.textSecondary)
+            Text(issue.sourceType + " · " + issue.sourceId)
+                .font(.caption2.monospaced())
+                .foregroundStyle(DS.ColorToken.textSecondary)
+                .textSelection(.enabled)
+            Text(issue.actionHint)
+                .font(.caption)
+                .foregroundStyle(DS.ColorToken.textPrimary)
+            Button("查看相关区块") {
+                section = issue.sourceType.uppercased() == "VISIT" ? .schedule : .money
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(DS.ColorToken.brand)
+        }
+        .padding(.vertical, DS.Spacing.xs)
+    }
+
+    private func closeoutStatusColor(_ status: TripCloseoutStatus) -> Color {
+        switch status {
+        case .blocked: return DS.ColorToken.danger
+        case .readyForReview, .reportApproved: return DS.ColorToken.success
+        case .reportSubmitted, .readyWithExceptions: return DS.ColorToken.warning
+        case .unknown: return DS.ColorToken.textSecondary
+        }
+    }
+
 }
