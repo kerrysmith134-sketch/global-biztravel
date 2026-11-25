@@ -484,3 +484,12 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - API 回归测试覆盖非创建者拒绝、创建者撤销、重复幂等请求、终态不可提交、快照保留、审计时间线及撤销快照不再满足费用覆盖；iOS UI 验收新增草稿撤销操作链。
 - **仍未提供草稿原位编辑**：修正明细时应撤销旧草稿并重新生成快照；不得直接改写已保存的快照项。后续可以设计有版本链的“替换草稿”能力，保留旧版本。
 - **最新 CI 验收口径**：Run #552 的 Backend 与 iOS Build/Unit tests 成功，但真实后端 UI suite 被取消，不能视为完成验收。Run #553 已加入 120 分钟预算，并在失败或取消时上传 XCTest 日志和 `.xcresult` 结果包；需以该最新提交完整跑完为准。真机/模拟器离线失败恢复测试仍未完成。
+
+
+## 2026-11-25 H2.15 — Trip expense network-recovery sync
+
+- `TripDetailViewModel` now observes `NWPathMonitor` while the Trip detail workspace is alive. The durable expense Outbox is drained again only after an observed unsatisfied → satisfied network transition; repeated satisfied path updates do not cause duplicate retry loops.
+- When the app returns to the active scene, the view model checks the last observed network state and retries the queue if connectivity is available. This covers recovery while iOS suspended the screen's work.
+- Initial online startup remains handled by the existing Trip `load()` path, so the first reachability callback is not treated as a reconnect.
+- The connectivity transition reducer has unit coverage for initial-online, stable-online, offline-to-online, duplicate-online and repeated recovery transitions.
+- **Acceptance boundary:** this does not prove that a reachable network can reach the configured API, nor does it replace airplane-mode / process-kill / relaunch / real-device verification. The complete CI build/unit results and real-service UI run remain the acceptance authority.
