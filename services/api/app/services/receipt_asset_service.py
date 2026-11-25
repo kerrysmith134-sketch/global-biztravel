@@ -35,7 +35,7 @@ def create_receipt_asset(
     # be mistaken for an orphan between object PUT and ReceiptAsset commit.
     session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:organization_id, 0))"),
-        {"organization_id": str(organization_id)},
+        {"organization_id": str(UUID(str(organization_id)))},
     )
     trip = trip_service.require_trip(session, organization_id, trip_id)
     asset_id = uuid.uuid4()
