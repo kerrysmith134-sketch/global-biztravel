@@ -10,6 +10,8 @@ final class SQLiteStore {
     private var handle: OpaquePointer?
     private let queue = DispatchQueue(label: "com.anari.globaltravelos.localstore")
     private let queueKey = DispatchSpecificKey<UInt8>()
+    /// Queue-confined depth: repository writes may join an enclosing atomic transaction.
+    private var transactionDepth = 0
 
     /// 当前线程是否已在该串行队列上（transaction 内嵌 run/query 时避免 sync 重入死锁）。
     private var isOnQueue: Bool {
@@ -115,17 +117,29 @@ final class SQLiteStore {
         }
     }
 
-    /// 事务内执行多条变更；抛错则回滚。
+    /// 事务内执行多条变更；抛错则回滚。队列内的嵌套写入加入外层事务。
     func transaction(_ work: () throws -> Void) throws {
-        try queue.sync {
-            try runUnlocked("BEGIN IMMEDIATE")
-            do {
+        if isOnQueue {
+            if transactionDepth > 0 {
                 try work()
-                try runUnlocked("COMMIT")
-            } catch {
-                try? runUnlocked("ROLLBACK")
-                throw error
+                return
             }
+            try transactionUnlocked(work)
+            return
+        }
+        try queue.sync { try transactionUnlocked(work) }
+    }
+
+    private func transactionUnlocked(_ work: () throws -> Void) throws {
+        try runUnlocked("BEGIN IMMEDIATE")
+        transactionDepth += 1
+        defer { transactionDepth -= 1 }
+        do {
+            try work()
+            try runUnlocked("COMMIT")
+        } catch {
+            try? runUnlocked("ROLLBACK")
+            throw error
         }
     }
 
