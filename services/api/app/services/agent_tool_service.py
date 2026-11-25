@@ -373,9 +373,12 @@ def execute_tool(
                 "error_code": exc.code,
             },
         )
+        action = "创建" if tool_name == "visa.prepare_checklist" else "读取"
         label = (
-            "签证材料清单"
-            if tool_name in {"visa.get_checklist", "visa.prepare_checklist"}
+            "签证案件"
+            if tool_name == "visa.prepare_checklist"
+            else "签证材料清单"
+            if tool_name == "visa.get_checklist"
             else "行程计划"
         )
         return AgentToolResult(
@@ -383,7 +386,7 @@ def execute_tool(
             status="FAILED",
             trip_id=str(parsed_arguments.trip_id),
             trip_name="",
-            detail=f"无法读取{label}：{exc.message}",
+            detail=f"无法{action}{label}：{exc.message}",
         )
 
     succeed_agent_run(
