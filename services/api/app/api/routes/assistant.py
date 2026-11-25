@@ -14,6 +14,7 @@ from app.api.deps import (
     SessionDep,
     require_role,
 )
+from app.api.idempotent import IdempotentWrite
 from app.api.schemas import (
     AssistantActionCreate,
     AssistantConversationCreate,
@@ -23,7 +24,6 @@ from app.api.schemas import (
     AssistantMessageRead,
     AssistantToolExecuteCreate,
 )
-from app.api.idempotent import IdempotentWrite
 from app.services import assistant_service
 
 router = APIRouter(tags=["assistant"])

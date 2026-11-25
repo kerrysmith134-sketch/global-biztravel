@@ -24,7 +24,6 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -50,8 +49,6 @@ from app.api.schemas import (
     PlanVersionDiffRead,
     PlanVersionRead,
 )
-from app.models.geo import Place
-from app.models.trip import Visit
 from app.services import (
     job_service,
     plan_change_request_service,
