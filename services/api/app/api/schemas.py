@@ -1251,8 +1251,11 @@ class ExternalSignalCreate(BaseModel):
             raise ValueError("OpenSky 航迹遥测不能作为航司/机场运营事件来源")
         if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
             raise ValueError("运营事件 observed_at 必须包含时区偏移")
-        if self.valid_until is not None and self.valid_until <= self.observed_at:
-            raise ValueError("运营事件 valid_until 必须晚于 observed_at")
+        if self.valid_until is not None:
+            if self.valid_until.tzinfo is None or self.valid_until.utcoffset() is None:
+                raise ValueError("运营事件 valid_until 必须包含时区偏移")
+            if self.valid_until <= self.observed_at:
+                raise ValueError("运营事件 valid_until 必须晚于 observed_at")
         try:
             UUID(self.subject_ref)
         except ValueError as exc:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -22,8 +23,8 @@ def ingest_operational_update(
     organization_id: UUID | str,
     trip_id: UUID,
     provider: str,
-    observed_at,
-    valid_until,
+    observed_at: datetime,
+    valid_until: datetime | None,
     confidence: float,
     payload: FlightOperationalUpdatePayload,
     *,
@@ -114,7 +115,9 @@ def ingest_operational_update(
     inserted_id = session.execute(statement).scalar_one_or_none()
     if inserted_id is not None:
         session.flush()
-        return session.get(FlightOperationalUpdate, inserted_id)
+        return session.scalars(
+            select(FlightOperationalUpdate).where(FlightOperationalUpdate.id == inserted_id)
+        ).one()
 
     existing = session.scalars(
         select(FlightOperationalUpdate).where(

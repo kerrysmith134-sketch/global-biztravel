@@ -22,8 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas import ExternalSignalCreate, FlightOperationalUpdatePayload
 from app.models.integrations import ExternalSignal
-from app.services import flight_operations_service
 from app.models.trip import Trip
+from app.services import flight_operations_service
 
 
 def ingest(
@@ -34,6 +34,7 @@ def ingest(
     raw_operational_update = signal_payload.get("flight_operational_update")
     if raw_operational_update is not None:
         operational_payload = FlightOperationalUpdatePayload.model_validate(raw_operational_update)
+        signal_payload["flight_operational_update"] = operational_payload.model_dump(mode="json")
         operational_update = flight_operations_service.ingest_operational_update(
             session,
             organization_id,
