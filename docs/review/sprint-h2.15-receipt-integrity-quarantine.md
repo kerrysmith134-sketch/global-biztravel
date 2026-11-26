@@ -9,7 +9,7 @@ Close the gap between object-store diagnosis and the business-facing receipt lif
 - Missing objects confirmed by exact-key metadata inspection quarantine the corresponding ReceiptAsset.
 - Listing metadata is compared with the immutable byte length. Size mismatches quarantine the asset without downloading receipt bytes.
 - A quarantined object may return to AVAILABLE only after a read verifies both the original byte length and the original SHA-256.
-- Receipt downloads and stored-asset OCR share the same integrity-aware read path. A confirmed missing object or hash mismatch is returned as a stable 503 integrity error; the route converts that error to a normal response so the quarantine update commits.
+- Receipt downloads and stored-asset OCR share the same integrity-aware read path. A confirmed missing object or hash mismatch is returned as a stable 503 integrity error; the route marks the transaction for an explicit integrity-state commit, while ordinary error responses remain rollback-only.
 - Temporary object-store failures are not interpreted as data loss. A failed GET is quarantined only when an independent stat confirms the object is absent.
 - The hourly worker reports quarantine, verified recovery, and integrity failures separately. Existing two-window orphan cleanup and default-off deletion policy are unchanged.
 

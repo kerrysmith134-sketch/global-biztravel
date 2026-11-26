@@ -159,7 +159,9 @@ def download_receipt_asset(
             session, context.organization_id, asset_id
         )
     except ReceiptIntegrityFailure as exc:
-        # Return normally so the request transaction commits the quarantine state.
+        # This is an intentional security-state mutation: persist quarantine while
+        # still returning 503. Ordinary 4xx/5xx responses remain rollback-only.
+        session.info["commit_on_error"] = True
         return _integrity_failure_response(exc)
     return Response(
         content=content,
@@ -225,6 +227,7 @@ def extract_saved_receipt(
         )
     except ReceiptIntegrityFailure as exc:
         # The OCR write must not roll back the asset quarantine diagnosis.
+        session.info["commit_on_error"] = True
         return _integrity_failure_response(exc)
     body = _ocr_run_read(session, context.organization_id, run)
     return guard.finish(status_code=status.HTTP_201_CREATED, body=body)

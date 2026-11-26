@@ -44,7 +44,11 @@ class CommitBeforeResponseMiddleware:
                 status = int(message["status"])
                 if session is not None:
                     try:
-                        if status < 400:
+                        # A narrow class of explicit security/integrity findings must
+                        # persist their quarantine/audit state even though the response
+                        # is 4xx/5xx. Ordinary error responses continue to roll back.
+                        commit_on_error = bool(session.info.pop("commit_on_error", False))
+                        if status < 400 or commit_on_error:
                             session.commit()
                         else:
                             session.rollback()
