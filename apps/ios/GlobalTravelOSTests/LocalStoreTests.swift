@@ -42,6 +42,40 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(database.keyValue("probe"), "值-2")
     }
 
+    func testLocalPlanGenerationJobIsReadableByReturnedIdentifier() async throws {
+        let trip = try await makeRepository().createTrip(makeRequest(name: "本地计划任务"))
+        let visits = LocalVisitRepository(database: database)
+        _ = try await visits.createVisit(
+            tripId: trip.id,
+            request: VisitCreateRequest(
+                placeName: "Berlin Buyer",
+                city: "Berlin",
+                countryCode: "DE",
+                latitude: 52.52,
+                longitude: 13.405,
+                timezone: "Europe/Berlin",
+                title: "本地计划验收拜访",
+                serviceMinutes: 60,
+                priority: 1,
+                movementMode: "AIR"
+            )
+        )
+
+        let plans = LocalPlanRepository(database: database)
+        let response = try await plans.generatePlan(
+            tripId: trip.id,
+            request: GeneratePlanRequest()
+        )
+        let job = try await plans.job(id: response.jobId)
+
+        XCTAssertEqual(job.id, response.jobId)
+        XCTAssertNotNil(job.result?.planVersionId)
+        XCTAssertGreaterThanOrEqual(
+            try database.count(table: "plan_versions", where: "trip_id = ?", bindings: [trip.id]),
+            1
+        )
+    }
+
     // MARK: - LocalTripRepository：创建（Place+Trip 原子编排）
 
     private func makeRepository() -> LocalTripRepository {
