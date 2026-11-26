@@ -262,6 +262,7 @@ struct TodayView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                     .accessibilityLabel("更多操作")
+                    .accessibilityIdentifier("mission.more-actions")
                 }
             }
             .refreshable { await viewModel.load() }
