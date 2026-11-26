@@ -23,7 +23,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
 ORG_A = "11111111-1111-1111-1111-111111111111"
 USER_A = "22222222-2222-2222-2222-222222222222"
-ADMIN_A = "55555555-5555-5555-5555-555555555555"
 
 
 @pytest.fixture(scope="module")
@@ -373,7 +372,7 @@ def test_open_sky_tracking_requires_explicit_segment_provider_reference_and_curr
         )
         pulled = client.post(
             "/v1/integrations/signals:pull-flight",
-            headers=headers(**{"X-User-Id": ADMIN_A}),
+            headers=headers(),
             json={
                 "trip_id": trip_id,
                 "flight_segment_id": str(segment_id),
