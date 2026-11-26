@@ -133,12 +133,12 @@ def upgrade() -> None:
             ondelete="SET NULL", name="fk_flight_segment_bindings_released_by_user_id_users",
         ),
         sa.UniqueConstraint("organization_id", "id", name="uq_flight_segment_plan_bindings_org_id"),
-        sa.CheckConstraint("status IN ('ACTIVE','RELEASED')", name="ck_flight_segment_bindings_status_allowed"),
+        sa.CheckConstraint("status IN ('ACTIVE','RELEASED')", name="ck_flight_segment_plan_bindings_status_allowed"),
         sa.CheckConstraint(
             "(status = 'ACTIVE' AND released_at IS NULL AND released_by_user_id IS NULL "
             "AND release_reason IS NULL) OR "
             "(status = 'RELEASED' AND released_at IS NOT NULL AND length(btrim(release_reason)) > 0)",
-            name="ck_flight_segment_bindings_release_fields_consistent",
+            name="ck_flight_segment_plan_bindings_release_fields_consistent",
         ),
     )
     op.create_index(
