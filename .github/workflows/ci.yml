@@ -3,7 +3,7 @@ name: ci
 # Versioned concurrency key: isolate current H2.18 validation from stale runners while still
 # cancelling superseded runs for the same PR/ref on the current validation lane.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-20-flight-impact-audit
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-20-1-db-tcp-readiness-flight-audit
   cancel-in-progress: true
 
 on:
