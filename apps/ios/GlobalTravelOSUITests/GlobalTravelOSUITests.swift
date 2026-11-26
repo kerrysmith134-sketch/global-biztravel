@@ -622,7 +622,7 @@ final class GlobalTravelOSUITests: XCTestCase {
         // 因此先给 Worker 留出求解时间，再「回列表 → 重进详情」强制重新加载。
         Thread.sleep(forTimeInterval: 25)
         app.navigationBars[setup.tripName].buttons.firstMatch.tap()
-        let reloadRow = tripRow(app, named: setup.tripName).firstMatch
+        let reloadRow = tripRow(app, named: setup.tripName)
         if reloadRow.waitForExistence(timeout: 5) {
             reloadRow.tap()
         }
