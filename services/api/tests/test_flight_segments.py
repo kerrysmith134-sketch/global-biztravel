@@ -684,7 +684,8 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
             headers=headers(),
             json=opensky_body,
         )
-        assert opensky_rejected.status_code == 422, opensky_rejected.text
+        assert opensky_rejected.status_code == 400, opensky_rejected.text
+        assert opensky_rejected.json()["error"]["code"] == "VALIDATION_ERROR"
 
         with org_session(UUID(ORG_A)) as session:
             stored_count = session.scalar(
