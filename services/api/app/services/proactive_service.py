@@ -545,8 +545,12 @@ def _external_candidates(
                     "plan_version_id": impact_assessment.get("plan_version_id"),
                     "affected_visit_ids": impact_assessment.get("affected_visit_ids", []),
                     "related_travel_leg_ids": [
-                        leg["plan_travel_leg_id"]
+                        leg_id
                         for leg in impact_assessment.get("related_travel_legs", [])
+                        for leg_id in (
+                            leg.get("plan_travel_leg_ids")
+                            or ([leg["plan_travel_leg_id"]] if leg.get("plan_travel_leg_id") else [])
+                        )
                     ],
                     "unlinked_air_leg_ids": [
                         leg["plan_travel_leg_id"]
