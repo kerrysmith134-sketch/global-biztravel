@@ -67,3 +67,14 @@ make db-up          # 如未启动
 | 延误判断边界 | 同上 | 评估标记 NOT_DERIVABLE_FROM_AIRCRAFT_TELEMETRY，不推断延误、取消或 ETA |
 
 只有机票段 ID、tracking provider/reference、当前 ACTIVE 计划绑定三者同时通过核验，才可将 telemetry 与某一 AIR leg 关联。OpenSky 的位置、地速和高度是航空器快照，不是航司运行状态；正式延误判定仍需要航司/机场运行数据源。
+
+
+## H2.20 — Flight proactive audit evidence and binding-aware dedupe
+
+| 验收点 | 测试 | 关键断言 |
+|---|---|---|
+| 已绑定航段证据链 | \`test_linked_flight_suggestion_tracks_booking_binding_as_evidence_and_dedupe_input\` | 建议证据同时包含 Flight Segment、FlightSegmentPlanBinding、当前 PlanTravelLeg 和 PlanVersion |
+| 同一计划重绑 | 同上 | 同一 FlightSegment 在同一 PlanVersion 内解绑再绑，即使 signal payload 未变，binding_id 改变也会产生新的 dedupe key |
+| 冷却期与审计 | 同上 | 新绑定生成新的建议审计记录，但 24 小时提醒冷却仍生效，新记录为 SUPPRESSED，影响评估引用新的 binding id |
+
+航班外部信号的摘要不再只依赖供应商 payload 和 PlanVersion；显式机票段、当前 binding 以及关联 AIR leg 都参与摘要。这样同一计划内人工更正航段绑定时，系统会留下新的可追溯评估，而不是因旧 dedupe key 把新绑定静默吞掉。

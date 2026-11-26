@@ -443,6 +443,44 @@ def _external_candidates(
                         "retrieved_at": None,
                     }
                 )
+            if impact_assessment.get("flight_segment_id"):
+                evidence.append(
+                    {
+                        "kind": "FLIGHT_SEGMENT",
+                        "ref": (
+                            f"flight-segment:{impact_assessment['flight_segment_id']};"
+                            f"designator:{impact_assessment.get('flight_designator') or 'unknown'};"
+                            f"route:{impact_assessment.get('departure_airport_iata') or '???'}-"
+                            f"{impact_assessment.get('arrival_airport_iata') or '???'}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
+            if impact_assessment.get("binding_id"):
+                evidence.append(
+                    {
+                        "kind": "FLIGHT_SEGMENT_PLAN_BINDING",
+                        "ref": (
+                            f"flight-binding:{impact_assessment['binding_id']};"
+                            f"plan-version:{impact_assessment.get('plan_version_id') or 'unknown'}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
+            linked_leg = impact_assessment.get("linked_air_leg")
+            if linked_leg:
+                evidence.append(
+                    {
+                        "kind": "PLAN_TRAVEL_LEG",
+                        "ref": (
+                            f"plan-travel-leg:{linked_leg['plan_travel_leg_id']};"
+                            f"mode:{linked_leg['mode']};"
+                            f"travel_minutes:{linked_leg['travel_minutes']};"
+                            f"stale:{str(linked_leg['stale']).lower()}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
             for leg in impact_assessment.get("unlinked_air_legs", []):
                 evidence.append(
                     {
@@ -455,8 +493,9 @@ def _external_candidates(
                         "retrieved_at": None,
                     }
                 )
-        # For weather, the same provider signal must be re-evaluated when the active
-        # plan revision changes. Non-weather signal dedupe remains payload-only.
+        # Weather is re-evaluated when the active plan changes; flight signals are
+        # re-evaluated when the active plan or its explicit booking binding changes.
+        # Signals without a deterministic impact assessment remain payload-deduped.
         digest_input = payload
         if impact_assessment is not None:
             digest_input = {
@@ -473,6 +512,10 @@ def _external_candidates(
                         leg["plan_travel_leg_id"]
                         for leg in impact_assessment.get("unlinked_air_legs", [])
                     ],
+                    "flight_segment_id": impact_assessment.get("flight_segment_id"),
+                    "flight_designator": impact_assessment.get("flight_designator"),
+                    "flight_binding_id": impact_assessment.get("binding_id"),
+                    "linked_air_leg_ids": impact_assessment.get("linked_air_leg_ids", []),
                 },
             }
         digest = sha256(

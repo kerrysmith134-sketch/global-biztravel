@@ -638,3 +638,217 @@ def test_flight_signal_does_not_auto_match_air_leg_without_booking_link(client: 
         cleanup(trip_id, dedupe)
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Place).where(Place.id == UUID(place_id)))
+
+
+def test_linked_flight_suggestion_tracks_booking_binding_as_evidence_and_dedupe_input(
+    client: TestClient,
+) -> None:
+    now = datetime.now(UTC)
+    trip_response = client.post(
+        "/v1/trips",
+        headers=headers(),
+        json={
+            "name": f"航班绑定证据·{uuid.uuid4().hex[:8]}",
+            "window_start": (now + timedelta(days=3)).isoformat(),
+            "window_end": (now + timedelta(days=7)).isoformat(),
+            "countries": [],
+        },
+    )
+    assert trip_response.status_code == 201, trip_response.text
+    trip_id = trip_response.json()["id"]
+    dedupe = f"flight-linked-{uuid.uuid4().hex[:8]}"
+    place = client.post(
+        "/v1/places",
+        headers=headers(),
+        json={
+            "name": f"Flight binding destination {uuid.uuid4().hex[:6]}",
+            "city": "Frankfurt",
+            "country_code": "DE",
+            "lat": 50.1109,
+            "lon": 8.6821,
+        },
+    )
+    assert place.status_code == 201, place.text
+    place_id = place.json()["id"]
+    visit = client.post(
+        f"/v1/trips/{trip_id}/visits",
+        headers=headers(),
+        json={"place_id": place_id, "title": "Flight binding evidence visit"},
+    )
+    assert visit.status_code == 201, visit.text
+
+    try:
+        with org_session(UUID(ORG_A)) as session:
+            trip = session.get(Trip, UUID(trip_id))
+            assert trip is not None
+            plan = PlanVersion(
+                organization_id=UUID(ORG_A),
+                trip_id=trip.id,
+                version_number=1,
+                status="ACTIVE",
+                problem_hash=f"flight-binding-evidence:{uuid.uuid4().hex}",
+                solver="heuristic",
+                objective_value=0.0,
+                solution_status="FEASIBLE",
+                trip_version=trip.version,
+                validation={"feasible": True},
+                unplaced=[],
+                activated_at=now,
+            )
+            session.add(plan)
+            session.flush()
+            trip.active_plan_version_id = plan.id
+            trip.status = "ACTIVE"
+            stop = PlanStop(
+                organization_id=UUID(ORG_A),
+                plan_version_id=plan.id,
+                visit_id=UUID(visit.json()["id"]),
+                day_index=0,
+                sequence=1,
+                day_date=(now + timedelta(days=4)).date(),
+                arrive_at=now + timedelta(days=4, hours=5),
+                depart_at=now + timedelta(days=4, hours=6),
+                travel_minutes=0,
+                service_minutes=60,
+                travel_source="test-fixture",
+            )
+            session.add(stop)
+            session.flush()
+            leg = PlanTravelLeg(
+                organization_id=UUID(ORG_A),
+                plan_version_id=plan.id,
+                from_stop_id=None,
+                to_stop_id=stop.id,
+                day_index=0,
+                mode="AIR",
+                travel_minutes=600,
+                distance_km=900,
+                source="test-flight-estimate",
+                stale=True,
+            )
+            session.add(leg)
+            session.flush()
+            leg_id = str(leg.id)
+
+        departure = now + timedelta(days=4, hours=1)
+        flight = client.post(
+            f"/v1/trips/{trip_id}/flight-segments",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+            json={
+                "flight_designator": "LH123",
+                "departure_airport_iata": "JFK",
+                "arrival_airport_iata": "FRA",
+                "scheduled_departure_at": departure.isoformat(),
+                "scheduled_arrival_at": (departure + timedelta(hours=7)).isoformat(),
+                "departure_timezone": "America/New_York",
+                "arrival_timezone": "Europe/Berlin",
+                "booking_status": "TICKETED",
+                "tracking_provider": "opensky",
+                "tracking_reference": "DLH123",
+            },
+        )
+        assert flight.status_code == 201, flight.text
+        segment_id = flight.json()["id"]
+
+        linked = client.post(
+            f"/v1/trips/{trip_id}/flight-segments/{segment_id}:link",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+            json={"plan_travel_leg_id": leg_id},
+        )
+        assert linked.status_code == 200, linked.text
+        first_binding = next(
+            item for item in linked.json()["bindings"] if item["status"] == "ACTIVE"
+        )
+
+        signal_response = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json={
+                "provider": "opensky",
+                "signal_type": "FLIGHT_STATUS",
+                "subject_type": "TRIP",
+                "subject_ref": trip_id,
+                "payload": {
+                    "flight_segment_id": segment_id,
+                    "callsign": "DLH123",
+                    "icao24": "3c675a",
+                    "latitude": 52.52,
+                    "longitude": 13.405,
+                    "on_ground": False,
+                    "last_contact": now.isoformat(),
+                },
+                "confidence": 0.95,
+                "observed_at": now.isoformat(),
+                "valid_until": (now + timedelta(hours=6)).isoformat(),
+                "dedupe_key": dedupe,
+            },
+        )
+        assert signal_response.status_code == 201, signal_response.text
+
+        first_report = proactive_service.scan_trip(
+            org_session(UUID(ORG_A)).__enter__(), UUID(ORG_A), UUID(trip_id), now=now
+        )
+        assert first_report.errors == []
+        assert first_report.suggestions == 1
+        with org_session(UUID(ORG_A)) as session:
+            first_suggestion = session.scalars(
+                select(ProactiveSuggestion).where(
+                    ProactiveSuggestion.organization_id == UUID(ORG_A),
+                    ProactiveSuggestion.trip_id == UUID(trip_id),
+                    ProactiveSuggestion.suggestion_type == "FLIGHT_STATUS_ALERT",
+                )
+            ).one()
+            first_impact = first_suggestion.proposed_action["params"]["impact_assessment"]
+            first_evidence_kinds = {item["kind"] for item in first_suggestion.evidence}
+            assert first_impact["status"] == "TRACKING_MATCHED_TO_CURRENT_AIR_LEG"
+            assert first_impact["binding_id"] == first_binding["id"]
+            assert first_impact["linked_air_leg_ids"] == [leg_id]
+            assert {
+                "FLIGHT_SEGMENT",
+                "FLIGHT_SEGMENT_PLAN_BINDING",
+                "PLAN_TRAVEL_LEG",
+            }.issubset(first_evidence_kinds)
+            first_dedupe_key = first_suggestion.dedupe_key
+
+        unlinked = client.post(
+            f"/v1/trips/{trip_id}/flight-segments/{segment_id}:unlink",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert unlinked.status_code == 200, unlinked.text
+        relinked = client.post(
+            f"/v1/trips/{trip_id}/flight-segments/{segment_id}:link",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+            json={"plan_travel_leg_id": leg_id},
+        )
+        assert relinked.status_code == 200, relinked.text
+        second_binding = next(
+            item for item in relinked.json()["bindings"] if item["status"] == "ACTIVE"
+        )
+        assert second_binding["id"] != first_binding["id"]
+
+        with org_session(UUID(ORG_A)) as session:
+            second_report = proactive_service.scan_trip(
+                session, UUID(ORG_A), UUID(trip_id), now=now + timedelta(seconds=2)
+            )
+            assert second_report.errors == []
+            assert second_report.suggestions == 1
+            suggestions = session.scalars(
+                select(ProactiveSuggestion)
+                .where(
+                    ProactiveSuggestion.organization_id == UUID(ORG_A),
+                    ProactiveSuggestion.trip_id == UUID(trip_id),
+                    ProactiveSuggestion.suggestion_type == "FLIGHT_STATUS_ALERT",
+                )
+                .order_by(ProactiveSuggestion.created_at, ProactiveSuggestion.id)
+            ).all()
+            assert len(suggestions) == 2
+            refreshed = suggestions[-1]
+            refreshed_impact = refreshed.proposed_action["params"]["impact_assessment"]
+            assert refreshed.dedupe_key != first_dedupe_key
+            assert refreshed_impact["binding_id"] == second_binding["id"]
+            assert refreshed_impact["linked_air_leg_ids"] == [leg_id]
+            assert refreshed.status == "SUPPRESSED"
+    finally:
+        cleanup(trip_id, dedupe)
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Place).where(Place.id == UUID(place_id)))
