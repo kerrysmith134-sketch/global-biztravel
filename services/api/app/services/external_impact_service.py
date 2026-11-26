@@ -2,8 +2,8 @@
 
 Weather is potentially relevant only when exact Place identity and a bounded signal
 validity interval both overlap a persisted PlanStop. Connected travel legs are review
-context, not proof of disruption. Flight telemetry is never auto-matched to an AIR leg:
-the current plan model has no booking or flight identity.
+context, not proof of disruption. Flight telemetry is never inferred from callsign alone: only an explicitly identified booking segment
+with a provider/reference match and a current PlanVersion binding can resolve to an AIR leg.
 """
 
 from __future__ import annotations
@@ -522,7 +522,7 @@ def assess_flight_signal_impact(
         "unlinked_air_legs": unlinked_legs[:100],
         "explanation": (
             f"检测到 {len(unlinked_legs)} 段 AIR 交通，但当前信号没有显式 flight_segment_id。"
-            "即使 callsign 与某个 booking tracking reference 相同，也不会自动推断用户预订了这架飞机。"
+            "即使 callsign 与某个 booking tracking reference 相同，也不会仅凭这些标识猜测用户预订了这架飞机。"
             "请通过 flight-segments API 显式记录机票段并确认 PlanTravelLeg 绑定。"
         ),
     }

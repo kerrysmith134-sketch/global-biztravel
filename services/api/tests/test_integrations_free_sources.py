@@ -17,7 +17,9 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.geo import Place
 from app.models.integrations import ExternalSignal
+from app.models.trip import Trip, Visit
 from app.services import signal_pull_service
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
@@ -74,15 +76,33 @@ def _trip_with_visit(client: TestClient) -> tuple[str, str]:
 
 def _cleanup(trip_id: str, place_id: str) -> None:
     with org_session(UUID(ORG_A)) as session:
+        trip_uuid = UUID(trip_id)
+        place_uuid = UUID(place_id)
         session.execute(
             delete(ExternalSignal).where(
-                ExternalSignal.organization_id == ORG_A,
+                ExternalSignal.organization_id == UUID(ORG_A),
                 ExternalSignal.subject_ref == trip_id,
             )
         )
-        session.execute(text("DELETE FROM visits WHERE trip_id = :t"), {"t": trip_id})
-        session.execute(text("DELETE FROM trips WHERE id = :t"), {"t": trip_id})
-        session.execute(text("DELETE FROM places WHERE id = :p"), {"p": place_id})
+        # Visit.place_id is RESTRICT; delete visit rows before deleting their Place.
+        session.execute(
+            delete(Visit).where(
+                Visit.organization_id == UUID(ORG_A),
+                Visit.trip_id == trip_uuid,
+            )
+        )
+        session.execute(
+            delete(Trip).where(
+                Trip.organization_id == UUID(ORG_A),
+                Trip.id == trip_uuid,
+            )
+        )
+        session.execute(
+            delete(Place).where(
+                Place.organization_id == UUID(ORG_A),
+                Place.id == place_uuid,
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
