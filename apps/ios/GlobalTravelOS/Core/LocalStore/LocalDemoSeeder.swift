@@ -14,7 +14,7 @@ enum LocalDemoSeeder {
     }
 
     @MainActor
-    static func seed(environment: AppEnvironment) async throws -> Summary {
+    static func seed(environment: AppEnvironment, generatePlan: Bool = true) async throws -> Summary {
         logger.info("seed start mode=\(environment.settings.runMode, privacy: .public)")
         let now = Date()
         // 窗口按**出发地时区**整天构造（与引擎 timezoneHome 一致——用设备时区会差出几小时，
@@ -56,6 +56,14 @@ enum LocalDemoSeeder {
         ]
         for request in visits {
             _ = try await environment.visitRepository.createVisit(tripId: trip.id, request: request)
+        }
+        logger.info(
+            "seed core data ready trip=\(trip.id, privacy: .public) visits=\(visits.count, privacy: .public)"
+        )
+
+        guard generatePlan else {
+            logger.info("seed route optimization deferred until user requests a plan")
+            return Summary(tripName: trip.name, visitCount: visits.count, planCreated: false)
         }
 
         var planCreated = false
