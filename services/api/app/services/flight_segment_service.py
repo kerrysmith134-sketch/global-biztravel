@@ -27,6 +27,7 @@ def create_flight_segment(
         select(Trip)
         .where(Trip.organization_id == organization_id, Trip.id == trip_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     ).one_or_none()
     if trip is None:
         raise NotFound("出行不存在", details={"trip_id": str(trip_id)})
@@ -138,6 +139,7 @@ def link_flight_segment_to_active_plan_leg(
         select(Trip)
         .where(Trip.organization_id == organization_id, Trip.id == trip_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     ).one_or_none()
     if trip is None:
         raise NotFound("出行不存在", details={"trip_id": str(trip_id)})

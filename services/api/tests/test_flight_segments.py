@@ -12,6 +12,7 @@ from app.main import app
 from app.models.geo import Place
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.trip import Trip
+from app.services import flight_segment_service
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
@@ -269,5 +270,56 @@ def test_flight_segment_cannot_bind_to_ground_leg(client: TestClient) -> None:
         assert listed.status_code == 200, listed.text
         assert listed.json()[0]["binding_state"] == "UNLINKED"
         assert listed.json()[0]["bindings"] == []
+    finally:
+        cleanup(trip_id, place_id)
+
+
+def test_flight_segment_link_refreshes_stale_trip_plan_pointer_under_lock(
+    client: TestClient,
+) -> None:
+    trip_id, place_id, visit_id = create_trip_and_place(client)
+    try:
+        plan_one_id, _leg_one_id = create_plan(
+            trip_id, visit_id, version_number=1, mode="AIR"
+        )
+        created = client.post(
+            f"/v1/trips/{trip_id}/flight-segments",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=flight_payload(),
+        )
+        assert created.status_code == 201, created.text
+        segment_id = created.json()["id"]
+
+        # Mimic the route preloading Trip before a concurrent plan activation.
+        # A second session supersedes plan v1 and installs a new ACTIVE plan v2.
+        with org_session(UUID(ORG_A)) as stale_session:
+            stale_trip = stale_session.get(Trip, UUID(trip_id))
+            assert stale_trip is not None
+            assert stale_trip.active_plan_version_id == UUID(plan_one_id)
+
+            plan_two_id, leg_two_id = create_plan(
+                trip_id, visit_id, version_number=2, mode="AIR"
+            )
+
+            # The locking query must refresh the already-loaded Trip identity-map
+            # entry; otherwise this could bind against the now-SUPERSEDED v1.
+            flight_segment_service.link_flight_segment_to_active_plan_leg(
+                stale_session,
+                UUID(ORG_A),
+                UUID(trip_id),
+                UUID(segment_id),
+                UUID(leg_two_id),
+                actor_user_id=UUID(USER_A),
+            )
+            bindings = flight_segment_service.list_segment_bindings(
+                stale_session,
+                UUID(ORG_A),
+                UUID(trip_id),
+                UUID(segment_id),
+            )
+            active = [binding for binding in bindings if binding.status == "ACTIVE"]
+            assert len(active) == 1
+            assert active[0].plan_version_id == UUID(plan_two_id)
+            assert active[0].plan_travel_leg_id == UUID(leg_two_id)
     finally:
         cleanup(trip_id, place_id)
