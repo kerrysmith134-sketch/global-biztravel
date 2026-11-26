@@ -17,19 +17,25 @@ private struct LocalImportCustomerPlaceLink: Codable {
 private struct LocalImportBatch: Codable {
     let id: String
     let tripId: String
-    let filename: String
+    var filename: String
     var status: String
     var result: ImportParseResult
     var rows: [LocalImportStagedRow]
+    var createdAt: Date?
+    var expiresAt: Date?
 }
 
 extension LocalTripRepository {
+    /// Staging may contain customer/contact PII. Keep an unconfirmed preview for at most 24 hours.
+    private static let localImportStagingTTL: TimeInterval = 24 * 60 * 60
+
     func performParseImport(
         tripId: String,
         fileData: Data,
         filename: String
     ) async throws -> ImportParseResult {
         let trip = try await self.trip(id: tripId)
+        try purgeExpiredLocalImportBatches()
         let document = try LocalSpreadsheetImportParser.readDocument(data: fileData, filename: filename)
         let missingColumns = ["customer_name"].filter { !document.recognizedColumns.contains($0) }
         guard missingColumns.isEmpty else {
@@ -141,7 +147,9 @@ extension LocalTripRepository {
             filename: filename,
             status: "PARSED",
             result: result,
-            rows: stagedRows
+            rows: stagedRows,
+            createdAt: Date(),
+            expiresAt: Date().addingTimeInterval(Self.localImportStagingTTL)
         )
         let encoded = try DateCoding.encoder().encode(batch)
         guard let encodedText = String(bytes: encoded, encoding: .utf8) else {
@@ -156,6 +164,7 @@ extension LocalTripRepository {
         request: ConfirmImportRequest
     ) async throws -> ConfirmImportResult {
         _ = try await self.trip(id: tripId)
+        try purgeExpiredLocalImportBatches()
         let storageKey = "local-import:\(request.importId)"
         let requested = request.acceptedRowNumbers
         let requestedSet = Set(requested)
@@ -300,6 +309,49 @@ extension LocalTripRepository {
         )
     }
 
+
+    /// Serialize cleanup with confirmations. Expired/legacy previews become small tombstones:
+    /// raw rows, normalized customer/contact values and the original filename are discarded.
+    private func purgeExpiredLocalImportBatches(now: Date = Date()) throws {
+        try database.transaction {
+            let storedBatches = try database.store.query(
+                "SELECT key, value FROM kv WHERE key LIKE ?",
+                bindings: ["local-import:%"]
+            ) { ($0.string(0), $0.string(1)) }
+
+            for (key, rawValue) in storedBatches {
+                guard let data = rawValue.data(using: .utf8),
+                      var batch = try? DateCoding.decoder().decode(LocalImportBatch.self, from: data) else {
+                    // A malformed import payload cannot be safely reviewed or confirmed.
+                    try database.run("DELETE FROM kv WHERE key = ?", bindings: [key])
+                    continue
+                }
+                guard batch.status == "PARSED" else { continue }
+
+                // Older app versions did not assign an expiry; do not preserve those PII payloads
+                // indefinitely after upgrading to the expiring staging contract.
+                guard let expiresAt = batch.expiresAt, expiresAt > now else {
+                    batch.status = "EXPIRED"
+                    batch.filename = ""
+                    batch.result.filename = nil
+                    batch.result.status = "EXPIRED"
+                    batch.result.rows = []
+                    batch.result.columns = nil
+                    batch.result.unknownColumns = nil
+                    batch.result.report = nil
+                    batch.rows = []
+
+                    let encoded = try DateCoding.encoder().encode(batch)
+                    guard let text = String(bytes: encoded, encoding: .utf8) else {
+                        throw APIError.invalidResponse("无法清理过期导入预览")
+                    }
+                    try database.setKeyValue(key, value: text)
+                    continue
+                }
+            }
+        }
+    }
+
     private func loadConfirmableImportBatch(
         storageKey: String,
         tripId: String,
@@ -323,6 +375,14 @@ extension LocalTripRepository {
             throw APIError.serverError(
                 code: "NOT_FOUND",
                 message: "导入批次不属于当前出行",
+                traceId: nil,
+                details: ["import_id": .string(importId)]
+            )
+        }
+        if batch.status == "EXPIRED" {
+            throw APIError.serverError(
+                code: "IMPORT_EXPIRED",
+                message: "导入预览已过期，请重新选择 Excel 文件",
                 traceId: nil,
                 details: ["import_id": .string(importId)]
             )
