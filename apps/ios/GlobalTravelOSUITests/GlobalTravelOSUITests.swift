@@ -1027,9 +1027,13 @@ extension GlobalTravelOSUITests {
 
     /// 打开 Mission 顶部「更多操作」菜单中的指定工作区。
     func openMissionMenuAction(_ app: XCUIApplication, _ title: String) {
-        let menu = app.buttons["更多操作"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 10), "未找到 Mission 更多操作菜单")
-        menu.tap()
+        let menu = app.descendants(matching: .any)
+            .matching(identifier: "mission.more-actions")
+            .firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15), "未找到 Mission 更多操作菜单")
+        // SwiftUI Menu's AXScrollToVisibleAction can fail despite the toolbar item being on-screen.
+        // Tapping the element's center coordinate bypasses that flaky AX scroll operation.
+        menu.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let action = app.buttons[title].firstMatch
         XCTAssertTrue(action.waitForExistence(timeout: 10), "更多操作菜单缺少入口：\(title)")
         action.tap()
