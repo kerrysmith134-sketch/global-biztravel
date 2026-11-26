@@ -785,9 +785,10 @@ def test_linked_flight_suggestion_tracks_booking_binding_as_evidence_and_dedupe_
         )
         assert signal_response.status_code == 201, signal_response.text
 
-        first_report = proactive_service.scan_trip(
-            org_session(UUID(ORG_A)).__enter__(), UUID(ORG_A), UUID(trip_id), now=now
-        )
+        with org_session(UUID(ORG_A)) as session:
+            first_report = proactive_service.scan_trip(
+                session, UUID(ORG_A), UUID(trip_id), now=now
+            )
         assert first_report.errors == []
         assert first_report.suggestions == 1
         with org_session(UUID(ORG_A)) as session:
