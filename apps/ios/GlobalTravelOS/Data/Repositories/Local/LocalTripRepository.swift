@@ -13,7 +13,7 @@ struct LocalStorePendingError: LocalizedError {
 ///
 /// 实现范围随本地版阶段推进（ADR-0036）：
 /// - P1 已本地化：trips/places/visits 读写、hold/resume/complete（版本令牌语义）
-/// - P4/P7 逐步替换标 `pending` 的领域方法（费用/报销/预算/签证/导入/指南/复盘）
+/// - P4/P7 逐步替换标 `pending` 的领域方法（费用/报销/预算/签证/指南/复盘）
 final class LocalTripRepository: TripRepository {
     let database: LocalDatabase
     private let receiptVault: ReceiptVault?
@@ -34,6 +34,14 @@ final class LocalTripRepository: TripRepository {
     }
 
     // MARK: - 行程读写（P1 本地化）
+
+    func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult {
+        try await performParseImport(tripId: tripId, fileData: fileData, filename: filename)
+    }
+
+    func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult {
+        try await performConfirmImport(tripId: tripId, request: request)
+    }
 
     func listTrips(page: PageRequest) async throws -> Page<Trip> {
         let offset = page.cursor.flatMap { Int($0.replacingOccurrences(of: "offset:", with: "")) } ?? 0
@@ -736,11 +744,5 @@ final class LocalTripRepository: TripRepository {
         try LocalAggregations.tripOutcome(database: database, tripId: tripId)
     }
 
-    func parseImport(tripId: String, fileData: Data, filename: String) async throws -> ImportParseResult {
-        throw LocalStorePendingError(method: "parseImport")
-    }
 
-    func confirmImport(tripId: String, request: ConfirmImportRequest) async throws -> ConfirmImportResult {
-        throw LocalStorePendingError(method: "confirmImport")
-    }
 }

@@ -35,8 +35,8 @@ enum ImportRowStatus: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Only rows the server marked VALID are selected by default; the server re-validates anyway.
-    var selectableForImport: Bool { self == .valid }
+    /// VALID rows are preselected; DUPLICATE rows remain manually selectable after review.
+    var selectableForImport: Bool { self == .valid || self == .duplicate }
 }
 
 struct ImportIssue: Codable, Equatable, Identifiable {
@@ -168,8 +168,9 @@ struct ImportParseResult: Codable, Equatable {
 
     var rowList: [ImportedRow] { rows ?? [] }
 
+    /// Only unambiguous VALID rows are selected automatically. Duplicates require explicit review.
     var importableRowNumbers: [Int] {
-        rowList.filter(\.status.selectableForImport).map(\.rowNumber)
+        rowList.filter { $0.status == .valid }.map(\.rowNumber)
     }
 
     var summaryText: String {

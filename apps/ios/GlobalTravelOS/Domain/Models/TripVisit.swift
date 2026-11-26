@@ -16,9 +16,43 @@ struct TripVisit: Codable, Equatable, Identifiable {
     var timeWindowStart: Date?
     var timeWindowEnd: Date?
     var priority: Int?
+    var businessValue: Double?
+    var isImmovable: Bool?
     var movementMode: String?
     var status: String?
     var createdAt: Date?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        tripId = try container.decodeIfPresent(String.self, forKey: .tripId)
+        placeId = try container.decodeIfPresent(String.self, forKey: .placeId)
+        customerId = try container.decodeIfPresent(String.self, forKey: .customerId)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        objective = try container.decodeIfPresent(String.self, forKey: .objective)
+        serviceMinutes = try container.decodeIfPresent(Int.self, forKey: .serviceMinutes)
+        timeWindowStart = try container.decodeIfPresent(Date.self, forKey: .timeWindowStart)
+        timeWindowEnd = try container.decodeIfPresent(Date.self, forKey: .timeWindowEnd)
+        priority = try container.decodeIfPresent(Int.self, forKey: .priority)
+        if let number = try? container.decodeIfPresent(Double.self, forKey: .businessValue) {
+            businessValue = number
+        } else if let raw = try container.decodeIfPresent(String.self, forKey: .businessValue) {
+            guard let number = Double(raw), number.isFinite else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .businessValue,
+                    in: container,
+                    debugDescription: "businessValue must be a finite numeric value"
+                )
+            }
+            businessValue = number
+        } else {
+            businessValue = nil
+        }
+        isImmovable = try container.decodeIfPresent(Bool.self, forKey: .isImmovable)
+        movementMode = try container.decodeIfPresent(String.self, forKey: .movementMode)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
+    }
 
     init(
         id: String,
@@ -31,6 +65,8 @@ struct TripVisit: Codable, Equatable, Identifiable {
         timeWindowStart: Date? = nil,
         timeWindowEnd: Date? = nil,
         priority: Int? = nil,
+        businessValue: Double? = nil,
+        isImmovable: Bool? = nil,
         movementMode: String? = nil,
         status: String? = nil,
         createdAt: Date? = nil
@@ -45,6 +81,8 @@ struct TripVisit: Codable, Equatable, Identifiable {
         self.timeWindowStart = timeWindowStart
         self.timeWindowEnd = timeWindowEnd
         self.priority = priority
+        self.businessValue = businessValue
+        self.isImmovable = isImmovable
         self.movementMode = movementMode
         self.status = status
         self.createdAt = createdAt
