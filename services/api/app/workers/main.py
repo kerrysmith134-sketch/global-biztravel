@@ -473,11 +473,15 @@ def run_cycle(
                     or receipt_report.delete_failures
                     or receipt_report.resolved
                     or receipt_report.missing
+                    or receipt_report.assets_quarantined
+                    or receipt_report.assets_restored
+                    or receipt_report.integrity_failures
                 ):
                     did_work = True
                 logger.info(
                     "组织 %s 票据对象对账：扫描 %d、发现孤儿 %d、满足清理条件 %d、"
-                    "删除 %d、删除失败 %d、恢复关联 %d、对象缺失 %d（清理启用=%s）",
+                    "删除 %d、删除失败 %d、恢复关联 %d、对象缺失 %d、资产隔离 %d、"
+                    "完整性恢复 %d、校验失败 %d（清理启用=%s）",
                     org_id,
                     receipt_report.objects_scanned,
                     receipt_report.orphans_discovered,
@@ -486,6 +490,9 @@ def run_cycle(
                     receipt_report.delete_failures,
                     receipt_report.resolved,
                     receipt_report.missing,
+                    receipt_report.assets_quarantined,
+                    receipt_report.assets_restored,
+                    receipt_report.integrity_failures,
                     receipt_report.cleanup_enabled,
                 )
                 if receipt_report.errors:

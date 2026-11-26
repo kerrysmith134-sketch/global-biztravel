@@ -10,7 +10,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, File, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from app.api.deps import (
     ROLE_TRAVELER,
@@ -20,8 +20,9 @@ from app.api.deps import (
     SessionDep,
     require_role,
 )
-from app.api.errors import BadRequest, UnsupportedMedia
+from app.api.errors import BadRequest, UnsupportedMedia, error_body
 from app.api.idempotent import IdempotentWrite
+from app.api.trace import get_trace_id
 from app.api.schemas import (
     ReceiptAssetRead,
     ReceiptOcrReviewCreate,
@@ -30,6 +31,7 @@ from app.api.schemas import (
 )
 from app.config import get_settings
 from app.services import receipt_asset_ocr_service, receipt_asset_service, trip_service
+from app.services.receipt_asset_service import ReceiptIntegrityFailure
 
 router = APIRouter(tags=["receipt-assets"])
 
@@ -40,6 +42,15 @@ _SUPPORTED_TYPES = {
     "image/png",
     "image/webp",
 }
+
+
+def _integrity_failure_response(exc: ReceiptIntegrityFailure) -> JSONResponse:
+    trace_id = get_trace_id()
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_body(exc, trace_id),
+        headers={"X-Trace-Id": trace_id},
+    )
 
 
 def _detect_mime_type(content: bytes) -> str:
@@ -143,9 +154,13 @@ def download_receipt_asset(
     session: SessionDep,
 ):
     require_role(context, ROLE_VIEWER)
-    asset, content = receipt_asset_service.read_receipt_content(
-        session, context.organization_id, asset_id
-    )
+    try:
+        asset, content = receipt_asset_service.read_receipt_content(
+            session, context.organization_id, asset_id
+        )
+    except ReceiptIntegrityFailure as exc:
+        # Return normally so the request transaction commits the quarantine state.
+        return _integrity_failure_response(exc)
     return Response(
         content=content,
         media_type=asset.mime_type,
@@ -201,12 +216,16 @@ def extract_saved_receipt(
     )
     if (replay := guard.begin()) is not None:
         return replay
-    run = receipt_asset_ocr_service.create_receipt_ocr_run(
-        session,
-        context.organization_id,
-        asset_id,
-        actor_user_id=context.user_id,
-    )
+    try:
+        run = receipt_asset_ocr_service.create_receipt_ocr_run(
+            session,
+            context.organization_id,
+            asset_id,
+            actor_user_id=context.user_id,
+        )
+    except ReceiptIntegrityFailure as exc:
+        # The OCR write must not roll back the asset quarantine diagnosis.
+        return _integrity_failure_response(exc)
     body = _ocr_run_read(session, context.organization_id, run)
     return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
 

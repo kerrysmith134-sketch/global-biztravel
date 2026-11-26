@@ -19,6 +19,12 @@ from app.services.receipt_storage_service import (
 )
 
 
+class ReceiptIntegrityFailure(ServiceUnavailable):
+    """The stored bytes are missing or no longer match the immutable receipt identity."""
+
+    code = "RECEIPT_INTEGRITY_FAILED"
+
+
 def create_receipt_asset(
     session: Session,
     organization_id: UUID | str,
@@ -96,17 +102,52 @@ def read_receipt_content(
     organization_id: UUID | str,
     asset_id: UUID | str,
 ) -> tuple[ReceiptAsset, bytes]:
-    asset = require_receipt_asset(session, organization_id, asset_id)
-    try:
-        content = get_receipt_storage(asset.storage_provider).get(asset.storage_key)
-    except ReceiptStorageUnavailable as exc:
-        raise ServiceUnavailable(str(exc)) from exc
-    actual_hash = hashlib.sha256(content).hexdigest()
-    if actual_hash != asset.sha256:
-        raise ServiceUnavailable(
-            "原始票据内容校验失败，拒绝返回该文件",
-            details={"receipt_asset_id": str(asset.id)},
+    # Quarantined assets may be revalidated, but DELETE_PENDING and cross-tenant
+    # assets are never readable. Expense attachment still uses require_receipt_asset,
+    # which only accepts AVAILABLE assets.
+    asset = session.scalars(
+        select(ReceiptAsset).where(
+            ReceiptAsset.organization_id == str(organization_id),
+            ReceiptAsset.id == str(asset_id),
         )
+    ).one_or_none()
+    if asset is None or asset.storage_status == "DELETE_PENDING":
+        raise NotFound("票据资产不存在或不可用", details={"receipt_asset_id": str(asset_id)})
+
+    storage = get_receipt_storage(asset.storage_provider)
+    try:
+        content = storage.get(asset.storage_key)
+    except ReceiptStorageUnavailable as exc:
+        # A failed GET alone is not proof of loss (the bucket may be temporarily
+        # unavailable). Quarantine only after an independent metadata HEAD confirms
+        # that the exact object is absent.
+        try:
+            stored = storage.stat_object(asset.storage_key)
+        except ReceiptStorageUnavailable:
+            raise ServiceUnavailable(str(exc)) from exc
+        if stored is not None:
+            raise ServiceUnavailable(str(exc)) from exc
+        asset.storage_status = "QUARANTINED"
+        session.flush()
+        raise ReceiptIntegrityFailure(
+            "原始票据对象已不存在，资产已隔离",
+            details={"receipt_asset_id": str(asset.id), "storage_status": asset.storage_status},
+        ) from exc
+
+    actual_hash = hashlib.sha256(content).hexdigest()
+    if len(content) != asset.byte_length or actual_hash != asset.sha256:
+        asset.storage_status = "QUARANTINED"
+        session.flush()
+        raise ReceiptIntegrityFailure(
+            "原始票据字节与不可变证据哈希不一致，资产已隔离",
+            details={"receipt_asset_id": str(asset.id), "storage_status": asset.storage_status},
+        )
+
+    # Recovery is allowed only after the exact original bytes pass both length and
+    # SHA-256 checks. A reappearing object is not automatically trusted.
+    if asset.storage_status == "QUARANTINED":
+        asset.storage_status = "AVAILABLE"
+        session.flush()
     return asset, content
 
 

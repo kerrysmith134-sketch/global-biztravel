@@ -206,12 +206,29 @@ def test_receipt_asset_download_rejects_changed_object_bytes(
             asset = session.get(ReceiptAsset, UUID(asset_id))
             assert asset is not None
             storage_key = asset.storage_key
-        private_storage.put(storage_key, b"tampered object bytes", "image/png")
+        private_storage.put(storage_key, b"x" * len(_PNG_1PX), "image/png")
 
         downloaded = client.get(
             f"/v1/receipt-assets/{asset_id}/content", headers=headers()
         )
         assert downloaded.status_code == 503, downloaded.text
+        assert downloaded.json()["error"]["code"] == "RECEIPT_INTEGRITY_FAILED"
+        with org_session(UUID(ORG_A)) as session:
+            quarantined = session.get(ReceiptAsset, UUID(asset_id))
+            assert quarantined is not None
+            assert quarantined.storage_status == "QUARANTINED"
+
+        # Exact original bytes can recover a quarantined asset after revalidation.
+        private_storage.put(storage_key, _PNG_1PX, "image/png")
+        restored = client.get(
+            f"/v1/receipt-assets/{asset_id}/content", headers=headers()
+        )
+        assert restored.status_code == 200, restored.text
+        assert restored.content == _PNG_1PX
+        with org_session(UUID(ORG_A)) as session:
+            available = session.get(ReceiptAsset, UUID(asset_id))
+            assert available is not None
+            assert available.storage_status == "AVAILABLE"
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))

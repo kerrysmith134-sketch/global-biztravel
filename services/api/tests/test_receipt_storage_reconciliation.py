@@ -355,6 +355,68 @@ def test_missing_object_for_existing_asset_is_audited_not_deleted(
             assert incident.status == "MISSING"
             asset = session.get(ReceiptAsset, asset_id)
             assert asset is not None
+            assert asset.storage_status == "QUARANTINED"
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+
+
+def test_quarantined_asset_is_restored_only_after_hash_verification(
+    client: TestClient,
+    private_storage: FilesystemReceiptStorage,
+) -> None:
+    trip_id = create_trip(client)
+    now = datetime.now(UTC)
+    asset_id = uuid.uuid4()
+    key = f"receipts/{ORG_A}/{trip_id}/{asset_id}"
+    original = b"original-receipt-bytes"
+    private_storage.put(key, original, "application/pdf")
+    with org_session(UUID(ORG_A)) as session:
+        session.add(
+            ReceiptAsset(
+                id=asset_id,
+                organization_id=UUID(ORG_A),
+                trip_id=UUID(trip_id),
+                storage_provider="filesystem",
+                storage_key=key,
+                original_filename="receipt.pdf",
+                mime_type="application/pdf",
+                byte_length=len(original),
+                sha256=hashlib.sha256(original).hexdigest(),
+                storage_status="AVAILABLE",
+                uploaded_at=now,
+            )
+        )
+
+    try:
+        private_storage.delete(key)
+        missing = reconcile(now=now, cleanup_enabled=False, grace_seconds=60)
+        assert missing.assets_quarantined == 1
+        with org_session(UUID(ORG_A)) as session:
+            asset = session.get(ReceiptAsset, asset_id)
+            assert asset is not None
+            assert asset.storage_status == "QUARANTINED"
+
+        private_storage.put(key, b"x" * len(original), "application/pdf")
+        rejected = reconcile(
+            now=now + timedelta(seconds=1), cleanup_enabled=False, grace_seconds=60
+        )
+        assert rejected.integrity_failures == 1
+        with org_session(UUID(ORG_A)) as session:
+            asset = session.get(ReceiptAsset, asset_id)
+            assert asset is not None
+            assert asset.storage_status == "QUARANTINED"
+
+        private_storage.put(key, original, "application/pdf")
+        restored = reconcile(
+            now=now + timedelta(seconds=2), cleanup_enabled=False, grace_seconds=60
+        )
+        assert restored.assets_restored == 1
+        assert restored.resolved == 1
+        with org_session(UUID(ORG_A)) as session:
+            asset = session.get(ReceiptAsset, asset_id)
+            assert asset is not None
+            assert asset.storage_status == "AVAILABLE"
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))

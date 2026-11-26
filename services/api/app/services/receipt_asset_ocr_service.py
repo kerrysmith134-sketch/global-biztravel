@@ -31,7 +31,7 @@ def _require_asset(
         select(ReceiptAsset).where(
             ReceiptAsset.organization_id == str(organization_id),
             ReceiptAsset.id == str(asset_id),
-            ReceiptAsset.storage_status == "AVAILABLE",
+            ReceiptAsset.storage_status != "DELETE_PENDING",
         )
     ).one_or_none()
     if asset is None:

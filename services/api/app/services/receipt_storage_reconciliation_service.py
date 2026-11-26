@@ -8,6 +8,7 @@ organization, closing the object-PUT / metadata-COMMIT race.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -33,6 +34,9 @@ class ReceiptReconciliationReport:
     delete_failures: int = 0
     resolved: int = 0
     missing: int = 0
+    assets_quarantined: int = 0
+    assets_restored: int = 0
+    integrity_failures: int = 0
     cleanup_enabled: bool = False
     errors: list[str] = field(default_factory=list)
 
@@ -157,6 +161,12 @@ def reconcile_receipt_storage(
         else:
             incident.last_seen_at = current
 
+        # A metadata row without its original object is not an AVAILABLE asset.
+        # Quarantine it without deleting or rewriting the immutable report snapshot.
+        if asset.storage_status != "QUARANTINED":
+            asset.storage_status = "QUARANTINED"
+            report.assets_quarantined += 1
+
     objects = list(object_map.values())
     report.objects_scanned = len(objects)
 
@@ -184,6 +194,38 @@ def reconcile_receipt_storage(
 
         # Any metadata row, including quarantined/deletion-pending assets, is authoritative.
         if key in known_keys:
+            asset = known_assets[key]
+            if stored.size != asset.byte_length:
+                if asset.storage_status != "QUARANTINED":
+                    asset.storage_status = "QUARANTINED"
+                    report.assets_quarantined += 1
+                report.integrity_failures += 1
+                report.errors.append(
+                    f"ReceiptAsset {asset.id}: object size mismatch "
+                    f"(expected {asset.byte_length}, found {stored.size})"
+                )
+                continue
+
+            if asset.storage_status == "QUARANTINED":
+                # A reappearing object is trusted only after the original byte length
+                # and SHA-256 match the immutable ReceiptAsset metadata.
+                try:
+                    content = storage.get(key)
+                except ReceiptStorageUnavailable as exc:
+                    report.integrity_failures += 1
+                    report.errors.append(
+                        f"ReceiptAsset {asset.id}: recovery read failed: {str(exc)[:300]}"
+                    )
+                    continue
+                if len(content) != asset.byte_length or hashlib.sha256(content).hexdigest() != asset.sha256:
+                    report.integrity_failures += 1
+                    report.errors.append(
+                        f"ReceiptAsset {asset.id}: reappearing object failed SHA-256 verification"
+                    )
+                    continue
+                asset.storage_status = "AVAILABLE"
+                report.assets_restored += 1
+
             if incident is not None and incident.status != "RESOLVED":
                 incident.status = "RESOLVED"
                 incident.last_error = None
