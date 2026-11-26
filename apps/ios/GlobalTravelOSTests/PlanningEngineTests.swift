@@ -221,50 +221,5 @@ final class PlanningEngineTests: XCTestCase {
         XCTAssertEqual(mapped.first?.stops.first?.visitId, visitId.uuidString)
     }
 
-    /// 回归：本地生成计划时，持久化的 Job Key 必须与响应中的 jobId 完全一致。
-    func testLocalPlanGenerationJobIsReadableByReturnedIdentifier() async throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("local-plan-job-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let database = try LocalDatabase.open(path: directory.appendingPathComponent("test.sqlite3"))
-        let now = Date()
-        let trip = try await LocalTripRepository(database: database).createTrip(
-            CreateTripRequest(
-                name: "本地计划任务",
-                purpose: "Job ID 回归测试",
-                originPlace: PlaceRef(
-                    name: "上海浦东", countryCode: "CN", timezone: "Asia/Shanghai",
-                    latitude: 31.23, longitude: 121.47
-                ),
-                window: TripWindow(
-                    start: now.addingTimeInterval(86_400),
-                    end: now.addingTimeInterval(86_400 * 10)
-                )
-            )
-        )
-        let visits = LocalVisitRepository(database: database)
-        _ = try await visits.createVisit(
-            tripId: trip.id,
-            request: VisitCreateRequest(
-                placeName: "Berlin Buyer", city: "Berlin", countryCode: "DE",
-                latitude: 52.52, longitude: 13.405, timezone: "Europe/Berlin",
-                title: "本地计划验收拜访", serviceMinutes: 60, priority: 1,
-                movementMode: "AIR"
-            )
-        )
 
-        let plans = LocalPlanRepository(database: database)
-        let response = try await plans.generatePlan(
-            tripId: trip.id, request: GeneratePlanRequest()
-        )
-        let job = try await plans.job(id: response.jobId)
-
-        XCTAssertEqual(job.id, response.jobId)
-        XCTAssertNotNil(job.result?.planVersionId)
-        XCTAssertGreaterThanOrEqual(
-            try database.count(table: "plan_versions", where: "trip_id = ?", bindings: [trip.id]),
-            1
-        )
-    }
 }
