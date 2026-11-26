@@ -414,6 +414,47 @@ def _external_candidates(
                         "retrieved_at": None,
                     }
                 )
+            for leg in impact_assessment.get("related_travel_legs", []):
+                evidence.append(
+                    {
+                        "kind": "PLAN_TRAVEL_LEG",
+                        "ref": (
+                            f"plan-travel-leg:{leg['plan_travel_leg_id']};"
+                            f"mode:{leg['mode']};relation:{leg['relation']};"
+                            f"estimated_slack_minutes:{leg['estimated_schedule_slack_minutes']};"
+                            f"stale:{str(leg['stale']).lower()}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
+        elif signal.signal_type == "FLIGHT_STATUS":
+            impact_assessment = external_impact_service.assess_flight_signal_impact(
+                session, organization_id, trip, signal
+            )
+            impact_note = f"航班关联评估：{impact_assessment['explanation']}"
+            if impact_assessment.get("plan_version_id"):
+                evidence.append(
+                    {
+                        "kind": "ACTIVE_PLAN_VERSION",
+                        "ref": (
+                            f"plan-version:{impact_assessment['plan_version_id']}"
+                            f"@v{impact_assessment['plan_version_number']}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
+            for leg in impact_assessment.get("unlinked_air_legs", []):
+                evidence.append(
+                    {
+                        "kind": "UNLINKED_AIR_TRAVEL_LEG",
+                        "ref": (
+                            f"plan-travel-leg:{leg['plan_travel_leg_id']};"
+                            f"callsign:{impact_assessment.get('callsign') or 'unknown'};"
+                            "explicit_link_required:true"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
         # For weather, the same provider signal must be re-evaluated when the active
         # plan revision changes. Non-weather signal dedupe remains payload-only.
         digest_input = payload
@@ -424,6 +465,14 @@ def _external_candidates(
                     "status": impact_assessment.get("status"),
                     "plan_version_id": impact_assessment.get("plan_version_id"),
                     "affected_visit_ids": impact_assessment.get("affected_visit_ids", []),
+                    "related_travel_leg_ids": [
+                        leg["plan_travel_leg_id"]
+                        for leg in impact_assessment.get("related_travel_legs", [])
+                    ],
+                    "unlinked_air_leg_ids": [
+                        leg["plan_travel_leg_id"]
+                        for leg in impact_assessment.get("unlinked_air_legs", [])
+                    ],
                 },
             }
         digest = sha256(

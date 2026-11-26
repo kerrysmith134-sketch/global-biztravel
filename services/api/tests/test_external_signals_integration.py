@@ -15,7 +15,7 @@ from app.db import org_session
 from app.main import app
 from app.models.geo import Place
 from app.models.integrations import ExternalSignal
-from app.models.planning import PlanStop, PlanVersion
+from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.proactive import ProactiveSuggestion, ProactiveTrigger
 from app.models.trip import Trip
 from app.services import proactive_service
@@ -243,24 +243,69 @@ def test_weather_signal_maps_exact_place_and_time_window_to_active_plan(
             session.flush()
             trip.active_plan_version_id = plan.id
             trip.status = "ACTIVE"
+            plan_stops: list[PlanStop] = []
             for index, (visit_id, (_, start, end)) in enumerate(
                 zip(visit_ids, windows, strict=True), start=1
             ):
-                session.add(
-                    PlanStop(
+                plan_stop = PlanStop(
+                    organization_id=UUID(ORG_A),
+                    plan_version_id=plan.id,
+                    visit_id=UUID(visit_id),
+                    day_index=0,
+                    sequence=index,
+                    day_date=start.date(),
+                    arrive_at=start,
+                    depart_at=end,
+                    travel_minutes=0,
+                    service_minutes=30,
+                    travel_source="test-fixture",
+                )
+                session.add(plan_stop)
+                plan_stops.append(plan_stop)
+            session.flush()
+            # The inbound AIR leg has no departure timestamp in the current schema;
+            # the outbound leg permits an estimated schedule-buffer calculation.
+            session.add_all(
+                [
+                    PlanTravelLeg(
                         organization_id=UUID(ORG_A),
                         plan_version_id=plan.id,
-                        visit_id=UUID(visit_id),
+                        from_stop_id=None,
+                        to_stop_id=plan_stops[0].id,
                         day_index=0,
-                        sequence=index,
-                        day_date=start.date(),
-                        arrive_at=start,
-                        depart_at=end,
-                        travel_minutes=0,
-                        service_minutes=30,
-                        travel_source="test-fixture",
-                    )
-                )
+                        mode="AIR",
+                        travel_minutes=600,
+                        distance_km=900,
+                        source="test-flight-estimate",
+                        stale=True,
+                    ),
+                    PlanTravelLeg(
+                        organization_id=UUID(ORG_A),
+                        plan_version_id=plan.id,
+                        from_stop_id=plan_stops[0].id,
+                        to_stop_id=plan_stops[1].id,
+                        day_index=0,
+                        mode="GROUND",
+                        travel_minutes=20,
+                        distance_km=8,
+                        source="test-ground-estimate",
+                        stale=False,
+                    ),
+                    PlanTravelLeg(
+                        organization_id=UUID(ORG_A),
+                        plan_version_id=plan.id,
+                        from_stop_id=plan_stops[1].id,
+                        to_stop_id=plan_stops[2].id,
+                        day_index=0,
+                        mode="GROUND",
+                        travel_minutes=30,
+                        distance_km=12,
+                        source="test-ground-estimate",
+                        stale=False,
+                    ),
+                ]
+            )
+            session.flush()
             plan_id = str(plan.id)
             trip_version = trip.version
 
@@ -310,7 +355,18 @@ def test_weather_signal_maps_exact_place_and_time_window_to_active_plan(
             assert impact["affected_stop_count"] == 1
             assert impact["matched_visit_ids"] == visit_ids[:2]
             assert impact["affected_visit_ids"] == [visit_ids[0]]
+            assert impact["related_travel_leg_count"] == 2
+            related_legs = impact["related_travel_legs"]
+            inbound = next(item for item in related_legs if item["from_stop_id"] is None)
+            outbound = next(item for item in related_legs if item["from_stop_id"] is not None)
+            assert inbound["mode"] == "AIR"
+            assert inbound["schedule_assessment"] == "ORIGIN_TIMING_UNKNOWN"
+            assert outbound["relation"] == "OUTBOUND_FROM_AFFECTED_STOP"
+            assert outbound["estimated_schedule_gap_minutes"] == 70
+            assert outbound["estimated_schedule_slack_minutes"] == 50
+            assert outbound["schedule_assessment"] == "ESTIMATED_BUFFER_AVAILABLE"
             assert any(item["kind"] == "PLAN_STOP" for item in suggestion.evidence)
+            assert any(item["kind"] == "PLAN_TRAVEL_LEG" for item in suggestion.evidence)
             suggestion_id = str(suggestion.id)
             original_dedupe_key = suggestion.dedupe_key
 
@@ -432,3 +488,153 @@ def test_external_signals_are_tenant_isolated(client: TestClient) -> None:
         assert report.suggestions == 0
     finally:
         cleanup(trip_id, dedupe)
+
+
+def test_flight_signal_does_not_auto_match_air_leg_without_booking_link(client: TestClient) -> None:
+    now = datetime.now(UTC)
+    trip_response = client.post(
+        "/v1/trips",
+        headers=headers(),
+        json={
+            "name": f"航班关联边界·{uuid.uuid4().hex[:8]}",
+            "window_start": (now + timedelta(hours=1)).isoformat(),
+            "window_end": (now + timedelta(days=2)).isoformat(),
+            "countries": ["DE"],
+        },
+    )
+    assert trip_response.status_code == 201, trip_response.text
+    trip_id = trip_response.json()["id"]
+    dedupe = f"flight-unlinked-{uuid.uuid4().hex[:8]}"
+    place = client.post(
+        "/v1/places",
+        headers=headers(),
+        json={
+            "name": f"Flight destination {uuid.uuid4().hex[:6]}",
+            "city": "Berlin",
+            "country_code": "DE",
+            "lat": 52.52,
+            "lon": 13.405,
+        },
+    )
+    assert place.status_code == 201, place.text
+    place_id = place.json()["id"]
+    visit = client.post(
+        f"/v1/trips/{trip_id}/visits",
+        headers=headers(),
+        json={
+            "place_id": place_id,
+            "title": "Flight destination visit",
+            "service_minutes": 60,
+        },
+    )
+    assert visit.status_code == 201, visit.text
+    try:
+        with org_session(UUID(ORG_A)) as session:
+            trip = session.get(Trip, UUID(trip_id))
+            assert trip is not None
+            plan = PlanVersion(
+                organization_id=UUID(ORG_A),
+                trip_id=trip.id,
+                version_number=1,
+                status="ACTIVE",
+                problem_hash=f"flight-impact:{uuid.uuid4().hex}",
+                solver="heuristic",
+                objective_value=0.0,
+                solution_status="FEASIBLE",
+                trip_version=trip.version,
+                validation={"feasible": True},
+                unplaced=[],
+                activated_at=now,
+            )
+            session.add(plan)
+            session.flush()
+            trip.active_plan_version_id = plan.id
+            trip.status = "ACTIVE"
+            stop = PlanStop(
+                organization_id=UUID(ORG_A),
+                plan_version_id=plan.id,
+                visit_id=UUID(visit.json()["id"]),
+                day_index=0,
+                sequence=1,
+                day_date=(now + timedelta(hours=5)).date(),
+                arrive_at=now + timedelta(hours=5),
+                depart_at=now + timedelta(hours=6),
+                travel_minutes=0,
+                service_minutes=60,
+                travel_source="test-fixture",
+            )
+            session.add(stop)
+            session.flush()
+            leg = PlanTravelLeg(
+                organization_id=UUID(ORG_A),
+                plan_version_id=plan.id,
+                from_stop_id=None,
+                to_stop_id=stop.id,
+                day_index=0,
+                mode="AIR",
+                travel_minutes=600,
+                distance_km=900,
+                source="test-flight-estimate",
+                stale=True,
+            )
+            session.add(leg)
+            session.flush()
+            plan_id = str(plan.id)
+            leg_id = str(leg.id)
+
+        signal_response = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json={
+                "provider": "opensky",
+                "signal_type": "FLIGHT_STATUS",
+                "subject_type": "TRIP",
+                "subject_ref": trip_id,
+                "payload": {
+                    "callsign": "DLH123",
+                    "icao24": "3c675a",
+                    "latitude": 52.52,
+                    "longitude": 13.405,
+                    "on_ground": False,
+                    "last_contact": now.isoformat(),
+                },
+                "confidence": 0.95,
+                "observed_at": now.isoformat(),
+                "valid_until": (now + timedelta(hours=2)).isoformat(),
+                "dedupe_key": dedupe,
+            },
+        )
+        assert signal_response.status_code == 201, signal_response.text
+
+        with org_session(UUID(ORG_A)) as session:
+            report = proactive_service.scan_trip(
+                session, UUID(ORG_A), UUID(trip_id), now=now
+            )
+        assert report.errors == []
+        assert report.suggestions == 1
+
+        with org_session(UUID(ORG_A)) as session:
+            suggestion = session.scalars(
+                select(ProactiveSuggestion).where(
+                    ProactiveSuggestion.organization_id == UUID(ORG_A),
+                    ProactiveSuggestion.trip_id == UUID(trip_id),
+                    ProactiveSuggestion.suggestion_type == "FLIGHT_STATUS_ALERT",
+                )
+            ).one()
+            impact = suggestion.proposed_action["params"]["impact_assessment"]
+            assert impact["status"] == "AIR_LEGS_REQUIRE_EXPLICIT_LINK"
+            assert impact["plan_version_id"] == plan_id
+            assert impact["callsign"] == "DLH123"
+            assert impact["candidate_air_leg_count"] == 1
+            assert impact["linked_air_leg_count"] == 0
+            assert impact["linked_air_leg_ids"] == []
+            assert impact["unlinked_air_legs"][0]["plan_travel_leg_id"] == leg_id
+            assert any(
+                item["kind"] == "UNLINKED_AIR_TRAVEL_LEG"
+                for item in suggestion.evidence
+            )
+            assert "不会仅凭这些标识猜测" in suggestion.rationale
+    finally:
+        cleanup(trip_id, dedupe)
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Place).where(Place.id == UUID(place_id)))
