@@ -10998,6 +10998,268 @@
           }
         }
       }
+    },
+    "/v1/trips/{trip_id}/flight-segments": {
+      "post": {
+        "tags": [
+          "flight segments"
+        ],
+        "summary": "录入一段机票行程（不保存 PNR/票号）",
+        "operationId": "create_flight_segment_v1_trips__trip_id__flight_segments_post",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlightSegmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlightSegmentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "flight segments"
+        ],
+        "summary": "读取出行机票段与计划绑定历史",
+        "operationId": "list_flight_segments_v1_trips__trip_id__flight_segments_get",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FlightSegmentRead"
+                  },
+                  "title": "Response List Flight Segments V1 Trips  Trip Id  Flight Segments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{trip_id}/flight-segments/{flight_segment_id}:link": {
+      "post": {
+        "tags": [
+          "flight segments"
+        ],
+        "summary": "人工确认航班段与当前 ACTIVE 计划 AIR 交通段的关联",
+        "operationId": "link_flight_segment_v1_trips__trip_id__flight_segments__flight_segment_id__link_post",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          },
+          {
+            "name": "flight_segment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flight Segment Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlightSegmentPlanBindingCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlightSegmentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{trip_id}/flight-segments/{flight_segment_id}:unlink": {
+      "post": {
+        "tags": [
+          "flight segments"
+        ],
+        "summary": "解除航班段与计划交通段的关联并保留审计历史",
+        "operationId": "unlink_flight_segment_v1_trips__trip_id__flight_segments__flight_segment_id__unlink_post",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          },
+          {
+            "name": "flight_segment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flight Segment Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlightSegmentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -28109,6 +28371,358 @@
           "summary"
         ],
         "title": "TripCloseoutReadinessRead"
+      },
+      "FlightSegmentCreate": {
+        "properties": {
+          "flight_designator": {
+            "type": "string",
+            "maxLength": 12,
+            "minLength": 2,
+            "title": "Flight Designator"
+          },
+          "departure_airport_iata": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Departure Airport Iata"
+          },
+          "arrival_airport_iata": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Arrival Airport Iata"
+          },
+          "scheduled_departure_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled Departure At"
+          },
+          "scheduled_arrival_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled Arrival At"
+          },
+          "departure_timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Departure Timezone"
+          },
+          "arrival_timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Arrival Timezone"
+          },
+          "booking_status": {
+            "type": "string",
+            "enum": [
+              "TENTATIVE",
+              "BOOKED",
+              "TICKETED",
+              "CANCELLED"
+            ],
+            "title": "Booking Status",
+            "default": "BOOKED"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "USER_ENTERED",
+              "ITINERARY_IMPORT",
+              "PROVIDER_IMPORT"
+            ],
+            "title": "Source",
+            "default": "USER_ENTERED"
+          },
+          "tracking_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Provider"
+          },
+          "tracking_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "flight_designator",
+          "departure_airport_iata",
+          "arrival_airport_iata",
+          "scheduled_departure_at",
+          "scheduled_arrival_at",
+          "departure_timezone",
+          "arrival_timezone"
+        ],
+        "title": "FlightSegmentCreate",
+        "description": "One actual flight segment; sensitive PNR / ticket numbers are intentionally excluded."
+      },
+      "FlightSegmentPlanBindingCreate": {
+        "properties": {
+          "plan_travel_leg_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Travel Leg Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_travel_leg_id"
+        ],
+        "title": "FlightSegmentPlanBindingCreate"
+      },
+      "FlightSegmentPlanBindingRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Version Id"
+          },
+          "plan_travel_leg_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Travel Leg Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "RELEASED"
+            ],
+            "title": "Status"
+          },
+          "linked_by_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Linked By User Id"
+          },
+          "linked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Linked At"
+          },
+          "released_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released By User Id"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "release_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "plan_version_id",
+          "plan_travel_leg_id",
+          "status",
+          "linked_by_user_id",
+          "linked_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FlightSegmentPlanBindingRead"
+      },
+      "FlightSegmentRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "flight_designator": {
+            "type": "string",
+            "title": "Flight Designator"
+          },
+          "departure_airport_iata": {
+            "type": "string",
+            "title": "Departure Airport Iata"
+          },
+          "arrival_airport_iata": {
+            "type": "string",
+            "title": "Arrival Airport Iata"
+          },
+          "scheduled_departure_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled Departure At"
+          },
+          "scheduled_arrival_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled Arrival At"
+          },
+          "departure_timezone": {
+            "type": "string",
+            "title": "Departure Timezone"
+          },
+          "arrival_timezone": {
+            "type": "string",
+            "title": "Arrival Timezone"
+          },
+          "booking_status": {
+            "type": "string",
+            "enum": [
+              "TENTATIVE",
+              "BOOKED",
+              "TICKETED",
+              "CANCELLED"
+            ],
+            "title": "Booking Status"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "USER_ENTERED",
+              "ITINERARY_IMPORT",
+              "PROVIDER_IMPORT"
+            ],
+            "title": "Source"
+          },
+          "tracking_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Provider"
+          },
+          "tracking_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Reference"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "bindings": {
+            "items": {
+              "$ref": "#/components/schemas/FlightSegmentPlanBindingRead"
+            },
+            "type": "array",
+            "title": "Bindings"
+          },
+          "binding_state": {
+            "type": "string",
+            "enum": [
+              "UNLINKED",
+              "CURRENT_PLAN",
+              "STALE_PLAN_BINDING"
+            ],
+            "title": "Binding State",
+            "default": "UNLINKED"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "trip_id",
+          "flight_designator",
+          "departure_airport_iata",
+          "arrival_airport_iata",
+          "scheduled_departure_at",
+          "scheduled_arrival_at",
+          "departure_timezone",
+          "arrival_timezone",
+          "booking_status",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FlightSegmentRead"
       }
     }
   }
