@@ -19,6 +19,9 @@ final class LocalModeUITests: XCTestCase {
             return false
         }
         // 不注入 GBT_UI_TEST_BASE_URL：保持默认的本地模式（App 内 SQLite）。
+        if app.state != .notRunning {
+            app.terminate()
+        }
         app.launch()
         app.tap() // 触发中断监视器（若有系统弹窗在此关闭）。
     }
