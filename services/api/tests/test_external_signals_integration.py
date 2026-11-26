@@ -499,7 +499,7 @@ def test_flight_signal_does_not_auto_match_air_leg_without_booking_link(client: 
             "name": f"航班关联边界·{uuid.uuid4().hex[:8]}",
             "window_start": (now + timedelta(hours=1)).isoformat(),
             "window_end": (now + timedelta(days=2)).isoformat(),
-            "countries": ["DE"],
+            "countries": [],
         },
     )
     assert trip_response.status_code == 201, trip_response.text
