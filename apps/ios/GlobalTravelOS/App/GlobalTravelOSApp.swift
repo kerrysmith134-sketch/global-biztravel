@@ -18,7 +18,7 @@ struct GlobalTravelOSApp: App {
                         .info("hook canSeed=\(canSeed, privacy: .public) runMode=\(environment.settings.runMode, privacy: .public)")
                     guard canSeed else { return }
                     do {
-                        _ = try await LocalDemoSeeder.seed(environment: environment)
+                        _ = try await LocalDemoSeeder.seed(environment: environment, generatePlan: false)
                     } catch {
                         Logger(subsystem: "com.anari.globaltravelos", category: "demo-seed")
                             .error("seed failed: \(String(describing: error), privacy: .public)")

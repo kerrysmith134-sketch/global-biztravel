@@ -33,9 +33,7 @@ install: ## 安装依赖
 
 db-up: ## 构建镜像并启动 PostgreSQL16+PostGIS+pgvector
 	$(COMPOSE) up -d --build
-	@until docker exec zhi-tu-pg pg_isready -U postgres -d gbt_os >/dev/null 2>&1; do sleep 1; done
-	@echo "db ready on localhost:55432"
-
+	@$(PY) scripts/wait_for_postgres.py || { docker logs --tail=200 zhi-tu-pg >&2 || true; exit 1; }
 db-down: ## 停止数据库（保留数据卷）
 	$(COMPOSE) down
 

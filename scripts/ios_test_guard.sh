@@ -19,6 +19,17 @@ DEST="${DEST:-${1:-}}"
 ONLY_TESTING="${ONLY_TESTING:-}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 STALL_SECONDS="${STALL_SECONDS:-240}"
+XCODEBUILD_ACTION="${XCODEBUILD_ACTION:-test}"
+RESULT_BUNDLE_PATH="${RESULT_BUNDLE_PATH:-}"
+LOG_DIR="${LOG_DIR:-/tmp}"
+case "$XCODEBUILD_ACTION" in
+  test|test-without-building) ;;
+  *) echo "[guard] 不支持的 XCODEBUILD_ACTION：$XCODEBUILD_ACTION" >&2; exit 64 ;;
+esac
+mkdir -p "$LOG_DIR"
+if [ -n "$RESULT_BUNDLE_PATH" ]; then
+  rm -rf "$RESULT_BUNDLE_PATH"
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/../apps/ios"
 DERIVED="$HOME/Library/Developer/Xcode/DerivedData"
@@ -34,9 +45,16 @@ clean_build_state() {
 # 返回 0=通过 / 1=真失败 / 2=挂死
 run_attempt() {
   local log="$1" pid now last
-  ( cd "$PROJECT_DIR" && xcodebuild test -project GlobalTravelOS.xcodeproj \
-      -scheme GlobalTravelOS -destination "$DEST" ${ONLY_TESTING:+-only-testing:"$ONLY_TESTING"} \
-      >"$log" 2>&1 ) &
+  local -a xcode_args
+  xcode_args=(xcodebuild "$XCODEBUILD_ACTION" -project GlobalTravelOS.xcodeproj
+    -scheme GlobalTravelOS -destination "$DEST" -parallel-testing-enabled NO)
+  if [ -n "$ONLY_TESTING" ]; then
+    xcode_args+=("-only-testing:$ONLY_TESTING")
+  fi
+  if [ -n "$RESULT_BUNDLE_PATH" ]; then
+    xcode_args+=(-resultBundlePath "$RESULT_BUNDLE_PATH")
+  fi
+  ( cd "$PROJECT_DIR" && "${xcode_args[@]}" >"$log" 2>&1 ) &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     sleep 10
@@ -55,16 +73,16 @@ run_attempt() {
   if [ "$status" -ne 0 ]; then
     return 1
   fi
-  if grep -q "TEST SUCCEEDED" "$log"; then
+  if grep -q "TEST SUCCEEDED" "$log" && grep -Eq "Executed [1-9][0-9]* tests" "$log"; then
     return 0
   fi
-  # xcodebuild 退出 0 但没跑任何用例（-only-testing 标识不符时会这样）——按失败处理。
+  # xcodebuild 退出 0 但没跑任何用例，或测试摘要缺失——按失败处理，防止空跑误报绿灯。
   return 1
 }
 
 attempt=1
 while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
-  log="/tmp/ios-test-attempt-${attempt}-$(date +%s).log"
+  log="$LOG_DIR/ios-test-attempt-${attempt}-$(date +%s).log"
   echo "[guard] 第 ${attempt}/${MAX_ATTEMPTS} 次 xcodebuild test（日志：${log}）"
   run_attempt "$log"
   status=$?

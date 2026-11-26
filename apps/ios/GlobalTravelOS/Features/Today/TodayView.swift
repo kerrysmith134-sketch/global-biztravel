@@ -262,10 +262,16 @@ struct TodayView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                     .accessibilityLabel("更多操作")
+                    .accessibilityIdentifier("mission.more-actions")
                 }
             }
             .refreshable { await viewModel.load() }
-            .task { await viewModel.load() }
+            .task {
+                // Serialize local first-run seeding before the cockpit's first read.
+                // RootView no longer launches a concurrent seed task against this view model.
+                await environment.seedDemoIfNeeded()
+                await viewModel.load()
+            }
             .sheet(isPresented: $showsNotifications) {
                 NotificationsView(environment: environment)
             }

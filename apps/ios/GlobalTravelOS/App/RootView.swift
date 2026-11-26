@@ -37,7 +37,6 @@ struct RootView: View {
         .tint(DS.ColorToken.brand)
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(DS.ColorToken.surface, for: .tabBar)
-        // Local mode first-run demo seed remains a one-time bootstrap for a fresh local store.
-        .task { await environment.seedDemoIfNeeded() }
+        // TodayView sequences local first-run seeding before its first cockpit read.
     }
 }

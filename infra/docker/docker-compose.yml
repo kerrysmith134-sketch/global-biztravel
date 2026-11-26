@@ -66,7 +66,9 @@ services:
       - ./initdb:/docker-entrypoint-initdb.d:ro
       - gbt_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d gbt_os"]
+      # The image entrypoint runs a temporary Unix-socket-only server during initdb scripts.
+      # Require TCP readiness so dependents cannot observe that short-lived bootstrap server.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres -d gbt_os"]
       interval: 5s
       timeout: 5s
       retries: 30

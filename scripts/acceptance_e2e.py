@@ -85,6 +85,19 @@ def poll_job(client: httpx.Client, job_id: str, *, timeout: float = 30.0) -> dic
     return last
 
 
+def poll_crm_sync(client: httpx.Client, sync_id: str, *, timeout: float = 60.0) -> dict:
+    deadline = time.monotonic() + timeout
+    last: dict = {}
+    while time.monotonic() < deadline:
+        resp = client.get(f"/v1/crm-sync-jobs/{sync_id}", headers=headers())
+        resp.raise_for_status()
+        last = resp.json()
+        if last["status"] in ("PREPARED", "SUCCEEDED", "FAILED"):
+            return last
+        time.sleep(0.3)
+    return last
+
+
 def cleanup(trip_id: str, origin_place_id: str) -> None:
     """删掉本次脚本创建的出行与出发地；导入批次随 Trip 级联。"""
     sys.path.insert(0, str(ROOT / "services" / "api"))
@@ -238,14 +251,23 @@ def main() -> int:
         generated = client.post(f"/v1/trips/{trip_id}/plans:generate", headers=headers())
         generated.raise_for_status()
         job_id = generated.json()["job_id"]
-        run_worker_once()
-        job = poll_job(client, job_id)
-        if job["status"] == "PENDING":
-            # 单轮 Worker 可能在其启动瞬间还没看到刚提交的任务；真实 Worker 是循环的，
-            # 这里再跑一轮等价于"下一轮轮询"。
-            time.sleep(0.5)
+        use_running_worker = os.getenv("GBT_E2E_USE_RUNNING_WORKER", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if use_running_worker:
+            # CI 的 iOS UI lane 启动了常驻 Worker；必须由真实轮询循环消费任务，
+            # 而不是在测试脚本里另起 --once 进程，否则无法验证后台进程运行链路。
+            job = poll_job(client, job_id, timeout=120.0)
+        else:
+            # 本地轻量验收可不常驻 Worker：用 --once 驱动一轮，再容忍入队竞态补跑一轮。
             run_worker_once()
             job = poll_job(client, job_id)
+            if job["status"] == "PENDING":
+                time.sleep(0.5)
+                run_worker_once()
+                job = poll_job(client, job_id)
         check(job["status"] == "SUCCEEDED", f"求解任务完成（{job['status']}）")
 
         plans = client.get(f"/v1/trips/{trip_id}/plans", headers=headers())
@@ -343,10 +365,10 @@ def main() -> int:
         crm.raise_for_status()
         crm_id = crm.json()["id"]
         check(crm.json()["status"] == "QUEUED", "CRM 同步已排队")
-        run_worker_once()
-        crm_detail = client.get(f"/v1/crm-sync-jobs/{crm_id}", headers=headers())
-        crm_detail.raise_for_status()
-        check(crm_detail.json()["status"] == "PREPARED", "CRM 适配器生成待导入文件")
+        if not use_running_worker:
+            run_worker_once()
+        crm_detail = poll_crm_sync(client, crm_id, timeout=60.0)
+        check(crm_detail.get("status") == "PREPARED", "常驻 Worker 完成 CRM 适配器任务")
         center = client.get("/v1/action-center", headers=headers())
         center.raise_for_status()
         prepared = [
@@ -359,7 +381,7 @@ def main() -> int:
             any(item["kind"] == "CRM_SYNC" for item in prepared),
             "待导入 CRM 记录出现在行动中心",
         )
-        external = (crm_detail.json().get("result") or {}).get("external_id", "")
+        external = (crm_detail.get("result") or {}).get("external_id", "")
         if external.startswith("file:"):
             Path(external.removeprefix("file:")).unlink(missing_ok=True)
 
