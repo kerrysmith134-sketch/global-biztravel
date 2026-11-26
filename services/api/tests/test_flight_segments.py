@@ -12,12 +12,19 @@ from app.db import org_session
 from app.integrations.flights import FlightState
 from app.main import app
 from app.models.geo import Place
+from app.models.flight_operations import FlightOperationalUpdate
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
-from app.models.trip import Trip
-from app.services import external_impact_service, flight_segment_service, signal_pull_service
+from app.models.proactive import ProactiveSuggestion
+from app.models.trip import Trip, Visit
+from app.services import (
+    external_impact_service,
+    flight_segment_service,
+    proactive_service,
+    signal_pull_service,
+)
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -78,6 +85,8 @@ def create_plan(
     *,
     version_number: int,
     mode: str = "AIR",
+    arrive_at: datetime | None = None,
+    stale: bool = True,
 ) -> tuple[str, str]:
     now = datetime.now(UTC)
     with org_session(UUID(ORG_A)) as session:
@@ -114,7 +123,7 @@ def create_plan(
         trip.active_plan_version_id = plan.id
         trip.status = "ACTIVE"
 
-        arrive_at = now + timedelta(days=2, hours=5)
+        arrive_at = arrive_at or now + timedelta(days=2, hours=5)
         stop = PlanStop(
             organization_id=UUID(ORG_A),
             plan_version_id=plan.id,
@@ -140,7 +149,7 @@ def create_plan(
             travel_minutes=600,
             distance_km=900,
             source="test-flight-estimate",
-            stale=True,
+            stale=stale,
         )
         session.add(leg)
         session.flush()
@@ -478,4 +487,271 @@ def test_open_sky_tracking_rejects_provider_and_reference_mismatch(
                 )
             ) is None
     finally:
+        cleanup(trip_id, place_id)
+
+
+def test_provider_operational_update_propagates_delay_through_plan_buffers_and_windows(
+    client: TestClient,
+) -> None:
+    trip_id, place_id, first_visit_id = create_trip_and_place(client)
+    provider = "sample-airline-feed"
+    event_id = f"ops-{uuid.uuid4().hex}"
+    signal_id = None
+    try:
+        booking = flight_payload()
+        scheduled_arrival = datetime.fromisoformat(booking["scheduled_arrival_at"])
+        first_planned_arrival = scheduled_arrival + timedelta(minutes=30)
+        second_planned_arrival = first_planned_arrival + timedelta(minutes=120)
+        with org_session(UUID(ORG_A)) as session:
+            first_visit = session.get(Visit, UUID(first_visit_id))
+            assert first_visit is not None
+            first_visit.time_window_start = first_planned_arrival - timedelta(minutes=5)
+            first_visit.time_window_end = first_planned_arrival + timedelta(minutes=45)
+            second_visit = Visit(
+                organization_id=UUID(ORG_A),
+                trip_id=UUID(trip_id),
+                place_id=UUID(place_id),
+                title="Second customer appointment",
+                service_minutes=60,
+                time_window_start=second_planned_arrival - timedelta(minutes=5),
+                time_window_end=second_planned_arrival + timedelta(minutes=20),
+                priority=1,
+                movement_mode="GROUND",
+                is_immovable=True,
+                status="PLANNED",
+            )
+            session.add(second_visit)
+            session.flush()
+            second_visit_id = str(second_visit.id)
+
+        plan_id, air_leg_id = create_plan(
+            trip_id,
+            first_visit_id,
+            version_number=1,
+            mode="AIR",
+            arrive_at=first_planned_arrival,
+            stale=False,
+        )
+        with org_session(UUID(ORG_A)) as session:
+            first_stop = session.scalars(
+                select(PlanStop).where(
+                    PlanStop.organization_id == UUID(ORG_A),
+                    PlanStop.plan_version_id == UUID(plan_id),
+                    PlanStop.visit_id == UUID(first_visit_id),
+                )
+            ).one()
+            second_stop = PlanStop(
+                organization_id=UUID(ORG_A),
+                plan_version_id=UUID(plan_id),
+                visit_id=UUID(second_visit_id),
+                day_index=0,
+                sequence=2,
+                day_date=second_planned_arrival.date(),
+                arrive_at=second_planned_arrival,
+                depart_at=second_planned_arrival + timedelta(hours=1),
+                travel_minutes=30,
+                service_minutes=60,
+                travel_source="test-schedule",
+            )
+            session.add(second_stop)
+            session.flush()
+            ground_leg = PlanTravelLeg(
+                organization_id=UUID(ORG_A),
+                plan_version_id=UUID(plan_id),
+                from_stop_id=first_stop.id,
+                to_stop_id=second_stop.id,
+                day_index=0,
+                mode="GROUND",
+                travel_minutes=30,
+                distance_km=15,
+                source="test-ground-transfer",
+                stale=False,
+            )
+            session.add(ground_leg)
+            session.flush()
+            original_trip_version = session.get(Trip, UUID(trip_id)).version
+            original_active_plan_id = session.get(Trip, UUID(trip_id)).active_plan_version_id
+
+        created = client.post(
+            f"/v1/trips/{trip_id}/flight-segments",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=booking,
+        )
+        assert created.status_code == 201, created.text
+        flight_segment_id = created.json()["id"]
+        linked = client.post(
+            f"/v1/trips/{trip_id}/flight-segments/{flight_segment_id}:link",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json={"plan_travel_leg_id": air_leg_id},
+        )
+        assert linked.status_code == 200, linked.text
+
+        observed_at = datetime.now(UTC)
+        operational_update = {
+            "flight_segment_id": flight_segment_id,
+            "provider_event_id": event_id,
+            "update_type": "ARRIVAL_DELAY",
+            "flight_designator": "LH123",
+            "departure_airport_iata": "JFK",
+            "arrival_airport_iata": "FRA",
+            "estimated_arrival_at": (scheduled_arrival + timedelta(minutes=90)).isoformat(),
+            "source_payload_sha256": "a" * 64,
+        }
+        signal_body = {
+            "provider": provider,
+            "signal_type": "FLIGHT_STATUS",
+            "subject_type": "TRIP",
+            "subject_ref": trip_id,
+            "payload": {
+                "title": "LH123 estimated arrival delayed",
+                "summary": "Provider reports a 90 minute arrival delay",
+                "severity": "HIGH",
+                "flight_operational_update": operational_update,
+            },
+            "confidence": 0.95,
+            "observed_at": observed_at.isoformat(),
+            "valid_until": (observed_at + timedelta(hours=24)).isoformat(),
+            "dedupe_key": f"flight_ops:{event_id}",
+        }
+        accepted = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json=signal_body,
+        )
+        assert accepted.status_code == 201, accepted.text
+        signal_id = accepted.json()["id"]
+
+        replay = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json=signal_body,
+        )
+        assert replay.status_code == 201, replay.text
+        assert replay.json()["id"] == signal_id
+
+        conflicting_body = {
+            **signal_body,
+            "payload": {
+                **signal_body["payload"],
+                "flight_operational_update": {
+                    **operational_update,
+                    "estimated_arrival_at": (
+                        scheduled_arrival + timedelta(minutes=100)
+                    ).isoformat(),
+                },
+            },
+        }
+        conflict = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json=conflicting_body,
+        )
+        assert conflict.status_code == 409, conflict.text
+
+        mismatched_body = {
+            **signal_body,
+            "dedupe_key": f"flight_ops:{event_id}-mismatch",
+            "payload": {
+                **signal_body["payload"],
+                "flight_operational_update": {
+                    **operational_update,
+                    "provider_event_id": f"{event_id}-mismatch",
+                    "flight_designator": "BA123",
+                },
+            },
+        }
+        mismatched = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json=mismatched_body,
+        )
+        assert mismatched.status_code == 422, mismatched.text
+
+        opensky_body = {
+            **signal_body,
+            "provider": "opensky",
+            "dedupe_key": f"flight_ops:{event_id}-telemetry",
+            "payload": {
+                **signal_body["payload"],
+                "flight_operational_update": {
+                    **operational_update,
+                    "provider_event_id": f"{event_id}-telemetry",
+                },
+            },
+        }
+        opensky_rejected = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json=opensky_body,
+        )
+        assert opensky_rejected.status_code == 422, opensky_rejected.text
+
+        with org_session(UUID(ORG_A)) as session:
+            stored_count = session.scalar(
+                select(func.count())
+                .select_from(FlightOperationalUpdate)
+                .where(
+                    FlightOperationalUpdate.organization_id == UUID(ORG_A),
+                    FlightOperationalUpdate.trip_id == UUID(trip_id),
+                    FlightOperationalUpdate.provider_event_id == event_id,
+                )
+            )
+            assert stored_count == 1
+            trip = session.get(Trip, UUID(trip_id))
+            assert trip is not None
+            signal = session.get(ExternalSignal, UUID(signal_id))
+            assert signal is not None
+            impact = external_impact_service.assess_flight_signal_impact(
+                session, UUID(ORG_A), trip, signal
+            )
+            assert impact["status"] == "OPERATIONAL_DELAY_ASSESSED"
+            assert impact["flight_arrival_delta_minutes"] == 90
+            assert impact["post_landing_buffer_minutes"] == 30
+            assert impact["buffer_consumed_minutes"] == 30
+            assert impact["delay_at_first_visit_minutes"] == 60
+            assert impact["affected_visit_ids"] == [first_visit_id, second_visit_id]
+            assert impact["missed_visit_ids"] == [first_visit_id, second_visit_id]
+            assert impact["propagation_complete"] is True
+            assert impact["plan_mutated"] is False
+            assert [item["delay_minutes"] for item in impact["stop_impacts"]] == [60, 30]
+            assert [item["appointment_status"] for item in impact["stop_impacts"]] == [
+                "MISSED_WINDOW",
+                "MISSED_WINDOW",
+            ]
+            assert impact["related_travel_legs"][0]["schedule_buffer_minutes"] == 30
+            assert impact["related_travel_legs"][0]["delay_after_buffer_minutes"] == 30
+            assert trip.version == original_trip_version
+            assert trip.active_plan_version_id == original_active_plan_id == UUID(plan_id)
+            assert session.scalar(
+                select(func.count())
+                .select_from(PlanStop)
+                .where(PlanStop.plan_version_id == UUID(plan_id))
+            ) == 2
+
+            report = proactive_service.scan_trip(session, UUID(ORG_A), UUID(trip_id))
+            assert report.errors == [], report.errors
+
+            suggestion = session.scalars(
+                select(ProactiveSuggestion).where(
+                    ProactiveSuggestion.organization_id == UUID(ORG_A),
+                    ProactiveSuggestion.trip_id == UUID(trip_id),
+                    ProactiveSuggestion.suggestion_type == "FLIGHT_STATUS_ALERT",
+                )
+            ).one()
+            evidence_kinds = {item["kind"] for item in suggestion.evidence}
+            assert "FLIGHT_OPERATIONAL_UPDATE" in evidence_kinds
+            assert "PLAN_STOP_IMPACT" in evidence_kinds
+            assert "PLAN_TRAVEL_LEG_BUFFER" in evidence_kinds
+            assessment = suggestion.proposed_action["params"]["impact_assessment"]
+            assert assessment["missed_visit_ids"] == [first_visit_id, second_visit_id]
+            assert assessment["plan_mutated"] is False
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(ExternalSignal).where(
+                    ExternalSignal.organization_id == UUID(ORG_A),
+                    ExternalSignal.subject_ref == trip_id,
+                    ExternalSignal.signal_type == "FLIGHT_STATUS",
+                )
+            )
         cleanup(trip_id, place_id)
