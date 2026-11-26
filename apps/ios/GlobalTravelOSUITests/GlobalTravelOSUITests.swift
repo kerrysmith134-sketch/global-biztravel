@@ -1024,6 +1024,11 @@ extension GlobalTravelOSUITests {
         app.launch()
     }
 
+    /// 通过 NavigationLink 行按钮定位出行，避免静态文本与父级按钮的 AX 重复匹配。
+    func tripRow(_ app: XCUIApplication, named name: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+    }
+
     /// 打开 Mission 顶部「更多操作」菜单中的指定工作区。
     func openMissionMenuAction(_ app: XCUIApplication, _ title: String) {
         // 关闭 sheet 后重新选中 Mission，确保工具栏属于当前可见工作区。
