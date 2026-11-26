@@ -51,6 +51,7 @@ class PlanVersion(Base):
     __tablename__ = "plan_versions"
     __table_args__ = (
         UniqueConstraint("trip_id", "version_number"),
+        UniqueConstraint("organization_id", "trip_id", "id", name="uq_plan_versions_org_trip_id"),
         CheckConstraint("status IN ('DRAFT','ACTIVE','SUPERSEDED')", name="status_allowed"),
         CheckConstraint("solver IN ('ortools','heuristic')", name="solver_allowed"),
         CheckConstraint("version_number >= 1", name="version_number_positive"),
@@ -160,6 +161,7 @@ class PlanTravelLeg(Base):
         CheckConstraint("travel_minutes >= 0", name="travel_minutes_non_negative"),
         CheckConstraint("distance_km >= 0", name="distance_non_negative"),
         CheckConstraint("mode IN ('GROUND','RAIL','AIR','SEA')", name="mode_allowed"),
+        UniqueConstraint("organization_id", "plan_version_id", "id", name="uq_plan_travel_legs_org_plan_id"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
