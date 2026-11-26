@@ -23,7 +23,7 @@ from app.models.trip import Trip, Visit
 from app.services import signal_pull_service
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -97,12 +97,23 @@ def _cleanup(trip_id: str, place_id: str) -> None:
                 Trip.id == trip_uuid,
             )
         )
-        session.execute(
-            delete(Place).where(
-                Place.organization_id == UUID(ORG_A),
-                Place.id == place_uuid,
+        # Place creation is idempotent and may return a Place already used by
+        # another Trip. Keep the shared record until its final Visit is removed.
+        remaining_visit_id = session.scalar(
+            select(Visit.id)
+            .where(
+                Visit.organization_id == UUID(ORG_A),
+                Visit.place_id == place_uuid,
             )
+            .limit(1)
         )
+        if remaining_visit_id is None:
+            session.execute(
+                delete(Place).where(
+                    Place.organization_id == UUID(ORG_A),
+                    Place.id == place_uuid,
+                )
+            )
 
 
 # ---------------------------------------------------------------------------
