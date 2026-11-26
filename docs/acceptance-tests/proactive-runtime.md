@@ -78,3 +78,17 @@ make db-up          # 如未启动
 | 冷却期与审计 | 同上 | 新绑定生成新的建议审计记录，但 24 小时提醒冷却仍生效，新记录为 SUPPRESSED，影响评估引用新的 binding id |
 
 航班外部信号的摘要不再只依赖供应商 payload 和 PlanVersion；显式机票段、当前 binding 以及关联 AIR leg 都参与摘要。这样同一计划内人工更正航段绑定时，系统会留下新的可追溯评估，而不是因旧 dedupe key 把新绑定静默吞掉。
+
+
+## H2.21 — Provider 航班运营事件与预约影响传播
+
+| 验收点 | 测试 | 关键断言 |
+|---|---|---|
+| 运营事件与遥测分离 | test_provider_operational_update_propagates_delay_through_plan_buffers_and_windows | FLIGHT_STATUS 信号携带显式机票段与规范化运营事件；OpenSky telemetry 不被改写为延误事实 |
+| 事件幂等与冲突 | 同上 | 相同 provider/provider_event_id 与相同内容只保留一条；同一事件 ID 的不同内容返回冲突，不覆盖旧事件 |
+| 计划身份验证 | 同上 | 航班号与原始起讫机场必须匹配机票段；跨组织/出行或错误机票段不能进入影响计算 |
+| 落地与地面余量 | 同上 | 航班到达偏移先扣除落地后至首个拜访的计划余量；后续延误再按每段交通时间与计划间隙余量传播 |
+| 预约窗口 | 同上 | 每个停靠点返回 projected arrival、delay、预约窗口状态；缺失/stale 交通段后的停靠明确标记未评估 |
+| 安全边界 | 同上 | 评估只产生建议和证据；不修改 Trip、PlanVersion、PlanStop，不发起改签或对外联系 |
+
+运营更新采用 POST /v1/integrations/signals 的 FLIGHT_STATUS 信号封装：payload.flight_operational_update 必须包含规范化 Provider 事件与显式 flight_segment_id，dedupe_key 必须为 flight_ops:{provider_event_id}。本模型是 Provider-neutral 接入契约；具体航空数据商的鉴权、轮询/回调及字段映射由单独的 Provider adapter 完成。

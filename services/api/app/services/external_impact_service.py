@@ -8,12 +8,14 @@ with a provider/reference match and a current PlanVersion binding can resolve to
 
 from __future__ import annotations
 
+from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.flights import FlightSegmentPlanBinding, TripFlightSegment
+from app.models.flight_operations import FlightOperationalUpdate
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.trip import Trip, Visit
@@ -247,6 +249,356 @@ def assess_weather_signal_impact(
     }
 
 
+
+def _assess_flight_operational_update(
+    session: Session, organization: UUID, trip: Trip, signal: ExternalSignal
+) -> dict:
+    """Assess a normalized provider event against the current immutable plan snapshot."""
+    payload = signal.payload or {}
+    try:
+        update_id = UUID(str(payload.get("operational_update_id")))
+    except (TypeError, ValueError):
+        return {
+            "signal_id": str(signal.id),
+            "status": "OPERATIONAL_UPDATE_REFERENCE_INVALID",
+            "explanation": "航班运营信号缺少有效 operational_update_id；未使用遥测字段推断运营状态。",
+        }
+
+    update = session.scalars(
+        select(FlightOperationalUpdate).where(
+            FlightOperationalUpdate.organization_id == organization,
+            FlightOperationalUpdate.trip_id == trip.id,
+            FlightOperationalUpdate.id == update_id,
+        )
+    ).one_or_none()
+    if (
+        update is None
+        or update.provider.casefold() != signal.provider.strip().casefold()
+        or signal.subject_type != "TRIP"
+        or signal.subject_ref != str(trip.id)
+    ):
+        return {
+            "signal_id": str(signal.id),
+            "operational_update_id": str(update_id),
+            "status": "OPERATIONAL_UPDATE_SCOPE_MISMATCH",
+            "explanation": "运营事件的 Provider、组织、出行或信号主体不一致；拒绝关联当前计划。",
+        }
+
+    segment = session.scalars(
+        select(TripFlightSegment).where(
+            TripFlightSegment.organization_id == organization,
+            TripFlightSegment.trip_id == trip.id,
+            TripFlightSegment.id == update.flight_segment_id,
+        )
+    ).one_or_none()
+    plan = _active_plan(session, organization, trip)
+    base = {
+        "signal_id": str(signal.id),
+        "operational_update_id": str(update.id),
+        "provider": update.provider,
+        "provider_event_id": update.provider_event_id,
+        "content_sha256": update.content_sha256,
+        "update_type": update.update_type,
+        "observed_at": update.observed_at.isoformat(),
+        "confidence": update.confidence,
+        "assessment_method": "PROVIDER_OPERATIONAL_EVENT_AND_CURRENT_EXPLICIT_PLAN_BINDING",
+        "plan_version_id": str(plan.id) if plan is not None else None,
+        "plan_version_number": plan.version_number if plan is not None else None,
+        "flight_segment_id": str(update.flight_segment_id),
+        "flight_designator": update.flight_designator,
+        "departure_airport_iata": update.departure_airport_iata,
+        "arrival_airport_iata": update.arrival_airport_iata,
+        "scheduled_departure_at": segment.scheduled_departure_at.isoformat() if segment else None,
+        "scheduled_arrival_at": segment.scheduled_arrival_at.isoformat() if segment else None,
+        "estimated_departure_at": update.estimated_departure_at.isoformat() if update.estimated_departure_at else None,
+        "estimated_arrival_at": update.estimated_arrival_at.isoformat() if update.estimated_arrival_at else None,
+        "reported_arrival_airport_iata": update.reported_arrival_airport_iata,
+        "binding_id": None,
+        "linked_air_leg_ids": [],
+        "stop_impacts": [],
+        "related_travel_legs": [],
+        "affected_visit_ids": [],
+        "missed_visit_ids": [],
+        "unassessed_visit_ids": [],
+        "plan_mutated": False,
+    }
+    if segment is None:
+        return {**base, "status": "FLIGHT_SEGMENT_NOT_FOUND", "explanation": "运营事件引用的机票段不在当前组织/出行内。"}
+    if plan is None:
+        return {**base, "status": "NO_ACTIVE_PLAN", "explanation": "没有 ACTIVE 计划，无法映射预约影响。"}
+
+    bindings = list(
+        session.scalars(
+            select(FlightSegmentPlanBinding)
+            .where(
+                FlightSegmentPlanBinding.organization_id == organization,
+                FlightSegmentPlanBinding.trip_id == trip.id,
+                FlightSegmentPlanBinding.flight_segment_id == segment.id,
+                FlightSegmentPlanBinding.status == "ACTIVE",
+            )
+            .order_by(FlightSegmentPlanBinding.linked_at.desc(), FlightSegmentPlanBinding.id)
+        ).all()
+    )
+    binding = next((row for row in bindings if row.plan_version_id == plan.id), None)
+    if binding is None:
+        status_value = "STALE_PLAN_BINDING" if bindings else "FLIGHT_SEGMENT_NOT_LINKED_TO_PLAN"
+        return {
+            **base,
+            "status": status_value,
+            "binding_id": str(bindings[0].id) if bindings else None,
+            "explanation": "运营事实已验证，但机票段没有绑定到当前 ACTIVE 计划版本；请人工重新确认 AIR 交通段关联。",
+        }
+
+    leg = session.scalars(
+        select(PlanTravelLeg).where(
+            PlanTravelLeg.organization_id == organization,
+            PlanTravelLeg.plan_version_id == plan.id,
+            PlanTravelLeg.id == binding.plan_travel_leg_id,
+            PlanTravelLeg.mode == "AIR",
+        )
+    ).one_or_none()
+    if leg is None:
+        return {
+            **base,
+            "binding_id": str(binding.id),
+            "status": "PLAN_BINDING_TARGET_INVALID",
+            "explanation": "当前计划绑定目标不是有效的 AIR 交通段；需要人工重新核验。",
+        }
+
+    linked_leg = {
+        "plan_travel_leg_id": str(leg.id),
+        "plan_version_id": str(plan.id),
+        "mode": leg.mode,
+        "travel_minutes": leg.travel_minutes,
+        "stale": leg.stale,
+        "from_stop_id": str(leg.from_stop_id) if leg.from_stop_id else None,
+        "to_stop_id": str(leg.to_stop_id),
+    }
+    base.update({
+        "binding_id": str(binding.id),
+        "linked_air_leg_ids": [str(leg.id)],
+        "linked_air_leg": linked_leg,
+    })
+
+    stop_rows = list(
+        session.execute(
+            select(PlanStop, Visit)
+            .join(Visit, Visit.id == PlanStop.visit_id)
+            .where(PlanStop.organization_id == organization, PlanStop.plan_version_id == plan.id)
+            .order_by(PlanStop.day_index, PlanStop.sequence, PlanStop.id)
+        ).all()
+    )
+    stop_index = next(
+        (index for index, (stop, _visit) in enumerate(stop_rows) if stop.id == leg.to_stop_id),
+        None,
+    )
+    if stop_index is None:
+        return {
+            **base,
+            "status": "PLAN_ARRIVAL_STOP_MISSING",
+            "explanation": "绑定 AIR 段的 to_stop 不在当前计划停靠表中；无法计算首个拜访及后续影响。",
+        }
+    downstream = stop_rows[stop_index:]
+
+    if update.update_type == "GATE_CHANGE":
+        return {
+            **base,
+            "status": "NO_SCHEDULE_IMPACT_REPORTED",
+            "operational_delay_assessment": "GATE_CHANGE_ONLY",
+            "explanation": "Provider 仅报告登机口变化，没有报告起降时刻变化；未将其转换为拜访延误。",
+        }
+    if update.update_type in ("CANCELLED", "DIVERTED"):
+        impacts = [
+            {
+                "plan_stop_id": str(stop.id),
+                "visit_id": str(visit.id),
+                "planned_arrival_at": stop.arrive_at.isoformat(),
+                "projected_arrival_at": None,
+                "delay_minutes": None,
+                "appointment_status": "IMPACT_UNDETERMINED",
+                "reason": update.update_type,
+                "time_window_end": visit.time_window_end.isoformat() if visit.time_window_end else None,
+            }
+            for stop, visit in downstream
+        ]
+        affected = [str(visit.id) for _stop, visit in downstream]
+        return {
+            **base,
+            "status": "FLIGHT_CANCELLED" if update.update_type == "CANCELLED" else "FLIGHT_DIVERTED",
+            "operational_delay_assessment": update.update_type,
+            "stop_impacts": impacts,
+            "affected_visit_ids": affected,
+            "unassessed_visit_ids": affected,
+            "propagation_complete": False,
+            "explanation": (
+                "Provider 报告航班取消/备降。航段之后的拜访被标记为时间未定；没有有效到达目的地的 ETA，"
+                "因此不伪造延误分钟数，也不自动改签或改写计划。"
+            ),
+        }
+
+    if update.estimated_arrival_at is None:
+        departure_delay = (
+            max(0, int((update.estimated_departure_at - segment.scheduled_departure_at).total_seconds() // 60))
+            if update.estimated_departure_at is not None
+            else None
+        )
+        return {
+            **base,
+            "status": "ARRIVAL_ESTIMATE_MISSING",
+            "operational_delay_assessment": "ARRIVAL_TIME_NOT_DERIVABLE",
+            "departure_delay_minutes": departure_delay,
+            "explanation": (
+                "Provider 提供了航班运营事件，但没有可比较的预计到达时间；只能保留出发时刻信息，"
+                "不能将出发延误直接等同于到达延误或传播到拜访预约。"
+            ),
+        }
+
+    arrival_delta = int((update.estimated_arrival_at - segment.scheduled_arrival_at).total_seconds() // 60)
+    flight_delay = max(0, arrival_delta)
+    first_stop, _first_visit = downstream[0]
+    landing_buffer = int((first_stop.arrive_at - segment.scheduled_arrival_at).total_seconds() // 60)
+    if landing_buffer < 0:
+        return {
+            **base,
+            "status": "PLAN_FLIGHT_ARRIVAL_INCONSISTENT",
+            "flight_arrival_delta_minutes": arrival_delta,
+            "explanation": (
+                "当前计划首个拜访停靠时间早于机票记录的计划落地时间；计划输入自相矛盾，"
+                "拒绝用负缓冲计算预约影响。"
+            ),
+        }
+
+    delay_at_stop = max(0, flight_delay - landing_buffer)
+    stop_impacts = []
+    related_legs = []
+    affected_visit_ids = []
+    missed_visit_ids = []
+    unassessed_visit_ids = []
+    propagation_complete = True
+    blocked_reason = None
+
+    for relative_index, (stop, visit) in enumerate(downstream):
+        if blocked_reason is not None:
+            unassessed_visit_ids.append(str(visit.id))
+            stop_impacts.append({
+                "plan_stop_id": str(stop.id),
+                "visit_id": str(visit.id),
+                "planned_arrival_at": stop.arrive_at.isoformat(),
+                "projected_arrival_at": None,
+                "delay_minutes": None,
+                "appointment_status": "UNASSESSED",
+                "reason": blocked_reason,
+                "time_window_end": visit.time_window_end.isoformat() if visit.time_window_end else None,
+            })
+            continue
+
+        projected_arrival = stop.arrive_at + timedelta(minutes=delay_at_stop)
+        delay_minutes = max(0, int((projected_arrival - stop.arrive_at).total_seconds() // 60))
+        if visit.time_window_end is None:
+            appointment_status = "WINDOW_END_UNKNOWN"
+        elif projected_arrival > visit.time_window_end:
+            appointment_status = "MISSED_WINDOW"
+            missed_visit_ids.append(str(visit.id))
+        else:
+            appointment_status = "WITHIN_WINDOW"
+        if delay_minutes > 0:
+            affected_visit_ids.append(str(visit.id))
+        stop_impacts.append({
+            "plan_stop_id": str(stop.id),
+            "visit_id": str(visit.id),
+            "planned_arrival_at": stop.arrive_at.isoformat(),
+            "projected_arrival_at": projected_arrival.isoformat(),
+            "delay_minutes": delay_minutes,
+            "appointment_status": appointment_status,
+            "time_window_end": visit.time_window_end.isoformat() if visit.time_window_end else None,
+        })
+
+        if relative_index == len(downstream) - 1:
+            continue
+        next_stop, _next_visit = downstream[relative_index + 1]
+        next_legs = list(
+            session.scalars(
+                select(PlanTravelLeg).where(
+                    PlanTravelLeg.organization_id == organization,
+                    PlanTravelLeg.plan_version_id == plan.id,
+                    PlanTravelLeg.from_stop_id == stop.id,
+                    PlanTravelLeg.to_stop_id == next_stop.id,
+                )
+            ).all()
+        )
+        if not next_legs:
+            blocked_reason = "MISSING_TRAVEL_LEG"
+            propagation_complete = False
+            continue
+        if any(item.stale for item in next_legs):
+            blocked_reason = "STALE_TRAVEL_LEG"
+            propagation_complete = False
+            continue
+
+        travel_minutes = sum(item.travel_minutes for item in next_legs)
+        scheduled_gap = int((next_stop.arrive_at - stop.depart_at).total_seconds() // 60)
+        schedule_buffer = scheduled_gap - travel_minutes
+        if schedule_buffer < 0:
+            blocked_reason = "INCONSISTENT_TRAVEL_SCHEDULE"
+            propagation_complete = False
+            continue
+        projected_departure = max(
+            stop.depart_at,
+            projected_arrival + timedelta(minutes=stop.service_minutes),
+        )
+        delay_leaving_stop = max(0, int((projected_departure - stop.depart_at).total_seconds() // 60))
+        next_delay = max(0, delay_leaving_stop - schedule_buffer)
+        related_legs.append({
+            "plan_travel_leg_ids": [str(item.id) for item in next_legs],
+            "from_stop_id": str(stop.id),
+            "to_stop_id": str(next_stop.id),
+            "mode": "+".join(item.mode for item in next_legs),
+            "travel_minutes": travel_minutes,
+            "scheduled_gap_minutes": scheduled_gap,
+            "schedule_buffer_minutes": schedule_buffer,
+            "delay_leaving_stop_minutes": delay_leaving_stop,
+            "delay_after_buffer_minutes": next_delay,
+            "stale": False,
+        })
+        delay_at_stop = next_delay
+
+    final_status = (
+        "OPERATIONAL_DELAY_PARTIALLY_ASSESSED"
+        if not propagation_complete
+        else "OPERATIONAL_DELAY_ASSESSED"
+        if flight_delay > 0
+        else "NO_OPERATIONAL_DELAY"
+    )
+    explanation = (
+        f"Provider 报告 {update.flight_designator} 到达时间相对机票计划偏移 {arrival_delta} 分钟；"
+        f"其中 {min(flight_delay, landing_buffer)} 分钟由落地后首个拜访前的计划余量吸收，"
+        f"首个拜访处剩余 {max(0, flight_delay - landing_buffer)} 分钟。"
+        f"已逐段使用停留服务余量和相邻交通段计划间隙传播；"
+        f"受影响拜访 {len(affected_visit_ids)} 个，其中预约窗口超时 {len(missed_visit_ids)} 个。"
+    )
+    if not propagation_complete:
+        explanation += " 后续部分因交通段缺失、过期或时序不一致而标记未评估。"
+    explanation += " 此评估不修改任何计划版本，也不自动改签或联系客户。"
+
+    return {
+        **base,
+        "status": final_status,
+        "operational_delay_assessment": "PROVIDER_ARRIVAL_TIME_PROPAGATED_THROUGH_PLAN_BUFFERS",
+        "flight_arrival_delta_minutes": arrival_delta,
+        "flight_delay_minutes": flight_delay,
+        "post_landing_buffer_minutes": landing_buffer,
+        "buffer_consumed_minutes": min(flight_delay, landing_buffer),
+        "delay_at_first_visit_minutes": max(0, flight_delay - landing_buffer),
+        "stop_impacts": stop_impacts,
+        "related_travel_legs": related_legs,
+        "affected_visit_ids": affected_visit_ids,
+        "missed_visit_ids": missed_visit_ids,
+        "unassessed_visit_ids": unassessed_visit_ids,
+        "propagation_complete": propagation_complete,
+        "explanation": explanation,
+    }
+
+
 def _tracking_reference_matches(provider: str, expected: str, observed: str) -> bool:
     provider_key = provider.strip().casefold()
     if provider_key == "opensky":
@@ -264,6 +616,8 @@ def assess_flight_signal_impact(
     organization = UUID(str(organization_id))
     plan = _active_plan(session, organization, trip)
     payload = signal.payload or {}
+    if payload.get("operational_update_id"):
+        return _assess_flight_operational_update(session, organization, trip, signal)
     callsign = str(payload.get("callsign") or "").strip() or None
     icao24 = str(payload.get("icao24") or "").strip().lower() or None
     raw_segment_id = payload.get("flight_segment_id")

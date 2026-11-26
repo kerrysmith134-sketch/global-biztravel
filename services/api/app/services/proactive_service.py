@@ -481,6 +481,46 @@ def _external_candidates(
                         "retrieved_at": None,
                     }
                 )
+            if impact_assessment.get("operational_update_id"):
+                evidence.append(
+                    {
+                        "kind": "FLIGHT_OPERATIONAL_UPDATE",
+                        "ref": (
+                            f"flight-operations:{impact_assessment['operational_update_id']};"
+                            f"provider:{impact_assessment.get('provider')};"
+                            f"event:{impact_assessment.get('provider_event_id')};"
+                            f"type:{impact_assessment.get('update_type')};"
+                            f"sha256:{impact_assessment.get('content_sha256')}"
+                        ),
+                        "retrieved_at": impact_assessment.get("observed_at"),
+                    }
+                )
+            for stop in impact_assessment.get("stop_impacts", []):
+                evidence.append(
+                    {
+                        "kind": "PLAN_STOP_IMPACT",
+                        "ref": (
+                            f"plan-stop:{stop['plan_stop_id']};visit:{stop['visit_id']};"
+                            f"delay_minutes:{stop.get('delay_minutes')};"
+                            f"appointment_status:{stop.get('appointment_status')};"
+                            f"projected_arrival:{stop.get('projected_arrival_at') or 'unknown'}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
+            for leg in impact_assessment.get("related_travel_legs", []):
+                evidence.append(
+                    {
+                        "kind": "PLAN_TRAVEL_LEG_BUFFER",
+                        "ref": (
+                            f"from:{leg['from_stop_id']};to:{leg['to_stop_id']};"
+                            f"travel_minutes:{leg['travel_minutes']};"
+                            f"schedule_buffer_minutes:{leg['schedule_buffer_minutes']};"
+                            f"delay_after_buffer_minutes:{leg['delay_after_buffer_minutes']}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
             for leg in impact_assessment.get("unlinked_air_legs", []):
                 evidence.append(
                     {
@@ -516,6 +556,18 @@ def _external_candidates(
                     "flight_designator": impact_assessment.get("flight_designator"),
                     "flight_binding_id": impact_assessment.get("binding_id"),
                     "linked_air_leg_ids": impact_assessment.get("linked_air_leg_ids", []),
+                    "operational_update_id": impact_assessment.get("operational_update_id"),
+                    "stop_impacts": [
+                        {
+                            "visit_id": item.get("visit_id"),
+                            "delay_minutes": item.get("delay_minutes"),
+                            "appointment_status": item.get("appointment_status"),
+                            "projected_arrival_at": item.get("projected_arrival_at"),
+                        }
+                        for item in impact_assessment.get("stop_impacts", [])
+                    ],
+                    "missed_visit_ids": impact_assessment.get("missed_visit_ids", []),
+                    "related_travel_legs": impact_assessment.get("related_travel_legs", []),
                 },
             }
         digest = sha256(
