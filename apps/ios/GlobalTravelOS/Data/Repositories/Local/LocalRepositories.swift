@@ -208,7 +208,7 @@ final class LocalPlanRepository: PlanRepository {
             ]
             let jobData = try JSONSerialization.data(withJSONObject: jobPayload)
             try database.setKeyValue(
-                "local-job:\(planId)", value: String(decoding: jobData, as: UTF8.self)
+                "local-job-\(planId)", value: String(decoding: jobData, as: UTF8.self)
             )
         }
 
