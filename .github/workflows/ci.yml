@@ -1,9 +1,9 @@
 name: ci
 
-# Versioned concurrency key: isolate H2.21 flight-operations validation from stale runners
-# while still cancelling superseded runs for the same PR/ref on the current validation lane.
+# Versioned concurrency key: isolate the H2.21.1 multi-leg digest fix from earlier flight runs
+# while still cancelling superseded runs for the same PR/ref on this validation lane.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-21-flight-operational-impact-validation
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-21-1-flight-operational-digest-fix-validation
   cancel-in-progress: true
 
 on:
