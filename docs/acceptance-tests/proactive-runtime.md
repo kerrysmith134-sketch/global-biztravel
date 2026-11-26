@@ -32,3 +32,13 @@ make db-up          # 如未启动
   `proactive_suggestions.execution_result`；不发送、不预订、不提交签证。
 - **测试卫生**：用例创建的出行在结束时删除，避免污染每日打扰上限；`approvals` 是通用表，
   清理时先按 `subject_id` 删除。
+
+
+## H2.16 — 天气信号的计划影响匹配
+
+| 验收点 | 测试 | 关键断言 |
+|---|---|---|
+| 精确地点 + 时间窗 | `test_weather_signal_maps_exact_place_and_time_window_to_active_plan` | 仅同一 `place_id` 且停靠时段与信号有效期重叠的 PlanStop 被标记；同地点但时间不重叠、同时段但地点不同的拜访均不被误报 |
+| 人审边界 | 同上 | 批准只生成 PREPARED 影响摘要；Trip version 和 active plan 指针不变 |
+
+天气计划影响评估不使用 LLM，不按名称/邻近坐标猜测地点。缺少 ACTIVE 计划、place_id 或有界有效期时会返回显式评估缺口，不声称已识别具体受影响拜访。

@@ -13,7 +13,9 @@ from uuid import UUID
 import pytest
 from app.db import org_session
 from app.main import app
+from app.models.geo import Place
 from app.models.integrations import ExternalSignal
+from app.models.planning import PlanStop, PlanVersion
 from app.models.proactive import ProactiveSuggestion, ProactiveTrigger
 from app.models.trip import Trip
 from app.services import proactive_service
@@ -160,6 +162,187 @@ def test_external_signal_becomes_reviewable_suggestion(client: TestClient) -> No
         assert sorted(row.status for row in rows) == ["EXECUTED", "SUPPRESSED"]
     finally:
         cleanup(trip_id, dedupe)
+
+
+def test_weather_signal_maps_exact_place_and_time_window_to_active_plan(
+    client: TestClient,
+) -> None:
+    now = datetime.now(UTC)
+    trip_response = client.post(
+        "/v1/trips",
+        headers=headers(),
+        json={
+            "name": f"天气影响评估·{uuid.uuid4().hex[:8]}",
+            "window_start": (now + timedelta(minutes=5)).isoformat(),
+            "window_end": (now + timedelta(hours=4)).isoformat(),
+            "countries": [],
+        },
+    )
+    assert trip_response.status_code == 201, trip_response.text
+    trip_id = trip_response.json()["id"]
+    dedupe = f"weather-impact-{uuid.uuid4().hex[:8]}"
+    place_ids: list[str] = []
+    visit_ids: list[str] = []
+    try:
+        for name, city, latitude, longitude in (
+            ("Weather target", "Berlin", 52.52, 13.405),
+            ("Different location", "Potsdam", 52.40, 13.06),
+        ):
+            place = client.post(
+                "/v1/places",
+                headers=headers(),
+                json={
+                    "name": name,
+                    "city": city,
+                    "country_code": "DE",
+                    "lat": latitude,
+                    "lon": longitude,
+                },
+            )
+            assert place.status_code == 201, place.text
+            place_ids.append(place.json()["id"])
+
+        windows = [
+            (place_ids[0], now + timedelta(minutes=20), now + timedelta(minutes=50)),
+            (place_ids[0], now + timedelta(hours=2), now + timedelta(hours=2, minutes=30)),
+            (place_ids[1], now + timedelta(minutes=25), now + timedelta(minutes=55)),
+        ]
+        for index, (place_id, start, end) in enumerate(windows, start=1):
+            visit = client.post(
+                f"/v1/trips/{trip_id}/visits",
+                headers=headers(),
+                json={
+                    "place_id": place_id,
+                    "title": f"Weather impact visit {index}",
+                    "service_minutes": 30,
+                    "time_window_start": start.isoformat(),
+                    "time_window_end": end.isoformat(),
+                },
+            )
+            assert visit.status_code == 201, visit.text
+            visit_ids.append(visit.json()["id"])
+
+        with org_session(UUID(ORG_A)) as session:
+            trip = session.get(Trip, UUID(trip_id))
+            assert trip is not None
+            plan = PlanVersion(
+                organization_id=UUID(ORG_A),
+                trip_id=trip.id,
+                version_number=1,
+                status="ACTIVE",
+                problem_hash=f"weather-impact:{uuid.uuid4().hex}",
+                solver="heuristic",
+                objective_value=0.0,
+                solution_status="FEASIBLE",
+                trip_version=trip.version,
+                validation={"feasible": True},
+                unplaced=[],
+                activated_at=now,
+            )
+            session.add(plan)
+            session.flush()
+            trip.active_plan_version_id = plan.id
+            trip.status = "ACTIVE"
+            for index, (visit_id, (_, start, end)) in enumerate(
+                zip(visit_ids, windows, strict=True), start=1
+            ):
+                session.add(
+                    PlanStop(
+                        organization_id=UUID(ORG_A),
+                        plan_version_id=plan.id,
+                        visit_id=UUID(visit_id),
+                        day_index=0,
+                        sequence=index,
+                        day_date=start.date(),
+                        arrive_at=start,
+                        depart_at=end,
+                        travel_minutes=0,
+                        service_minutes=30,
+                        travel_source="test-fixture",
+                    )
+                )
+            plan_id = str(plan.id)
+            trip_version = trip.version
+
+        signal_response = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json={
+                "provider": "open-meteo",
+                "signal_type": "WEATHER_DISRUPTION",
+                "subject_type": "TRIP",
+                "subject_ref": trip_id,
+                "payload": {
+                    "place_id": place_ids[0],
+                    "place_name": "Berlin",
+                    "summary": "Severe weather observation near the scheduled visit",
+                    "severity": "HIGH",
+                    "wind_kmh": 62,
+                    "precipitation_mm": 12,
+                },
+                "confidence": 0.9,
+                "observed_at": (now - timedelta(minutes=5)).isoformat(),
+                "valid_until": (now + timedelta(hours=1)).isoformat(),
+                "dedupe_key": dedupe,
+            },
+        )
+        assert signal_response.status_code == 201, signal_response.text
+
+        with org_session(UUID(ORG_A)) as session:
+            report = proactive_service.scan_trip(
+                session, UUID(ORG_A), UUID(trip_id), now=now
+            )
+        assert report.errors == []
+        assert report.suggestions == 1
+
+        with org_session(UUID(ORG_A)) as session:
+            suggestion = session.scalars(
+                select(ProactiveSuggestion).where(
+                    ProactiveSuggestion.organization_id == UUID(ORG_A),
+                    ProactiveSuggestion.trip_id == UUID(trip_id),
+                    ProactiveSuggestion.suggestion_type == "WEATHER_DISRUPTION_ALERT",
+                )
+            ).one()
+            impact = suggestion.proposed_action["params"]["impact_assessment"]
+            assert impact["status"] == "PLACE_AND_TIME_OVERLAP"
+            assert impact["plan_version_id"] == plan_id
+            assert impact["matched_stop_count"] == 2
+            assert impact["affected_stop_count"] == 1
+            assert impact["matched_visit_ids"] == visit_ids[:2]
+            assert impact["affected_visit_ids"] == [visit_ids[0]]
+            assert any(item["kind"] == "PLAN_STOP" for item in suggestion.evidence)
+            suggestion_id = str(suggestion.id)
+
+        approved = client.post(
+            f"/v1/proactive/suggestions/{suggestion_id}:approve",
+            headers=headers(),
+        )
+        assert approved.status_code == 200, approved.text
+        with org_session(UUID(ORG_A)) as session:
+            persisted = session.get(ProactiveSuggestion, UUID(suggestion_id))
+            trip = session.get(Trip, UUID(trip_id))
+            assert persisted is not None
+            assert trip is not None
+            assert persisted.execution_result["status"] == "PREPARED"
+            assert persisted.execution_result["impact_assessment"]["affected_visit_ids"] == [
+                visit_ids[0]
+            ]
+            # Approval prepares an impact brief only; it does not mutate the plan or Trip inputs.
+            assert trip.active_plan_version_id == UUID(plan_id)
+            assert trip.version == trip_version
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+            if place_ids:
+                session.execute(
+                    delete(Place).where(Place.id.in_([UUID(item) for item in place_ids]))
+                )
+            session.execute(
+                delete(ExternalSignal).where(
+                    ExternalSignal.organization_id == UUID(ORG_A),
+                    ExternalSignal.dedupe_key == dedupe,
+                )
+            )
 
 
 def test_external_signals_are_tenant_isolated(client: TestClient) -> None:

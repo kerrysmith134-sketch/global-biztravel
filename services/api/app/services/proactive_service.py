@@ -53,6 +53,7 @@ from app.models.trip import Trip, Visit
 from app.services import (
     approval_policy_service,
     evidence_service,
+    external_impact_service,
     external_service,
     outbox_service,
     visa_service,
@@ -380,6 +381,42 @@ def _external_candidates(
         digest = sha256(
             json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
         ).hexdigest()[:10]
+        evidence = [
+            {
+                "kind": "EXTERNAL_SIGNAL",
+                "ref": f"{signal.provider}:{signal.id} ({signal.signal_type})",
+                "retrieved_at": signal.observed_at.isoformat(),
+            }
+        ]
+        impact_assessment = None
+        impact_note = ""
+        if signal.signal_type == "WEATHER_DISRUPTION":
+            impact_assessment = external_impact_service.assess_weather_signal_impact(
+                session, organization_id, trip, signal
+            )
+            impact_note = f"行程影响评估：{impact_assessment['explanation']}"
+            if impact_assessment.get("plan_version_id"):
+                evidence.append(
+                    {
+                        "kind": "ACTIVE_PLAN_VERSION",
+                        "ref": (
+                            f"plan-version:{impact_assessment['plan_version_id']}"
+                            f"@v{impact_assessment['plan_version_number']}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
+            for stop in impact_assessment.get("matched_stops", []):
+                evidence.append(
+                    {
+                        "kind": "PLAN_STOP",
+                        "ref": (
+                            f"plan-stop:{stop['plan_stop_id']};visit:{stop['visit_id']};"
+                            f"time_overlap:{str(stop['time_window_overlap']).lower()}"
+                        ),
+                        "retrieved_at": None,
+                    }
+                )
         candidates.append(
             Candidate(
                 trigger_type=TRIGGER_EXTERNAL,
@@ -391,14 +428,9 @@ def _external_candidates(
                 rationale=(
                     f"{summary} 来源：{signal.provider}，观察于 "
                     f"{signal.observed_at.isoformat()}；外部信息必须按官方渠道复核。"
+                    f"{impact_note}"
                 ),
-                evidence=[
-                    {
-                        "kind": "EXTERNAL_SIGNAL",
-                        "ref": f"{signal.provider}:{signal.id} ({signal.signal_type})",
-                        "retrieved_at": signal.observed_at.isoformat(),
-                    }
-                ],
+                evidence=evidence,
                 proposed_action={
                     "kind": "PREPARE_REVIEW",
                     "tool": "trip.prepare_external_review",
@@ -406,6 +438,7 @@ def _external_candidates(
                         "signal_id": str(signal.id),
                         "signal_type": signal.signal_type,
                         "subject_ref": signal.subject_ref,
+                        "impact_assessment": impact_assessment,
                     },
                 },
                 confidence=float(signal.confidence),
@@ -415,6 +448,7 @@ def _external_candidates(
                     "provider": signal.provider,
                     "signal_type": signal.signal_type,
                     "subject_ref": signal.subject_ref,
+                    "impact_assessment": impact_assessment,
                 },
             )
         )
@@ -1153,6 +1187,7 @@ def _execute_external_review(
         "signal_id": params.get("signal_id"),
         "signal_type": params.get("signal_type"),
         "subject_ref": params.get("subject_ref"),
+        "impact_assessment": params.get("impact_assessment"),
     }
 
 
