@@ -35,8 +35,8 @@ db-up: ## 构建镜像并启动 PostgreSQL16+PostGIS+pgvector
 	$(COMPOSE) up -d --build
 	@attempt=0; \
 	until docker exec zhi-tu-pg pg_isready -h 127.0.0.1 -p 5432 -U gbt_owner -d gbt_os >/dev/null 2>&1; do \
-		attempt=$((attempt + 1)); \
-		if [ "$attempt" -ge 90 ]; then \
+		attempt=$$(expr $$attempt + 1); \
+		if [ "$$attempt" -ge 90 ]; then \
 			echo "PostgreSQL TCP listener did not become ready on 127.0.0.1:5432" >&2; \
 			docker logs --tail 100 zhi-tu-pg || true; \
 			exit 1; \
@@ -44,7 +44,6 @@ db-up: ## 构建镜像并启动 PostgreSQL16+PostGIS+pgvector
 		sleep 1; \
 	done
 	@echo "PostgreSQL TCP ready on localhost:55432"
-
 db-down: ## 停止数据库（保留数据卷）
 	$(COMPOSE) down
 
