@@ -228,6 +228,55 @@ final class LocalSpreadsheetImportTests: XCTestCase {
         XCTAssertNotNil(visit.timeWindowEnd)
     }
 
+
+    func testExpiredPreviewIsScrubbedAndCannotBeConfirmed() async throws {
+        let repository = LocalTripRepository(database: database)
+        let trip = try await makeTestTrip(repository, name: "过期导入预览")
+        let preview = try await parseWorkbook(repository, tripId: trip.id)
+        let storageKey = "local-import:\(preview.importId)"
+        let raw = try XCTUnwrap(database.keyValue(storageKey))
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any]
+        )
+        payload["expires_at"] = ISO8601.stringWithFractionalSeconds(
+            from: Date(timeIntervalSince1970: 0)
+        )
+        let expiredData = try JSONSerialization.data(withJSONObject: payload)
+        try database.setKeyValue(
+            storageKey,
+            value: try XCTUnwrap(String(data: expiredData, encoding: .utf8))
+        )
+
+        do {
+            _ = try await repository.confirmImport(
+                tripId: trip.id,
+                request: ConfirmImportRequest(
+                    importId: preview.importId,
+                    acceptedRowNumbers: [2]
+                )
+            )
+            XCTFail("过期预览不得确认入库")
+        } catch let error as APIError {
+            XCTAssertEqual(error.errorCode, "IMPORT_EXPIRED")
+        }
+
+        let stored = try XCTUnwrap(database.keyValue(storageKey))
+        XCTAssertFalse(stored.contains("Acme Battery GmbH"))
+        let tombstone = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(stored.utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(tombstone["status"] as? String, "EXPIRED")
+        XCTAssertEqual(tombstone["filename"] as? String, "")
+        let result = try XCTUnwrap(tombstone["result"] as? [String: Any])
+        XCTAssertEqual((result["rows"] as? [Any])?.count, 0)
+        XCTAssertNil(result["filename"])
+        let rows = try XCTUnwrap(tombstone["rows"] as? [Any])
+        XCTAssertEqual(rows.count, 0)
+
+        XCTAssertEqual(try database.count(table: "customers"), 0)
+        XCTAssertEqual(try database.count(table: "visits"), 0)
+    }
+
     func testLegacyAndCorruptFilesAreRejectedBeforeStaging() async throws {
         let repository = LocalTripRepository(database: database)
         let trip = try await repository.createTrip(CreateTripRequest(
