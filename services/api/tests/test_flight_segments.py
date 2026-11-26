@@ -89,6 +89,7 @@ def create_plan(
             ).one()
             previous.status = "SUPERSEDED"
             previous.superseded_at = now
+            session.flush()
 
         plan = PlanVersion(
             organization_id=UUID(ORG_A),
