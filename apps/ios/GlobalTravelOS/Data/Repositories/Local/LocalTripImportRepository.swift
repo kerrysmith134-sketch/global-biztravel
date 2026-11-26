@@ -21,13 +21,13 @@ private struct LocalImportBatch: Codable {
     var status: String
     var result: ImportParseResult
     var rows: [LocalImportStagedRow]
-    var createdAt: Date?
-    var expiresAt: Date?
+    var createdAt: Date? = nil
+    var expiresAt: Date? = nil
 }
 
 extension LocalTripRepository {
     /// Staging may contain customer/contact PII. Keep an unconfirmed preview for at most 24 hours.
-    private static let localImportStagingTTL: TimeInterval = 24 * 60 * 60
+    private static var localImportStagingTTL: TimeInterval { 24 * 60 * 60 }
 
     func performParseImport(
         tripId: String,
