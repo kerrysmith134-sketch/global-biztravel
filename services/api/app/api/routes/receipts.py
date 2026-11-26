@@ -22,13 +22,13 @@ from app.api.deps import (
 )
 from app.api.errors import BadRequest, UnsupportedMedia, error_body
 from app.api.idempotent import IdempotentWrite
-from app.api.trace import get_trace_id
 from app.api.schemas import (
     ReceiptAssetRead,
     ReceiptOcrReviewCreate,
     ReceiptOcrReviewRead,
     ReceiptOcrRunRead,
 )
+from app.api.trace import get_trace_id
 from app.config import get_settings
 from app.services import receipt_asset_ocr_service, receipt_asset_service, trip_service
 from app.services.receipt_asset_service import ReceiptIntegrityFailure
