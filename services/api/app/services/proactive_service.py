@@ -378,9 +378,6 @@ def _external_candidates(
         severity = payload.get("severity")
         if severity not in ("LOW", "MEDIUM", "HIGH"):
             severity = "HIGH"
-        digest = sha256(
-            json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
-        ).hexdigest()[:10]
         evidence = [
             {
                 "kind": "EXTERNAL_SIGNAL",
@@ -417,6 +414,23 @@ def _external_candidates(
                         "retrieved_at": None,
                     }
                 )
+        # For weather, the same provider signal must be re-evaluated when the active
+        # plan revision changes. Non-weather signal dedupe remains payload-only.
+        digest_input = payload
+        if impact_assessment is not None:
+            digest_input = {
+                "signal_payload": payload,
+                "plan_impact": {
+                    "status": impact_assessment.get("status"),
+                    "plan_version_id": impact_assessment.get("plan_version_id"),
+                    "affected_visit_ids": impact_assessment.get("affected_visit_ids", []),
+                },
+            }
+        digest = sha256(
+            json.dumps(
+                digest_input, sort_keys=True, ensure_ascii=False, default=str
+            ).encode("utf-8")
+        ).hexdigest()[:10]
         candidates.append(
             Candidate(
                 trigger_type=TRIGGER_EXTERNAL,

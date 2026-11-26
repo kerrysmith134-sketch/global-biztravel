@@ -312,6 +312,7 @@ def test_weather_signal_maps_exact_place_and_time_window_to_active_plan(
             assert impact["affected_visit_ids"] == [visit_ids[0]]
             assert any(item["kind"] == "PLAN_STOP" for item in suggestion.evidence)
             suggestion_id = str(suggestion.id)
+            original_dedupe_key = suggestion.dedupe_key
 
         approved = client.post(
             f"/v1/proactive/suggestions/{suggestion_id}:approve",
@@ -330,6 +331,78 @@ def test_weather_signal_maps_exact_place_and_time_window_to_active_plan(
             # Approval prepares an impact brief only; it does not mutate the plan or Trip inputs.
             assert trip.active_plan_version_id == UUID(plan_id)
             assert trip.version == trip_version
+
+        # A new immutable plan revision changes the weather impact context even
+        # though the provider signal payload remains identical.
+        with org_session(UUID(ORG_A)) as session:
+            trip = session.get(Trip, UUID(trip_id))
+            previous_plan = session.get(PlanVersion, UUID(plan_id))
+            assert trip is not None
+            assert previous_plan is not None
+            previous_plan.status = "SUPERSEDED"
+            session.flush()
+            revised_plan = PlanVersion(
+                organization_id=UUID(ORG_A),
+                trip_id=trip.id,
+                version_number=2,
+                status="ACTIVE",
+                problem_hash=f"weather-impact-revision:{uuid.uuid4().hex}",
+                solver="heuristic",
+                objective_value=0.0,
+                solution_status="FEASIBLE",
+                trip_version=trip.version,
+                validation={"feasible": True},
+                unplaced=[],
+                activated_at=now + timedelta(minutes=1),
+            )
+            session.add(revised_plan)
+            session.flush()
+            trip.active_plan_version_id = revised_plan.id
+            for index, (visit_id, (_, start, end)) in enumerate(
+                zip(visit_ids, windows, strict=True), start=1
+            ):
+                session.add(
+                    PlanStop(
+                        organization_id=UUID(ORG_A),
+                        plan_version_id=revised_plan.id,
+                        visit_id=UUID(visit_id),
+                        day_index=0,
+                        sequence=index,
+                        day_date=start.date(),
+                        arrive_at=start,
+                        depart_at=end,
+                        travel_minutes=0,
+                        service_minutes=30,
+                        travel_source="test-fixture",
+                    )
+                )
+            revised_plan_id = str(revised_plan.id)
+
+        with org_session(UUID(ORG_A)) as session:
+            refreshed = proactive_service.scan_trip(
+                session,
+                UUID(ORG_A),
+                UUID(trip_id),
+                now=now + timedelta(minutes=1),
+            )
+        assert refreshed.errors == []
+        assert refreshed.suggestions == 1
+        assert refreshed.suppressed == 1  # Same alert type remains under cooldown.
+
+        with org_session(UUID(ORG_A)) as session:
+            revised_suggestion = session.scalars(
+                select(ProactiveSuggestion).where(
+                    ProactiveSuggestion.organization_id == UUID(ORG_A),
+                    ProactiveSuggestion.trip_id == UUID(trip_id),
+                    ProactiveSuggestion.suggestion_type == "WEATHER_DISRUPTION_ALERT",
+                    ProactiveSuggestion.dedupe_key != original_dedupe_key,
+                )
+            ).one()
+            revised_impact = revised_suggestion.proposed_action["params"]["impact_assessment"]
+            assert revised_impact["plan_version_id"] == revised_plan_id
+            assert revised_impact["affected_visit_ids"] == [visit_ids[0]]
+            assert revised_suggestion.status == "SUPPRESSED"
+      assert trip.version == trip_version
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))

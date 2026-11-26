@@ -39,3 +39,8 @@ The last status means potential exposure only. It is not a claim that the visit 
 An integration test creates three planned stops: one with exact place and time overlap, one at the same place outside the signal window, and one at a different place during the signal window. Only the first stop may be classified as potentially affected. It also verifies that approving the suggestion does not mutate Trip version or active PlanVersion.
 
 The test is added to the PostgreSQL integration suite. It must pass under the repository's strict GitHub Actions run before this slice is considered verified or deployable.
+
+
+## Dedupe follows the active plan revision
+
+For weather signals, the suggestion dedupe fingerprint includes the signal payload plus the active plan revision and affected visit IDs. If the same external observation remains valid after a new plan is activated, the runtime computes a new impact snapshot rather than silently reusing one tied to a superseded plan. The suggestion cooldown still controls user interruption; the refreshed assessment remains auditable as a suppressed suggestion when appropriate.
