@@ -310,6 +310,11 @@ extension LocalTripRepository {
     }
 
 
+    /// App-start maintenance entry point; removes expired customer/contact staging payloads.
+    func purgeExpiredImportPreviews() throws {
+        try purgeExpiredLocalImportBatches()
+    }
+
     /// Serialize cleanup with confirmations. Expired/legacy previews become small tombstones:
     /// raw rows, normalized customer/contact values and the original filename are discarded.
     private func purgeExpiredLocalImportBatches(now: Date = Date()) throws {

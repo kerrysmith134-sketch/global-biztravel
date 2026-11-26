@@ -294,6 +294,11 @@ final class AppEnvironment: ObservableObject {
     /// 本地模式首次启动：空库自动载入示例数据（只做一次，用户清空后不再注入）。
     func seedDemoIfNeeded() async {
         guard isLocalMode, let database = localDatabase else { return }
+        // Expired XLSX previews can contain customer/contact PII. Sweep them on every
+        // local-mode launch, even after the one-time demo-seed flag has been set.
+        if let localRepository = tripRepository as? LocalTripRepository {
+            try? localRepository.purgeExpiredImportPreviews()
+        }
         let flagKey = "local-demo-auto-seeded"
         guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
         let existing = (try? database.count(table: "trips")) ?? 0

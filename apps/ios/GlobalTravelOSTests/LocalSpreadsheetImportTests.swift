@@ -247,6 +247,9 @@ final class LocalSpreadsheetImportTests: XCTestCase {
             value: try XCTUnwrap(String(data: expiredData, encoding: .utf8))
         )
 
+        // This is also called at local-mode app startup, without requiring another import.
+        try repository.purgeExpiredImportPreviews()
+
         do {
             _ = try await repository.confirmImport(
                 tripId: trip.id,
