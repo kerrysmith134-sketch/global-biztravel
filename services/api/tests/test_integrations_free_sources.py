@@ -23,7 +23,7 @@ from app.models.trip import Trip, Visit
 from app.services import signal_pull_service
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, text
+from sqlalchemy import delete
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
