@@ -49,6 +49,22 @@ final class LocalModeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["我的"].exists, "缺少个人设置一级入口")
     }
 
+    private func openTripsWorkspace() {
+        let menu = app.descendants(matching: .any)
+            .matching(identifier: "mission.more-actions")
+            .firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15), "本地模式缺少 Mission 更多操作入口")
+        menu.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let tripsAction = app.buttons["行程管理"].firstMatch
+        XCTAssertTrue(tripsAction.waitForExistence(timeout: 10), "更多操作菜单缺少行程管理")
+        tripsAction.tap()
+        XCTAssertTrue(
+            app.navigationBars["出行"].waitForExistence(timeout: 15),
+            "行程管理工作区未打开"
+        )
+    }
+
     func testLocalModeSeededTripSections() throws {
         XCTAssertTrue(
             app.navigationBars["任务"].waitForExistence(timeout: 20),
@@ -83,9 +99,7 @@ final class LocalModeUITests: XCTestCase {
         cockpitShot.lifetime = .keepAlways
         add(cockpitShot)
 
-        let tripsTab = app.buttons["出行"]
-        XCTAssertTrue(tripsTab.waitForExistence(timeout: 10), "未找到出行标签")
-        tripsTab.tap()
+        openTripsWorkspace()
         XCTAssertTrue(
             app.navigationBars["出行"].waitForExistence(timeout: 10),
             "出行列表未加载"
