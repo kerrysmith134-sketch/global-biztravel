@@ -23,7 +23,9 @@ final class LocalModeUITests: XCTestCase {
             app.terminate()
         }
         app.launch()
-        app.tap() // 触发中断监视器（若有系统弹窗在此关闭）。
+        // 不要无条件点击 App 中心：无系统弹窗时可能误触 Mission 卡片或工作区入口。
+        let systemAlert = app.alerts.firstMatch
+        if systemAlert.waitForExistence(timeout: 2) { app.tap() }
     }
 
     func testFivePrimaryWorkspacesAreReachable() throws {
@@ -50,6 +52,8 @@ final class LocalModeUITests: XCTestCase {
     }
 
     private func openTripsWorkspace() {
+        let missionTab = app.tabBars.buttons["任务"].firstMatch
+        if missionTab.exists && missionTab.isHittable { missionTab.tap() }
         let menu = app.descendants(matching: .any)
             .matching(identifier: "mission.more-actions")
             .firstMatch
