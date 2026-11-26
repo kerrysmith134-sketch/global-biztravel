@@ -21,6 +21,7 @@ from app.api.routes import (
     expenses,
     fx,
     flight_segments,
+    flight_segments,
     health,
     imports,
     integrations,
@@ -53,6 +54,7 @@ api_router.include_router(visa_admin.router)
 api_router.include_router(imports.router)
 api_router.include_router(local_guide.router)
 api_router.include_router(integrations.router)
+api_router.include_router(flight_segments.router)
 api_router.include_router(flight_segments.router)
 api_router.include_router(audit.router)
 api_router.include_router(admin.router)
