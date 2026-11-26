@@ -14,6 +14,7 @@ from app.models.devices import DeviceToken
 from app.models.expense_reports import ExpenseReport, ExpenseReportItem
 from app.models.expenses import TripExpense
 from app.models.flights import FlightSegmentPlanBinding, TripFlightSegment
+from app.models.flight_operations import FlightOperationalUpdate
 from app.models.fx import FxRate
 from app.models.geo import Customer, CustomerPlace, Place
 from app.models.identity import Membership, Organization, User
@@ -96,6 +97,7 @@ __all__ = [
     "ExpenseReport",
     "ExpenseReportItem",
     "FxRate",
+    "FlightOperationalUpdate",
     "FlightSegmentPlanBinding",
     "TripFlightSegment",
     "ExternalAction",

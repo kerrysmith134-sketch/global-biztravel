@@ -20,8 +20,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.api.schemas import ExternalSignalCreate
+from app.api.schemas import ExternalSignalCreate, FlightOperationalUpdatePayload
 from app.models.integrations import ExternalSignal
+from app.services import flight_operations_service
 from app.models.trip import Trip
 
 
@@ -29,6 +30,25 @@ def ingest(
     session: Session, organization_id: UUID | str, payload: ExternalSignalCreate
 ) -> ExternalSignal:
     """接入一条外部信号。同 provider + dedupe_key 重推时更新内容与有效期。"""
+    signal_payload = dict(payload.payload)
+    raw_operational_update = signal_payload.get("flight_operational_update")
+    if raw_operational_update is not None:
+        operational_payload = FlightOperationalUpdatePayload.model_validate(raw_operational_update)
+        operational_update = flight_operations_service.ingest_operational_update(
+            session,
+            organization_id,
+            UUID(payload.subject_ref),
+            payload.provider,
+            payload.observed_at,
+            payload.valid_until,
+            payload.confidence,
+            operational_payload,
+            summary=signal_payload.get("summary"),
+        )
+        signal_payload["operational_update_id"] = str(operational_update.id)
+        signal_payload["operational_update_content_sha256"] = operational_update.content_sha256
+        signal_payload["operational_update_type"] = operational_update.update_type
+
     statement = (
         pg_insert(ExternalSignal.__table__)
         .values(
@@ -37,7 +57,7 @@ def ingest(
             signal_type=payload.signal_type,
             subject_type=payload.subject_type,
             subject_ref=payload.subject_ref,
-            payload=payload.payload,
+            payload=signal_payload,
             confidence=payload.confidence,
             observed_at=payload.observed_at,
             valid_from=payload.observed_at,
@@ -50,7 +70,7 @@ def ingest(
                 "signal_type": payload.signal_type,
                 "subject_type": payload.subject_type,
                 "subject_ref": payload.subject_ref,
-                "payload": payload.payload,
+                "payload": signal_payload,
                 "confidence": payload.confidence,
                 "observed_at": payload.observed_at,
                 "valid_until": payload.valid_until,

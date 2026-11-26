@@ -1139,6 +1139,90 @@ class FlightPullRead(BaseModel):
     items: list[FlightPullItemRead] = Field(default_factory=list)
 
 
+class FlightOperationalUpdatePayload(BaseModel):
+    """Normalized airline/airport event embedded in an FLIGHT_STATUS signal."""
+
+    flight_segment_id: UUID
+    provider_event_id: str = Field(min_length=1, max_length=160)
+    update_type: Literal[
+        "SCHEDULE_CHANGE",
+        "DEPARTURE_DELAY",
+        "ARRIVAL_DELAY",
+        "CANCELLED",
+        "DIVERTED",
+        "GATE_CHANGE",
+    ]
+    flight_designator: str = Field(min_length=2, max_length=12)
+    departure_airport_iata: str = Field(min_length=3, max_length=3)
+    arrival_airport_iata: str = Field(min_length=3, max_length=3)
+    estimated_departure_at: datetime | None = None
+    estimated_arrival_at: datetime | None = None
+    reported_arrival_airport_iata: str | None = Field(default=None, min_length=3, max_length=3)
+    source_payload_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+
+    @field_validator("provider_event_id")
+    @classmethod
+    def _trim_provider_event_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("provider_event_id 不能为空")
+        return normalized
+
+    @field_validator("flight_designator")
+    @classmethod
+    def _normalize_operational_flight_designator(cls, value: str) -> str:
+        normalized = value.strip().upper().replace(" ", "")
+        if not fullmatch(r"[A-Z0-9]{2,12}", normalized):
+            raise ValueError("flight_designator 格式无效")
+        return normalized
+
+    @field_validator("departure_airport_iata", "arrival_airport_iata", "reported_arrival_airport_iata")
+    @classmethod
+    def _normalize_operational_airport(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if not fullmatch(r"[A-Z]{3}", normalized):
+            raise ValueError("机场代码必须是 3 位 IATA 字母代码")
+        return normalized
+
+    @field_validator("source_payload_sha256")
+    @classmethod
+    def _validate_source_payload_hash(cls, value: str | None) -> str | None:
+        if value is not None and not fullmatch(r"[a-fA-F0-9]{64}", value):
+            raise ValueError("source_payload_sha256 必须为 64 位十六进制 SHA-256")
+        return value.lower() if value is not None else None
+
+    @model_validator(mode="after")
+    def _validate_operational_times(self) -> FlightOperationalUpdatePayload:
+        for field_name, value in (
+            ("estimated_departure_at", self.estimated_departure_at),
+            ("estimated_arrival_at", self.estimated_arrival_at),
+        ):
+            if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+                raise ValueError(f"{field_name} 必须包含时区偏移")
+        if (
+            self.estimated_departure_at is not None
+            and self.estimated_arrival_at is not None
+            and self.estimated_arrival_at <= self.estimated_departure_at
+        ):
+            raise ValueError("预计到达时间必须晚于预计出发时间")
+        if self.update_type == "DEPARTURE_DELAY" and self.estimated_departure_at is None:
+            raise ValueError("DEPARTURE_DELAY 必须提供 estimated_departure_at")
+        if self.update_type == "ARRIVAL_DELAY" and self.estimated_arrival_at is None:
+            raise ValueError("ARRIVAL_DELAY 必须提供 estimated_arrival_at")
+        if self.update_type == "SCHEDULE_CHANGE" and (
+            self.estimated_departure_at is None and self.estimated_arrival_at is None
+        ):
+            raise ValueError("SCHEDULE_CHANGE 至少提供一个更新后的时刻")
+        if self.update_type == "DIVERTED":
+            if self.reported_arrival_airport_iata is None:
+                raise ValueError("DIVERTED 必须提供 reported_arrival_airport_iata")
+            if self.reported_arrival_airport_iata == self.arrival_airport_iata:
+                raise ValueError("备降机场不能与原计划到达机场相同")
+        return self
+
+
 class ExternalSignalCreate(BaseModel):
     """外部源上报的一条事实。
 
@@ -1155,6 +1239,29 @@ class ExternalSignalCreate(BaseModel):
     observed_at: datetime
     valid_until: datetime | None = None
     dedupe_key: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _validate_flight_operational_envelope(self) -> ExternalSignalCreate:
+        raw_update = self.payload.get("flight_operational_update")
+        if raw_update is None:
+            return self
+        if self.signal_type != "FLIGHT_STATUS" or self.subject_type != "TRIP":
+            raise ValueError("flight_operational_update 仅允许出现在 TRIP 的 FLIGHT_STATUS 信号中")
+        if self.provider.strip().casefold() == "opensky":
+            raise ValueError("OpenSky 航迹遥测不能作为航司/机场运营事件来源")
+        if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
+            raise ValueError("运营事件 observed_at 必须包含时区偏移")
+        if self.valid_until is not None and self.valid_until <= self.observed_at:
+            raise ValueError("运营事件 valid_until 必须晚于 observed_at")
+        try:
+            UUID(self.subject_ref)
+        except ValueError as exc:
+            raise ValueError("运营事件 subject_ref 必须是 Trip UUID") from exc
+        operational = FlightOperationalUpdatePayload.model_validate(raw_update)
+        expected_dedupe = f"flight_ops:{operational.provider_event_id}"
+        if self.dedupe_key != expected_dedupe:
+            raise ValueError(f"运营事件 dedupe_key 必须为 {expected_dedupe}")
+        return self
 
 
 class ExternalSignalRead(ORMModel):
