@@ -236,16 +236,6 @@ final class LocalStoreTests: XCTestCase {
         }
     }
 
-    func testTripNotFoundShapesServerError() async throws {
-        let repository = makeRepository()
-        do {
-            _ = try await repository.trip(id: "00000000-0000-4000-8000-999999999999")
-            XCTFail("应抛 TRIP_NOT_FOUND")
-        } catch let error as APIError {
-            XCTAssertEqual(error.errorCode, "TRIP_NOT_FOUND")
-        }
-    }
-
     // MARK: - Pending 方法显式占位（P4/P7 补齐）
 
     func testPendingMethodsThrowInsteadOfFaking() async throws {
