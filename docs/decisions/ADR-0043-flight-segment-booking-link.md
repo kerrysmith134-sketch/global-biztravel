@@ -23,3 +23,11 @@
 - 绑定与重绑可审计，并可明确展示它对应哪一版计划。
 - 一个 AIR 规划段可以对应多段真实航班（例如中转）；单个机票航段一次只绑定一个规划段。
 - 本 ADR 只建立机票段录入与显式绑定基础。供应商状态采集、航班延误判定、自动备选改签和连锁行程传播必须在后续单独验证，不由本模型隐式推断。
+
+
+## H2.19 补充：航迹信号只能经显式机票段引用关联
+
+- \`POST /integrations/signals:pull-flight\` 可选接收 \`flight_segment_id\`。传入时，服务端要求机票段同组织/同出行、未取消，并且 \`tracking_provider\` 与当前 provider、\`tracking_reference\` 与请求 callsign 精确匹配（OpenSky callsign 按大写规范化）。未传 segment id 时，保持旧的未绑定候选语义。
+- 已绑定影响评估还会再次核验 ExternalSignal 的 provider/reference 与 segment；随后必须找到当前 ACTIVE PlanVersion 下该机票段的 ACTIVE FlightSegmentPlanBinding，且目标确实是同计划的 AIR leg，才返回 \`TRACKING_MATCHED_TO_CURRENT_AIR_LEG\`。
+- Flight telemetry 不提供航司计划时刻、取消原因或运营延误数据，因此 \`operational_delay_assessment\` 明确为 \`NOT_DERIVABLE_FROM_AIRCRAFT_TELEMETRY\`。不因位置/速度计算 ETA，不传播延误，不自动改写 PlanVersion。
+- FLIGHT_STATUS dedupe key 按 provider + trip + segment/callsign + icao24 分区；同架飞机被两次出行关注时，更新一条信号不会覆盖另一出行的事实。

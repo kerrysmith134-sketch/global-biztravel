@@ -13,6 +13,7 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.models.flights import FlightSegmentPlanBinding, TripFlightSegment
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.trip import Trip, Visit
@@ -246,43 +247,244 @@ def assess_weather_signal_impact(
     }
 
 
+def _tracking_reference_matches(provider: str, expected: str, observed: str) -> bool:
+    provider_key = provider.strip().casefold()
+    if provider_key == "opensky":
+        return expected.strip().upper() == observed.strip().upper()
+    return expected.strip() == observed.strip()
+
+
 def assess_flight_signal_impact(
     session: Session,
     organization_id: UUID | str,
     trip: Trip,
     signal: ExternalSignal,
 ) -> dict:
-    """Expose candidate AIR legs without pretending a telemetry record is a booked flight."""
+    """Link telemetry only through explicit segment id + provider reference + current plan binding."""
     organization = UUID(str(organization_id))
     plan = _active_plan(session, organization, trip)
     payload = signal.payload or {}
-    callsign = str(payload.get("callsign") or "").strip().upper() or None
+    callsign = str(payload.get("callsign") or "").strip() or None
     icao24 = str(payload.get("icao24") or "").strip().lower() or None
-
+    raw_segment_id = payload.get("flight_segment_id")
     base = {
         "signal_id": str(signal.id),
         "signal_type": signal.signal_type,
-        "assessment_method": "EXPLICIT_BOOKING_LINK_REQUIRED",
+        "assessment_method": (
+            "EXPLICIT_SEGMENT_ID_PROVIDER_REFERENCE_AND_CURRENT_PLAN_BINDING"
+            if raw_segment_id
+            else "EXPLICIT_BOOKING_LINK_REQUIRED"
+        ),
         "plan_version_id": str(plan.id) if plan is not None else None,
         "plan_version_number": plan.version_number if plan is not None else None,
-        "callsign": callsign,
+        "callsign": callsign.upper() if callsign and signal.provider.casefold() == "opensky" else callsign,
         "icao24": icao24,
+        "flight_segment_id": None,
+        "flight_designator": None,
+        "departure_airport_iata": None,
+        "arrival_airport_iata": None,
+        "scheduled_departure_at": None,
+        "scheduled_arrival_at": None,
         "candidate_air_leg_count": 0,
         "linked_air_leg_count": 0,
         "linked_air_leg_ids": [],
         "unlinked_air_legs": [],
+        "binding_id": None,
+        "telemetry_snapshot": {
+            "last_contact": payload.get("last_contact"),
+            "on_ground": payload.get("on_ground"),
+            "latitude": payload.get("latitude"),
+            "longitude": payload.get("longitude"),
+            "altitude_m": payload.get("baro_altitude_m"),
+            "velocity_ms": payload.get("velocity_ms"),
+        },
+        "operational_delay_assessment": "NOT_DERIVABLE_FROM_AIRCRAFT_TELEMETRY",
     }
-    if plan is None:
-        return {
-            **base,
-            "status": "NO_ACTIVE_PLAN",
-            "explanation": "当前出行没有 ACTIVE 计划，无法列出需要人工核验的 AIR 交通段。",
+
+    segment: TripFlightSegment | None = None
+    if raw_segment_id is not None:
+        try:
+            segment_id = UUID(str(raw_segment_id))
+        except (TypeError, ValueError):
+            return {
+                **base,
+                "status": "FLIGHT_SEGMENT_REFERENCE_INVALID",
+                "explanation": "信号中的 flight_segment_id 不是有效 UUID；未尝试按航班号猜测机票。",
+            }
+        segment = session.scalars(
+            select(TripFlightSegment).where(
+                TripFlightSegment.organization_id == organization,
+                TripFlightSegment.trip_id == trip.id,
+                TripFlightSegment.id == segment_id,
+            )
+        ).one_or_none()
+        if segment is None:
+            return {
+                **base,
+                "flight_segment_id": str(segment_id),
+                "status": "FLIGHT_SEGMENT_NOT_FOUND",
+                "explanation": "信号引用的机票段不属于当前组织与出行，未建立任何计划关联。",
+            }
+        segment_fields = {
+            "flight_segment_id": str(segment.id),
+            "flight_designator": segment.flight_designator,
+            "departure_airport_iata": segment.departure_airport_iata,
+            "arrival_airport_iata": segment.arrival_airport_iata,
+            "scheduled_departure_at": segment.scheduled_departure_at.isoformat(),
+            "scheduled_arrival_at": segment.scheduled_arrival_at.isoformat(),
         }
-    if callsign is None and icao24 is None:
+        if segment.booking_status == "CANCELLED":
+            return {
+                **base,
+                **segment_fields,
+                "status": "CANCELLED_FLIGHT_SEGMENT",
+                "explanation": "机票段已取消；不会把新的航迹快照关联到该航段。",
+            }
+        if not segment.tracking_provider or not segment.tracking_reference:
+            return {
+                **base,
+                **segment_fields,
+                "status": "TRACKING_REFERENCE_NOT_CONFIGURED",
+                "explanation": "机票段缺少 tracking provider/reference；航迹信号不可验证。",
+            }
+        if signal.provider.strip().casefold() != segment.tracking_provider.strip().casefold():
+            return {
+                **base,
+                **segment_fields,
+                "status": "TRACKING_PROVIDER_MISMATCH",
+                "explanation": "信号 Provider 与机票段声明的 tracking_provider 不一致，拒绝建立关联。",
+            }
+        if callsign is None or not _tracking_reference_matches(
+            signal.provider, segment.tracking_reference, callsign
+        ):
+            return {
+                **base,
+                **segment_fields,
+                "status": "TRACKING_REFERENCE_MISMATCH",
+                "explanation": "信号 callsign 与机票段 tracking_reference 不匹配，拒绝建立关联。",
+            }
+    else:
+        if plan is None:
+            return {
+                **base,
+                "status": "NO_ACTIVE_PLAN",
+                "explanation": "当前出行没有 ACTIVE 计划，无法列出需要人工核验的 AIR 交通段。",
+            }
+        if callsign is None and icao24 is None:
+            return {
+                **base,
+                "status": "FLIGHT_REFERENCE_MISSING",
+                "explanation": "航班状态信号缺少 callsign 和 icao24，无法提供可供人工核验的航空器标识。",
+            }
+
+    if plan is None:
+        segment_fields = (
+            {
+                "flight_segment_id": str(segment.id),
+                "flight_designator": segment.flight_designator,
+                "departure_airport_iata": segment.departure_airport_iata,
+                "arrival_airport_iata": segment.arrival_airport_iata,
+                "scheduled_departure_at": segment.scheduled_departure_at.isoformat(),
+                "scheduled_arrival_at": segment.scheduled_arrival_at.isoformat(),
+            }
+            if segment is not None
+            else {}
+        )
         return {
             **base,
-            "status": "FLIGHT_REFERENCE_MISSING",
-            "explanation": "航班状态信号缺少 callsign 和 icao24，无法提供可供人工核验的航空器标识。",
+            **segment_fields,
+            "status": "NO_ACTIVE_PLAN",
+            "explanation": "航迹已通过机票段 tracking reference 校验，但当前出行没有 ACTIVE 计划可供交通段绑定。",
+        }
+
+    if segment is not None:
+        bindings = list(
+            session.scalars(
+                select(FlightSegmentPlanBinding)
+                .where(
+                    FlightSegmentPlanBinding.organization_id == organization,
+                    FlightSegmentPlanBinding.trip_id == trip.id,
+                    FlightSegmentPlanBinding.flight_segment_id == segment.id,
+                    FlightSegmentPlanBinding.status == "ACTIVE",
+                )
+                .order_by(FlightSegmentPlanBinding.linked_at.desc(), FlightSegmentPlanBinding.id)
+            ).all()
+        )
+        current_binding = next(
+            (binding for binding in bindings if binding.plan_version_id == plan.id),
+            None,
+        )
+        segment_fields = {
+            "flight_segment_id": str(segment.id),
+            "flight_designator": segment.flight_designator,
+            "departure_airport_iata": segment.departure_airport_iata,
+            "arrival_airport_iata": segment.arrival_airport_iata,
+            "scheduled_departure_at": segment.scheduled_departure_at.isoformat(),
+            "scheduled_arrival_at": segment.scheduled_arrival_at.isoformat(),
+        }
+        if current_binding is not None:
+            leg = session.scalars(
+                select(PlanTravelLeg).where(
+                    PlanTravelLeg.organization_id == organization,
+                    PlanTravelLeg.plan_version_id == plan.id,
+                    PlanTravelLeg.id == current_binding.plan_travel_leg_id,
+                    PlanTravelLeg.mode == "AIR",
+                )
+            ).one_or_none()
+            if leg is None:
+                return {
+                    **base,
+                    **segment_fields,
+                    "binding_id": str(current_binding.id),
+                    "status": "PLAN_BINDING_TARGET_INVALID",
+                    "explanation": "绑定目标不再是当前计划中的 AIR 交通段；需要重新核验绑定。",
+                }
+            return {
+                **base,
+                **segment_fields,
+                "status": "TRACKING_MATCHED_TO_CURRENT_AIR_LEG",
+                "binding_id": str(current_binding.id),
+                "linked_air_leg_count": 1,
+                "linked_air_leg_ids": [str(leg.id)],
+                "linked_air_leg": {
+                    "plan_travel_leg_id": str(leg.id),
+                    "plan_version_id": str(plan.id),
+                    "mode": leg.mode,
+                    "travel_minutes": leg.travel_minutes,
+                    "source": leg.source,
+                    "stale": leg.stale,
+                },
+                "explanation": (
+                    f"航迹信号已通过显式机票段 {segment.flight_designator}、Provider 与 tracking reference 校验，"
+                    "并匹配当前 ACTIVE 计划中的 AIR 交通段。该结果只确认航空器身份关联；"
+                    "OpenSky 位置/速度快照不包含航班计划时刻或航司运行状态，不能据此判断延误、取消或 ETA。"
+                ),
+            }
+
+        if bindings:
+            latest = bindings[0]
+            return {
+                **base,
+                **segment_fields,
+                "status": "STALE_PLAN_BINDING",
+                "binding_id": str(latest.id),
+                "stale_binding": {
+                    "plan_version_id": str(latest.plan_version_id),
+                    "plan_travel_leg_id": str(latest.plan_travel_leg_id),
+                },
+                "explanation": (
+                    "机票段与航迹引用已校验，但其计划绑定指向旧 PlanVersion。"
+                    "计划换版后不会自动迁移关联；请在当前 ACTIVE 计划中重新确认 AIR 交通段绑定。"
+                ),
+            }
+        return {
+            **base,
+            **segment_fields,
+            "status": "FLIGHT_SEGMENT_NOT_LINKED_TO_PLAN",
+            "explanation": (
+                f"机票段 {segment.flight_designator} 与航迹引用已校验，但尚未人工绑定到当前 ACTIVE 计划的 AIR 交通段。"
+                "请先在出行航班段工作区完成显式绑定。"
+            ),
         }
 
     air_legs = session.scalars(
@@ -319,11 +521,10 @@ def assess_flight_signal_impact(
         "candidate_air_leg_count": len(unlinked_legs),
         "unlinked_air_legs": unlinked_legs[:100],
         "explanation": (
-            f"检测到 {len(unlinked_legs)} 段 AIR 交通，但当前计划没有航班号/预订引用与航迹绑定字段。"
-            "本条信号提供的是航空器 callsign/icao24 快照；系统不会仅凭这些标识猜测它对应哪段已预订航班。"
-            "请人工核对航班日期、航线与承运人后再建立关联。"
+            f"检测到 {len(unlinked_legs)} 段 AIR 交通，但当前信号没有显式 flight_segment_id。"
+            "即使 callsign 与某个 booking tracking reference 相同，也不会自动推断用户预订了这架飞机。"
+            "请通过 flight-segments API 显式记录机票段并确认 PlanTravelLeg 绑定。"
         ),
     }
-
 
 __all__ = ["assess_flight_signal_impact", "assess_weather_signal_impact"]

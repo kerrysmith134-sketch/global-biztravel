@@ -14346,6 +14346,19 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "flight_segment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight Segment Id",
+            "default": null
           }
         },
         "type": "object",
@@ -14365,19 +14378,39 @@
             "title": "Trip Id"
           },
           "callsign": {
-            "type": "string",
-            "maxLength": 20,
-            "minLength": 1,
-            "title": "Callsign"
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callsign",
+            "default": null
+          },
+          "flight_segment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight Segment Id",
+            "default": null
           }
         },
         "type": "object",
         "required": [
-          "trip_id",
-          "callsign"
+          "trip_id"
         ],
         "title": "FlightPullRequest",
-        "description": "按 callsign 拉取航迹（OpenSky，免钥公开源，ADR-0034）；信号挂到出行。"
+        "description": "按 callsign 或已录入机票段的 tracking reference 拉取航迹；提供 flight_segment_id 时必须匹配该机票段。"
       },
       "FollowUpTaskRead": {
         "properties": {

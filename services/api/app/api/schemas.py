@@ -1105,10 +1105,17 @@ class WeatherPullRead(BaseModel):
 
 
 class FlightPullRequest(BaseModel):
-    """按 callsign 拉取航迹（OpenSky，免钥公开源，ADR-0034）；信号挂到出行。"""
+    """按 callsign 拉取航迹；提供 flight_segment_id 时必须匹配该机票段的 tracking reference。"""
 
     trip_id: UUID
-    callsign: str = Field(min_length=1, max_length=20)
+    callsign: str | None = Field(default=None, min_length=1, max_length=20)
+    flight_segment_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _require_callsign_or_flight_segment(self) -> FlightPullRequest:
+        if self.callsign is None and self.flight_segment_id is None:
+            raise ValueError("callsign 或 flight_segment_id 至少提供一个")
+        return self
 
 
 class FlightPullItemRead(BaseModel):
@@ -1126,6 +1133,7 @@ class FlightPullItemRead(BaseModel):
 class FlightPullRead(BaseModel):
     trip_id: str
     callsign: str
+    flight_segment_id: UUID | None = None
     aircraft: int
     signals_ingested: int
     items: list[FlightPullItemRead] = Field(default_factory=list)

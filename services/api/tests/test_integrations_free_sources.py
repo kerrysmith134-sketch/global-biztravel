@@ -279,22 +279,29 @@ def test_pull_flight_ingests_signal(client: TestClient):
             ]
 
     trip_id, place_id = _trip_with_visit(client)
+    trip_two_id, place_two_id = _trip_with_visit(client)
     try:
         with org_session(UUID(ORG_A)) as session:
-            summary = signal_pull_service.pull_flight(
+            first = signal_pull_service.pull_flight(
                 session, ORG_A, trip_id=UUID(trip_id),
                 callsign="DLH441", provider=StubFlightProvider(),
             )
-            assert summary["signals_ingested"] == 1
-            signal = session.query(ExternalSignal).filter_by(
+            second = signal_pull_service.pull_flight(
+                session, ORG_A, trip_id=UUID(trip_two_id),
+                callsign="DLH441", provider=StubFlightProvider(),
+            )
+            assert first["signals_ingested"] == second["signals_ingested"] == 1
+            signals = session.query(ExternalSignal).filter_by(
                 organization_id=ORG_A, provider="stub-sky"
-            ).one()
-            assert signal.signal_type == "FLIGHT_STATUS"
-            assert signal.subject_type == "TRIP"
-            assert signal.subject_ref == trip_id
-            assert signal.payload["icao24"] == "4b1816"
+            ).order_by(ExternalSignal.subject_ref).all()
+            assert len(signals) == 2
+            assert {signal.subject_ref for signal in signals} == {trip_id, trip_two_id}
+            assert all(signal.signal_type == "FLIGHT_STATUS" for signal in signals)
+            assert all(signal.payload["icao24"] == "4b1816" for signal in signals)
+            assert signals[0].dedupe_key != signals[1].dedupe_key
     finally:
         _cleanup(trip_id, place_id)
+        _cleanup(trip_two_id, place_two_id)
 
 
 # ---------------------------------------------------------------------------

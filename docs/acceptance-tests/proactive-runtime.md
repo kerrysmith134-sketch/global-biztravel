@@ -54,3 +54,16 @@ make db-up          # 如未启动
 交通段余量仅按 \`next_stop.arrive_at - previous_stop.depart_at - travel_minutes\` 计算，是计划时刻与当前交通估算之间的派生余量；不代表实时延误、道路封闭或实际可用缓冲。任何外部天气关联都不会自动增加延误值或改变后续拜访时刻。
 
 当前没有航班预订/出票/机场时刻的权威数据实体，故 flight telemetry 与 AIR leg 必须经后续显式预订关联流程确认。调用航班源返回的 callsign 或 icao24 本身不足以证明其对应某位旅客的某张机票。
+
+
+## H2.19 — 航班跟踪仅关联到已确认的机票段
+
+| 验收点 | 测试 | 关键断言 |
+|---|---|---|
+| 显式航班跟踪 | \`test_open_sky_tracking_requires_explicit_segment_provider_reference_and_current_binding\` | pull-flight 将显式 flight_segment_id 写入信号；provider/reference 必须与机票段配置匹配，且当前 ACTIVE plan binding 仍指向 AIR leg，才返回 TRACKING_MATCHED_TO_CURRENT_AIR_LEG |
+| 不从 callsign 猜预订 | 同上 | 即使无 flight_segment_id 的 signals.callsign 与机票 tracking_reference 相同，也维持 AIR_LEGS_REQUIRE_EXPLICIT_LINK，linked_air_leg_count=0 |
+| Provider / reference 不匹配 | \`test_open_sky_tracking_rejects_provider_and_reference_mismatch\` | 两种不匹配均在请求外部数据前返回 Unprocessable，不写入 FLIGHT_STATUS |
+| 跨出行信号隔离 | \`test_pull_flight_ingests_signal\` | 相同 provider/callsign/icao24 被两个 Trip 跟踪时，两个 dedupe_key 不同，两个 subject_ref 均保留 |
+| 延误判断边界 | 同上 | 评估标记 NOT_DERIVABLE_FROM_AIRCRAFT_TELEMETRY，不推断延误、取消或 ETA |
+
+只有机票段 ID、tracking provider/reference、当前 ACTIVE 计划绑定三者同时通过核验，才可将 telemetry 与某一 AIR leg 关联。OpenSky 的位置、地速和高度是航空器快照，不是航司运行状态；正式延误判定仍需要航司/机场运行数据源。

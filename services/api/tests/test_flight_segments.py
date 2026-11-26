@@ -7,12 +7,15 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from app.api.errors import Unprocessable
 from app.db import org_session
+from app.integrations.flights import FlightState
 from app.main import app
 from app.models.geo import Place
+from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.trip import Trip
-from app.services import flight_segment_service
+from app.services import external_impact_service, flight_segment_service, signal_pull_service
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
@@ -20,6 +23,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
 ORG_A = "11111111-1111-1111-1111-111111111111"
 USER_A = "22222222-2222-2222-2222-222222222222"
+ADMIN_A = "55555555-5555-5555-5555-555555555555"
 
 
 @pytest.fixture(scope="module")
@@ -321,5 +325,158 @@ def test_flight_segment_link_refreshes_stale_trip_plan_pointer_under_lock(
             assert len(active) == 1
             assert active[0].plan_version_id == UUID(plan_two_id)
             assert active[0].plan_travel_leg_id == UUID(leg_two_id)
+    finally:
+        cleanup(trip_id, place_id)
+
+
+def test_open_sky_tracking_requires_explicit_segment_provider_reference_and_current_binding(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    trip_id, place_id, visit_id = create_trip_and_place(client)
+    try:
+        plan_id, leg_id = create_plan(trip_id, visit_id, version_number=1, mode="AIR")
+        created = client.post(
+            f"/v1/trips/{trip_id}/flight-segments",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=flight_payload(),
+        )
+        assert created.status_code == 201, created.text
+        segment_id = UUID(created.json()["id"])
+        linked = client.post(
+            f"/v1/trips/{trip_id}/flight-segments/{segment_id}:link",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json={"plan_travel_leg_id": leg_id},
+        )
+        assert linked.status_code == 200, linked.text
+
+        class StubOpenSky:
+            name = "opensky"
+
+            def fetch_by_callsign(self, callsign: str):
+                return [
+                    FlightState(
+                        icao24="3c675a",
+                        callsign=callsign,
+                        origin_country="Germany",
+                        latitude=52.52,
+                        longitude=13.405,
+                        baro_altitude_m=11887.2,
+                        velocity_ms=241.5,
+                        on_ground=False,
+                        last_contact=datetime.now(UTC),
+                    )
+                ]
+
+        monkeypatch.setattr(
+            signal_pull_service, "get_flight_provider", lambda: StubOpenSky()
+        )
+        pulled = client.post(
+            "/v1/integrations/signals:pull-flight",
+            headers=headers(**{"X-User-Id": ADMIN_A}),
+            json={
+                "trip_id": trip_id,
+                "flight_segment_id": str(segment_id),
+            },
+        )
+        assert pulled.status_code == 200, pulled.text
+        assert pulled.json()["flight_segment_id"] == str(segment_id)
+        assert pulled.json()["callsign"] == "DLH123"
+
+        with org_session(UUID(ORG_A)) as session:
+            signal = session.scalars(
+                select(ExternalSignal).where(
+                    ExternalSignal.organization_id == UUID(ORG_A),
+                    ExternalSignal.subject_ref == trip_id,
+                    ExternalSignal.signal_type == "FLIGHT_STATUS",
+                )
+            ).one()
+            assert signal.payload["flight_segment_id"] == str(segment_id)
+            assert signal.dedupe_key.startswith(f"opensky:{trip_id}:{segment_id}:")
+            current_trip = session.get(Trip, UUID(trip_id))
+            assert current_trip is not None
+            impact = external_impact_service.assess_flight_signal_impact(
+                session, UUID(ORG_A), current_trip, signal
+            )
+            assert impact["status"] == "TRACKING_MATCHED_TO_CURRENT_AIR_LEG"
+            assert impact["plan_version_id"] == plan_id
+            assert impact["linked_air_leg_ids"] == [leg_id]
+            assert impact["flight_designator"] == "LH123"
+            assert impact["operational_delay_assessment"] == (
+                "NOT_DERIVABLE_FROM_AIRCRAFT_TELEMETRY"
+            )
+            assert impact["telemetry_snapshot"]["on_ground"] is False
+
+        legacy_signal = ExternalSignal(
+            id=uuid.uuid4(),
+            organization_id=UUID(ORG_A),
+            provider="opensky",
+            signal_type="FLIGHT_STATUS",
+            subject_type="TRIP",
+            subject_ref=trip_id,
+            payload={"callsign": "DLH123", "icao24": "3c675a"},
+            confidence=0.95,
+            observed_at=datetime.now(UTC),
+            valid_from=datetime.now(UTC),
+            valid_until=datetime.now(UTC) + timedelta(hours=1),
+            dedupe_key=f"legacy-unlinked:{uuid.uuid4().hex}",
+        )
+        with org_session(UUID(ORG_A)) as session:
+            trip = session.get(Trip, UUID(trip_id))
+            assert trip is not None
+            impact = external_impact_service.assess_flight_signal_impact(
+                session, UUID(ORG_A), trip, legacy_signal
+            )
+            assert impact["status"] == "AIR_LEGS_REQUIRE_EXPLICIT_LINK"
+            assert impact["linked_air_leg_count"] == 0
+    finally:
+        cleanup(trip_id, place_id)
+
+
+def test_open_sky_tracking_rejects_provider_and_reference_mismatch(
+    client: TestClient,
+) -> None:
+    trip_id, place_id, _visit_id = create_trip_and_place(client)
+    try:
+        created = client.post(
+            f"/v1/trips/{trip_id}/flight-segments",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=flight_payload(),
+        )
+        assert created.status_code == 201, created.text
+        segment_id = UUID(created.json()["id"])
+
+        class StubProvider:
+            def __init__(self, name: str):
+                self.name = name
+
+            def fetch_by_callsign(self, callsign: str):
+                pytest.fail("provider mismatch must be rejected before network lookup")
+
+        with org_session(UUID(ORG_A)) as session:
+            with pytest.raises(Unprocessable, match="tracking_provider"):
+                signal_pull_service.pull_flight(
+                    session,
+                    ORG_A,
+                    trip_id=UUID(trip_id),
+                    flight_segment_id=segment_id,
+                    provider=StubProvider("other-provider"),
+                )
+            with pytest.raises(Unprocessable, match="tracking_reference"):
+                signal_pull_service.pull_flight(
+                    session,
+                    ORG_A,
+                    trip_id=UUID(trip_id),
+                    flight_segment_id=segment_id,
+                    callsign="BAW456",
+                    provider=StubProvider("opensky"),
+                )
+            assert session.scalar(
+                select(ExternalSignal.id).where(
+                    ExternalSignal.organization_id == UUID(ORG_A),
+                    ExternalSignal.subject_ref == trip_id,
+                    ExternalSignal.signal_type == "FLIGHT_STATUS",
+                )
+            ) is None
     finally:
         cleanup(trip_id, place_id)

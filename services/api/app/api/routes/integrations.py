@@ -83,6 +83,7 @@ def pull_flight_signals(
             context.organization_id,
             trip_id=payload.trip_id,
             callsign=payload.callsign,
+            flight_segment_id=payload.flight_segment_id,
         )
     except FlightDataUnavailable as exc:
         raise ServiceUnavailable(str(exc)) from exc
