@@ -302,7 +302,7 @@ final class AppEnvironment: ObservableObject {
             return
         }
         do {
-            _ = try await LocalDemoSeeder.seed(environment: self)
+            _ = try await LocalDemoSeeder.seed(environment: self, generatePlan: false)
             UserDefaults.standard.set(true, forKey: flagKey)
         } catch {
             // 自动注入失败不阻断首屏：设置页仍可手动载入，错误已在下一轮启动重试。
