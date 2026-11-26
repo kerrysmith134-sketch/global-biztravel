@@ -35,3 +35,10 @@
 - 潜在影响必须同时满足停靠点的 `[arrive_at, depart_at)` 与信号的有界 `[valid_from, valid_until)` 时间窗口重叠。没有有效结束时间时，不把当前天气外推到未来行程。
 - 评估结果随主动建议保存，并引用原始 ExternalSignal、ACTIVE PlanVersion 与 PlanStop。评估只表达时空潜在暴露，不宣布行程不可行。
 - 批准建议仍只生成 PREPARED 影响摘要，不修改 Trip 输入、不创建计划变更、不自动改签。正式计划调整仍通过 ADR-0011 的唯一计划变更入口，并由用户确认新版本。
+
+
+## H2.17 补充：天气交通上下文与航班关联约束
+
+- 天气评估除精确匹配的受影响拜访外，还会列出端点直接连接这些拜访的 \`PlanTravelLeg\`。仅在两个端点均位于同一 ACTIVE 计划时计算估算时刻余量：\`to_stop.arrive_at - from_stop.depart_at - travel_minutes\`；首段缺少起点停靠时，余量保持未知。
+- 相关交通段只是人工复核上下文，不代表交通本身已受天气影响。估算余量不是实时延误，也不允许系统据此传播延误或自动重排。
+- OpenSky 航班数据是航空器 telemetry。现有 \`PlanTravelLeg\` 不包含航班号、订座引用或机场计划时刻，因此即使 callsign/icao24 存在，系统也只展示未关联的 AIR 段，不自动匹配或宣称航班延误。建立 booking-to-leg 关联前必须引入权威航班/预订标识和用户确认流程。

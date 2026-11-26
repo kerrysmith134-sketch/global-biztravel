@@ -23,8 +23,9 @@ make db-up          # 如未启动
 
 ## 边界与已知限制
 
-- **EXTERNAL 触发源未接入**：签证政策 / 汇率 / 天气的真实外部源属于设计第 14 章集成层，
-  当前未建立连接。`visa_check` 只使用仓库内离线目录 `app/data/visa_catalog.json`，
+- **外部源能力不是同一成熟度**：天气与航班已有公开源接入边界；航班源 OpenSky 提供的是按
+  callsign 查询的航空器状态快照，不是用户的预订记录、时刻表或航司延误事实。签证政策与汇率
+  仍依赖可信信号输入；`visa_check` 只使用仓库内离线目录 `app/data/visa_catalog.json`，
   所有文案都写「需人工核验」，不宣布签证结论。
 - **推送语义**：`PUSHED` 表示「进入用户可见的建议流」，当前没有 APNs / 邮件通道；
   `WITHHELD` 表示入库但不展示。两者分离是为了让「为什么没看到」可解释。
@@ -32,8 +33,6 @@ make db-up          # 如未启动
   `proactive_suggestions.execution_result`；不发送、不预订、不提交签证。
 - **测试卫生**：用例创建的出行在结束时删除，避免污染每日打扰上限；`approvals` 是通用表，
   清理时先按 `subject_id` 删除。
-
-
 ## H2.16 — 天气信号的计划影响匹配
 
 | 验收点 | 测试 | 关键断言 |
@@ -42,3 +41,16 @@ make db-up          # 如未启动
 | 人审边界 | 同上 | 批准只生成 PREPARED 影响摘要；Trip version 和 active plan 指针不变 |
 
 天气计划影响评估不使用 LLM，不按名称/邻近坐标猜测地点。缺少 ACTIVE 计划、place_id 或有界有效期时会返回显式评估缺口，不声称已识别具体受影响拜访。
+
+
+## H2.17 — 天气影响扩展到交通段上下文与航班显式关联边界
+
+| 验收点 | 测试 | 关键断言 |
+|---|---|---|
+| 天气影响关联交通段 | \`test_weather_signal_maps_exact_place_and_time_window_to_active_plan\` | 只列出端点直接连接到时空匹配拜访的 PlanTravelLeg；有前后停靠时计算估算时刻间隔与余量，缺少起点时间时明确返回未知 |
+| 证据可追溯 | 同上 | 建议证据包含 PLAN_TRAVEL_LEG，引用交通模式、方向关系、估算余量与 stale 状态 |
+| 航班关联安全边界 | \`test_flight_signal_does_not_auto_match_air_leg_without_booking_link\` | OpenSky callsign/icao24 不自动绑定 AIR 段；未关联的 AIR 段列为人工核验候选，linked_air_leg_count 保持 0 |
+
+交通段余量仅按 \`next_stop.arrive_at - previous_stop.depart_at - travel_minutes\` 计算，是计划时刻与当前交通估算之间的派生余量；不代表实时延误、道路封闭或实际可用缓冲。任何外部天气关联都不会自动增加延误值或改变后续拜访时刻。
+
+当前没有航班预订/出票/机场时刻的权威数据实体，故 flight telemetry 与 AIR leg 必须经后续显式预订关联流程确认。调用航班源返回的 callsign 或 icao24 本身不足以证明其对应某位旅客的某张机票。
