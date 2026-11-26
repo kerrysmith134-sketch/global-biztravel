@@ -14,8 +14,8 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models.flights import FlightSegmentPlanBinding, TripFlightSegment
 from app.models.flight_operations import FlightOperationalUpdate
+from app.models.flights import FlightSegmentPlanBinding, TripFlightSegment
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.trip import Trip, Visit

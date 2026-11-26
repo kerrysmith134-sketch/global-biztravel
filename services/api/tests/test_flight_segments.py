@@ -11,8 +11,8 @@ from app.api.errors import Unprocessable
 from app.db import org_session
 from app.integrations.flights import FlightState
 from app.main import app
-from app.models.geo import Place
 from app.models.flight_operations import FlightOperationalUpdate
+from app.models.geo import Place
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.proactive import ProactiveSuggestion
