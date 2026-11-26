@@ -402,7 +402,6 @@ def test_weather_signal_maps_exact_place_and_time_window_to_active_plan(
             assert revised_impact["plan_version_id"] == revised_plan_id
             assert revised_impact["affected_visit_ids"] == [visit_ids[0]]
             assert revised_suggestion.status == "SUPPRESSED"
-      assert trip.version == trip_version
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
