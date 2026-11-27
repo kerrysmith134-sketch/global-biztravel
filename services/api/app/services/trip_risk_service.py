@@ -200,6 +200,8 @@ def _build_groups(
                     suggestion_type=suggestion.suggestion_type,
                     status=suggestion.status,
                     push_status=suggestion.push_status,
+                    severity=suggestion.severity,
+                    confidence=suggestion.confidence,
                     source_trigger_id=(
                         str(suggestion.source_trigger_id) if suggestion.source_trigger_id else None
                     ),
@@ -346,7 +348,7 @@ def _upsert_case(
     group: dict[str, Any],
     now: datetime,
     report: RiskReconciliationReport,
-) -> TripRiskCase:
+) -> TripRiskCase | None:
     case = session.scalars(
         select(TripRiskCase)
         .where(
@@ -664,7 +666,7 @@ def _validate_resolution(
         ).one_or_none()
         if plan is None:
             raise Unprocessable("ACTIVE 计划尚未基于当前 Trip Version，不能关闭风险")
-    elif basis == "FOLLOW_UP_COMPLETED":
+    elif basis in {"FOLLOW_UP_COMPLETED", "FOLLOW_UP_DISMISSED"}:
         follow_up_ids = [
             UUID(str(ref["id"]))
             for ref in (case.source_refs or [])
@@ -672,18 +674,22 @@ def _validate_resolution(
         ]
         if not follow_up_ids:
             raise Unprocessable("该风险没有可核验的 VisitFollowUp 来源")
-        completed = session.scalar(
-            select(func.count())
-            .select_from(VisitFollowUp)
-            .where(
-                VisitFollowUp.organization_id == case.organization_id,
-                VisitFollowUp.trip_id == trip.id,
-                VisitFollowUp.id.in_(follow_up_ids),
-                VisitFollowUp.status == "COMPLETED",
-            )
+        rows = list(
+            session.scalars(
+                select(VisitFollowUp).where(
+                    VisitFollowUp.organization_id == case.organization_id,
+                    VisitFollowUp.trip_id == trip.id,
+                    VisitFollowUp.id.in_(follow_up_ids),
+                )
+            ).all()
         )
-        if not completed:
-            raise Unprocessable("尚无已完成的来源 FollowUp，不能关闭风险")
+        if len(rows) != len(follow_up_ids):
+            raise Unprocessable("来源 FollowUp 记录不完整，不能关闭风险")
+        allowed_statuses = (
+            {"COMPLETED"} if basis == "FOLLOW_UP_COMPLETED" else {"DISMISSED"}
+        )
+        if any(row.status not in allowed_statuses for row in rows):
+            raise Unprocessable("并非所有来源 FollowUp 都满足关闭依据")
     elif basis == "TRIP_CLOSED":
         if trip.status not in {"COMPLETED", "CANCELLED"}:
             raise Unprocessable("出行尚未完成或取消")
@@ -783,12 +789,9 @@ def transition_case(
         case.resolved_at = now
         case.next_review_at = None
     elif to_status == "DISMISSED":
-        _validate_resolution(
-            session,
-            case,
-            trip,
-            basis="FALSE_POSITIVE_CONFIRMED" if resolution_basis == "FALSE_POSITIVE_CONFIRMED" else None,
-        )
+        if resolution_basis not in {"FALSE_POSITIVE_CONFIRMED", "FOLLOW_UP_DISMISSED"}:
+            raise Unprocessable("驳回风险必须基于已驳回的建议或已驳回的来源跟进项")
+        _validate_resolution(session, case, trip, basis=resolution_basis)
         case.dismissed_at = now
         case.resolution_basis = resolution_basis or "HUMAN_DISMISSED"
         case.resolution_note = note.strip()
