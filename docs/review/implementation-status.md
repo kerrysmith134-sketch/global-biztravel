@@ -483,3 +483,10 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 原评估、新航班事件、当前计划传播结果、客户窗口陈述及重评结果分别形成 Evidence，SHA-256 绑定规范化快照；WorkflowInstance / AgentRun 记录前后评估、输入摘要和差异。
 - 仅在证据完整且预计到达满足所提供的客户窗口时返回 Plan Change 建议（CHANGE_VISIT_TIME + base plan/trip version）；不会调用 Plan Change 服务，不修改 Visit / Trip / PlanVersion / PlanStop / FlightSegment，不完成 FollowUp，不联系客户或改签。
 - 新增 REASSESSED 事件（迁移 0052_recovery_reassessment_events）；跟进 Feed 显示最新重评摘要。相同输入摘要在同一 FollowUp 下语义去重。
+
+### 2026-11-27 H2.24.1 — Customer Appointment Timezone Integrity
+
+- 客户窗口的 `start_at` 与 `end_at` 分别按声明的 IANA 时区核验 UTC offset；允许跨 DST 边界使用不同 offset，拒绝不匹配 offset 和 DST 不存在的本地时间，不静默修正时间。
+- 回归测试覆盖合法 DST 跨越、开始时间 offset 错误、DST 跳时段及结束时间 offset 错误。
+- 不改变 API 字段结构，不新增数据库迁移；决策依据登记在 ADR-0048。
+- 本轮未执行本地测试或 CI；GitHub 对本轮提交尚未返回状态检查，测试结果待验证。
