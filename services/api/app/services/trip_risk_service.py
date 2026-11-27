@@ -159,6 +159,40 @@ def _build_groups(
         ).all()
     )
     suggestions_by_id = {row.id: row for row in suggestions}
+    linked_signal_ids: set[UUID] = set()
+    for suggestion in suggestions:
+        action = suggestion.proposed_action if isinstance(suggestion.proposed_action, dict) else {}
+        params = action.get("params")
+        raw_signal_id = params.get("signal_id") if isinstance(params, dict) else None
+        if raw_signal_id:
+            try:
+                linked_signal_ids.add(UUID(str(raw_signal_id)))
+            except (TypeError, ValueError):
+                continue
+
+    non_operational_flight_signal_ids: set[str] = set()
+    if linked_signal_ids:
+        linked_signals = session.scalars(
+            select(ExternalSignal).where(
+                ExternalSignal.organization_id == organization_id,
+                ExternalSignal.id.in_(linked_signal_ids),
+            )
+        ).all()
+        operational_markers = {
+            "operational_update_id",
+            "operational_update_content_sha256",
+            "operational_update_type",
+            "flight_operational_update",
+        }
+        non_operational_flight_signal_ids = {
+            str(signal.id)
+            for signal in linked_signals
+            if signal.signal_type == "FLIGHT_STATUS"
+            and not operational_markers.intersection(
+                signal.payload if isinstance(signal.payload, dict) else {}
+            )
+        }
+
     recovery_run_ids = {
         row.source_agent_run_id
         for row in session.scalars(
@@ -197,8 +231,13 @@ def _build_groups(
         raw_params = action.get("params")
         params: dict[str, Any] = raw_params if isinstance(raw_params, dict) else {}
         raw_signal_id = params.get("signal_id")
-        if isinstance(raw_signal_id, str) and raw_signal_id.strip():
-            signal_group_keys[raw_signal_id.strip()] = key
+        normalized_signal_id = str(raw_signal_id).strip() if raw_signal_id else ""
+        if normalized_signal_id in non_operational_flight_signal_ids:
+            # Keep the suggestion in its own domain feed for human review, but do not
+            # promote aircraft telemetry into a verified Trip Risk & Recovery Case.
+            continue
+        if normalized_signal_id:
+            signal_group_keys[normalized_signal_id] = key
         groups[key] = {
             "case_key": key,
             "risk_type": _risk_type(suggestion.suggestion_type),
