@@ -13,17 +13,18 @@ from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, Unprocessable
+from app.models.integrations import ExternalSignal
 from app.models.planning import PlanVersion
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp
 from app.models.trip import Trip
 from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun
-from app.services import notification_service
+from app.services import external_impact_service, notification_service
 
 TERMINAL_STATUSES = frozenset({"RESOLVED", "DISMISSED"})
 ACTIVE_SUGGESTION_STATUSES = frozenset({"PENDING", "APPROVED", "EXECUTED", "SUPPRESSED"})
@@ -180,6 +181,7 @@ def _build_groups(
         }
 
     groups: dict[str, dict[str, Any]] = {}
+    signal_group_keys: dict[str, str] = {}
     for suggestion in suggestions:
         if (
             suggestion.status not in ACTIVE_SUGGESTION_STATUSES
@@ -192,6 +194,9 @@ def _build_groups(
         )
         raw_params = action.get("params")
         params: dict[str, Any] = raw_params if isinstance(raw_params, dict) else {}
+        raw_signal_id = params.get("signal_id")
+        if isinstance(raw_signal_id, str) and raw_signal_id.strip():
+            signal_group_keys[raw_signal_id.strip()] = key
         groups[key] = {
             "case_key": key,
             "risk_type": _risk_type(suggestion.suggestion_type),
@@ -304,6 +309,301 @@ def _build_groups(
             group["evidence_refs"].append(
                 _source_ref("AGENT_RUN", follow_up.source_agent_run_id, agent_type=follow_up.source_type)
             )
+
+    # ExternalSignal is the canonical source record for provider observations. Merge it
+    # into the matching suggestion Case when possible; otherwise keep a signal-native Case.
+    # OpenSky telemetry deliberately stays out of the risk queue unless a separately
+    # validated FlightOperationalUpdate envelope is present.
+    subject_refs: list[tuple[str, str]] = [("TRIP", str(trip.id))]
+    subject_refs.extend(
+        ("COUNTRY", str(country).upper())
+        for country in (trip.countries or [])
+        if str(country).strip()
+    )
+    signal_subject_filter = or_(
+        *[
+            (ExternalSignal.subject_type == subject_type)
+            & (ExternalSignal.subject_ref == subject_ref)
+            for subject_type, subject_ref in subject_refs
+        ]
+    )
+    external_signals = list(
+        session.scalars(
+            select(ExternalSignal)
+            .where(
+                ExternalSignal.organization_id == organization_id,
+                signal_subject_filter,
+                ExternalSignal.observed_at <= func.coalesce(func.cast(None, DateTime(timezone=True)), ExternalSignal.observed_at),
+                ExternalSignal.valid_from <= func.clock_timestamp(),
+                or_(
+                    ExternalSignal.valid_until.is_(None),
+                    ExternalSignal.valid_until > func.clock_timestamp(),
+                ),
+            )
+            .order_by(ExternalSignal.observed_at, ExternalSignal.id)
+        ).all()
+    )
+    for signal in external_signals:
+        payload = signal.payload if isinstance(signal.payload, dict) else {}
+        if signal.signal_type == "FLIGHT_STATUS":
+            operational_markers = {
+                "operational_update_id",
+                "operational_update_content_sha256",
+                "operational_update_type",
+                "flight_operational_update",
+            }
+            if not operational_markers.intersection(payload):
+                # Aircraft position/velocity snapshots are not airline operational facts.
+                continue
+            impact = external_impact_service.assess_flight_signal_impact(
+                session, organization_id, trip, signal
+            )
+        elif signal.signal_type == "WEATHER_DISRUPTION":
+            impact = external_impact_service.assess_weather_signal_impact(
+                session, organization_id, trip, signal
+            )
+        elif signal.signal_type in {"VISA_POLICY_CHANGE", "FX_VOLATILITY"}:
+            impact = {
+                "signal_id": str(signal.id),
+                "signal_type": signal.signal_type,
+                "status": "SOURCE_ONLY_REQUIRES_HUMAN_REVIEW",
+                "assessment_method": "SOURCE_ONLY_MANUAL_REVIEW",
+                "plan_version_id": None,
+                "explanation": (
+                    "该类外部信号目前没有经过确定性验证的行程影响适配器；"
+                    "仅保留 Provider 来源和有效时间，必须人工核验，不推断签证结论或汇率损失。"
+                ),
+            }
+        else:
+            continue
+
+        signal_id = str(signal.id)
+        case_key = signal_group_keys.get(signal_id, f"external_signal:{signal_id}")
+        group = groups.get(case_key)
+        assessment_hash = hashlib.sha256(
+            _canonical_json(impact).encode("utf-8")
+        ).hexdigest()
+        signal_snapshot = {
+            "provider": signal.provider,
+            "signal_type": signal.signal_type,
+            "subject_type": signal.subject_type,
+            "subject_ref": signal.subject_ref,
+            "payload": payload,
+            "confidence": signal.confidence,
+            "observed_at": signal.observed_at.isoformat(),
+            "valid_from": signal.valid_from.isoformat(),
+            "valid_until": signal.valid_until.isoformat() if signal.valid_until else None,
+            "dedupe_key": signal.dedupe_key,
+        }
+        signal_snapshot_hash = hashlib.sha256(
+            _canonical_json(signal_snapshot).encode("utf-8")
+        ).hexdigest()
+
+        if signal.signal_type == "FLIGHT_STATUS":
+            update_type = str(impact.get("update_type") or "")
+            flight_labels = {
+                "SCHEDULE_CHANGE": "航班计划变化",
+                "DEPARTURE_DELAY": "航班起飞延误",
+                "ARRIVAL_DELAY": "航班到达延误",
+                "CANCELLED": "航班取消",
+                "DIVERTED": "航班备降",
+                "GATE_CHANGE": "航班登机口变化",
+            }
+            default_title = (
+                f"{impact.get('flight_designator') or '航班'} "
+                f"{flight_labels.get(update_type, '运营状态待核验')}"
+            )
+            missed_visits = impact.get("missed_visit_ids") or []
+            affected_visits = impact.get("affected_visit_ids") or []
+            if update_type in {"CANCELLED", "DIVERTED"} or missed_visits:
+                signal_severity = "HIGH"
+            elif impact.get("status") == "NO_SCHEDULE_IMPACT_REPORTED" or (
+                impact.get("status") == "OPERATIONAL_DELAY_ASSESSED" and not affected_visits
+            ):
+                signal_severity = "LOW"
+            else:
+                signal_severity = "MEDIUM"
+        elif signal.signal_type == "WEATHER_DISRUPTION":
+            default_title = "恶劣天气暴露待核验"
+            if impact.get("status") == "PLACE_AND_TIME_OVERLAP":
+                signal_severity = "HIGH"
+            elif impact.get("status") in {
+                "PLACE_MATCH_NO_TIME_OVERLAP",
+                "NO_PLANNED_STOP_AT_SIGNAL_PLACE",
+            }:
+                signal_severity = "LOW"
+            else:
+                signal_severity = "MEDIUM"
+        elif signal.signal_type == "VISA_POLICY_CHANGE":
+            default_title = "签证政策变化待核验"
+            signal_severity = "MEDIUM"
+        else:
+            default_title = "汇率波动信号待核验"
+            signal_severity = "MEDIUM"
+
+        source_ref = _source_ref(
+            "EXTERNAL_SIGNAL",
+            signal.id,
+            provider=signal.provider,
+            signal_type=signal.signal_type,
+            subject_type=signal.subject_type,
+            subject_ref=signal.subject_ref,
+            confidence=signal.confidence,
+            observed_at=signal.observed_at.isoformat(),
+            valid_from=signal.valid_from.isoformat(),
+            valid_until=signal.valid_until.isoformat() if signal.valid_until else None,
+            dedupe_key=signal.dedupe_key,
+            content_sha256=signal_snapshot_hash,
+        )
+        evidence = [
+            {
+                "type": "EXTERNAL_SIGNAL_PAYLOAD",
+                "id": signal_id,
+                "sha256": signal_snapshot_hash,
+            },
+            {
+                "type": "IMPACT_ASSESSMENT",
+                "id": signal_id,
+                "sha256": assessment_hash,
+                "status": impact.get("status"),
+                "assessment_method": impact.get("assessment_method"),
+            },
+        ]
+        if impact.get("plan_version_id"):
+            evidence.append(
+                {
+                    "type": "PLAN_VERSION",
+                    "id": str(impact["plan_version_id"]),
+                    "version_number": impact.get("plan_version_number"),
+                }
+            )
+        if impact.get("operational_update_id"):
+            evidence.append(
+                {
+                    "type": "FLIGHT_OPERATIONAL_UPDATE",
+                    "id": str(impact["operational_update_id"]),
+                    "provider": impact.get("provider"),
+                    "provider_event_id": impact.get("provider_event_id"),
+                    "update_type": impact.get("update_type"),
+                    "content_sha256": impact.get("content_sha256"),
+                }
+            )
+        if impact.get("flight_segment_id"):
+            evidence.append(
+                {
+                    "type": "FLIGHT_SEGMENT",
+                    "id": str(impact["flight_segment_id"]),
+                    "flight_designator": impact.get("flight_designator"),
+                }
+            )
+        if impact.get("binding_id"):
+            evidence.append(
+                {
+                    "type": "FLIGHT_SEGMENT_PLAN_BINDING",
+                    "id": str(impact["binding_id"]),
+                    "plan_version_id": impact.get("plan_version_id"),
+                }
+            )
+        for stop in impact.get("matched_stops", []):
+            evidence.append(
+                {
+                    "type": "PLAN_STOP",
+                    "id": str(stop["plan_stop_id"]),
+                    "visit_id": str(stop["visit_id"]),
+                    "time_window_overlap": stop.get("time_window_overlap"),
+                }
+            )
+        for stop in impact.get("stop_impacts", []):
+            evidence.append(
+                {
+                    "type": "PLAN_STOP_IMPACT",
+                    "id": str(stop["plan_stop_id"]),
+                    "visit_id": str(stop["visit_id"]),
+                    "appointment_status": stop.get("appointment_status"),
+                    "delay_minutes": stop.get("delay_minutes"),
+                    "reason": stop.get("reason"),
+                }
+            )
+        for leg in impact.get("related_travel_legs", []):
+            leg_id = leg.get("plan_travel_leg_id")
+            if leg_id:
+                evidence.append(
+                    {
+                        "type": "PLAN_TRAVEL_LEG",
+                        "id": str(leg_id),
+                        "mode": leg.get("mode"),
+                        "relation": leg.get("relation"),
+                        "stale": leg.get("stale"),
+                        "schedule_slack_minutes": leg.get("estimated_schedule_slack_minutes"),
+                    }
+                )
+        linked_leg = impact.get("linked_air_leg")
+        if isinstance(linked_leg, dict) and linked_leg.get("plan_travel_leg_id"):
+            evidence.append(
+                {
+                    "type": "PLAN_TRAVEL_LEG",
+                    "id": str(linked_leg["plan_travel_leg_id"]),
+                    "mode": linked_leg.get("mode"),
+                    "stale": linked_leg.get("stale"),
+                }
+            )
+
+        if group is None:
+            provider_summary = str(payload.get("summary") or "").strip()
+            explanation = str(impact.get("explanation") or "").strip()
+            summary_parts = [
+                f"外部源 {signal.provider} 报告：{provider_summary}"
+                if provider_summary
+                else f"外部源 {signal.provider} 报告了一条相关信号。",
+                explanation,
+            ]
+            group = {
+                "case_key": case_key,
+                "risk_type": {
+                    "VISA_POLICY_CHANGE": "VISA",
+                    "WEATHER_DISRUPTION": "WEATHER",
+                    "FX_VOLATILITY": "FINANCIAL",
+                    "FLIGHT_STATUS": "FLIGHT",
+                }[signal.signal_type],
+                "severity": signal_severity,
+                "title": default_title,
+                "summary": " ".join(part for part in summary_parts if part)[:8000],
+                "source_refs": [],
+                "evidence_refs": [],
+                "context": {},
+                "suggestion": None,
+                "follow_ups": [],
+                "should_create": True,
+            }
+            groups[case_key] = group
+        else:
+            severity_rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+            if severity_rank.get(signal_severity, 1) > severity_rank.get(group["severity"], 1):
+                group["severity"] = signal_severity
+
+        group["source_refs"].append(source_ref)
+        group["evidence_refs"].extend(evidence)
+        assessments = group["context"].get("external_signal_assessments")
+        assessments = assessments if isinstance(assessments, list) else []
+        assessments = [
+            item for item in assessments
+            if not isinstance(item, dict) or item.get("signal_id") != signal_id
+        ]
+        assessments.append(
+            {
+                "signal_id": signal_id,
+                "signal_type": signal.signal_type,
+                "provider": signal.provider,
+                "observed_at": signal.observed_at.isoformat(),
+                "content_sha256": signal_snapshot_hash,
+                "impact_assessment_sha256": assessment_hash,
+                "impact_assessment": impact,
+            }
+        )
+        group["context"]["external_signal_assessments"] = sorted(
+            assessments, key=lambda item: (str(item.get("observed_at")), str(item.get("signal_id")))
+        )
+        group["context"]["external_signal_count"] = len(assessments)
 
     # Stable order and no duplicated exact source reference.
     for group in groups.values():
