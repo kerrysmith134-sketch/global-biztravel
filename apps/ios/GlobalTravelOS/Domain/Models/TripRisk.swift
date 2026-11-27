@@ -120,7 +120,7 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
     }
 }
 
-enum TripRiskTransitionTarget: String, CaseIterable, Identifiable {
+enum TripRiskTransitionTarget: String, Codable, CaseIterable, Identifiable {
     case acknowledged = "ACKNOWLEDGED"
     case inProgress = "IN_PROGRESS"
     case waitingExternal = "WAITING_EXTERNAL"
