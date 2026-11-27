@@ -53,13 +53,44 @@ def list_visits(
     return list(session.scalars(stmt.order_by(Visit.created_at)).all())
 
 
+def _lock_trip_for_visit_write(
+    session: Session, organization_id: UUID | str, trip_id: UUID
+) -> Trip:
+    """Acquire the Trip row before any Visit write to keep a consistent lock order."""
+    trip = session.scalars(
+        select(Trip)
+        .where(Trip.organization_id == organization_id, Trip.id == trip_id)
+        .with_for_update()
+    ).one_or_none()
+    if trip is None:
+        raise NotFound("出行不存在", details={"trip_id": str(trip_id)})
+    return trip
+
+
+def _lock_visit_for_write(
+    session: Session, organization_id: UUID | str, trip_id: UUID, visit_id: UUID
+) -> Visit:
+    visit = session.scalars(
+        select(Visit)
+        .where(
+            Visit.organization_id == organization_id,
+            Visit.trip_id == trip_id,
+            Visit.id == visit_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if visit is None:
+        raise NotFound("拜访不存在", details={"visit_id": str(visit_id)})
+    return visit
+
+
 def create_visit(
     session: Session,
     organization_id: UUID | str,
     trip_id: UUID,
     payload: VisitCreate,
 ) -> Visit:
-    trip = trip_service.require_trip(session, organization_id, trip_id)
+    trip = _lock_trip_for_visit_write(session, organization_id, trip_id)
     _assert_place(session, organization_id, payload.place_id)
     if payload.customer_id is not None:
         _assert_customer(session, organization_id, payload.customer_id)
@@ -92,7 +123,10 @@ def update_visit(
     visit_id: UUID,
     payload: VisitUpdate,
 ) -> Visit:
-    visit = require_visit(session, organization_id, visit_id)
+    # Lock order is Trip → Visit for every writer, matching plan-change and activation flows.
+    visit_ref = require_visit(session, organization_id, visit_id)
+    _lock_trip_for_visit_write(session, organization_id, visit_ref.trip_id)
+    visit = _lock_visit_for_write(session, organization_id, visit_ref.trip_id, visit_id)
     fields = payload.model_dump(exclude_unset=True)
     if "customer_id" in fields and fields["customer_id"] is not None:
         _assert_customer(session, organization_id, fields["customer_id"])
@@ -110,9 +144,10 @@ def update_visit(
 
 
 def delete_visit(session: Session, organization_id: UUID | str, visit_id: UUID) -> Trip:
-    visit = require_visit(session, organization_id, visit_id)
-    trip_id = visit.trip_id
-    trip = trip_service.require_trip(session, organization_id, trip_id)
+    visit_ref = require_visit(session, organization_id, visit_id)
+    trip_id = visit_ref.trip_id
+    trip = _lock_trip_for_visit_write(session, organization_id, trip_id)
+    visit = _lock_visit_for_write(session, organization_id, trip_id, visit_id)
     session.delete(visit)
     session.flush()
     trip_service.touch_trip(session, trip_id, organization_id)
