@@ -18,6 +18,7 @@ struct AppointmentRecoveryPlanChangeSheet: View {
     @State private var isLoadingBasis = false
     @State private var isSubmitting = false
     @State private var isRefreshingJob = false
+    @State private var isRetryingPlanning = false
     @State private var isActivating = false
     @State private var errorMessage: String?
     @State private var statusMessage: String?
@@ -138,7 +139,24 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                                 Label("刷新规划状态", systemImage: "arrow.clockwise")
                             }
                         }
-                        .disabled(isRefreshingJob || isActivating)
+                        .disabled(isRefreshingJob || isActivating || isRetryingPlanning)
+                        if job?.resolvedStatus == .failed
+                            || job?.resolvedStatus == .dead
+                            || job?.resolvedStatus == .cancelled {
+                            Button {
+                                Task { await retryPlanning() }
+                            } label: {
+                                if isRetryingPlanning {
+                                    Label("重新排队中…", systemImage: "hourglass")
+                                } else {
+                                    Label("在当前输入上重新生成计划", systemImage: "arrow.clockwise")
+                                }
+                            }
+                            .disabled(isRetryingPlanning || isRefreshingJob || isActivating)
+                            Text("只重新发起求解，不会再次修改拜访时间窗。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -353,6 +371,41 @@ struct AppointmentRecoveryPlanChangeSheet: View {
             generatedPlan = plan
             diff = comparison
             statusMessage = "新计划已生成，并已取得与原计划的差异。请检查验证结果后决定是否激活。"
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    private func retryPlanning() async {
+        guard let accepted, !isRetryingPlanning else { return }
+        isRetryingPlanning = true
+        errorMessage = nil
+        defer { isRetryingPlanning = false }
+
+        do {
+            let latestTrip = try await environment.tripRepository.trip(id: followUp.tripId)
+            currentTrip = latestTrip
+            guard
+                latestTrip.version == accepted.tripVersion,
+                latestTrip.activePlanVersionId == proposal.basePlanVersionId
+            else {
+                errorMessage = "行程或生效计划已再次变化。请先重新读取最新行程，再决定如何继续规划。"
+                return
+            }
+            let retry = try await environment.planRepository.generatePlan(
+                tripId: followUp.tripId,
+                request: .default
+            )
+            self.accepted = PlanChangeAccepted(
+                changeRequestId: accepted.changeRequestId,
+                status: "REQUEUED",
+                optimizationJobId: retry.jobId,
+                tripVersion: latestTrip.version
+            )
+            job = nil
+            generatedPlan = nil
+            diff = nil
+            statusMessage = "已在当前预约输入上重新排队求解，没有重复提交时间变更。"
         } catch {
             errorMessage = environment.errorMessage(error)
         }
