@@ -6,9 +6,12 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
     @Published private(set) var events: [TripRiskCaseEvent] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isCaseFresh = false
+    @Published private(set) var isTransitioning = false
+    @Published private(set) var hasEarlierEvents = false
     @Published var errorMessage: String?
 
     private let environment: AppEnvironment
+    private var refreshGeneration = 0
 
     init(riskCase: TripRiskCase, environment: AppEnvironment) {
         self.riskCase = riskCase
@@ -16,43 +19,63 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
     }
 
     func refresh() async {
+        guard !isTransitioning else { return }
+        refreshGeneration += 1
+        let generation = refreshGeneration
         isLoading = true
         isCaseFresh = false
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            if generation == refreshGeneration {
+                isLoading = false
+            }
+        }
         do {
             let page = try await environment.tripRiskRepository.cases(
                 tripId: riskCase.tripId,
                 status: nil,
                 limit: 200
             )
+            guard generation == refreshGeneration else { return }
             guard let latest = page.items.first(where: { $0.id == riskCase.id }) else {
                 events = []
+                hasEarlierEvents = false
                 errorMessage = "该风险事项已不在当前行程的服务端记录中，请返回工作台重新加载"
                 return
             }
             riskCase = latest
             isCaseFresh = true
             do {
-                events = try await environment.tripRiskRepository.events(
+                let loadedEvents = try await environment.tripRiskRepository.events(
                     tripId: riskCase.tripId,
                     caseId: riskCase.id,
                     limit: 200
-                ).sorted { $0.createdAt < $1.createdAt }
+                )
+                guard generation == refreshGeneration else { return }
+                let orderedEvents = TripRiskCaseEvent.orderedByCaseVersion(loadedEvents)
+                events = Array(orderedEvents.suffix(200))
+                hasEarlierEvents = orderedEvents.count == 200
+                    && (orderedEvents.first?.caseVersion ?? 1) > 1
             } catch {
+                guard generation == refreshGeneration else { return }
                 events = []
+                hasEarlierEvents = false
                 errorMessage = environment.errorMessage(error)
             }
         } catch {
+            guard generation == refreshGeneration else { return }
             events = []
+            hasEarlierEvents = false
             errorMessage = environment.errorMessage(error)
         }
     }
 
     func transition(_ request: TripRiskTransitionRequest) async throws -> TripRiskCase {
-        guard isCaseFresh else {
-            throw RepositoryError.requiresNetwork("风险状态尚未成功刷新，当前不能提交处置")
+        guard isCaseFresh, !isTransitioning else {
+            throw RepositoryError.requiresNetwork("风险状态尚未成功刷新，或另一项处置正在提交")
         }
+        isTransitioning = true
+        defer { isTransitioning = false }
         let outcome = try await environment.tripRiskRepository.transition(
             tripId: riskCase.tripId,
             caseId: riskCase.id,
@@ -60,8 +83,13 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
         )
         riskCase = outcome.caseItem
         isCaseFresh = true
-        events.append(outcome.event)
-        events.sort { $0.createdAt < $1.createdAt }
+        let orderedEvents = TripRiskCaseEvent.orderedByCaseVersion(events + [outcome.event])
+        if orderedEvents.count > 200 {
+            hasEarlierEvents = true
+            events = Array(orderedEvents.suffix(200))
+        } else {
+            events = orderedEvents
+        }
         return outcome.caseItem
     }
 }
@@ -170,6 +198,14 @@ struct TripRiskCaseDetailView: View {
                 }
 
                 Section {
+                    if viewModel.hasEarlierEvents {
+                        Label(
+                            "当前仅展示最近 200 条事件，较早记录未加载",
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(DS.ColorToken.warning)
+                    }
                     if let error = viewModel.errorMessage {
                         Text(error)
                             .font(.footnote)
@@ -205,6 +241,7 @@ struct TripRiskCaseDetailView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("刷新事件")
+                    .disabled(viewModel.isLoading || viewModel.isTransitioning)
                 }
             }
             .task { await viewModel.refresh() }
