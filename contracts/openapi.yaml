@@ -30159,6 +30159,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "case_version": {
+            "type": "integer",
+            "title": "Case Version"
           }
         },
         "type": "object",
@@ -30167,6 +30171,7 @@
           "organization_id",
           "trip_id",
           "case_id",
+          "case_version",
           "event_type",
           "from_status",
           "to_status",
