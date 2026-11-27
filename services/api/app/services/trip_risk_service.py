@@ -23,6 +23,7 @@ from app.models.records import VisitFollowUp
 from app.models.trip import Trip
 from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun
+from app.services import notification_service
 
 
 TERMINAL_STATUSES = frozenset({"RESOLVED", "DISMISSED"})
@@ -341,6 +342,20 @@ def _inferred_status(group: dict[str, Any], current_status: str) -> str:
     return current_status
 
 
+def _enqueue_escalation_notification(
+    session: Session,
+    trip: Trip,
+    case: TripRiskCase,
+) -> None:
+    if case.status != "ESCALATED":
+        return
+    notification_service.enqueue_for_trip_risk_case(
+        session,
+        case,
+        user_id=trip.owner_user_id,
+    )
+
+
 def _upsert_case(
     session: Session,
     organization_id: UUID,
@@ -501,6 +516,7 @@ def _upsert_case(
             _transition_system(session, case, "ESCALATED", now=now, reason="复核期限已到且风险未关闭")
             case.escalated_at = now
             case.next_review_at = now + timedelta(hours=1)
+            _enqueue_escalation_notification(session, trip, case)
             report.escalated += 1
         else:
             case.last_observed_at = now
@@ -603,6 +619,7 @@ def reconcile_trip(
             _transition_system(session, case, "ESCALATED", now=current, reason="复核期限已到且风险未关闭")
             case.escalated_at = current
             case.next_review_at = current + timedelta(hours=1)
+            _enqueue_escalation_notification(session, trip, case)
             report.escalated += 1
         else:
             case.next_review_at = current + (
