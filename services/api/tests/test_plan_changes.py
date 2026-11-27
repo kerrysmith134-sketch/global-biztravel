@@ -164,6 +164,22 @@ def test_plan_change_updates_input_and_enqueues_new_plan(client: TestClient) -> 
             retried_job = session.get(BackgroundJob, UUID(retried_body["optimization_job_id"]))
             assert retried_job is not None and retried_job.status == "PENDING"
 
+        # A later Trip input mutation makes the old Plan Change workflow non-retryable.
+        with org_session(UUID(ORG_A)) as session:
+            retried_job = session.get(BackgroundJob, UUID(retried_body["optimization_job_id"]))
+            trip_row = session.get(Trip, UUID(trip_id))
+            assert retried_job is not None and trip_row is not None
+            retried_job.status = "FAILED"
+            retried_job.finished_at = datetime.now(UTC)
+            trip_row.version += 1
+
+        stale_retry = client.post(
+            f"/v1/plan-changes/{body['change_request_id']}:retry",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert stale_retry.status_code == 409, stale_retry.text
+        assert stale_retry.json()["error"]["code"] == "PLAN_VERSION_CONFLICT"
+
         visits = client.get(f"/v1/trips/{trip_id}/visits", headers=headers()).json()
         target = next(item for item in visits if item["id"] == visit_id)
         assert target["time_window_start"] is not None
