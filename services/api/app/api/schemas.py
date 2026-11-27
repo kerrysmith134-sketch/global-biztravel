@@ -301,6 +301,7 @@ class TripRiskCaseEventRead(ORMModel):
     organization_id: UUID
     trip_id: UUID
     case_id: UUID
+    case_version: int
     event_type: str
     from_status: TripRiskStatus | None
     to_status: TripRiskStatus
