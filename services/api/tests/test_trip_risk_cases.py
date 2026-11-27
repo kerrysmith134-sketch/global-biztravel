@@ -10,7 +10,9 @@ import pytest
 from app.db import org_session
 from app.main import app
 from app.models.geo import Place
+from app.models.integrations import ExternalSignal
 from app.models.notifications import Notification
+from app.models.planning import PlanStop, PlanVersion
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp
 from app.models.trip import Trip
@@ -440,6 +442,247 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
     finally:
         cleanup(trip_id, place_id)
 
+
+
+
+def test_trip_risk_merges_weather_signal_and_plan_impact_into_linked_suggestion(
+    client: TestClient,
+) -> None:
+    now = datetime.now(UTC)
+    trip = client.post(
+        "/v1/trips",
+        headers=headers(key=str(uuid.uuid4())),
+        json={
+            "name": f"Weather risk lineage · {uuid.uuid4().hex[:8]}",
+            "window_start": (now + timedelta(minutes=5)).isoformat(),
+            "window_end": (now + timedelta(hours=4)).isoformat(),
+            "countries": ["DE"],
+            "currency": "EUR",
+        },
+    )
+    assert trip.status_code == 201, trip.text
+    trip_id = trip.json()["id"]
+    marker = uuid.uuid4().hex[:8]
+    place = client.post(
+        "/v1/places",
+        headers=headers(key=str(uuid.uuid4())),
+        json={
+            "name": f"Weather risk place · {marker}",
+            "city": "Berlin",
+            "country_code": "DE",
+            "lat": 52.52,
+            "lon": 13.405,
+        },
+    )
+    assert place.status_code == 201, place.text
+    place_id = place.json()["id"]
+    visit_start = now + timedelta(minutes=35)
+    visit_end = now + timedelta(minutes=65)
+    visit = client.post(
+        f"/v1/trips/{trip_id}/visits",
+        headers=headers(key=str(uuid.uuid4())),
+        json={
+            "place_id": place_id,
+            "title": "Weather exposed customer visit",
+            "service_minutes": 30,
+            "time_window_start": visit_start.isoformat(),
+            "time_window_end": visit_end.isoformat(),
+        },
+    )
+    assert visit.status_code == 201, visit.text
+    visit_id = visit.json()["id"]
+
+    signal_id = uuid.uuid4()
+    suggestion_id = uuid.uuid4()
+    dedupe_key = f"trip-risk-weather:{uuid.uuid4().hex}"
+    with org_session(UUID(ORG_A)) as session:
+        trip_row = session.get(Trip, UUID(trip_id))
+        assert trip_row is not None
+        plan = PlanVersion(
+            organization_id=UUID(ORG_A),
+            trip_id=trip_row.id,
+            version_number=1,
+            status="ACTIVE",
+            problem_hash=f"weather-risk:{uuid.uuid4().hex}",
+            solver="heuristic",
+            objective_value=0.0,
+            solution_status="FEASIBLE",
+            trip_version=trip_row.version,
+            validation={"feasible": True},
+            unplaced=[],
+            activated_at=now,
+        )
+        session.add(plan)
+        session.flush()
+        trip_row.active_plan_version_id = plan.id
+        trip_row.status = "ACTIVE"
+        session.add(
+            PlanStop(
+                organization_id=UUID(ORG_A),
+                plan_version_id=plan.id,
+                visit_id=UUID(visit_id),
+                day_index=0,
+                sequence=1,
+                day_date=visit_start.date(),
+                arrive_at=visit_start,
+                depart_at=visit_end,
+                travel_minutes=0,
+                service_minutes=30,
+            )
+        )
+        session.add(
+            ExternalSignal(
+                id=signal_id,
+                organization_id=UUID(ORG_A),
+                provider="open-meteo",
+                signal_type="WEATHER_DISRUPTION",
+                subject_type="TRIP",
+                subject_ref=trip_id,
+                payload={
+                    "place_id": place_id,
+                    "place_name": "Berlin",
+                    "wind_kmh": 58.0,
+                    "precipitation_mm": 12.0,
+                    "summary": "Severe weather observed near the scheduled visit.",
+                },
+                confidence=0.92,
+                observed_at=now,
+                valid_from=now,
+                valid_until=now + timedelta(hours=2),
+                dedupe_key=dedupe_key,
+            )
+        )
+        session.add(
+            ProactiveSuggestion(
+                id=suggestion_id,
+                organization_id=UUID(ORG_A),
+                trip_id=trip_row.id,
+                suggestion_type="WEATHER_DISRUPTION_ALERT",
+                status="PENDING",
+                title="Weather exposure requires visit review",
+                rationale="The existing proactive runtime linked this signal to the trip.",
+                evidence=[],
+                proposed_action={
+                    "kind": "PREPARE_REVIEW",
+                    "tool": "trip.prepare_external_review",
+                    "params": {
+                        "signal_id": str(signal_id),
+                        "signal_type": "WEATHER_DISRUPTION",
+                    },
+                },
+                confidence=0.92,
+                requires_approval=True,
+                severity="MEDIUM",
+                dedupe_key=f"trip-risk-suggestion:{uuid.uuid4().hex}",
+                push_status="PUSHED",
+                notified_at=now,
+            )
+        )
+
+    try:
+        reconciled = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert reconciled.status_code == 200, reconciled.text
+        assert reconciled.json()["cases_created"] == 1
+        assert reconciled.json()["errors"] == []
+
+        feed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert feed.status_code == 200, feed.text
+        assert len(feed.json()["items"]) == 1
+        case = feed.json()["items"][0]
+        assert case["risk_type"] == "WEATHER"
+        assert case["severity"] == "HIGH"
+        assert case["case_key"] == f"suggestion:{suggestion_id}"
+        source_types = {item["type"] for item in case["source_refs"]}
+        assert source_types == {"PROACTIVE_SUGGESTION", "EXTERNAL_SIGNAL"}
+        assert {item["id"] for item in case["source_refs"]} >= {
+            str(suggestion_id),
+            str(signal_id),
+        }
+
+        assessment = case["context"]["external_signal_assessments"][0]["impact_assessment"]
+        assert assessment["status"] == "PLACE_AND_TIME_OVERLAP"
+        assert assessment["affected_visit_ids"] == [visit_id]
+        evidence_types = {item["type"] for item in case["evidence_refs"]}
+        assert {
+            "EXTERNAL_SIGNAL_PAYLOAD",
+            "IMPACT_ASSESSMENT",
+            "PLAN_VERSION",
+            "PLAN_STOP",
+        } <= evidence_types
+
+        replay = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert replay.status_code == 200, replay.text
+        assert replay.json()["cases_created"] == 0
+        assert replay.json()["cases_updated"] == 0
+        refreshed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert refreshed.status_code == 200, refreshed.text
+        assert len(refreshed.json()["items"]) == 1
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(ExternalSignal).where(
+                    ExternalSignal.organization_id == UUID(ORG_A),
+                    ExternalSignal.id == signal_id,
+                )
+            )
+        cleanup(trip_id, place_id)
+
+
+def test_trip_risk_does_not_promote_opensky_telemetry_to_flight_risk(
+    client: TestClient,
+) -> None:
+    trip_id, place_id, _visit_id = make_trip(client)
+    signal_id = uuid.uuid4()
+    observed_at = datetime.now(UTC)
+    with org_session(UUID(ORG_A)) as session:
+        session.add(
+            ExternalSignal(
+                id=signal_id,
+                organization_id=UUID(ORG_A),
+                provider="opensky",
+                signal_type="FLIGHT_STATUS",
+                subject_type="TRIP",
+                subject_ref=trip_id,
+                payload={
+                    "callsign": "LH123",
+                    "icao24": "abc123",
+                    "latitude": 52.52,
+                    "longitude": 13.405,
+                    "velocity_ms": 240.0,
+                    "on_ground": False,
+                },
+                confidence=0.95,
+                observed_at=observed_at,
+                valid_from=observed_at,
+                valid_until=observed_at + timedelta(hours=1),
+                dedupe_key=f"opensky-trip-risk:{uuid.uuid4().hex}",
+            )
+        )
+    try:
+        reconciled = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert reconciled.status_code == 200, reconciled.text
+        assert reconciled.json()["cases_created"] == 0
+        feed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert feed.status_code == 200, feed.text
+        assert feed.json()["items"] == []
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(ExternalSignal).where(
+                    ExternalSignal.organization_id == UUID(ORG_A),
+                    ExternalSignal.id == signal_id,
+                )
+            )
+        cleanup(trip_id, place_id)
 
 def test_follow_up_only_case_resolves_when_manual_follow_up_completes(
     client: TestClient,
