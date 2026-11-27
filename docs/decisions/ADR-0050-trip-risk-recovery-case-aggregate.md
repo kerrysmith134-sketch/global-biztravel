@@ -11,8 +11,8 @@
 ## 决策
 
 1. 引入 `TripRiskCase` 作为 Trip 级跨源风险生命周期投影，并用 `TripRiskCaseEvent` 追加记录每次状态变化。ProactiveSuggestion、VisitFollowUp、AgentRun、ExternalSignal 与 PlanVersion 继续是各自领域的权威事实来源；Case 不复制或接管其业务操作。
-2. Case 使用组织 + Trip + 稳定 `case_key` 去重。主动建议按 Suggestion ID 聚合；由 Appointment Recovery AgentRun 派生的 FollowUp 通过其 AgentRun 的 `input.suggestion_id` 回链到同一 Case；无法关联来源建议的人工/现场 FollowUp 保持独立 Case。
-3. Case 生命周期为 OPEN → ACKNOWLEDGED → IN_PROGRESS / WAITING_EXTERNAL / ESCALATED → RESOLVED / DISMISSED。终态在新的来源证据出现时可以重新打开，并保留 REOPENED 事件。用户写操作必须携带预期 Case Version 与说明；过期 Version 返回冲突。
+2. Case 使用组织 + Trip + 稳定 `case_key` 去重。主动建议按 Suggestion ID 聚合；由 Appointment Recovery AgentRun 派生的 FollowUp 通过其 AgentRun 的 `input.suggestion_id` 回链到同一 Case；无法关联来源建议的人工/现场 FollowUp 保持独立 Case。来源 FollowUp 进入 COMPLETED / DISMISSED 终态后，独立 FollowUp Case 会同步进入 RESOLVED / DISMISSED。
+3. Case 生命周期为 OPEN → ACKNOWLEDGED → IN_PROGRESS / WAITING_EXTERNAL / ESCALATED → RESOLVED / DISMISSED。终态只由新来源证据对账自动重开，并保留 REOPENED 事件；客户端不能无来源依据手工重开。每条 Event 写入其对应的 Case Version，数据库触发器拒绝 UPDATE，应用角色无 UPDATE / DELETE 权限。用户写操作必须携带预期 Case Version 与说明；过期 Version 返回冲突。
 4. RESOLVED 必须说明关闭依据：当前 Trip Version 下重新验证的 ACTIVE Plan、所有相关 FollowUp 完成、Trip 已关闭，或有记录的人工确认。DISMISSED 必须对应已驳回的来源建议或已驳回的来源 FollowUp；不能仅靠前端把风险标成已关闭。
 5. HIGH / CRITICAL Case 有明确复核时间。到期且风险仍未关闭时由后台提升为 ESCALATED；高/关键升级通知在同一事务写入现有 Notification 队列，使用用户静音偏好与通知等级策略，并以 Case ID + Version 作为问题级去重键。
 6. 主动建议创建/批准/驳回、FollowUp 创建/更新，以及后台主动扫描周期会触发风险投影对账。对账采用稳定来源指纹、组织/Trip 隔离和行锁；重复扫描不重复创建 Case 或 OPEN 事件。
