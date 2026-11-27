@@ -94,6 +94,32 @@ final class TripRiskContractTests: XCTestCase {
         XCTAssertNil(payload["resolution_basis"])
     }
 
+    func testTripRiskEventsUseCaseVersionAsCausalOrder() throws {
+        let sample = try DateCoding.decode(
+            TripRiskCaseEvent.self,
+            fromJSON: ContractSamples.tripRiskCaseEvent
+        )
+        var first = sample
+        first.id = "event-v1"
+        first.caseVersion = 1
+        // Deliberately later timestamp: DB timestamps are not the causal sequence.
+        first.createdAt = Date(timeIntervalSince1970: 300)
+
+        var second = sample
+        second.id = "event-v2"
+        second.caseVersion = 2
+        second.createdAt = Date(timeIntervalSince1970: 100)
+
+        var third = sample
+        third.id = "event-v3"
+        third.caseVersion = 3
+        third.createdAt = Date(timeIntervalSince1970: 100)
+
+        let ordered = TripRiskCaseEvent.orderedByCaseVersion([third, first, second])
+        XCTAssertEqual(ordered.map(\\.caseVersion), [1, 2, 3])
+        XCTAssertEqual(ordered.map(\\.id), ["event-v1", "event-v2", "event-v3"])
+    }
+
     func testTripRiskTerminalAndUnknownStatusesOfferNoManualTransitions() throws {
         let value = try DateCoding.decode(TripRiskCase.self, fromJSON: ContractSamples.tripRiskCase)
         var terminal = value
