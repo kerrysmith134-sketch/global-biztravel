@@ -385,6 +385,18 @@ def test_trip_risk_dismissal_requires_a_dismissed_source_and_is_tenant_scoped(
         )
         assert missing_basis.status_code == 422, missing_basis.text
 
+        unresolved_follow_up_basis = client.post(
+            f"/v1/trips/{trip_id}/risk-cases/{case['id']}:transition",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "expected_version": case["version"],
+                "to_status": "DISMISSED",
+                "note": "Trying to dismiss while the source follow-up is still open.",
+                "resolution_basis": "FOLLOW_UP_DISMISSED",
+            },
+        )
+        assert unresolved_follow_up_basis.status_code == 422, unresolved_follow_up_basis.text
+
         with org_session(UUID(ORG_A)) as session:
             source = session.get(ProactiveSuggestion, UUID(suggestion_id))
             follow_up = session.scalars(
@@ -395,8 +407,25 @@ def test_trip_risk_dismissal_requires_a_dismissed_source_and_is_tenant_scoped(
                 )
             ).one()
             assert source is not None
-            source.status = "DISMISSED"
+            source.status = "PENDING"
             follow_up.status = "DISMISSED"
+
+        active_suggestion_basis = client.post(
+            f"/v1/trips/{trip_id}/risk-cases/{case['id']}:transition",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "expected_version": case["version"],
+                "to_status": "DISMISSED",
+                "note": "A linked source suggestion is still active.",
+                "resolution_basis": "FOLLOW_UP_DISMISSED",
+            },
+        )
+        assert active_suggestion_basis.status_code == 422, active_suggestion_basis.text
+
+        with org_session(UUID(ORG_A)) as session:
+            source = session.get(ProactiveSuggestion, UUID(suggestion_id))
+            assert source is not None
+            source.status = "DISMISSED"
 
         refreshed = client.post(
             f"/v1/trips/{trip_id}/risk-cases:reconcile",
