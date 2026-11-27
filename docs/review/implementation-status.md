@@ -528,3 +528,14 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 人工处置表单根据当前状态只展示可用转换；等待外部必须设置未来复核时间；解决/驳回必须选择关闭依据并填写审计说明。服务端仍重新验证依据和来源状态，客户端不直接关闭数据源、不联系客户、不订票或修改行程计划。
 - 风险工作台不缓存状态数据；切换账号、API 地址或运行模式时通过 AppEnvironment 当前 Repository 访问最新身份配置。Local-first 尚未纳入风险源表，因此显式返回“需联网/云端模式”，不伪造本地风险视图。
 - **验证状态：** 新增 9 项 Trip Risk 模型、端点、编码及状态映射 XCTest；更新 OpenAPI 样本生成器。当前执行环境没有运行 macOS Xcode / SwiftUI 构建、iOS XCTest 或真实后端集成测试；不得视为构建通过、CI 通过或已部署。以最新 main 的实际 GitHub Checks 和后续 Xcode 运行结果验收。
+
+### 2026-11-27 H2.25.2 — Trip Risk iOS chronology and concurrency hardening
+
+- 风险事件时间线改为按服务端单调递增的 `case_version` 排序；`created_at` 仅作为相同版本下的稳定次序辅助字段，避免数据库时间戳精度碰撞导致审计顺序错乱。
+- 工作台列表和详情页刷新加入请求代次保护，较早发起但较晚返回的响应不能覆盖新请求结果；详情页刷新与状态转换互斥，避免正在处置时被并发刷新覆盖。
+- 详情时间线最多展示最近 200 条；当接口返回的窗口已不包含首个 Case Version 时，明确提示仍有更早历史未加载，不把截断数据表述为完整历史。
+- 工作台区分首次加载、真实空状态和加载失败；加载中显示进度，加载失败时显示不可用状态，不误报“暂无风险”。
+- 关闭依据改为与后端六种 Literal 值一一对应的 Swift 强类型枚举；处置说明在客户端限制为 3–2,000 个 Unicode 标量，与 Pydantic 字符长度约束对齐。
+- 新增 XCTest 用例，覆盖事件因果顺序及关闭依据 wire enum；Trip Risk 契约测试总数为 11 项。
+
+**验证状态：** 代码已推送至 `main`。当前 HEAD 的 GitHub combined status 为空，GitHub Check Runs 返回 `total_count=0`；这表示目前没有可报告的 CI 检查结果，不代表通过。当前执行环境为 Linux，无 `xcodebuild` / iOS Simulator；本轮未执行 Swift XCTest、SwiftUI 构建、后端 PostgreSQL 集成测试或迁移。生产验收仍须在 macOS CI 与真实 PostgreSQL 环境完成。
