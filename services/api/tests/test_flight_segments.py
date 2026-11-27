@@ -742,6 +742,20 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
             )
             assert tampered_digest["status"] == "OPERATIONAL_UPDATE_EVIDENCE_MISMATCH"
 
+            signal.payload = {
+                **original_payload,
+                "flight_operational_update": {
+                    **original_payload["flight_operational_update"],
+                    "estimated_arrival_at": (
+                        scheduled_arrival + timedelta(minutes=95)
+                    ).isoformat(),
+                },
+            }
+            tampered_event = external_impact_service.assess_flight_signal_impact(
+                session, UUID(ORG_A), trip, signal
+            )
+            assert tampered_event["status"] == "OPERATIONAL_UPDATE_EVIDENCE_MISMATCH"
+
             signal.payload = original_payload
             original_observed_at = signal.observed_at
             signal.observed_at = original_observed_at + timedelta(minutes=1)
