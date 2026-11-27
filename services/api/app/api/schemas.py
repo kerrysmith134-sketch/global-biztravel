@@ -1242,6 +1242,20 @@ class ExternalSignalCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_flight_operational_envelope(self) -> ExternalSignalCreate:
+        # These fields are materialized only after the immutable event has been
+        # persisted. Accepting them from a caller would let a stale event ID be
+        # re-wrapped with a fresh observation time / validity window.
+        server_owned_fields = {
+            "operational_update_id",
+            "operational_update_content_sha256",
+            "operational_update_type",
+        }
+        supplied_server_fields = server_owned_fields.intersection(self.payload)
+        if supplied_server_fields:
+            raise ValueError(
+                "operational update reference and digest fields are server-managed"
+            )
+
         raw_update = self.payload.get("flight_operational_update")
         if raw_update is None:
             return self
