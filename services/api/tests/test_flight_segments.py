@@ -621,6 +621,32 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
         assert accepted.status_code == 201, accepted.text
         signal_id = accepted.json()["id"]
 
+        # A caller must not be able to re-wrap an old immutable event ID in a
+        # fresh ExternalSignal envelope with a later observed_at / valid_until.
+        forged_reference = {
+            "provider": provider,
+            "signal_type": "FLIGHT_STATUS",
+            "subject_type": "TRIP",
+            "subject_ref": trip_id,
+            "payload": {
+                "summary": "forged replay",
+                "operational_update_id": accepted.json()["payload"]["operational_update_id"],
+                "operational_update_content_sha256": accepted.json()["payload"]["operational_update_content_sha256"],
+                "operational_update_type": "ARRIVAL_DELAY",
+            },
+            "confidence": 0.95,
+            "observed_at": (observed_at + timedelta(days=30)).isoformat(),
+            "valid_until": (observed_at + timedelta(days=31)).isoformat(),
+            "dedupe_key": f"flight_ops:{event_id}:forged",
+        }
+        forged = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json=forged_reference,
+        )
+        assert forged.status_code == 400, forged.text
+        assert "server-managed" in forged.text
+
         replay = client.post(
             "/v1/integrations/signals",
             headers=headers(),
@@ -702,6 +728,29 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
             assert trip is not None
             signal = session.get(ExternalSignal, UUID(signal_id))
             assert signal is not None
+
+            # Defence in depth: even if an envelope is corrupted after ingestion,
+            # impact assessment must not trust a digest or time window that no
+            # longer matches the append-only operational event.
+            original_payload = signal.payload
+            signal.payload = {
+                **original_payload,
+                "operational_update_content_sha256": "0" * 64,
+            }
+            tampered_digest = external_impact_service.assess_flight_signal_impact(
+                session, UUID(ORG_A), trip, signal
+            )
+            assert tampered_digest["status"] == "OPERATIONAL_UPDATE_EVIDENCE_MISMATCH"
+
+            signal.payload = original_payload
+            original_observed_at = signal.observed_at
+            signal.observed_at = original_observed_at + timedelta(minutes=1)
+            tampered_window = external_impact_service.assess_flight_signal_impact(
+                session, UUID(ORG_A), trip, signal
+            )
+            assert tampered_window["status"] == "OPERATIONAL_UPDATE_ENVELOPE_MISMATCH"
+            signal.observed_at = original_observed_at
+
             impact = external_impact_service.assess_flight_signal_impact(
                 session, UUID(ORG_A), trip, signal
             )
