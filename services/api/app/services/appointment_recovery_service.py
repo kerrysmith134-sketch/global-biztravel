@@ -232,6 +232,10 @@ def build_recovery_brief(
     data_quality_gaps: set[str] = set()
     if not isinstance(raw_stop_impacts, list):
         data_quality_gaps.add("STOP_IMPACT_SNAPSHOT_MISSING_OR_INVALID")
+    for key in ("affected_visit_ids", "missed_visit_ids", "unassessed_visit_ids"):
+        value = assessment.get(key)
+        if value is not None and not isinstance(value, list):
+            data_quality_gaps.add("INVALID_VISIT_ID_COLLECTION")
 
     propagation_complete = assessment.get("propagation_complete") is True
     reported_unassessed = _string_ids(assessment.get("unassessed_visit_ids"))
@@ -290,6 +294,8 @@ def build_recovery_brief(
                     str(rows_by_visit[visit_id].get("reason") or "STOP_IMPACT_UNASSESSED")
                 )
     if any(action["action_code"] == "REVALIDATE_TRAVEL_CHAIN" for action in actions):
+        propagation_complete = False
+    if data_quality_gaps:
         propagation_complete = False
 
     has_revalidation = any(

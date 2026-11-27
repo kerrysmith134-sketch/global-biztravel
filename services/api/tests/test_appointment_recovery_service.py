@@ -113,3 +113,18 @@ def test_complete_zero_delay_assessment_may_have_no_recovery_action() -> None:
     assert brief["actions"] == []
     assert brief["impact_snapshot_complete"] is True
     assert brief["guardrails"]["human_decision_required"] is False
+
+def test_malformed_stop_rows_cannot_be_a_complete_assessment() -> None:
+    brief = build_recovery_brief(
+        {
+            "status": "OPERATIONAL_DELAY_ASSESSED",
+            "propagation_complete": True,
+            "stop_impacts": [{"appointment_status": "WITHIN_WINDOW", "delay_minutes": 0}],
+        },
+        generated_at=GENERATED_AT,
+    )
+
+    assert brief["status"] == "REVIEW_REQUIRED"
+    assert brief["propagation_complete"] is False
+    assert brief["actions"][0]["scope"] == "TRIP"
+    assert "STOP_IMPACT_VISIT_ID_MISSING" in brief["data_gaps"]
