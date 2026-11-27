@@ -7,6 +7,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
+
+from app.api.schemas import CustomerAppointmentWindowAttestationCreate
 from app.db import org_session
 from app.main import app
 from app.models.records import VisitFollowUp, VisitFollowUpEvent
@@ -559,3 +562,28 @@ def test_appointment_recovery_actions_enter_human_follow_up_lifecycle(
             session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
             from app.models.geo import Place
             session.execute(delete(Place).where(Place.id == UUID(place_id)))
+
+def test_customer_appointment_window_timezone_offsets_match_iana_zone() -> None:
+    valid = CustomerAppointmentWindowAttestationCreate(
+        start_at=datetime.fromisoformat("2027-03-28T01:30:00+01:00"),
+        end_at=datetime.fromisoformat("2027-03-28T03:30:00+02:00"),
+        timezone="Europe/Berlin",
+        confirmation_method="EMAIL",
+    )
+    assert valid.start_at.utcoffset() != valid.end_at.utcoffset()
+
+    with pytest.raises(ValidationError, match="UTC offset 与 timezone 不一致"):
+        CustomerAppointmentWindowAttestationCreate(
+            start_at=datetime.fromisoformat("2026-12-01T10:00:00+00:00"),
+            end_at=datetime.fromisoformat("2026-12-01T11:00:00+00:00"),
+            timezone="Europe/Berlin",
+            confirmation_method="EMAIL",
+        )
+
+    with pytest.raises(ValidationError, match="UTC offset 与 timezone 不一致"):
+        CustomerAppointmentWindowAttestationCreate(
+            start_at=datetime.fromisoformat("2027-03-28T02:30:00+01:00"),
+            end_at=datetime.fromisoformat("2027-03-28T04:00:00+02:00"),
+            timezone="Europe/Berlin",
+            confirmation_method="EMAIL",
+        )
