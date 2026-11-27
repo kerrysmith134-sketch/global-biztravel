@@ -172,7 +172,11 @@ def create_visit_raw(
 ) -> Visit:
     """导入确认阶段使用：已在上游完成校验，只负责落库。**不**单独递增版本，
     由导入事务在末尾统一 ``touch_trip`` 一次（一次导入只让计划失效一次，而不是每行一次）。
+
+    Import batches still acquire the Trip lock, so they serialize with Plan Change and other
+    Visit writers even though the version token is touched once at the end of the batch.
     """
+    _lock_trip_for_visit_write(session, organization_id, trip_id)
     visit = Visit(
         organization_id=organization_id,
         trip_id=trip_id,
