@@ -53,12 +53,17 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE OR REPLACE FUNCTION prevent_trip_risk_case_event_mutation() RETURNS trigger AS $
+        CREATE OR REPLACE FUNCTION prevent_trip_risk_case_event_mutation() RETURNS trigger AS $$
         BEGIN
+            -- Direct row deletion is forbidden. Preserve the schema's existing
+            -- ON DELETE CASCADE semantics when a parent Trip/Case is deliberately removed.
+            IF TG_OP = 'DELETE' AND pg_trigger_depth() > 1 THEN
+                RETURN OLD;
+            END IF;
             RAISE EXCEPTION 'trip_risk_case_events is append-only'
                 USING ERRCODE = '55000';
         END
-        $ LANGUAGE plpgsql
+        $$ LANGUAGE plpgsql
         """
     )
     op.execute(
@@ -79,12 +84,12 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS prevent_trip_risk_case_event_mutation()")
     op.execute(
         """
-        CREATE OR REPLACE FUNCTION prevent_trip_risk_case_event_update() RETURNS trigger AS $
+        CREATE OR REPLACE FUNCTION prevent_trip_risk_case_event_update() RETURNS trigger AS $$
         BEGIN
             RAISE EXCEPTION 'trip_risk_case_events is append-only'
                 USING ERRCODE = '55000';
         END
-        $ LANGUAGE plpgsql
+        $$ LANGUAGE plpgsql
         """
     )
     op.execute(
