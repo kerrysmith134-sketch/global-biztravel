@@ -16,11 +16,17 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
         self.repository = environment.tripRiskRepository
     }
 
-    func loadEvents() async {
+    func refresh() async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
+            let page = try await repository.cases(tripId: riskCase.tripId, status: nil, limit: 200)
+            guard let latest = page.items.first(where: { $0.id == riskCase.id }) else {
+                errorMessage = "该风险事项已不在当前行程的服务端记录中，请返回工作台重新加载"
+                return
+            }
+            riskCase = latest
             events = try await repository.events(
                 tripId: riskCase.tripId,
                 caseId: riskCase.id,
@@ -52,12 +58,10 @@ struct TripRiskCaseDetailView: View {
     let onChanged: (TripRiskCase) -> Void
 
     init(
-        tripId: String,
         riskCase: TripRiskCase,
         environment: AppEnvironment,
         onChanged: @escaping (TripRiskCase) -> Void
     ) {
-        _ = tripId // The case contains the server-validated trip_id.
         _viewModel = StateObject(
             wrappedValue: TripRiskCaseDetailViewModel(riskCase: riskCase, environment: environment)
         )
@@ -83,7 +87,7 @@ struct TripRiskCaseDetailView: View {
                         LabeledContent("风险类型", value: viewModel.riskCase.riskTypeLabel)
                         LabeledContent("首次发现", value: ISO8601.shortDisplay(from: viewModel.riskCase.firstSeenAt))
                         LabeledContent("最近观察", value: ISO8601.shortDisplay(from: viewModel.riskCase.lastObservedAt))
-                        LabeledContent("下次复核", value: viewModel.riskCase.nextReviewAt.map(ISO8601.shortDisplay(from:)) ?? "未安排")
+                        LabeledContent("下次复核", value: viewModel.riskCase.nextReviewAt.map { ISO8601.shortDisplay(from: $0) } ?? "未安排")
                         LabeledContent("当前版本", value: "v\(viewModel.riskCase.version)")
                     }
                     .padding(.vertical, DS.Spacing.xs)
@@ -169,14 +173,14 @@ struct TripRiskCaseDetailView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { await viewModel.loadEvents() }
+                        Task { await viewModel.refresh() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("刷新事件")
                 }
             }
-            .task { await viewModel.loadEvents() }
+            .task { await viewModel.refresh() }
             .sheet(item: $transitionTarget) { target in
                 TripRiskTransitionSheet(
                     riskCase: viewModel.riskCase,
