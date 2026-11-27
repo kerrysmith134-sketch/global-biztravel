@@ -350,6 +350,11 @@ class TripRiskReconciliationRead(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class TripRiskTransitionRead(BaseModel):
+    case: TripRiskCaseRead
+    event: TripRiskCaseEventRead
+
+
 # ------------------------------------------------------------------ visits
 class VisitCreate(BaseModel):
     place_id: UUID
