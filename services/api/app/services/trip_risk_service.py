@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
 from uuid import UUID
 
@@ -97,12 +97,13 @@ def _parse_due_date(value: str | None, timezone_name: str) -> datetime | None:
     except (TypeError, ValueError):
         return None
     # Due dates are date-only business commitments; use trip timezone at 09:00.
+    zone: tzinfo = UTC
     try:
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
         zone = ZoneInfo(timezone_name)
     except (ZoneInfoNotFoundError, ValueError):
-        zone = UTC
+        pass
     return datetime.combine(parsed, time(hour=9), tzinfo=zone).astimezone(UTC)
 
 
@@ -186,8 +187,11 @@ def _build_groups(
         ):
             continue
         key = f"suggestion:{suggestion.id}"
-        action = suggestion.proposed_action if isinstance(suggestion.proposed_action, dict) else {}
-        params = action.get("params") if isinstance(action.get("params"), dict) else {}
+        action: dict[str, Any] = (
+            suggestion.proposed_action if isinstance(suggestion.proposed_action, dict) else {}
+        )
+        raw_params = action.get("params")
+        params: dict[str, Any] = raw_params if isinstance(raw_params, dict) else {}
         groups[key] = {
             "case_key": key,
             "risk_type": _risk_type(suggestion.suggestion_type),
@@ -288,7 +292,7 @@ def _build_groups(
                 "VISIT_FOLLOW_UP",
                 follow_up.id,
                 visit_id=str(follow_up.visit_id),
-                source_type=follow_up.source_type,
+                follow_up_source_type=follow_up.source_type,
                 status=follow_up.status,
                 source_agent_run_id=(
                     str(follow_up.source_agent_run_id) if follow_up.source_agent_run_id else None
