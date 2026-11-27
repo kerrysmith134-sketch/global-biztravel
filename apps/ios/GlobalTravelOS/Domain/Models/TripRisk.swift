@@ -23,7 +23,8 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
     var escalatedAt: Date?
     var resolvedAt: Date?
     var dismissedAt: Date?
-    var resolutionBasis: TripRiskResolutionBasis?
+    // Read-side value stays open-ended: the server may add system-only/future audit bases.
+    var resolutionBasis: String?
     var resolutionNote: String?
     var version: Int
     var createdAt: Date
@@ -72,6 +73,19 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
     var nextReviewLabel: String {
         guard let nextReviewAt else { return "未安排复核" }
         return "下次复核 · " + ISO8601.shortDisplay(from: nextReviewAt)
+    }
+
+    var resolutionBasisLabel: String? {
+        guard let resolutionBasis else { return nil }
+        if let known = TripRiskResolutionBasis(rawValue: resolutionBasis) {
+            return known.label
+        }
+        switch resolutionBasis {
+        case "SOURCE_SUGGESTION_DISMISSED":
+            return "来源主动建议已驳回"
+        default:
+            return "其他关闭依据 · " + resolutionBasis
+        }
     }
 
     var sourceDescriptions: [String] {
