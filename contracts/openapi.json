@@ -29187,6 +29187,17 @@
             "format": "date-time",
             "title": "New Window End"
           },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
           "reason": {
             "type": "string",
             "title": "Reason"
