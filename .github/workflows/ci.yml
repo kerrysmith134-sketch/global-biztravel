@@ -1,9 +1,9 @@
 name: ci
 
-# Versioned concurrency key: isolate the H2.21.1 multi-leg digest fix from earlier flight runs
-# while still cancelling superseded runs for the same PR/ref on this validation lane.
+# Versioned concurrency key: isolate the Trip Risk & Recovery and migration compatibility lane
+# from older validation work while still cancelling superseded runs for this PR/ref.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-21-1-flight-operational-digest-fix-validation
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-25-1-trip-risk-recovery-validation
   cancel-in-progress: true
 
 on:
