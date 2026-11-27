@@ -11,6 +11,7 @@ from app.db import org_session
 from app.main import app
 from app.models.geo import Place
 from app.models.planning import PlanVersion
+from app.models.reliability import BackgroundJob
 from app.models.trip import Trip
 from app.models.workflow import WorkflowInstance
 from fastapi.testclient import TestClient
@@ -121,6 +122,47 @@ def test_plan_change_updates_input_and_enqueues_new_plan(client: TestClient) -> 
             assert workflow is not None
             assert workflow.workflow_type == "PLAN_CHANGE"
             assert workflow.payload["operation_type"] == "CHANGE_VISIT_TIME"
+            original_job = session.get(BackgroundJob, UUID(body["optimization_job_id"]))
+            assert original_job is not None
+            original_job.status = "FAILED"
+            original_job.finished_at = datetime.now(UTC)
+
+        retry_key = str(uuid.uuid4())
+        retried = client.post(
+            f"/v1/plan-changes/{body['change_request_id']}:retry",
+            headers={**headers(), "Idempotency-Key": retry_key},
+        )
+        assert retried.status_code == 202, retried.text
+        retried_body = retried.json()
+        assert retried_body["change_request_id"] == body["change_request_id"]
+        assert retried_body["trip_version"] == body["trip_version"]
+        assert retried_body["optimization_job_id"] != body["optimization_job_id"]
+        job_ids.append(retried_body["optimization_job_id"])
+
+        # Replaying the same key returns the same response; a separate concurrent retry
+        # reuses the in-flight job and does not create an orphaned second job.
+        retry_replay = client.post(
+            f"/v1/plan-changes/{body['change_request_id']}:retry",
+            headers={**headers(), "Idempotency-Key": retry_key},
+        )
+        assert retry_replay.status_code == 202, retry_replay.text
+        assert retry_replay.json()["optimization_job_id"] == retried_body["optimization_job_id"]
+
+        retry_reuse = client.post(
+            f"/v1/plan-changes/{body['change_request_id']}:retry",
+            headers={**headers(), "Idempotency-Key": str(uuid.uuid4())},
+        )
+        assert retry_reuse.status_code == 202, retry_reuse.text
+        assert retry_reuse.json()["optimization_job_id"] == retried_body["optimization_job_id"]
+
+        with org_session(UUID(ORG_A)) as session:
+            workflow = session.get(WorkflowInstance, UUID(body["change_request_id"]))
+            assert workflow is not None
+            assert workflow.job_id == UUID(retried_body["optimization_job_id"])
+            assert workflow.payload["retry_count"] == 1
+            assert len(workflow.payload["retry_history"]) == 1
+            retried_job = session.get(BackgroundJob, UUID(retried_body["optimization_job_id"]))
+            assert retried_job is not None and retried_job.status == "PENDING"
 
         visits = client.get(f"/v1/trips/{trip_id}/visits", headers=headers()).json()
         target = next(item for item in visits if item["id"] == visit_id)
