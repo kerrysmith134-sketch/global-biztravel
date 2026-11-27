@@ -1209,6 +1209,39 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
         assert replay.status_code == 201, replay.text
         assert replay.json()["agent_run_id"] == result["agent_run_id"]
 
+        # A successful reassessment is not a permanent authorization: its provider envelope
+        # must still be valid at the exact moment the plan change is submitted.
+        fresh_signal_id = fresh_response.json()["id"]
+        with org_session(UUID(ORG_A)) as session:
+            fresh_signal = session.get(ExternalSignal, UUID(fresh_signal_id))
+            assert fresh_signal is not None
+            valid_until_before_expiry = fresh_signal.valid_until
+            fresh_signal.valid_until = datetime.now(UTC) - timedelta(seconds=1)
+
+        expired_signal_submit = client.post(
+            f"/v1/trips/{trip_id}/plan-changes",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json={
+                "base_plan_version_id": result["plan_change_recommendation"]["base_plan_version_id"],
+                "base_trip_version": result["plan_change_recommendation"]["base_trip_version"],
+                "source": "APPOINTMENT_RECOVERY",
+                "operation_type": "CHANGE_VISIT_TIME",
+                "payload": {
+                    "visit_id": visit_id,
+                    "recovery_follow_up_id": follow_up_id,
+                    "new_window_start": result["plan_change_recommendation"]["new_window_start"],
+                    "new_window_end": result["plan_change_recommendation"]["new_window_end"],
+                },
+                "reason": result["plan_change_recommendation"]["reason"],
+            },
+        )
+        assert expired_signal_submit.status_code == 409, expired_signal_submit.text
+
+        with org_session(UUID(ORG_A)) as session:
+            fresh_signal = session.get(ExternalSignal, UUID(fresh_signal_id))
+            assert fresh_signal is not None
+            fresh_signal.valid_until = valid_until_before_expiry
+
         recommendation = result["plan_change_recommendation"]
         plan_change_payload = {
             "base_plan_version_id": recommendation["base_plan_version_id"],
