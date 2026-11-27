@@ -379,8 +379,10 @@ def read_follow_up(
                 or workflow_payload.get("follow_up_id") != str(row.id)
             ):
                 continue
-            output = candidate.output if isinstance(candidate.output, dict) else {}
-            after = output.get("after") if isinstance(output.get("after"), dict) else {}
+            output_value: Any = candidate.output
+            output: dict[str, Any] = output_value if isinstance(output_value, dict) else {}
+            after_value: Any = output.get("after")
+            after: dict[str, Any] = after_value if isinstance(after_value, dict) else {}
             latest_reassessment = {
                 "workflow_id": str(workflow.id),
                 "agent_run_id": str(candidate.id),
