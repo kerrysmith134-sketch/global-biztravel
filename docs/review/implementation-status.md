@@ -500,3 +500,6 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - Plan Change 先锁 Trip；Visit 创建/修改/删除统一 Trip → Visit 锁顺序。Workflow 保存 FollowUp 关联与变更后的 Trip Version；无新增数据库迁移。
 - 后端集成测试新增伪造时间窗口、有效提交、重复/过期版本拒绝及 Workflow 血缘断言；iOS 增加计划变更请求 wire-contract 单测。
 - **验证状态：** 代码与测试已推送 main；本环境未运行 PostgreSQL 集成测试、Swift XCTest 或 Xcode build，GitHub 当前未返回可用的状态检查。不得视为 CI 通过。
+- 后端进一步 fail-closed：计划变更提交时验证原航班事件仍为该航班段最新事件、内容 SHA-256 未变、外部信号仍有效；基础计划必须为 ACTIVE 且其 `trip_version` 与当前 Trip Version 一致。
+- 回归场景新增：重评信号过期后提交 409；Trip Version 刷新后仍引用旧 ACTIVE PlanVersion 提交 409；导入批次原始 Visit 插入同样遵循 Trip 行锁。
+
