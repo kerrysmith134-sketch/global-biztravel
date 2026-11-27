@@ -54,3 +54,4 @@
 - 影响迁移的决策必须同时更新 `docs/review/implementation-status.md` 的迁移清单；
 - **新增 ADR 必须同步更新本索引**：`make docs-check` 会比对目录与索引，漏登记直接失败
   （此前索引曾落后 12 条，人工核对才发现）。
+| ADR-0045 | 航班扰动后的预约恢复采用确定性 AgentRun 与显式人审 | 已接受 |

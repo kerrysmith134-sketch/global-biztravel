@@ -17,6 +17,7 @@ from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.proactive import ProactiveSuggestion
 from app.models.trip import Trip, Visit
+from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import (
     external_impact_service,
     flight_segment_service,
@@ -832,11 +833,66 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
             assert "FLIGHT_OPERATIONAL_UPDATE" in evidence_kinds
             assert "PLAN_STOP_IMPACT" in evidence_kinds
             assert "PLAN_TRAVEL_LEG_BUFFER" in evidence_kinds
-            assessment = suggestion.proposed_action["params"]["impact_assessment"]
+            params = suggestion.proposed_action["params"]
+            assessment = params["impact_assessment"]
             assert assessment["missed_visit_ids"] == [first_visit_id, second_visit_id]
             assert assessment["plan_mutated"] is False
+
+            recovery = params["recovery_brief"]
+            assert recovery["agent_type"] == "APPOINTMENT_RECOVERY"
+            assert recovery["execution_mode"] == "DETERMINISTIC"
+            assert recovery["status"] == "RECOVERY_REQUIRED"
+            assert len(recovery["actions"]) == 2
+            assert all(
+                item["action_code"] == "REQUEST_CUSTOMER_RESCHEDULE_WINDOW"
+                for item in recovery["actions"]
+            )
+            assert all(item["candidate_windows"] == [] for item in recovery["actions"])
+            assert all(
+                item["customer_message"]["status"] == "NOT_DRAFTED"
+                for item in recovery["actions"]
+            )
+            assert recovery["guardrails"] == {
+                "human_decision_required": True,
+                "plan_mutated": False,
+                "booking_changed": False,
+                "customer_contacted": False,
+                "customer_message_sent": False,
+                "candidate_windows_inferred": False,
+                "candidate_windows": [],
+            }
+
+            workflow_id = UUID(params["recovery_workflow_id"])
+            agent_run_id = UUID(params["recovery_agent_run_id"])
+            recovery_workflow = session.get(WorkflowInstance, workflow_id)
+            recovery_run = session.get(AgentRun, agent_run_id)
+            assert recovery_workflow is not None
+            assert recovery_workflow.workflow_type == "APPOINTMENT_RECOVERY"
+            assert recovery_workflow.status == "COMPLETED"
+            assert recovery_workflow.trip_id == UUID(trip_id)
+            assert recovery_workflow.payload["source_suggestion_id"] == str(suggestion.id)
+            assert recovery_workflow.payload["agent_run_id"] == str(agent_run_id)
+            assert recovery_run is not None
+            assert recovery_run.workflow_id == workflow_id
+            assert recovery_run.agent_type == "APPOINTMENT_RECOVERY"
+            assert recovery_run.status == "SUCCEEDED"
+            assert recovery_run.input["content_sha256"] == assessment["content_sha256"]
+            assert recovery_run.output == recovery
+            assert {item["kind"] for item in suggestion.evidence}.issuperset(
+                {
+                    "APPOINTMENT_RECOVERY_WORKFLOW",
+                    "APPOINTMENT_RECOVERY_AGENT_RUN",
+                }
+            )
     finally:
         with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(AgentRun).where(
+                    AgentRun.organization_id == UUID(ORG_A),
+                    AgentRun.agent_type == "APPOINTMENT_RECOVERY",
+                    AgentRun.input["trip_id"].as_string() == trip_id,
+                )
+            )
             session.execute(
                 delete(ExternalSignal).where(
                     ExternalSignal.organization_id == UUID(ORG_A),

@@ -50,7 +50,9 @@ from app.models.proactive import (
     SuggestionAudit,
 )
 from app.models.trip import Trip, Visit
+from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import (
+    appointment_recovery_service,
     approval_policy_service,
     evidence_service,
     external_impact_service,
@@ -632,11 +634,33 @@ def _external_candidates(
                     "related_travel_legs": impact_assessment.get("related_travel_legs", []),
                 },
             }
+        recovery_brief = None
+        if (
+            signal.signal_type == "FLIGHT_STATUS"
+            and impact_assessment is not None
+            and impact_assessment.get("operational_update_id")
+            and impact_assessment.get("update_type") != "GATE_CHANGE"
+        ):
+            built_brief = appointment_recovery_service.build_recovery_brief(
+                impact_assessment,
+                generated_at=now,
+            )
+            if built_brief["actions"]:
+                recovery_brief = built_brief
+
         digest = sha256(
             json.dumps(
                 digest_input, sort_keys=True, ensure_ascii=False, default=str
             ).encode("utf-8")
         ).hexdigest()[:10]
+        proposed_params = {
+            "signal_id": str(signal.id),
+            "signal_type": signal.signal_type,
+            "subject_ref": signal.subject_ref,
+            "impact_assessment": impact_assessment,
+        }
+        if recovery_brief is not None:
+            proposed_params["recovery_brief"] = recovery_brief
         candidates.append(
             Candidate(
                 trigger_type=TRIGGER_EXTERNAL,
@@ -654,12 +678,7 @@ def _external_candidates(
                 proposed_action={
                     "kind": "PREPARE_REVIEW",
                     "tool": "trip.prepare_external_review",
-                    "params": {
-                        "signal_id": str(signal.id),
-                        "signal_type": signal.signal_type,
-                        "subject_ref": signal.subject_ref,
-                        "impact_assessment": impact_assessment,
-                    },
+                    "params": proposed_params,
                 },
                 confidence=float(signal.confidence),
                 severity=severity,
@@ -836,12 +855,92 @@ def _record_candidate(
     )
     session.add(suggestion)
     session.flush()
+
+    recovery_refs: dict[str, str] = {}
+    action = dict(suggestion.proposed_action or {})
+    action_params = dict(action.get("params") or {})
+    recovery_brief = action_params.get("recovery_brief")
+    if isinstance(recovery_brief, dict) and recovery_brief.get("actions"):
+        workflow = WorkflowInstance(
+            organization_id=organization_id,
+            trip_id=trip.id,
+            workflow_type="APPOINTMENT_RECOVERY",
+            status="COMPLETED",
+            payload={
+                "source_suggestion_id": str(suggestion.id),
+                "source_trigger_id": str(trigger.id),
+                "source_signal_id": str(action_params.get("signal_id") or ""),
+                "agent_type": appointment_recovery_service.AGENT_TYPE,
+                "agent_version": appointment_recovery_service.AGENT_VERSION,
+                "plan_version_id": recovery_brief.get("source", {}).get("plan_version_id"),
+            },
+        )
+        session.add(workflow)
+        session.flush()
+
+        recovery_run = AgentRun(
+            organization_id=organization_id,
+            workflow_id=workflow.id,
+            agent_type=appointment_recovery_service.AGENT_TYPE,
+            status="SUCCEEDED",
+            input={
+                "trip_id": str(trip.id),
+                "suggestion_id": str(suggestion.id),
+                "trigger_id": str(trigger.id),
+                "signal_id": str(action_params.get("signal_id") or ""),
+                "operational_update_id": recovery_brief.get("source", {}).get("operational_update_id"),
+                "content_sha256": recovery_brief.get("source", {}).get("content_sha256"),
+                "plan_version_id": recovery_brief.get("source", {}).get("plan_version_id"),
+                "agent_version": appointment_recovery_service.AGENT_VERSION,
+                "schema_version": appointment_recovery_service.SCHEMA_VERSION,
+            },
+            output=recovery_brief,
+            started_at=now,
+            finished_at=now,
+        )
+        session.add(recovery_run)
+        session.flush()
+
+        workflow.payload = {
+            **workflow.payload,
+            "agent_run_id": str(recovery_run.id),
+            "recovery_status": recovery_brief.get("status"),
+        }
+        action_params["recovery_workflow_id"] = str(workflow.id)
+        action_params["recovery_agent_run_id"] = str(recovery_run.id)
+        action["params"] = action_params
+        suggestion.proposed_action = action
+        recovery_refs = {
+            "workflow_id": str(workflow.id),
+            "agent_run_id": str(recovery_run.id),
+        }
+        session.flush()
+
+    evidence_items = list(candidate.evidence)
+    if recovery_refs:
+        evidence_items.extend(
+            [
+                {
+                    "kind": "APPOINTMENT_RECOVERY_WORKFLOW",
+                    "ref": f"workflow:{recovery_refs['workflow_id']}",
+                    "retrieved_at": now.isoformat(),
+                },
+                {
+                    "kind": "APPOINTMENT_RECOVERY_AGENT_RUN",
+                    "ref": f"agent-run:{recovery_refs['agent_run_id']}",
+                    "retrieved_at": now.isoformat(),
+                },
+            ]
+        )
+        suggestion.evidence = evidence_items
+        session.flush()
+
     evidence_service.record_many(
         session,
         organization_id,
         subject_type="proactive_suggestion",
         subject_id=suggestion.id,
-        items=candidate.evidence,
+        items=evidence_items,
         source=f"proactive:{candidate.rule_id}",
     )
 
@@ -875,7 +974,18 @@ def _record_candidate(
         organization_id,
         suggestion,
         "SUPPRESSED" if status == "SUPPRESSED" else "PROPOSED",
-        detail={"push_status": push_status, "push_reason": push_reason},
+        detail={
+            "push_status": push_status,
+            "push_reason": push_reason,
+            **(
+                {
+                    "recovery_workflow_id": recovery_refs["workflow_id"],
+                    "recovery_agent_run_id": recovery_refs["agent_run_id"],
+                }
+                if recovery_refs
+                else {}
+            ),
+        },
     )
 
     trigger.status = "SUPPRESSED" if status == "SUPPRESSED" else "PROPOSED"

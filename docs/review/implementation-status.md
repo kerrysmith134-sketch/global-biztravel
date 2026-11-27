@@ -443,3 +443,13 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 报告不修改任何 Insight / Opportunity / Claim 状态，不推进或回退商机阶段，不自动撤销人工决策；不使用语义相似度推断依赖。
 - 查询按 organization + Workspace 隔离，并设置 200 条主张谱系、5000 条历史主张和 250 条影响关系的上限；截断时返回标记。
 - **验证状态：** 代码和集成测试已提交至 `feat/sprint-h2.9-claim-impact-intelligence`；最新 GitHub Actions 为最终验收依据。该分支保持 Draft PR，不代表已合并或已部署。
+
+
+## 2026-11-27 H2.22 — Appointment Recovery Agent（首个确定性切片）
+
+- 航班运营事件通过 ADR-0044 完整性校验并产生预约影响后，确定性 APPOINTMENT_RECOVERY planner 按拜访状态生成恢复动作：错过预约窗口、取消/备降导致时间未定、交通链不完整、预约窗口缺失及仍在窗口但缓冲被消耗。
+- 每项动作保留 Visit / PlanStop、计划/预计到达、延误分钟和判定状态；缺失的客户可用时段、联系人、客户时区或实时交通数据作为明确输入缺口。
+- 复用既有 WorkflowInstance + AgentRun 持久化；与首次生成的 FLIGHT_STATUS_ALERT 同一事务写入，并在 ProactiveSuggestion Evidence 中引用。扫描去重命中不会重复创建 AgentRun。
+- 不新增迁移和 API：恢复简报随现有 Suggestion proposed_action.params.recovery_brief 返回，recovery_agent_run_id / recovery_workflow_id 指向完整审计记录。
+- 安全边界：不推断替代时间窗口；不生成假客户消息；不修改 Trip / Visit / PlanVersion / PlanStop / PlanTravelLeg / FlightSegment；不订票、不改签、不联系客户。后续执行必须取得客户确认的可用窗口并经过独立审批。
+- 本切片的 PostgreSQL 集成测试覆盖 AgentRun/Workflow 血缘、无虚构时间、无外部动作与计划不变性；最终验收以当前 main 的 GitHub Actions 全绿为准。
