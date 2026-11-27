@@ -383,6 +383,20 @@ struct TripDetailView: View {
                 }
 
                 if section == .overview {
+                    Section("风险与恢复") {
+                        NavigationLink {
+                            TripRiskWorkspaceView(
+                                tripId: viewModel.tripId,
+                                environment: environment
+                            )
+                        } label: {
+                            Label("风险与恢复工作台", systemImage: "exclamationmark.shield")
+                        }
+                        Text("跨主动建议与人工跟进统一追踪风险、处置状态与审计事件。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Section("客户导入") {
                         Button {
                             showsImport = true
