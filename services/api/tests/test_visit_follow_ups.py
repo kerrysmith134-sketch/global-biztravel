@@ -587,3 +587,11 @@ def test_customer_appointment_window_timezone_offsets_match_iana_zone() -> None:
             timezone="Europe/Berlin",
             confirmation_method="EMAIL",
         )
+
+    with pytest.raises(ValidationError, match="end_at 的 UTC offset 与 timezone 不一致"):
+        CustomerAppointmentWindowAttestationCreate(
+            start_at=datetime.fromisoformat("2026-12-01T10:00:00+01:00"),
+            end_at=datetime.fromisoformat("2026-12-01T11:00:00+00:00"),
+            timezone="Europe/Berlin",
+            confirmation_method="EMAIL",
+        )
