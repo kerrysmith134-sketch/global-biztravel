@@ -886,6 +886,47 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
                     "APPOINTMENT_RECOVERY_AGENT_RUN",
                 }
             )
+
+        # Trip Risk must reuse the same normalized flight event and merge the
+        # linked suggestion rather than creating a second operational-risk item.
+        risk_reconciliation = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert risk_reconciliation.status_code == 200, risk_reconciliation.text
+        assert risk_reconciliation.json()["cases_created"] == 1
+        assert risk_reconciliation.json()["errors"] == []
+        risk_feed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert risk_feed.status_code == 200, risk_feed.text
+        assert len(risk_feed.json()["items"]) == 1
+        risk_case = risk_feed.json()["items"][0]
+        assert risk_case["case_key"] == f"external_signal:{signal_id}"
+        assert risk_case["risk_type"] == "FLIGHT"
+        assert risk_case["severity"] == "HIGH"
+        assert {
+            item["type"] for item in risk_case["source_refs"]
+        } == {"PROACTIVE_SUGGESTION", "EXTERNAL_SIGNAL"}
+        risk_impact = risk_case["context"]["external_signal_assessments"][0]["impact_assessment"]
+        assert risk_impact["status"] == "OPERATIONAL_DELAY_ASSESSED"
+        assert risk_impact["missed_visit_ids"] == [first_visit_id, second_visit_id]
+        risk_evidence_types = {item["type"] for item in risk_case["evidence_refs"]}
+        assert {
+            "EXTERNAL_SIGNAL_PAYLOAD",
+            "IMPACT_ASSESSMENT",
+            "FLIGHT_OPERATIONAL_UPDATE",
+            "FLIGHT_SEGMENT",
+            "FLIGHT_SEGMENT_PLAN_BINDING",
+            "PLAN_STOP_IMPACT",
+            "PLAN_TRAVEL_LEG",
+        } <= risk_evidence_types
+
+        risk_replay = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert risk_replay.status_code == 200, risk_replay.text
+        assert risk_replay.json()["cases_created"] == 0
+        assert risk_replay.json()["cases_updated"] == 0
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(
