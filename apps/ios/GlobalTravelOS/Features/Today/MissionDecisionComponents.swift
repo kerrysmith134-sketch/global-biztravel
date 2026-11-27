@@ -88,6 +88,10 @@ struct MissionDecisionCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                if let recovery = suggestion.recoveryBrief, !recovery.actions.isEmpty {
+                    MissionRecoveryBriefSection(brief: recovery)
+                }
+
                 HStack(spacing: DS.Spacing.sm) {
                     Text(suggestion.confidenceLabel)
                         .font(.caption2.monospacedDigit())
@@ -121,5 +125,73 @@ struct MissionDecisionCard: View {
                 }
             }
         }
+    }
+}
+
+
+/// A compact, read-only preview of the server-generated appointment recovery plan.
+private struct MissionRecoveryBriefSection: View {
+    let brief: AppointmentRecoveryBrief
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            HStack {
+                Text("预约恢复")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.ColorToken.textPrimary)
+                Spacer()
+                Text(brief.statusLabel)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(DS.ColorToken.textSecondary)
+            }
+
+            ForEach(Array(brief.actions.prefix(3).enumerated()), id: \.element.id) { index, action in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: DS.Spacing.xs) {
+                        Text(action.actionLabel)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(DS.ColorToken.textPrimary)
+                        Spacer(minLength: 4)
+                        Text(action.priorityLabel)
+                            .font(.caption2)
+                            .foregroundStyle(action.priority.uppercased() == "HIGH"
+                                ? DS.ColorToken.danger
+                                : DS.ColorToken.textSecondary)
+                    }
+                    if let delay = action.delayLabel {
+                        Text(delay)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                    if let rationale = action.rationale, !rationale.isEmpty {
+                        Text(rationale)
+                            .font(.caption2)
+                            .foregroundStyle(DS.ColorToken.textSecondary)
+                            .lineLimit(2)
+                    }
+                }
+                if index < min(brief.actions.count, 3) - 1 {
+                    Divider()
+                }
+            }
+
+            if brief.actions.count > 3 {
+                Text("另有 \(brief.actions.count - 3) 项恢复动作")
+                    .font(.caption2)
+                    .foregroundStyle(DS.ColorToken.textSecondary)
+            }
+            if !brief.dataGaps.isEmpty {
+                Text("仍需补充 \(brief.dataGaps.count) 项信息，系统不会推断客户可用时段")
+                    .font(.caption2)
+                    .foregroundStyle(DS.ColorToken.textSecondary)
+            }
+            if brief.humanDecisionRequired {
+                Label("待人工确认 · 不自动改期或联系客户", systemImage: "hand.raised")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(DS.ColorToken.textSecondary)
+            }
+        }
+        .padding(.vertical, DS.Spacing.xs)
+        .accessibilityElement(children: .combine)
     }
 }

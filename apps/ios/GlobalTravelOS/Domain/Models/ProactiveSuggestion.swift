@@ -68,6 +68,109 @@ struct SuggestionEvidence: Codable, Equatable, Identifiable {
     var sourceLabel: String { ref ?? kind ?? "—" }
 }
 
+/// A recovery action derived from a verified flight-impact snapshot.
+struct AppointmentRecoveryAction: Equatable, Identifiable {
+    let visitId: String?
+    let planStopId: String?
+    let actionCode: String
+    let priority: String
+    let decisionStatus: String
+    let rationale: String?
+    let delayMinutes: Int?
+    let requiredInputs: [String]
+
+    var id: String {
+        "\(visitId ?? "visit")|\(planStopId ?? "stop")|\(actionCode)"
+    }
+
+    var actionLabel: String {
+        switch actionCode {
+        case "REQUEST_CUSTOMER_RESCHEDULE_WINDOW": return "征求客户改期窗口"
+        case "VERIFY_REPLACEMENT_FLIGHT_AND_RECONFIRM": return "核实替代航班并重确认"
+        case "REVALIDATE_TRAVEL_CHAIN": return "重新验证交通链"
+        case "CONFIRM_CUSTOMER_APPOINTMENT_WINDOW": return "确认预约时间窗口"
+        case "RECONFIRM_ARRIVAL_AND_KEEP_APPOINTMENT_PROVISIONAL":
+            return "复核到达时间并暂保留预约"
+        default: return "复核拜访恢复方案"
+        }
+    }
+
+    var priorityLabel: String {
+        switch priority.uppercased() {
+        case "HIGH": return "高优先级"
+        case "MEDIUM": return "需关注"
+        default: return "待复核"
+        }
+    }
+
+    var decisionLabel: String {
+        switch decisionStatus.uppercased() {
+        case "REQUIRES_HUMAN_DECISION": return "需要人工决定"
+        case "DATA_REVALIDATION_REQUIRED": return "需要补齐交通证据"
+        case "CUSTOMER_CONFIRMATION_REQUIRED": return "需要客户确认"
+        case "AT_RISK_REVIEW": return "预约仍暂时有效"
+        default: return "待复核"
+        }
+    }
+
+    var delayLabel: String? {
+        guard let delayMinutes, delayMinutes > 0 else { return nil }
+        return "预计影响 \(delayMinutes) 分钟"
+    }
+
+    fileprivate init?(json: JSONValue) {
+        guard let value = json.objectValue,
+              let actionCode = value["action_code"]?.stringValue else {
+            return nil
+        }
+        visitId = value["visit_id"]?.stringValue
+        planStopId = value["plan_stop_id"]?.stringValue
+        self.actionCode = actionCode
+        priority = value["priority"]?.stringValue ?? "UNKNOWN"
+        decisionStatus = value["decision_status"]?.stringValue ?? "UNKNOWN"
+        rationale = value["rationale"]?.stringValue
+        delayMinutes = value["delay_minutes"]?.integerValue
+        requiredInputs = value["required_inputs"]?.arrayValue?.compactMap(\.stringValue) ?? []
+    }
+}
+
+/// Deterministic appointment recovery summary embedded in a proactive suggestion.
+struct AppointmentRecoveryBrief: Equatable {
+    let status: String
+    let actions: [AppointmentRecoveryAction]
+    let dataGaps: [String]
+    let humanDecisionRequired: Bool
+    let planMutated: Bool
+    let bookingChanged: Bool
+    let customerContacted: Bool
+    let candidateWindowsInferred: Bool
+
+    var statusLabel: String {
+        switch status.uppercased() {
+        case "RECOVERY_REQUIRED": return "需要安排恢复"
+        case "REVIEW_REQUIRED": return "需要复核"
+        case "NO_RECOVERY_ACTION_REQUIRED": return "暂不需要恢复动作"
+        default: return "恢复状态待确认"
+        }
+    }
+
+    fileprivate init?(json: JSONValue) {
+        guard let value = json.objectValue,
+              let rawActions = value["actions"]?.arrayValue else {
+            return nil
+        }
+        status = value["status"]?.stringValue ?? "UNKNOWN"
+        actions = rawActions.compactMap(AppointmentRecoveryAction.init(json:))
+        dataGaps = value["data_gaps"]?.arrayValue?.compactMap(\.stringValue) ?? []
+        let guardrails = value["guardrails"]?.objectValue ?? [:]
+        humanDecisionRequired = guardrails["human_decision_required"]?.boolValue ?? !actions.isEmpty
+        planMutated = guardrails["plan_mutated"]?.boolValue ?? false
+        bookingChanged = guardrails["booking_changed"]?.boolValue ?? false
+        customerContacted = guardrails["customer_contacted"]?.boolValue ?? false
+        candidateWindowsInferred = guardrails["candidate_windows_inferred"]?.boolValue ?? false
+    }
+}
+
 /// `proposed_action:{kind, tool, params}` — what the agent would do if a human approves.
 struct ProposedAction: Codable, Equatable {
     var kind: String?
@@ -92,6 +195,11 @@ struct ProposedAction: Codable, Equatable {
     }
 
     var hasParams: Bool { !(params ?? [:]).isEmpty }
+
+    var appointmentRecoveryBrief: AppointmentRecoveryBrief? {
+        guard let value = params?["recovery_brief"] else { return nil }
+        return AppointmentRecoveryBrief(json: value)
+    }
 }
 
 /// `daily_cap:{used,cap}`.
@@ -214,6 +322,10 @@ struct ProactiveSuggestion: Codable, Equatable, Identifiable {
     var actionSummary: String {
         guard let proposedAction else { return "该建议不含可执行动作" }
         return "\(proposedAction.title) · \(proposedAction.toolLabel)"
+    }
+
+    var recoveryBrief: AppointmentRecoveryBrief? {
+        proposedAction?.appointmentRecoveryBrief
     }
 }
 
