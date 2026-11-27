@@ -68,6 +68,7 @@ from app.models.reliability import (
     OutboxEvent,
 )
 from app.models.trip import ImportBatch, ImportRow, Trip, Visit
+from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.visa import EntryAssessment, VisaCase
 from app.models.visa_override import VisaCatalogOverride
 from app.models.workflow import (
@@ -156,6 +157,8 @@ __all__ = [
     "TravelerProfile",
     "Trip",
     "TripExpense",
+    "TripRiskCase",
+    "TripRiskCaseEvent",
     "TripMemorySummary",
     "User",
     "Visit",
