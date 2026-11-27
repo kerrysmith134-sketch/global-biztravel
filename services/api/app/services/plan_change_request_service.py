@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+import json
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -29,7 +31,7 @@ from app.models.flight_operations import FlightOperationalUpdate
 from app.models.integrations import ExternalSignal
 from app.models.records import VisitFollowUp
 from app.models.trip import Trip
-from app.models.workflow import AgentRun, WorkflowInstance
+from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import job_service, plan_service, trip_service, visit_service
 
 CHANGE_VISIT_TIME = "CHANGE_VISIT_TIME"
@@ -62,6 +64,47 @@ def _require(payload: dict[str, Any], key: str) -> Any:
 
 
 
+
+
+def _canonical_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return sha256(encoded).hexdigest()
+
+
+def _verified_follow_up_evidence(
+    session: Session,
+    organization_id: UUID,
+    follow_up_id: UUID,
+    *,
+    kind: str,
+    ref: str,
+) -> Evidence:
+    evidence = session.scalars(
+        select(Evidence).where(
+            Evidence.organization_id == organization_id,
+            Evidence.subject_type == "visit_follow_up",
+            Evidence.subject_id == follow_up_id,
+            Evidence.kind == kind,
+            Evidence.ref == ref,
+        )
+    ).one_or_none()
+    if evidence is None or not isinstance(evidence.payload, dict):
+        raise Unprocessable(
+            "预约恢复的证据记录缺失或格式无效",
+            details={"evidence_kind": kind, "evidence_ref": ref},
+        )
+    if evidence.content_hash != _canonical_sha256(evidence.payload):
+        raise PlanVersionConflict(
+            "预约恢复证据内容摘要不一致",
+            details={"evidence_kind": kind, "evidence_ref": ref},
+        )
+    return evidence
 
 
 def _aware_utc(value: Any, *, field: str, timezone: str | None = None) -> datetime:
@@ -163,12 +206,53 @@ def _validate_appointment_recovery_change(
     input_snapshot = run_output.get("input_snapshot")
     if not isinstance(input_snapshot, dict):
         raise Unprocessable("预约重评缺少可验证的输入快照")
+    snapshot_sha256 = _canonical_sha256(input_snapshot)
+    if (
+        run_input.get("input_sha256") != snapshot_sha256
+        or run_output.get("input_sha256") != snapshot_sha256
+    ):
+        raise PlanVersionConflict("预约重评 AgentRun 输入快照 SHA-256 校验失败")
     customer_window_attestation = input_snapshot.get("customer_window_attestation")
     if not isinstance(customer_window_attestation, dict):
         raise Unprocessable("预约重评缺少客户窗口及其时区陈述")
     attested_timezone = customer_window_attestation.get("timezone")
     if not isinstance(attested_timezone, str) or not attested_timezone.strip():
         raise Unprocessable("预约重评缺少客户预约窗口 IANA 时区")
+    attestation_evidence = _verified_follow_up_evidence(
+        session,
+        organization_id,
+        follow_up.id,
+        kind="APPOINTMENT_WINDOW_ATTESTATION",
+        ref=f"customer-window-attestation:{run.id}",
+    )
+    attestation_quality = (
+        attestation_evidence.quality
+        if isinstance(attestation_evidence.quality, dict)
+        else {}
+    )
+    if (
+        attestation_evidence.verification_status != "PARTIALLY_VERIFIED"
+        or attestation_quality.get("externally_verified") is not False
+        or attestation_evidence.payload.get("customer_window") != customer_window_attestation
+    ):
+        raise PlanVersionConflict("客户预约窗口陈述证据与 AgentRun 输入快照不一致")
+    reassessment_evidence = _verified_follow_up_evidence(
+        session,
+        organization_id,
+        follow_up.id,
+        kind="APPOINTMENT_RECOVERY_REASSESSMENT",
+        ref=f"appointment-reassessment:{run.id}",
+    )
+    reassessment_payload = reassessment_evidence.payload
+    if (
+        reassessment_payload.get("agent_run_id") != str(run.id)
+        or reassessment_payload.get("workflow_id") != str(workflow.id)
+        or reassessment_payload.get("input_sha256") != snapshot_sha256
+        or reassessment_payload.get("decision") != run_output.get("decision")
+        or reassessment_payload.get("plan_change_recommendation")
+        != run_output.get("plan_change_recommendation")
+    ):
+        raise PlanVersionConflict("预约重评结果 Evidence 与 AgentRun 输出不一致")
     try:
         expected_update_id = UUID(str(input_snapshot.get("latest_operational_update_id")))
         expected_signal_id = UUID(str(input_snapshot.get("latest_signal_id")))
