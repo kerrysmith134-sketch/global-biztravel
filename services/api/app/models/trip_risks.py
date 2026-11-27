@@ -167,6 +167,7 @@ class TripRiskCaseEvent(Base):
     )
     trip_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     case_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    case_version: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     from_status: Mapped[str | None] = mapped_column(Text)
     to_status: Mapped[str] = mapped_column(Text, nullable=False)
