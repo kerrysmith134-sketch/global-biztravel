@@ -10,6 +10,20 @@ final class TripRiskContractTests: XCTestCase {
         XCTAssertNotNil(value.firstSeenAt)
     }
 
+    func testTripRiskCaseDecodesSystemOnlyResolutionBasis() throws {
+        let sampleData = try XCTUnwrap(ContractSamples.tripRiskCase.data(using: .utf8))
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: sampleData) as? [String: Any]
+        )
+        payload["resolution_basis"] = "SOURCE_SUGGESTION_DISMISSED"
+        let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let json = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+
+        let value = try DateCoding.decode(TripRiskCase.self, fromJSON: json)
+        XCTAssertEqual(value.resolutionBasis, "SOURCE_SUGGESTION_DISMISSED")
+        XCTAssertEqual(value.resolutionBasisLabel, "来源主动建议已驳回")
+    }
+
     func testTripRiskCaseEventContractSamplePreservesCaseVersion() throws {
         let value = try DateCoding.decode(
             TripRiskCaseEvent.self,
