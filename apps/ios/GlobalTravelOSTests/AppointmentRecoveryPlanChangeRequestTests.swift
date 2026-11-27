@@ -26,6 +26,15 @@ final class AppointmentRecoveryPlanChangeRequestTests: XCTestCase {
         XCTAssertEqual(object["timezone"] as? String, "Europe/Berlin")
     }
 
+    func testPlanVersionDetailDecodesItsTripVersionForActivationGuard() throws {
+        let plan = try DateCoding.decode(
+            PlanVersionDetail.self,
+            fromJSON: ContractSamples.planVersionDetail
+        )
+
+        XCTAssertNotNil(plan.tripVersion)
+    }
+
     func testRecoveryPlanChangeUsesExistingPlanChangeContract() throws {
         let request = PlanChangeCreate(
             basePlanVersionId: "11111111-1111-1111-1111-111111111111",
