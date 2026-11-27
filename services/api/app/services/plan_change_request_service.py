@@ -528,7 +528,9 @@ def retry_plan_change(
         }
     )
     workflow_payload["retry_history"] = history[-20:]
-    workflow_payload["retry_count"] = len(history)
+    retry_count = workflow_payload.get("retry_count")
+    retry_count = retry_count if isinstance(retry_count, int) and retry_count >= 0 else 0
+    workflow_payload["retry_count"] = retry_count + 1
     workflow_payload["latest_retry_job_id"] = str(retried_job.id)
     workflow.job_id = retried_job.id
     workflow.status = "ACCEPTED"
