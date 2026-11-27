@@ -319,6 +319,85 @@ def enqueue_for_suggestion(
     return session.get(Notification, inserted)
 
 
+def enqueue_for_trip_risk_case(
+    session: Session,
+    case,
+    *,
+    user_id: UUID | str | None,
+) -> Notification | None:
+    """Queue one in-app/push notification for a newly escalated Trip Risk Case.
+
+    The Case row is locked by the caller and the notification shares the same DB
+    transaction, so an escalation cannot commit without its notification record.
+    """
+    if user_id is None:
+        return None
+
+    from app.models.trip_risks import TripRiskCase
+
+    if not isinstance(case, TripRiskCase) or case.status != "ESCALATED":
+        return None
+
+    risk_to_suggestion_type = {
+        "FLIGHT": "FLIGHT_STATUS_ALERT",
+        "WEATHER": "WEATHER_DISRUPTION_ALERT",
+        "VISA": "VISA_POLICY_UPDATE",
+        "FINANCIAL": "FX_RATE_ALERT",
+        "PLANNING": "PLAN_UNPLACED_VISITS",
+        "APPOINTMENT": "FLIGHT_STATUS_ALERT",
+        "VISIT_FOLLOW_UP": "VISIT_FOLLOW_UP",
+    }
+    suggestion_type = risk_to_suggestion_type.get(case.risk_type, "TRIP_RISK_ALERT")
+    priority = (
+        notification_policy_service.PRIORITY_P0
+        if case.severity == "CRITICAL"
+        else notification_policy_service.classify(
+            suggestion_type=suggestion_type,
+            severity=case.severity,
+        )
+    )
+    preference = session.scalars(
+        select(NotificationPreference).where(
+            NotificationPreference.organization_id == case.organization_id,
+            NotificationPreference.user_id == str(user_id),
+        )
+    ).one_or_none()
+    if preference is not None and priority in (preference.muted_priorities or []):
+        return None
+
+    provider = get_settings().push_provider
+    issue_key = f"trip-risk:{case.id}:escalated:v{case.version}"
+    existing = session.scalars(
+        select(Notification).where(
+            Notification.organization_id == case.organization_id,
+            Notification.user_id == str(user_id),
+            Notification.kind == "TRIP_RISK_ESCALATION",
+            Notification.issue_key == issue_key,
+            Notification.provider == provider,
+        )
+    ).one_or_none()
+    if existing is not None:
+        return existing
+
+    notification = Notification(
+        organization_id=case.organization_id,
+        user_id=user_id,
+        suggestion_id=None,
+        kind="TRIP_RISK_ESCALATION",
+        priority=priority,
+        issue_key=issue_key,
+        title=f"出行风险已升级：{case.title}",
+        body=case.summary or "该风险已超过复核期限，需要立即检查并采取措施。",
+        status="PENDING",
+        provider=provider,
+        recipient=resolve_recipient(session, case.organization_id, user_id, provider),
+        attempts=0,
+    )
+    session.add(notification)
+    session.flush()
+    return notification
+
+
 def dispatch_pending(
     session: Session, organization_id: UUID | str, *, limit: int = 50
 ) -> DispatchReport:
