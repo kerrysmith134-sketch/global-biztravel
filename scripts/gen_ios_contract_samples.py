@@ -67,6 +67,10 @@ TARGETS: dict[str, str] = {
     # 版本比较：iOS 手写模型曾与真实响应完全漂移（base/compare vs base_plan_version_id/
     # target_plan_version_id、changes vs stops），加入契约样本后这类错误会在解码测试里直接失败。
     "PlanDiff": "PlanVersionDiffRead",
+    "TripRiskCase": "TripRiskCaseRead",
+    "TripRiskCaseEvent": "TripRiskCaseEventRead",
+    "TripRiskReconciliation": "TripRiskReconciliationRead",
+    "TripRiskTransition": "TripRiskTransitionRead",
     "MarketEvidenceIntelligenceReport": "MarketEvidenceIntelligenceRead",
     "MarketSourceVerificationPlan": "MarketSourceVerificationPlanRead",
     "MarketSourceVerificationPlanApplication": "MarketSourceVerificationPlanApplicationRead",
