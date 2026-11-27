@@ -122,6 +122,7 @@ def _append_event(
         organization_id=case.organization_id,
         trip_id=case.trip_id,
         case_id=case.id,
+        case_version=case.version,
         event_type=event_type,
         from_status=from_status,
         to_status=case.status,
