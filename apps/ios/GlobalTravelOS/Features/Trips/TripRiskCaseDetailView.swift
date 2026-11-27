@@ -154,6 +154,29 @@ struct TripRiskCaseDetailView: View {
                     }
                 }
 
+                if !viewModel.riskCase.impactAssessmentDescriptions.isEmpty {
+                    Section("行程影响评估") {
+                        ForEach(
+                            Array(viewModel.riskCase.impactAssessmentDescriptions.enumerated()),
+                            id: \.offset
+                        ) { item in
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(item.element.components(separatedBy: "\n").first ?? item.element)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(DS.ColorToken.textPrimary)
+                                if let explanation = item.element.components(separatedBy: "\n").dropFirst().first,
+                                   !explanation.isEmpty {
+                                    Text(explanation)
+                                        .font(.footnote)
+                                        .foregroundStyle(DS.ColorToken.textSecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .padding(.vertical, DS.Spacing.xs)
+                        }
+                    }
+                }
+
                 Section("证据引用") {
                     if viewModel.riskCase.evidenceDescriptions.isEmpty {
                         Text("暂无结构化证据引用")
