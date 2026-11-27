@@ -552,7 +552,16 @@ def _external_candidates(
         # Provider-supplied title/severity are advisory text and must never downgrade
         # a genuinely missed customer appointment or inflate an absorbed delay.
         canonical_signal_payload = payload
-        if signal.signal_type == "FLIGHT_STATUS" and payload.get("flight_operational_update"):
+        operational_markers = {
+            "operational_update_id",
+            "operational_update_content_sha256",
+            "operational_update_type",
+            "flight_operational_update",
+        }
+        if (
+            signal.signal_type == "FLIGHT_STATUS"
+            and operational_markers.intersection(payload)
+        ):
             impact_status = impact_assessment.get("status") if impact_assessment else None
             if impact_status in _FLIGHT_OPERATIONAL_INTEGRITY_FAILURES:
                 # Fail closed: do not create an actionable suggestion from an event
