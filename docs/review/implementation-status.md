@@ -510,10 +510,11 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 ### 2026-11-27 H2.25 — Trip Risk & Recovery Case Aggregate
 
 - 新增 TripRiskCase / TripRiskCaseEvent 与迁移 0053；Case 对主动建议和拜访 FollowUp 做稳定去重投影，FollowUp 通过 AgentRun 输入中的 source suggestion ID 回链到同一风险；独立 FollowUp 单独成案。来源表仍是各领域事实真相，不复制或接管业务操作。
-- 新增列表、事件时间线、显式对账和人工状态转换 API；Case Version 乐观并发保护，所有状态变更追加事件。新来源证据到达时可以重新打开已关闭 Case，并重新按来源状态进入 ACKNOWLEDGED / IN_PROGRESS。
+- 新增列表、事件时间线、显式对账和人工状态转换 API；Case Version 乐观并发保护，所有状态变更追加带 `case_version` 的事件。事件表由数据库触发器拒绝 UPDATE，应用角色撤销 UPDATE / DELETE。新来源证据到达时系统自动重开已关闭 Case，并重新按来源状态进入 ACKNOWLEDGED / IN_PROGRESS；不允许人工无依据重开。
 - 风险关闭必须给出依据：当前 Trip Version 下的 ACTIVE Plan、全部相关 FollowUp 完成、Trip 已关闭或显式人工确认；驳回必须对应已驳回来源，不允许任意关闭。
 - 后台按 LOW 24h / MEDIUM 4h / HIGH 30m / CRITICAL 10m 复核；HIGH / CRITICAL 超期且仍未关闭时自动 ESCALATED。
 - 升级通知在同一事务写入既有 Notification 队列，按用户通知偏好静音、按风险类型/等级映射 P0/P1/P2/P3，并以 Case ID + Version 去重；投递复用 Notification Worker。
 - 主动建议批准/驳回、FollowUp 创建/更新和后台主动扫描周期触发聚合对账；不自动联系客户、不订票/改签、不改写正式行程或 ACTIVE Plan。
+- 独立的人工/现场 FollowUp 进入 COMPLETED / DISMISSED 终态时，其独立风险 Case 会同步 RESOLVED / DISMISSED；若 Case 同时关联主动建议，则关闭依据还必须覆盖关联建议状态，不能因一个子任务完成就关闭全部来源风险。
 - API 与 OpenAPI JSON/YAML 同步更新；新增 PostgreSQL 集成测试覆盖跨源合并、幂等对账、复核升级、过期 Version 冲突、关闭依据和来源证据更新后重开。
 - **验证状态：** 代码、迁移、API 契约与测试已推送 main；本环境未运行 PostgreSQL 迁移/集成测试、Ruff、OpenAPI 生成器或 CI。GitHub 当前状态检查需以最新 commit 的实际 Checks 为准，不视为验收通过。
