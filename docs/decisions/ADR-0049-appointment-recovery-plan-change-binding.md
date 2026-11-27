@@ -15,10 +15,11 @@
 3. 服务端必须重新读取该组织、Trip、Visit 下的 FollowUp，且只接受 OPEN / IN_PROGRESS 状态。
 4. 服务端必须解析该 FollowUp 最新成功的 `APPOINTMENT_RECOVERY_REASSESSMENT` AgentRun，并验证其 Workflow 血缘、决策、数据缺口、人工提交标志、Visit、基础计划版本、Trip 版本及建议窗口。
 5. 请求起止时间必须带 UTC offset，且换算成 UTC 后与 AgentRun 中的建议窗口完全一致。不得仅凭客户端提交的 `reason` 或 `source` 声明其来源。
-6. 提交时重新读取重评输入快照所引用的最新 FlightOperationalUpdate，核对 ID、内容 SHA-256、航班段最新顺序及 ExternalSignal 有效期；信号过期、被更新事件取代或内容不匹配时必须重新评估。
-7. 基础 PlanVersion 必须仍为 ACTIVE，且其 `trip_version` 必须与当前 Trip Version 一致。已经修改过 Visit 输入但尚未重规划并激活的新计划期间，不允许继续沿用旧 ACTIVE 计划提交下一次变更。
-8. 对同一 Trip 的计划变更先锁定 Trip 行；所有 Visit 创建、修改、删除及导入批次的原始 Visit 插入采用一致的 Trip → Visit 锁顺序，避免不同幂等键或导入事务并发提交时同时基于同一旧版本写入。
-9. Plan Change 只更新规划输入并启动异步重求解。新计划仍需独立验证、Diff 审查，并由人明确激活；不得因预约恢复 Agent 的判断自动激活。
+6. 服务端重新计算 AgentRun `input_snapshot` 的规范化 SHA-256，必须同时匹配 AgentRun input/output 中的摘要；客户窗口陈述 Evidence 与重评结果 Evidence 的 payload hash、关键字段和 AgentRun/Workflow 血缘也必须吻合。
+7. 提交时重新读取重评输入快照所引用的最新 FlightOperationalUpdate，核对 ID、内容 SHA-256、航班段最新顺序及 ExternalSignal 有效期；信号过期、被更新事件取代或内容不匹配时必须重新评估。
+8. 基础 PlanVersion 必须仍为 ACTIVE，且其 `trip_version` 必须与当前 Trip Version 一致。已经修改过 Visit 输入但尚未重规划并激活的新计划期间，不允许继续沿用旧 ACTIVE 计划提交下一次变更。
+9. 对同一 Trip 的计划变更先锁定 Trip 行；所有 Visit 创建、修改、删除及导入批次的原始 Visit 插入采用一致的 Trip → Visit 锁顺序，避免不同幂等键或导入事务并发提交时同时基于同一旧版本写入。
+10. Plan Change 只更新规划输入并启动异步重求解。新计划仍需独立验证、Diff 审查，并由人明确激活；不得因预约恢复 Agent 的判断自动激活。
 
 ## 后果
 
