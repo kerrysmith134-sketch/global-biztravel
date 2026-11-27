@@ -33,6 +33,8 @@ CONTRACT = ROOT / "contracts" / "openapi.json"
 OUT_FILE = ROOT / "apps" / "ios" / "GlobalTravelOSTests" / "ContractSamples.generated.swift"
 OUT_FOLLOW_UP_FILE = ROOT / "apps" / "ios" / "GlobalTravelOSTests" / "VisitFollowUpContractSample.generated.swift"
 
+MAX_SAMPLE_LINES_PER_FILE = 420
+
 #: 生成哪些 schema 的样本：与 iOS 解码测试覆盖的模型一一对应（模型名 → 契约 schema）。
 TARGETS: dict[str, str] = {
     "Trip": "TripRead",
@@ -203,7 +205,46 @@ def main() -> int:
         "// 后端 schema 改了字段名/类型，对应样本随之变化，解码测试会立刻失败。\n\n"
         "enum ContractSamples {\n"
     )
-    OUT_FILE.write_text(header + "\n".join(blocks) + "\n}\n", encoding="utf-8")
+    sample_chunks: list[list[str]] = []
+    current_chunk: list[str] = []
+    current_lines = 0
+    for block in blocks:
+        block_lines = len(block.splitlines()) + 1
+        if current_chunk and current_lines + block_lines > MAX_SAMPLE_LINES_PER_FILE:
+            sample_chunks.append(current_chunk)
+            current_chunk = []
+            current_lines = 0
+        current_chunk.append(block)
+        current_lines += block_lines
+    if current_chunk:
+        sample_chunks.append(current_chunk)
+
+    generated_parts: set[Path] = set()
+    for index, chunk in enumerate(sample_chunks):
+        if index == 0:
+            output_path = OUT_FILE
+            file_header = header
+            closing = "}\\n"
+        else:
+            output_path = OUT_FILE.with_name(
+                f"{OUT_FILE.stem}.part{index + 1}{OUT_FILE.suffix}"
+            )
+            file_header = (
+                "// 自动生成，请勿手改：scripts/gen_ios_contract_samples.py\\n"
+                "// ContractSamples 分片；与主样本文件由同一 OpenAPI schema 生成。\\n\\n"
+                "extension ContractSamples {\\n"
+            )
+            closing = "}\\n"
+        output_path.write_text(
+            file_header + "\\n".join(chunk) + "\\n" + closing,
+            encoding="utf-8",
+        )
+        generated_parts.add(output_path)
+
+    for stale_part in OUT_FILE.parent.glob(f"{OUT_FILE.stem}.part*{OUT_FILE.suffix}"):
+        if stale_part not in generated_parts:
+            stale_part.unlink()
+
     if follow_up_block is not None:
         follow_up_header = (
             "// 自动生成，请勿手改：scripts/gen_ios_contract_samples.py\n"
