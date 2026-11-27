@@ -23,7 +23,7 @@ extension PlanRepository {
             code: "PLAN_CHANGE_RETRY_UNSUPPORTED",
             message: "当前计划仓库不支持重试计划变更工作流。",
             traceId: nil,
-            details: ["workflow_id": workflowId]
+            details: ["workflow_id": .string(workflowId)]
         )
     }
 }
