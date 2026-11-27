@@ -145,6 +145,8 @@ def _build_groups(
     session: Session,
     organization_id: UUID,
     trip: Trip,
+    *,
+    now: datetime | None = None,
 ) -> dict[str, dict[str, Any]]:
     suggestions = list(
         session.scalars(
@@ -314,6 +316,7 @@ def _build_groups(
     # into the matching suggestion Case when possible; otherwise keep a signal-native Case.
     # OpenSky telemetry deliberately stays out of the risk queue unless a separately
     # validated FlightOperationalUpdate envelope is present.
+    evaluation_now = now or session.scalar(select(func.clock_timestamp()))
     subject_refs: list[tuple[str, str]] = [("TRIP", str(trip.id))]
     subject_refs.extend(
         ("COUNTRY", str(country).upper())
@@ -333,11 +336,11 @@ def _build_groups(
             .where(
                 ExternalSignal.organization_id == organization_id,
                 signal_subject_filter,
-                ExternalSignal.observed_at <= func.coalesce(func.cast(None, DateTime(timezone=True)), ExternalSignal.observed_at),
-                ExternalSignal.valid_from <= func.clock_timestamp(),
+                ExternalSignal.observed_at <= evaluation_now,
+                ExternalSignal.valid_from <= evaluation_now,
                 or_(
                     ExternalSignal.valid_until.is_(None),
-                    ExternalSignal.valid_until > func.clock_timestamp(),
+                    ExternalSignal.valid_until > evaluation_now,
                 ),
             )
             .order_by(ExternalSignal.observed_at, ExternalSignal.id)
@@ -963,7 +966,7 @@ def reconcile_trip(
         raise NotFound("出行不存在")
 
     report = RiskReconciliationReport(trip_id=str(trip.id))
-    groups = _build_groups(session, org, trip)
+    groups = _build_groups(session, org, trip, now=current)
     for group in groups.values():
         try:
             with session.begin_nested():
