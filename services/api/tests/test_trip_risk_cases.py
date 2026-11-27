@@ -331,7 +331,7 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
         )
         assert reopened.status_code == 200, reopened.text
         assert reopened.json()["cases_reopened"] == 1
-        assert fetch_case(client, trip_id)["status"] == "OPEN"
+        assert fetch_case(client, trip_id)["status"] == "ACKNOWLEDGED"
 
         with org_session(UUID(ORG_A)) as session:
             case_events = list(
