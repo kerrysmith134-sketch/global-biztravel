@@ -187,12 +187,12 @@ def upgrade() -> None:
     helpers.enable_org_rls("trip_risk_case_events", force=True)
     op.execute(
         """
-        CREATE OR REPLACE FUNCTION prevent_trip_risk_case_event_update() RETURNS trigger AS $
+        CREATE OR REPLACE FUNCTION prevent_trip_risk_case_event_update() RETURNS trigger AS $$
         BEGIN
             RAISE EXCEPTION 'trip_risk_case_events is append-only'
                 USING ERRCODE = '55000';
         END
-        $ LANGUAGE plpgsql
+        $$ LANGUAGE plpgsql
         """
     )
     op.execute(
