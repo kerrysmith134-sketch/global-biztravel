@@ -24,6 +24,7 @@ final class TripRiskWorkspaceViewModel: ObservableObject {
             let page = try await environment.tripRiskRepository.cases(tripId: tripId, status: nil, limit: 200)
             cases = page.items
         } catch {
+            cases = []
             errorMessage = environment.errorMessage(error)
         }
     }
