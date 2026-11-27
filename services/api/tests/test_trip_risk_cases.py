@@ -261,6 +261,12 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
         assert events_response.status_code == 200, events_response.text
         event_types = {item["event_type"] for item in events_response.json()}
         assert {"OPENED", "ACKNOWLEDGED"} <= event_types
+        event_versions = {
+            item["event_type"]: item["case_version"]
+            for item in events_response.json()
+        }
+        assert event_versions["OPENED"] == 1
+        assert event_versions["ACKNOWLEDGED"] == 2
 
         with pytest.raises(IntegrityError):
             with org_session(UUID(ORG_A)) as session:
