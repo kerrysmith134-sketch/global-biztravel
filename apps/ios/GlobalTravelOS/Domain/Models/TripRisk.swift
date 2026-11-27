@@ -144,7 +144,7 @@ enum TripRiskTransitionTarget: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum TripRiskResolutionBasis: String, Codable, CaseIterable, Identifiable {
+enum TripRiskResolutionBasis: String, Codable, CaseIterable, Hashable, Identifiable {
     case planRevalidated = "PLAN_REVALIDATED"
     case followUpCompleted = "FOLLOW_UP_COMPLETED"
     case tripClosed = "TRIP_CLOSED"
