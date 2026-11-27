@@ -96,7 +96,7 @@ struct TripRiskTransitionSheet: View {
                             .monospacedDigit()
                     }
                     .font(.footnote)
-                    .foregroundStyle(noteLength > 2_000 ? DS.ColorToken.danger : .secondary)
+                    .foregroundStyle(noteLength > 2_000 ? DS.ColorToken.danger : DS.ColorToken.textSecondary)
                 }
 
                 if let errorMessage {
