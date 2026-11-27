@@ -149,6 +149,14 @@ class TripRiskCaseEvent(Base):
             name="event_type_allowed",
         ),
         CheckConstraint("actor_type IN ('SYSTEM','USER')", name="actor_type_allowed"),
+        CheckConstraint("case_version >= 1", name="case_version_positive"),
+        UniqueConstraint(
+            "organization_id",
+            "trip_id",
+            "case_id",
+            "case_version",
+            name="uq_trip_risk_case_events_org_trip_case_version",
+        ),
         Index(
             "ix_trip_risk_case_events_org_trip_case_created",
             "organization_id",
