@@ -592,6 +592,7 @@ __all__ = [
     "build_push_provider",
     "dispatch_pending",
     "enqueue_for_suggestion",
+    "enqueue_for_trip_risk_case",
     "list_for_user",
     "get_preference",
     "mark_read",
