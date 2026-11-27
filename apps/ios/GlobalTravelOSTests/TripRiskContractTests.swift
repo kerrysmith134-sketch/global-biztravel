@@ -116,8 +116,36 @@ final class TripRiskContractTests: XCTestCase {
         third.createdAt = Date(timeIntervalSince1970: 100)
 
         let ordered = TripRiskCaseEvent.orderedByCaseVersion([third, first, second])
-        XCTAssertEqual(ordered.map(\\.caseVersion), [1, 2, 3])
-        XCTAssertEqual(ordered.map(\\.id), ["event-v1", "event-v2", "event-v3"])
+        XCTAssertEqual(ordered.map(\.caseVersion), [1, 2, 3])
+        XCTAssertEqual(ordered.map(\.id), ["event-v1", "event-v2", "event-v3"])
+    }
+
+    func testTripRiskResolutionBasisUsesBackendEnumValues() throws {
+        XCTAssertEqual(
+            Set(TripRiskResolutionBasis.allCases.map(\\.rawValue)),
+            Set([
+                "PLAN_REVALIDATED",
+                "FOLLOW_UP_COMPLETED",
+                "TRIP_CLOSED",
+                "HUMAN_ATTESTATION",
+                "FALSE_POSITIVE_CONFIRMED",
+                "FOLLOW_UP_DISMISSED"
+            ])
+        )
+
+        let request = try Endpoints.transitionTripRiskCase(
+            tripId: "trip-1",
+            caseId: "case-1",
+            request: TripRiskTransitionRequest(
+                expectedVersion: 2,
+                toStatus: .resolved,
+                note: "人工确认风险已解决",
+                resolutionBasis: .humanAttestation
+            )
+        )
+        let data = try XCTUnwrap(request.body)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(payload["resolution_basis"] as? String, "HUMAN_ATTESTATION")
     }
 
     func testTripRiskTerminalAndUnknownStatusesOfferNoManualTransitions() throws {
