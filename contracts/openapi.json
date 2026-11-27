@@ -11465,7 +11465,7 @@
             "description": "Validation Error",
             "content": {
               "application/json": {
-                "schema:": {
+                "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
@@ -11539,7 +11539,7 @@
             "description": "Validation Error",
             "content": {
               "application/json": {
-                "schema:": {
+                "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
@@ -11598,7 +11598,7 @@
             "description": "Validation Error",
             "content": {
               "application/json": {
-                "schema:": {
+                "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
@@ -11677,7 +11677,7 @@
             "description": "Validation Error",
             "content": {
               "application/json": {
-                "schema:": {
+                "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
