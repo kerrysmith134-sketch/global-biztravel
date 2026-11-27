@@ -539,3 +539,12 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 新增 XCTest 用例，覆盖事件因果顺序及关闭依据 wire enum；Trip Risk 契约测试总数为 11 项。
 
 **验证状态：** 代码已推送至 `main`。当前 HEAD 的 GitHub combined status 为空，GitHub Check Runs 返回 `total_count=0`；这表示目前没有可报告的 CI 检查结果，不代表通过。当前执行环境为 Linux，无 `xcodebuild` / iOS Simulator；本轮未执行 Swift XCTest、SwiftUI 构建、后端 PostgreSQL 集成测试或迁移。生产验收仍须在 macOS CI 与真实 PostgreSQL 环境完成。
+
+
+### 2026-11-27 H2.25.3 — Trip Risk audit sequence and wire compatibility
+
+- iOS TripRiskCase.resolutionBasis 改为开放字符串读模型，不再复用仅用于人工命令输入的六值枚举；因此服务端系统关闭依据（如 SOURCE_SUGGESTION_DISMISSED）和未来新增审计值不会导致整个风险列表解码失败。详情页显示已知关闭依据的本地化名称，未知值保留可读回退。
+- 新增 iOS 契约回归测试，直接把系统关闭依据注入服务端 Case JSON 并验证完整解码。
+- 新增迁移 0054_trip_risk_event_sequence_guards：对 case_version 增加正数 CHECK 与 (organization_id, trip_id, case_id, case_version) 唯一约束；若历史数据存在重复/非法版本，迁移明确失败，不改写审计历史。
+- 数据库 append-only 触发器现在同时拒绝 UPDATE 与 DELETE；保留 gbt_app 对 UPDATE/DELETE 的权限撤销。后端验收新增应用角色删除拒绝和重复事件版本拒绝断言。
+- **验证状态：** 本轮为代码与迁移推送；当前执行环境未运行 PostgreSQL 迁移/集成测试、Ruff、OpenAPI 样本生成、macOS Xcode 构建或 XCTest。不得视为通过 CI 或已部署。生产验收需先应用 0054，再运行 services/api/tests/test_trip_risk_cases.py 和 iOS TripRiskContractTests。
