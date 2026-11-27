@@ -34,7 +34,7 @@ extension VisitRepository {
             code: "LOCAL_MODE_UNSUPPORTED",
             message: "预约重评需要服务端最新航班运营证据，本地模式无法执行。",
             traceId: nil,
-            details: ["follow_up_id": id]
+            details: ["follow_up_id": .string(id)]
         )
     }
 }
