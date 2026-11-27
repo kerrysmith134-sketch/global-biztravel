@@ -427,15 +427,14 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                 errorMessage = "行程或生效计划已再次变化。请先重新读取最新行程，再决定如何继续规划。"
                 return
             }
-            let retry = try await environment.planRepository.generatePlan(
-                tripId: followUp.tripId,
-                request: .default
+            let retry = try await environment.planRepository.retryPlanChange(
+                workflowId: accepted.changeRequestId
             )
-            currentPlanningJobId = retry.jobId
+            currentPlanningJobId = retry.optimizationJobId
             job = nil
             generatedPlan = nil
             diff = nil
-            statusMessage = "已在当前预约输入上重新排队求解，没有重复提交时间变更。"
+            statusMessage = "已在原计划变更工作流下重新排队，任务关联和重试审计已保留。没有重复修改拜访时间窗。"
         } catch {
             errorMessage = environment.errorMessage(error)
         }
