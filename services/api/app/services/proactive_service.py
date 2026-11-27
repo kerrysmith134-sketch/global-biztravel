@@ -131,10 +131,24 @@ class ScanReport:
     suppressed: int = 0
     deduped: int = 0
     errors: list[str] = field(default_factory=list)
+    risk_cases_created: int = 0
+    risk_cases_updated: int = 0
+    risk_cases_reopened: int = 0
+    risk_cases_escalated: int = 0
+    risk_cases_reviewed: int = 0
+    risk_errors: int = 0
 
     @property
     def did_work(self) -> bool:
-        return bool(self.triggers or self.suggestions)
+        return bool(
+            self.triggers
+            or self.suggestions
+            or self.risk_cases_created
+            or self.risk_cases_updated
+            or self.risk_cases_escalated
+            or self.risk_cases_reviewed
+            or self.risk_errors
+        )
 
 
 @dataclass(frozen=True)
