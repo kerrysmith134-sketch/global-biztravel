@@ -27819,8 +27819,7 @@
               {
                 "type": "null"
               }
-            ],
-            "title": "Source Action Context"
+            ]
           }
         },
         "type": "object",
