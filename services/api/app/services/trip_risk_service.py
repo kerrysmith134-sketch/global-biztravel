@@ -668,7 +668,15 @@ def reconcile_organization(
     )
     reports = []
     for trip_id in trip_ids:
-        reports.append(reconcile_trip(session, org, trip_id, now=current))
+        try:
+            reports.append(reconcile_trip(session, org, trip_id, now=current))
+        except Exception as exc:  # noqa: BLE001 — isolate one deleted/corrupt trip from the tenant scan
+            reports.append(
+                RiskReconciliationReport(
+                    trip_id=str(trip_id),
+                    errors=[f"{type(exc).__name__}: {exc}"],
+                )
+            )
     return reports
 
 
