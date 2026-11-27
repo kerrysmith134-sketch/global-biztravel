@@ -385,8 +385,10 @@ def reassess_follow_up(
                 "visit_id": str(visit.id),
                 "base_plan_version_id": str(active_plan.id),
                 "base_trip_version": trip.version,
-                "new_window_start": _iso(window.start_at),
-                "new_window_end": _iso(window.end_at),
+                # Keep the customer's original local UTC offsets. Normalizing to UTC here
+                # would lose the offset needed to validate/display the IANA customer timezone.
+                "new_window_start": window.start_at.isoformat(),
+                "new_window_end": window.end_at.isoformat(),
                 "timezone": window.timezone,
                 "reason": "客户预约窗口由出差人提供确认依据，且新航班事件在当前计划下预计可满足该窗口。",
                 "requires_human_submission": True,
