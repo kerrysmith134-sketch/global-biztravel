@@ -161,12 +161,17 @@ def _build_groups(
     suggestions_by_id = {row.id: row for row in suggestions}
     linked_signal_ids: set[UUID] = set()
     for suggestion in suggestions:
-        action = suggestion.proposed_action if isinstance(suggestion.proposed_action, dict) else {}
-        params = action.get("params")
-        raw_signal_id = params.get("signal_id") if isinstance(params, dict) else None
-        if raw_signal_id:
+        linked_action = (
+            suggestion.proposed_action if isinstance(suggestion.proposed_action, dict) else {}
+        )
+        linked_params_raw = linked_action.get("params")
+        linked_params: dict[str, Any] = (
+            linked_params_raw if isinstance(linked_params_raw, dict) else {}
+        )
+        raw_linked_signal_id = linked_params.get("signal_id")
+        if raw_linked_signal_id:
             try:
-                linked_signal_ids.add(UUID(str(raw_signal_id)))
+                linked_signal_ids.add(UUID(str(raw_linked_signal_id)))
             except (TypeError, ValueError):
                 continue
 
