@@ -88,6 +88,21 @@ _EXTERNAL_SUGGESTIONS: dict[str, tuple[str, str]] = {
     "FLIGHT_STATUS": (SUGGESTION_FLIGHT, "航班状态变化"),
 }
 
+_FLIGHT_OPERATIONAL_LABELS = {
+    "SCHEDULE_CHANGE": "航班时刻调整",
+    "DEPARTURE_DELAY": "出发延误",
+    "ARRIVAL_DELAY": "到达延误",
+    "CANCELLED": "航班取消",
+    "DIVERTED": "航班备降",
+    "GATE_CHANGE": "登机口变更",
+}
+_FLIGHT_OPERATIONAL_INTEGRITY_FAILURES = frozenset({
+    "OPERATIONAL_UPDATE_REFERENCE_INVALID",
+    "OPERATIONAL_UPDATE_SCOPE_MISMATCH",
+    "OPERATIONAL_UPDATE_EVIDENCE_MISMATCH",
+    "OPERATIONAL_UPDATE_ENVELOPE_MISMATCH",
+})
+
 #: 审批对象类型。审批表是通用的，这里只登记当前唯一用法。
 APPROVAL_SUBJECT_SUGGESTION = "proactive_suggestion"
 
@@ -533,13 +548,47 @@ def _external_candidates(
                         "retrieved_at": None,
                     }
                 )
+        # A normalized operational event is authoritative for display severity.
+        # Provider-supplied title/severity are advisory text and must never downgrade
+        # a genuinely missed customer appointment or inflate an absorbed delay.
+        canonical_signal_payload = payload
+        if signal.signal_type == "FLIGHT_STATUS" and payload.get("flight_operational_update"):
+            impact_status = impact_assessment.get("status") if impact_assessment else None
+            if impact_status in _FLIGHT_OPERATIONAL_INTEGRITY_FAILURES:
+                # Fail closed: do not create an actionable suggestion from an event
+                # whose server-owned reference, digest, or envelope failed verification.
+                continue
+            if impact_assessment and impact_assessment.get("operational_update_id"):
+                update_type = str(impact_assessment.get("update_type") or "")
+                designator = str(impact_assessment.get("flight_designator") or "航班")
+                title = f"{designator} {_FLIGHT_OPERATIONAL_LABELS.get(update_type, '运营状态变化')}"
+                missed_visits = impact_assessment.get("missed_visit_ids", [])
+                affected_visits = impact_assessment.get("affected_visit_ids", [])
+                if update_type in ("CANCELLED", "DIVERTED") or missed_visits:
+                    severity = "HIGH"
+                elif update_type == "GATE_CHANGE" or impact_status == "NO_OPERATIONAL_DELAY":
+                    severity = "LOW"
+                elif (
+                    impact_status == "OPERATIONAL_DELAY_ASSESSED"
+                    and not affected_visits
+                ):
+                    severity = "LOW"
+                else:
+                    severity = "MEDIUM"
+                canonical_signal_payload = {
+                    "operational_update_id": impact_assessment["operational_update_id"],
+                    "content_sha256": impact_assessment.get("content_sha256"),
+                    "provider_event_id": impact_assessment.get("provider_event_id"),
+                    "update_type": update_type,
+                }
+
         # Weather is re-evaluated when the active plan changes; flight signals are
         # re-evaluated when the active plan or its explicit booking binding changes.
         # Signals without a deterministic impact assessment remain payload-deduped.
-        digest_input = payload
+        digest_input = canonical_signal_payload
         if impact_assessment is not None:
             digest_input = {
-                "signal_payload": payload,
+                "signal_payload": canonical_signal_payload,
                 "plan_impact": {
                     "status": impact_assessment.get("status"),
                     "plan_version_id": impact_assessment.get("plan_version_id"),
