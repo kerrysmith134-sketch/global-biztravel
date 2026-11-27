@@ -11388,6 +11388,303 @@
           }
         }
       }
+    },
+    "/v1/trips/{trip_id}/risk-cases": {
+      "get": {
+        "tags": [
+          "trip-risks"
+        ],
+        "summary": "出行级风险与恢复事项（统一跨源视图）",
+        "operationId": "list_trip_risk_cases_v1_trips__trip_id__risk_cases_get",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "OPEN",
+                    "ACKNOWLEDGED",
+                    "IN_PROGRESS",
+                    "WAITING_EXTERNAL",
+                    "ESCALATED",
+                    "RESOLVED",
+                    "DISMISSED"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_TripRiskCaseRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema:": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{trip_id}/risk-cases/{case_id}/events": {
+      "get": {
+        "tags": [
+          "trip-risks"
+        ],
+        "summary": "风险与恢复状态事件时间线",
+        "operationId": "list_trip_risk_case_events_v1_trips__trip_id__risk_cases__case_id__events_get",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TripRiskCaseEventRead"
+                  },
+                  "title": "Response List Trip Risk Case Events V1 Trips  Trip Id  Risk Cases  Case Id  Events Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema:": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{trip_id}/risk-cases:reconcile": {
+      "post": {
+        "tags": [
+          "trip-risks"
+        ],
+        "summary": "从主动建议和人工跟进重建统一风险视图",
+        "operationId": "reconcile_trip_risk_cases_v1_trips__trip_id__risk_cases_reconcile_post",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripRiskReconciliationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema:": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{trip_id}/risk-cases/{case_id}:transition": {
+      "post": {
+        "tags": [
+          "trip-risks"
+        ],
+        "summary": "人工确认、开始处理、等待外部或关闭风险事项",
+        "operationId": "transition_trip_risk_case_v1_trips__trip_id__risk_cases__case_id__transition_post",
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TripRiskTransitionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripRiskTransitionRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema:": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -29526,6 +29823,513 @@
           "guardrails"
         ],
         "title": "AppointmentRecoveryReassessmentRead"
+      },
+      "TripRiskCaseRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "case_key": {
+            "type": "string",
+            "title": "Case Key"
+          },
+          "risk_type": {
+            "type": "string",
+            "title": "Risk Type"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ACKNOWLEDGED",
+              "IN_PROGRESS",
+              "WAITING_EXTERNAL",
+              "ESCALATED",
+              "RESOLVED",
+              "DISMISSED"
+            ],
+            "title": "Status"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ],
+            "title": "Severity"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "title": "Source Refs"
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "title": "Evidence Refs"
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": true,
+            "title": "Context"
+          },
+          "first_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen At"
+          },
+          "last_observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Observed At"
+          },
+          "next_review_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Review At"
+          },
+          "acknowledged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "waiting_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting Since"
+          },
+          "escalated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "resolution_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Basis"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "trip_id",
+          "case_key",
+          "risk_type",
+          "status",
+          "severity",
+          "title",
+          "summary",
+          "first_seen_at",
+          "last_observed_at",
+          "next_review_at",
+          "acknowledged_at",
+          "started_at",
+          "waiting_since",
+          "escalated_at",
+          "resolved_at",
+          "dismissed_at",
+          "resolution_basis",
+          "resolution_note",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TripRiskCaseRead"
+      },
+      "TripRiskCaseEventRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "OPEN",
+                  "ACKNOWLEDGED",
+                  "IN_PROGRESS",
+                  "WAITING_EXTERNAL",
+                  "ESCALATED",
+                  "RESOLVED",
+                  "DISMISSED"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status"
+          },
+          "to_status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ACKNOWLEDGED",
+              "IN_PROGRESS",
+              "WAITING_EXTERNAL",
+              "ESCALATED",
+              "RESOLVED",
+              "DISMISSED"
+            ],
+            "title": "To Status"
+          },
+          "actor_type": {
+            "type": "string",
+            "enum": [
+              "SYSTEM",
+              "USER"
+            ],
+            "title": "Actor Type"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true,
+            "title": "Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "trip_id",
+          "case_id",
+          "event_type",
+          "from_status",
+          "to_status",
+          "actor_type",
+          "actor_user_id",
+          "note",
+          "created_at"
+        ],
+        "title": "TripRiskCaseEventRead"
+      },
+      "TripRiskTransitionRequest": {
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Expected Version"
+          },
+          "to_status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ACKNOWLEDGED",
+              "IN_PROGRESS",
+              "WAITING_EXTERNAL",
+              "RESOLVED",
+              "DISMISSED"
+            ],
+            "title": "To Status"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 2000,
+            "title": "Note"
+          },
+          "next_review_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Review At"
+          },
+          "resolution_basis": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "PLAN_REVALIDATED",
+                  "FOLLOW_UP_COMPLETED",
+                  "TRIP_CLOSED",
+                  "HUMAN_ATTESTATION",
+                  "FALSE_POSITIVE_CONFIRMED",
+                  "FOLLOW_UP_DISMISSED"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Basis"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_version",
+          "to_status",
+          "note"
+        ],
+        "title": "TripRiskTransitionRequest"
+      },
+      "TripRiskReconciliationRead": {
+        "properties": {
+          "trip_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Trip Id"
+          },
+          "cases_created": {
+            "type": "integer",
+            "default": 0,
+            "title": "Cases Created"
+          },
+          "cases_updated": {
+            "type": "integer",
+            "default": 0,
+            "title": "Cases Updated"
+          },
+          "cases_reopened": {
+            "type": "integer",
+            "default": 0,
+            "title": "Cases Reopened"
+          },
+          "escalated": {
+            "type": "integer",
+            "default": 0,
+            "title": "Escalated"
+          },
+          "reviewed": {
+            "type": "integer",
+            "default": 0,
+            "title": "Reviewed"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip_id"
+        ],
+        "title": "TripRiskReconciliationRead"
+      },
+      "TripRiskTransitionRead": {
+        "properties": {
+          "case": {
+            "$ref": "#/components/schemas/TripRiskCaseRead"
+          },
+          "event": {
+            "$ref": "#/components/schemas/TripRiskCaseEventRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "case",
+          "event"
+        ],
+        "title": "TripRiskTransitionRead"
+      },
+      "Page_TripRiskCaseRead_": {
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TripRiskCaseRead"
+            },
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[TripRiskCaseRead]"
       }
     }
   }
