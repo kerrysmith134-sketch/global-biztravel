@@ -122,7 +122,7 @@ final class TripRiskContractTests: XCTestCase {
 
     func testTripRiskResolutionBasisUsesBackendEnumValues() throws {
         XCTAssertEqual(
-            Set(TripRiskResolutionBasis.allCases.map(\\.rawValue)),
+            Set(TripRiskResolutionBasis.allCases.map(\.rawValue)),
             Set([
                 "PLAN_REVALIDATED",
                 "FOLLOW_UP_COMPLETED",
