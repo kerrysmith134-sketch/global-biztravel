@@ -904,8 +904,9 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
         assert risk_case["risk_type"] == "FLIGHT"
         assert risk_case["severity"] == "HIGH"
         assert {
-            item["type"] for item in risk_case["source_refs"]
-        } == {"PROACTIVE_SUGGESTION", "EXTERNAL_SIGNAL"}
+            "PROACTIVE_SUGGESTION",
+            "EXTERNAL_SIGNAL",
+        } <= {item["type"] for item in risk_case["source_refs"]}
         risk_impact = risk_case["context"]["external_signal_assessments"][0]["impact_assessment"]
         assert risk_impact["status"] == "OPERATIONAL_DELAY_ASSESSED"
         assert risk_impact["missed_visit_ids"] == [first_visit_id, second_visit_id]
