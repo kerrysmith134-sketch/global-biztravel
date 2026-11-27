@@ -38,9 +38,9 @@ from app.services import (
     notification_service,
     outbox_service,
     proactive_service,
-    trip_risk_service,
     receipt_storage_reconciliation_service,
     retention_service,
+    trip_risk_service,
 )
 from app.workers.consumers import CONSUMER_HANDLERS
 from app.workers.tasks import TASK_HANDLERS, TaskFailed
