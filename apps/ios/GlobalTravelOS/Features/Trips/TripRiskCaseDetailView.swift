@@ -133,6 +133,9 @@ struct TripRiskCaseDetailView: View {
                         LabeledContent("最近观察", value: ISO8601.shortDisplay(from: viewModel.riskCase.lastObservedAt))
                         LabeledContent("下次复核", value: viewModel.riskCase.nextReviewAt.map { ISO8601.shortDisplay(from: $0) } ?? "未安排")
                         LabeledContent("当前版本", value: "v\(viewModel.riskCase.version)")
+                        if let basis = viewModel.riskCase.resolutionBasisLabel {
+                            LabeledContent("关闭依据", value: basis)
+                        }
                     }
                     .padding(.vertical, DS.Spacing.xs)
                 } header: {
