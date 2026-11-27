@@ -18,7 +18,7 @@ from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun, WorkflowInstance
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -283,6 +283,34 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
                 immutable_event.note = "Attempted audit mutation"
                 session.flush()
         assert getattr(mutation_error.value.orig, "sqlstate", None) in {"42501", "55000"}
+
+        with pytest.raises(DBAPIError) as delete_error:
+            with org_session(UUID(ORG_A)) as session:
+                immutable_event = session.get(
+                    TripRiskCaseEvent,
+                    UUID(events_response.json()[0]["id"]),
+                )
+                assert immutable_event is not None
+                session.delete(immutable_event)
+                session.flush()
+        assert getattr(delete_error.value.orig, "sqlstate", None) in {"42501", "55000"}
+
+        with pytest.raises(IntegrityError):
+            with org_session(UUID(ORG_A)) as session:
+                session.add(
+                    TripRiskCaseEvent(
+                        organization_id=UUID(ORG_A),
+                        trip_id=UUID(trip_id),
+                        case_id=UUID(case["id"]),
+                        case_version=1,
+                        event_type="OBSERVED",
+                        from_status="OPEN",
+                        to_status="OPEN",
+                        actor_type="SYSTEM",
+                        detail={"test": "duplicate_case_version"},
+                    )
+                )
+                session.flush()
 
         wait_until = datetime.now(UTC) + timedelta(minutes=20)
         waiting = client.post(
