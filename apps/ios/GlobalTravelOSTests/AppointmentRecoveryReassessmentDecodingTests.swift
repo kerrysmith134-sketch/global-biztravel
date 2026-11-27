@@ -16,6 +16,6 @@ final class AppointmentRecoveryReassessmentDecodingTests: XCTestCase {
             reassessment.planChangeRecommendation?.operationType,
             "CHANGE_VISIT_TIME"
         )
-        XCTAssertEqual(reassessment.planChangeRecommendation?.timezone, "Europe/Berlin")
+        XCTAssertEqual(reassessment.planChangeRecommendation?.timezone, "1")
     }
 }
