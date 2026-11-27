@@ -40,7 +40,7 @@ from app.api.schemas import (
     SuggestionStatus,
 )
 from app.config import get_settings
-from app.services import proactive_service, trip_service
+from app.services import proactive_service, trip_risk_service, trip_service
 
 router = APIRouter(tags=["proactive"])
 
@@ -121,6 +121,7 @@ def approve_suggestion(
         actor_role=context.role,
     )
     suggestion = outcome.suggestion
+    trip_risk_service.reconcile_trip(session, context.organization_id, suggestion.trip_id)
     execution = suggestion.execution_result or {}
     body = SuggestionApproveRead(
         id=suggestion.id,
@@ -177,6 +178,7 @@ def dismiss_suggestion(
         reason=reason,
     )
     suggestion = outcome.suggestion
+    trip_risk_service.reconcile_trip(session, context.organization_id, suggestion.trip_id)
     body = SuggestionDismissRead(
         id=suggestion.id,
         status=suggestion.status,
