@@ -14,7 +14,7 @@ from app.models.notifications import Notification
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp
 from app.models.trip import Trip
-from app.models.trip_risks import TripRiskCaseEvent
+from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun, WorkflowInstance
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
