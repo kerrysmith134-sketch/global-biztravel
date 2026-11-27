@@ -25,7 +25,6 @@ from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun
 from app.services import notification_service
 
-
 TERMINAL_STATUSES = frozenset({"RESOLVED", "DISMISSED"})
 ACTIVE_SUGGESTION_STATUSES = frozenset({"PENDING", "APPROVED", "EXECUTED", "SUPPRESSED"})
 ACTIVE_FOLLOW_UP_STATUSES = frozenset({"OPEN", "IN_PROGRESS"})
