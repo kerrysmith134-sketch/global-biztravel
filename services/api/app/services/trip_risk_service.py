@@ -179,7 +179,10 @@ def _build_groups(
 
     groups: dict[str, dict[str, Any]] = {}
     for suggestion in suggestions:
-        if suggestion.status not in ACTIVE_SUGGESTION_STATUSES:
+        if (
+            suggestion.status not in ACTIVE_SUGGESTION_STATUSES
+            and suggestion.status != "DISMISSED"
+        ):
             continue
         key = f"suggestion:{suggestion.id}"
         action = suggestion.proposed_action if isinstance(suggestion.proposed_action, dict) else {}
@@ -217,7 +220,7 @@ def _build_groups(
             },
             "suggestion": suggestion,
             "follow_ups": [],
-            "should_create": True,
+            "should_create": suggestion.status in ACTIVE_SUGGESTION_STATUSES,
         }
 
     follow_ups = list(
@@ -266,6 +269,8 @@ def _build_groups(
             groups[group_key] = group
 
         group["follow_ups"].append(follow_up)
+        if follow_up.status in ACTIVE_FOLLOW_UP_STATUSES:
+            group["should_create"] = True
         group["source_refs"].append(
             _source_ref(
                 "VISIT_FOLLOW_UP",
@@ -351,6 +356,8 @@ def _upsert_case(
         )
         .with_for_update()
     ).one_or_none()
+    if case is None and not group.get("should_create", True):
+        return None
 
     source_refs = group["source_refs"]
     evidence_refs = group["evidence_refs"]
@@ -408,6 +415,40 @@ def _upsert_case(
     )
     source_changed = previous_fingerprint != fingerprint
     old_status = case.status
+    active_follow_ups = [
+        row for row in group.get("follow_ups", []) if row.status in ACTIVE_FOLLOW_UP_STATUSES
+    ]
+    source_suggestion = group.get("suggestion")
+    if (
+        source_suggestion is not None
+        and source_suggestion.status == "DISMISSED"
+        and not active_follow_ups
+        and case.status != "DISMISSED"
+    ):
+        case.status = "DISMISSED"
+        case.dismissed_at = now
+        case.resolution_basis = "SOURCE_SUGGESTION_DISMISSED"
+        case.resolution_note = "来源主动建议已被用户驳回"
+        case.next_review_at = None
+        case.version += 1
+        case.risk_type = group["risk_type"]
+        case.severity = group["severity"]
+        case.title = group["title"][:500]
+        case.summary = group["summary"][:8000]
+        case.source_refs = source_refs
+        case.evidence_refs = evidence_refs
+        case.context = {**(case.context or {}), **group["context"], "source_fingerprint": fingerprint}
+        case.last_observed_at = now
+        _append_event(
+            session,
+            case,
+            event_type="DISMISSED",
+            from_status=old_status,
+            detail={"reason": "SOURCE_SUGGESTION_DISMISSED", "source_fingerprint": fingerprint},
+        )
+        report.cases_updated += 1
+        return case
+
     case.risk_type = group["risk_type"]
     case.severity = group["severity"]
     case.title = group["title"][:500]
