@@ -23,4 +23,11 @@
 - 新增迁移 0053，建立 `trip_risk_cases` 与 `trip_risk_case_events`，两表启用 FORCE RLS；Case 使用组织 + Trip 复合外键和唯一 case_key。
 - 新增 Trip Risk API：只读列表、事件时间线、显式对账、带 Version 的人工状态转换。
 - 复用现有 Notification Worker，不另建推送基础设施。
-- 当前首个确定性来源适配为 ProactiveSuggestion 与 VisitFollowUp；Flight/Weather/Visa 更细粒度的事件合并和恢复执行仍需逐域接入与验收。
+- Risk Case 从 ProactiveSuggestion、VisitFollowUp 与当前有效 ExternalSignal 构建。ExternalSignal 以 signal_id 为稳定来源身份，可与其主动建议及恢复 FollowUp 合并；天气按精确地点/时间窗评估，航班只消费经验证的 FlightOperationalUpdate 与当前显式机票段绑定。Visa/FX 当前只保留来源与人工核验状态，未建立确定性影响结论。
+
+
+## H2.26.1 补充：ExternalSignal 作为 Case 的稳定来源身份
+
+- ExternalSignal 不是建议的附属元数据；它是 Provider 事实的权威可追溯来源。Case 以 `external_signal:{signal_id}` 为稳定身份，proactive suggestion 与 VisitFollowUp 在该 Case 上作为派生处置/行动来源。
+- 同一 signal 因 payload/计划影响变化而重新生成建议时，应更新原 Case 的来源指纹与影响证据，不应因 suggestion ID 变化而产生第二个开放风险事项。
+- Weather impact 仅在 Place ID 精确匹配且时间窗重叠时标记暴露；Flight impact 仅在 ExternalSignal 的规范化运营事件引用、完整性指纹和当前 FlightSegmentPlanBinding 均通过验证时计算。OpenSky telemetry 不构成航空公司运营事实。
