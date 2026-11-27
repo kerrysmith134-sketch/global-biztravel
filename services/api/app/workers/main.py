@@ -38,6 +38,7 @@ from app.services import (
     notification_service,
     outbox_service,
     proactive_service,
+    trip_risk_service,
     receipt_storage_reconciliation_service,
     retention_service,
 )
@@ -285,7 +286,22 @@ def scan_proactive(org_id: str, *, force: bool = False) -> proactive_service.Sca
         return None
     _last_proactive_scan[org_id] = now
     with org_session(org_id) as session:
-        return proactive_service.scan_organization(session, org_id)
+        report = proactive_service.scan_organization(session, org_id)
+        risk_reports = trip_risk_service.reconcile_organization(session, org_id)
+        created = sum(item.cases_created for item in risk_reports)
+        updated = sum(item.cases_updated for item in risk_reports)
+        escalated = sum(item.escalated for item in risk_reports)
+        risk_errors = sum(len(item.errors) for item in risk_reports)
+        if created or updated or escalated or risk_errors:
+            logger.info(
+                "组织 %s Trip Risk 对账：新建 %d、更新 %d、升级 %d、错误 %d",
+                org_id,
+                created,
+                updated,
+                escalated,
+                risk_errors,
+            )
+        return report
 
 
 def review_memory(org_id: str, *, force: bool = False) -> int | None:
