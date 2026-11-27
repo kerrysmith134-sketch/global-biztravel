@@ -664,6 +664,35 @@ def test_trip_risk_does_not_promote_opensky_telemetry_to_flight_risk(
                 dedupe_key=f"opensky-trip-risk:{uuid.uuid4().hex}",
             )
         )
+        # Existing proactive runtime may expose raw telemetry as a manual-review
+        # suggestion. That suggestion must not bypass the Risk Case's stricter
+        # operational-event provenance gate.
+        session.add(
+            ProactiveSuggestion(
+                id=uuid.uuid4(),
+                organization_id=UUID(ORG_A),
+                trip_id=UUID(trip_id),
+                suggestion_type="FLIGHT_STATUS_ALERT",
+                status="PENDING",
+                title="LH123 aircraft telemetry requires manual identity review",
+                rationale="An aircraft snapshot is not airline operational delay evidence.",
+                evidence=[{"kind": "EXTERNAL_SIGNAL", "ref": str(signal_id)}],
+                proposed_action={
+                    "kind": "PREPARE_REVIEW",
+                    "tool": "trip.prepare_external_review",
+                    "params": {
+                        "signal_id": str(signal_id),
+                        "signal_type": "FLIGHT_STATUS",
+                    },
+                },
+                confidence=0.95,
+                requires_approval=True,
+                severity="HIGH",
+                dedupe_key=f"opensky-suggestion:{uuid.uuid4().hex}",
+                push_status="PUSHED",
+                notified_at=observed_at,
+            )
+        )
     try:
         reconciled = client.post(
             f"/v1/trips/{trip_id}/risk-cases:reconcile",
