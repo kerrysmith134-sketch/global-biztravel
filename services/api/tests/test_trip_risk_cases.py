@@ -10,10 +10,10 @@ import pytest
 from app.db import org_session
 from app.main import app
 from app.models.geo import Place
+from app.models.notifications import Notification
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp
 from app.models.trip import Trip
-from app.models.notifications import Notification
 from app.models.trip_risks import TripRiskCaseEvent
 from app.models.workflow import AgentRun, WorkflowInstance
 from fastapi.testclient import TestClient
