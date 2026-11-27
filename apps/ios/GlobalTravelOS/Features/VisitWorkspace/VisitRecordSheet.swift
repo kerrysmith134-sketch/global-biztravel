@@ -22,6 +22,7 @@ struct VisitRecordSheet: View {
     @State private var busyFollowUpIds: Set<String> = []
     @State private var reopenTarget: VisitFollowUp?
     @State private var reassessmentTarget: VisitFollowUp?
+    @State private var planChangeTarget: VisitFollowUp?
     @State private var reopenReason = ""
     @State private var showReopenPrompt = false
     @State private var errorMessage: String?
@@ -265,6 +266,18 @@ struct VisitRecordSheet: View {
                                         .padding(.vertical, 3)
                                     }
                                     HStack(spacing: 10) {
+                                        if item.sourceType == "APPOINTMENT_RECOVERY",
+                                           let proposal = item.latestReassessment?.planChangeRecommendation,
+                                           proposal.requiresHumanSubmission,
+                                           item.status == "OPEN" || item.status == "IN_PROGRESS" {
+                                            Button {
+                                                planChangeTarget = item
+                                            } label: {
+                                                Label("提交计划变更", systemImage: "calendar.badge.clock")
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .disabled(busyFollowUpIds.contains(item.id))
+                                        }
                                         if item.sourceType == "APPOINTMENT_RECOVERY"
                                             && (item.status == "OPEN" || item.status == "IN_PROGRESS") {
                                             Button {
@@ -272,7 +285,7 @@ struct VisitRecordSheet: View {
                                             } label: {
                                                 Label("重新评估", systemImage: "arrow.triangle.2.circlepath")
                                             }
-                                            .buttonStyle(.borderedProminent)
+                                            .buttonStyle(.bordered)
                                             .disabled(busyFollowUpIds.contains(item.id))
                                         }
                                         if item.status == "OPEN" {
@@ -407,6 +420,19 @@ struct VisitRecordSheet: View {
         .sheet(item: $reassessmentTarget) { item in
             AppointmentRecoveryReassessmentSheet(item: item) { request in
                 Task { await reassessFollowUp(item, request: request) }
+            }
+        }
+        .sheet(item: $planChangeTarget) { item in
+            if let proposal = item.latestReassessment?.planChangeRecommendation {
+                AppointmentRecoveryPlanChangeSheet(
+                    followUp: item,
+                    proposal: proposal
+                ) {
+                    Task { await loadFollowUps() }
+                }
+                .environmentObject(environment)
+            } else {
+                EmptyView()
             }
         }
         .task { await loadFollowUps() }
