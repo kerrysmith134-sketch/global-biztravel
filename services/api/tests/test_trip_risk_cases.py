@@ -317,6 +317,17 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
         assert resolved.status_code == 200, resolved.text
         assert resolved.json()["case"]["status"] == "RESOLVED"
 
+        manual_reopen = client.post(
+            f"/v1/trips/{trip_id}/risk-cases/{case['id']}:transition",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "expected_version": resolved.json()["case"]["version"],
+                "to_status": "OPEN",
+                "note": "Manual reopen without changed source evidence.",
+            },
+        )
+        assert manual_reopen.status_code == 422, manual_reopen.text
+
         with org_session(UUID(ORG_A)) as session:
             source = session.get(ProactiveSuggestion, UUID(suggestion_id))
             assert source is not None
