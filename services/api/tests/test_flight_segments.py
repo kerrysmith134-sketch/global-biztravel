@@ -792,6 +792,27 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
                 .where(PlanStop.plan_version_id == UUID(plan_id))
             ) == 2
 
+            # Removing the server-owned operational event link must suppress
+            # this signal instead of falling back to generic telemetry handling.
+            original_signal_payload = signal.payload
+            signal.payload = {
+                key: value
+                for key, value in original_signal_payload.items()
+                if key != "operational_update_id"
+            }
+            invalid_report = proactive_service.scan_trip(
+                session, UUID(ORG_A), UUID(trip_id)
+            )
+            assert invalid_report.errors == []
+            assert invalid_report.suggestions == 0
+
+            # Provider text cannot choose urgency: actual missed appointments
+            # drive HIGH severity even if an envelope claims LOW severity.
+            signal.payload = {
+                **original_signal_payload,
+                "title": "No operational impact",
+                "severity": "LOW",
+            }
             report = proactive_service.scan_trip(session, UUID(ORG_A), UUID(trip_id))
             assert report.errors == [], report.errors
 
@@ -802,6 +823,8 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
                     ProactiveSuggestion.suggestion_type == "FLIGHT_STATUS_ALERT",
                 )
             ).one()
+            assert suggestion.title == "LH123 航班到达延误"
+            assert suggestion.severity == "HIGH"
             evidence_kinds = {item["kind"] for item in suggestion.evidence}
             assert "FLIGHT_OPERATIONAL_UPDATE" in evidence_kinds
             assert "PLAN_STOP_IMPACT" in evidence_kinds
