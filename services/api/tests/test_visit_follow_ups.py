@@ -7,9 +7,6 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
-from fastapi.testclient import TestClient
-from pydantic import ValidationError
-from sqlalchemy import delete, select
 
 from app.api.schemas import CustomerAppointmentWindowAttestationCreate
 from app.db import org_session
@@ -17,6 +14,9 @@ from app.main import app
 from app.models.records import VisitFollowUp, VisitFollowUpEvent
 from app.models.trip import Trip
 from app.models.workflow import AgentRun
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
+from sqlalchemy import delete, select
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
