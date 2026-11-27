@@ -10,6 +10,7 @@ final class TripRiskWorkspaceViewModel: ObservableObject {
 
     private let tripId: String
     private let environment: AppEnvironment
+    private var loadGeneration = 0
 
     init(tripId: String, environment: AppEnvironment) {
         self.tripId = tripId
@@ -17,13 +18,25 @@ final class TripRiskWorkspaceViewModel: ObservableObject {
     }
 
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+            }
+        }
         do {
-            let page = try await environment.tripRiskRepository.cases(tripId: tripId, status: nil, limit: 200)
+            let page = try await environment.tripRiskRepository.cases(
+                tripId: tripId,
+                status: nil,
+                limit: 200
+            )
+            guard generation == loadGeneration else { return }
             cases = page.items
         } catch {
+            guard generation == loadGeneration else { return }
             cases = []
             errorMessage = environment.errorMessage(error)
         }
