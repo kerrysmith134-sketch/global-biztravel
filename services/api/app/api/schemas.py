@@ -314,7 +314,6 @@ class TripRiskCaseEventRead(ORMModel):
 class TripRiskTransitionRequest(BaseModel):
     expected_version: int = Field(ge=1)
     to_status: Literal[
-        "OPEN",
         "ACKNOWLEDGED",
         "IN_PROGRESS",
         "WAITING_EXTERNAL",
