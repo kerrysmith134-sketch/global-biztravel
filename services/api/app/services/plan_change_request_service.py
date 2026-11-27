@@ -546,7 +546,8 @@ def retry_plan_change(
     if workflow is None:
         raise NotFound("计划变更工作流不存在")
 
-    workflow_payload = workflow.payload if isinstance(workflow.payload, dict) else {}
+    # Reassign a fresh dict so SQLAlchemy JSONB dirty tracking persists the retry audit.
+    workflow_payload = dict(workflow.payload) if isinstance(workflow.payload, dict) else {}
     raw_result_trip_version = workflow_payload.get("result_trip_version")
     raw_base_plan_id = workflow_payload.get("base_plan_version_id")
     if raw_result_trip_version is None or raw_base_plan_id is None:
