@@ -1331,6 +1331,11 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
                 WorkflowInstance.organization_id == UUID(ORG_A),
                 WorkflowInstance.trip_id == UUID(trip_id),
             ))
+            from app.models.reliability import BackgroundJob
+            session.execute(delete(BackgroundJob).where(
+                BackgroundJob.organization_id == UUID(ORG_A),
+                BackgroundJob.payload["trip_id"].as_string() == trip_id,
+            ))
             session.execute(delete(ProactiveSuggestion).where(
                 ProactiveSuggestion.organization_id == UUID(ORG_A),
                 ProactiveSuggestion.trip_id == UUID(trip_id),
