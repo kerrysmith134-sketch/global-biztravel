@@ -798,7 +798,10 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
             signal.payload = {
                 key: value
                 for key, value in original_signal_payload.items()
-                if key != "operational_update_id"
+                if key not in {
+                    "operational_update_id",
+                    "flight_operational_update",
+                }
             }
             invalid_report = proactive_service.scan_trip(
                 session, UUID(ORG_A), UUID(trip_id)
