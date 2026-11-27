@@ -329,6 +329,7 @@ class TripRiskTransitionRequest(BaseModel):
         "TRIP_CLOSED",
         "HUMAN_ATTESTATION",
         "FALSE_POSITIVE_CONFIRMED",
+        "FOLLOW_UP_DISMISSED",
     ] | None = None
 
     @model_validator(mode="after")
