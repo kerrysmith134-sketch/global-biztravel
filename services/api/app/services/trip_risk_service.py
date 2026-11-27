@@ -847,8 +847,8 @@ def transition_case(
         "IN_PROGRESS": {"ACKNOWLEDGED", "WAITING_EXTERNAL", "RESOLVED", "DISMISSED"},
         "WAITING_EXTERNAL": {"OPEN", "ACKNOWLEDGED", "IN_PROGRESS", "RESOLVED", "DISMISSED"},
         "ESCALATED": {"ACKNOWLEDGED", "IN_PROGRESS", "WAITING_EXTERNAL", "RESOLVED", "DISMISSED"},
-        "RESOLVED": {"OPEN"},
-        "DISMISSED": {"OPEN"},
+        "RESOLVED": set(),
+        "DISMISSED": set(),
     }
     if to_status not in allowed.get(case.status, set()):
         raise Conflict(
@@ -876,12 +876,6 @@ def transition_case(
         case.resolution_basis = resolution_basis or "HUMAN_DISMISSED"
         case.resolution_note = note.strip()
         case.next_review_at = None
-    elif to_status == "OPEN" and case.status in TERMINAL_STATUSES:
-        case.resolved_at = None
-        case.dismissed_at = None
-        case.resolution_basis = None
-        case.resolution_note = None
-        case.next_review_at = _next_review(now, case.severity)
     elif to_status in {"ACKNOWLEDGED", "IN_PROGRESS"}:
         case.next_review_at = _next_review(now, case.severity)
 
@@ -898,7 +892,6 @@ def transition_case(
         "WAITING_EXTERNAL": "WAITING_EXTERNAL",
         "RESOLVED": "RESOLVED",
         "DISMISSED": "DISMISSED",
-        "OPEN": "REOPENED",
     }[to_status]
     event = _append_event(
         session,
