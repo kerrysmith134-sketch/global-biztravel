@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
-
 from app.api.schemas import CustomerAppointmentWindowAttestationCreate
 from app.db import org_session
 from app.main import app
