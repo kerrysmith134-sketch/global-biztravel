@@ -52,9 +52,15 @@ struct AppointmentRecoveryPlanChangeSheet: View {
             Form {
                 Section("预约时间变更") {
                     LabeledContent("拜访", value: followUp.title)
-                    LabeledContent("新窗口开始", value: proposal.newWindowStart.formatted(date: .abbreviated, time: .shortened))
-                    LabeledContent("新窗口结束", value: proposal.newWindowEnd.formatted(date: .abbreviated, time: .shortened))
-                    Text("时间按设备本地时区显示；提交时传输准确时间点。客户窗口仍属于出差人陈述，不代表已获外部独立验证。")
+                    LabeledContent("客户窗口开始", value: customerLocalTime(proposal.newWindowStart))
+                    LabeledContent("客户窗口结束", value: customerLocalTime(proposal.newWindowEnd))
+                    if let timezone = proposal.timezone {
+                        LabeledContent("客户所在地时区", value: timezone)
+                    } else {
+                        Label("缺少客户 IANA 时区，必须重新评估后才能提交", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                    Text("按客户所在地时区显示预约窗口。客户窗口仍属于出差人陈述，不代表已获外部独立验证。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if !proposal.reason.isEmpty {
@@ -109,7 +115,13 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                             Label("提交计划变更并重新规划", systemImage: "arrow.triangle.2.circlepath")
                         }
                     }
-                    .disabled(!basisIsCurrent || accepted != nil || isSubmitting || isLoadingBasis)
+                    .disabled(
+                        !basisIsCurrent
+                            || customerTimeZone == nil
+                            || accepted != nil
+                            || isSubmitting
+                            || isLoadingBasis
+                    )
                 } header: {
                     Text("人工提交")
                 }
@@ -269,6 +281,22 @@ struct AppointmentRecoveryPlanChangeSheet: View {
         .task { await loadCurrentTrip() }
     }
 
+    private var customerTimeZone: TimeZone? {
+        guard let timezone = proposal.timezone else { return nil }
+        return TimeZone(identifier: timezone)
+    }
+
+    private func customerLocalTime(_ date: Date) -> String {
+        guard let customerTimeZone else { return "客户时区未知" }
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = customerTimeZone
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
     private func loadCurrentTrip() async {
         guard !isLoadingBasis else { return }
         isLoadingBasis = true
@@ -304,6 +332,10 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                 errorMessage = "当前客户端只支持提交 CHANGE_VISIT_TIME 类型的预约计划建议。"
                 return
             }
+            guard let customerTimeZone else {
+                errorMessage = "缺少有效的客户所在地 IANA 时区，请重新评估预约窗口。"
+                return
+            }
 
             let request = PlanChangeCreate(
                 basePlanVersionId: proposal.basePlanVersionId,
@@ -312,8 +344,8 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                 payload: [
                     "visit_id": proposal.visitId,
                     "recovery_follow_up_id": followUp.id,
-                    "new_window_start": apiTimestamp(proposal.newWindowStart),
-                    "new_window_end": apiTimestamp(proposal.newWindowEnd)
+                    "new_window_start": apiTimestamp(proposal.newWindowStart, in: customerTimeZone),
+                    "new_window_end": apiTimestamp(proposal.newWindowEnd, in: customerTimeZone)
                 ],
                 source: "APPOINTMENT_RECOVERY",
                 reason: proposal.reason
@@ -452,10 +484,10 @@ struct AppointmentRecoveryPlanChangeSheet: View {
         }
     }
 
-    private func apiTimestamp(_ date: Date) -> String {
+    private func apiTimestamp(_ date: Date, in timeZone: TimeZone) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.timeZone = timeZone
         return formatter.string(from: date)
     }
 }
