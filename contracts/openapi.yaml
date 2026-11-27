@@ -30187,7 +30187,6 @@
           "to_status": {
             "type": "string",
             "enum": [
-              "OPEN",
               "ACKNOWLEDGED",
               "IN_PROGRESS",
               "WAITING_EXTERNAL",
