@@ -24,5 +24,5 @@
 
 - 不新增数据库表或迁移；复用 VisitFollowUp、AgentRun、WorkflowInstance、BackgroundJob 和 PlanVersion。
 - 通用 MAP / CALENDAR 等计划变更路径保持原有行为；新增证据绑定只约束 `APPOINTMENT_RECOVERY` 来源。
-- iOS 工作区负责展示建议、在线预检版本、提交、查询 Job、查看 Diff 和人工激活；最终授权与证据验证由服务端执行。
+- iOS 工作区负责展示客户当地时区建议、在线预检版本、提交、查询 Job、在原 Workflow 下重试、查看 Diff 和人工激活；最终授权与证据验证由服务端执行。
 - 规划失败或取消后，可在未发生新的 Trip / ACTIVE Plan 版本变化时，对当前已提交的输入重新排队求解，不重复写入拜访时间窗。
