@@ -114,6 +114,14 @@ enum Endpoints {
         )
     }
 
+    static func retryPlanChange(workflowId: String) -> APIRequest {
+        APIRequest(
+            method: .post,
+            path: "/v1/plan-changes/\(workflowId):retry",
+            idempotencyKey: APIRequest.newIdempotencyKey()
+        )
+    }
+
     static func job(id: String) -> APIRequest {
         APIRequest(method: .get, path: "/v1/jobs/\(id)")
     }
