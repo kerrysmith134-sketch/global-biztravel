@@ -237,6 +237,7 @@ struct AppointmentRecoveryPlanChangeRecommendation: Codable, Equatable {
     var baseTripVersion: Int
     var newWindowStart: Date
     var newWindowEnd: Date
+    var timezone: String?
     var reason: String
     var requiresHumanSubmission: Bool
 }
@@ -263,6 +264,40 @@ struct CustomerAppointmentWindowAttestationRequest: Encodable, Equatable {
     var timezone: String
     var confirmationMethod: String
     var confirmationReference: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case startAt
+        case endAt
+        case timezone
+        case confirmationMethod
+        case confirmationReference
+    }
+
+    func encode(to encoder: Encoder) throws {
+        guard let customerZone = TimeZone(identifier: timezone) else {
+            throw EncodingError.invalidValue(
+                timezone,
+                EncodingError.Context(
+                    codingPath: encoder.codingPath,
+                    debugDescription: "timezone must be a valid IANA time zone"
+                )
+            )
+        }
+
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.timestamp(startAt, in: customerZone), forKey: .startAt)
+        try container.encode(Self.timestamp(endAt, in: customerZone), forKey: .endAt)
+        try container.encode(timezone, forKey: .timezone)
+        try container.encode(confirmationMethod, forKey: .confirmationMethod)
+        try container.encodeIfPresent(confirmationReference, forKey: .confirmationReference)
+    }
+
+    private static func timestamp(_ date: Date, in timeZone: TimeZone) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = timeZone
+        return formatter.string(from: date)
+    }
 }
 
 struct AppointmentRecoveryReassessmentRequest: Encodable, Equatable {
