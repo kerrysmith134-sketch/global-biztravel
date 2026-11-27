@@ -12,6 +12,7 @@ struct AppointmentRecoveryPlanChangeSheet: View {
 
     @State private var currentTrip: Trip?
     @State private var accepted: PlanChangeAccepted?
+    @State private var currentPlanningJobId: String?
     @State private var job: PlanJob?
     @State private var generatedPlan: PlanVersionDetail?
     @State private var diff: PlanDiff?
@@ -117,7 +118,7 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                     Section("规划任务") {
                         LabeledContent("变更状态", value: accepted.status)
                         LabeledContent("新行程版本", value: "v\(accepted.tripVersion)")
-                        LabeledContent("任务 ID", value: accepted.optimizationJobId)
+                        LabeledContent("任务 ID", value: currentPlanningJobId ?? accepted.optimizationJobId)
                         if let job {
                             LabeledContent("任务进度", value: job.statusLabel)
                             if let error = job.displayError {
@@ -322,6 +323,7 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                 request: request
             )
             accepted = result
+            currentPlanningJobId = result.optimizationJobId
             currentTrip = try await environment.tripRepository.trip(id: followUp.tripId)
             statusMessage = "计划变更已受理。新计划生成后请检查差异并再次确认激活。"
         } catch {
@@ -331,12 +333,13 @@ struct AppointmentRecoveryPlanChangeSheet: View {
 
     private func refreshPlanningJob() async {
         guard let accepted, !isRefreshingJob else { return }
+        let jobId = currentPlanningJobId ?? accepted.optimizationJobId
         isRefreshingJob = true
         errorMessage = nil
         defer { isRefreshingJob = false }
 
         do {
-            let latestJob = try await environment.planRepository.job(id: accepted.optimizationJobId)
+            let latestJob = try await environment.planRepository.job(id: jobId)
             job = latestJob
             guard latestJob.resolvedStatus == .succeeded else {
                 generatedPlan = nil
@@ -396,12 +399,7 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                 tripId: followUp.tripId,
                 request: .default
             )
-            self.accepted = PlanChangeAccepted(
-                changeRequestId: accepted.changeRequestId,
-                status: "REQUEUED",
-                optimizationJobId: retry.jobId,
-                tripVersion: latestTrip.version
-            )
+            currentPlanningJobId = retry.jobId
             job = nil
             generatedPlan = nil
             diff = nil
