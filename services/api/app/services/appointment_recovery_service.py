@@ -18,7 +18,7 @@ def _action_for_stop(stop: dict[str, Any]) -> dict[str, Any] | None:
     status = str(stop.get("appointment_status") or "UNASSESSED")
     raw_delay = stop.get("delay_minutes")
     delay = max(0, int(raw_delay or 0))
-    common = {
+    common: dict[str, Any] = {
         "visit_id": stop.get("visit_id"),
         "plan_stop_id": stop.get("plan_stop_id"),
         "planned_arrival_at": stop.get("planned_arrival_at"),
@@ -132,7 +132,7 @@ def build_recovery_brief(
     stop_impacts = impact_assessment.get("stop_impacts")
     if not isinstance(stop_impacts, list):
         stop_impacts = []
-    actions = []
+    actions: list[dict[str, Any]] = []
     for stop in stop_impacts:
         if isinstance(stop, dict):
             action = _action_for_stop(stop)
