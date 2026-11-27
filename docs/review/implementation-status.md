@@ -511,7 +511,7 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 
 - 新增 TripRiskCase / TripRiskCaseEvent 与迁移 0053；Case 对主动建议和拜访 FollowUp 做稳定去重投影，FollowUp 通过 AgentRun 输入中的 source suggestion ID 回链到同一风险；独立 FollowUp 单独成案。来源表仍是各领域事实真相，不复制或接管业务操作。
 - 新增列表、事件时间线、显式对账和人工状态转换 API；Case Version 乐观并发保护，所有状态变更追加带 `case_version` 的事件。事件表由数据库触发器拒绝 UPDATE，应用角色撤销 UPDATE / DELETE。新来源证据到达时系统自动重开已关闭 Case，并重新按来源状态进入 ACKNOWLEDGED / IN_PROGRESS；不允许人工无依据重开。
-- 风险关闭必须给出依据：当前 Trip Version 下的 ACTIVE Plan、全部相关 FollowUp 完成、Trip 已关闭或显式人工确认；驳回必须对应已驳回来源，不允许任意关闭。
+- RESOLVED 只接受当前 Trip Version 下的 ACTIVE Plan 重新验证、全部相关 FollowUp 完成、Trip 已关闭或显式人工确认；DISMISSED 只接受全部相关 FollowUp 已驳回或全部来源建议已驳回确认误报，两组依据不可交叉使用。
 - 后台按 LOW 24h / MEDIUM 4h / HIGH 30m / CRITICAL 10m 复核；HIGH / CRITICAL 超期且仍未关闭时自动 ESCALATED。
 - 升级通知在同一事务写入既有 Notification 队列，按用户通知偏好静音、按风险类型/等级映射 P0/P1/P2/P3，并以 Case ID + Version 去重；投递复用 Notification Worker。
 - 主动建议批准/驳回、FollowUp 创建/更新和后台主动扫描周期触发聚合对账；不自动联系客户、不订票/改签、不改写正式行程或 ACTIVE Plan。
