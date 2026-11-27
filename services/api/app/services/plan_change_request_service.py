@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -63,7 +64,7 @@ def _require(payload: dict[str, Any], key: str) -> Any:
 
 
 
-def _aware_utc(value: Any, *, field: str) -> datetime:
+def _aware_utc(value: Any, *, field: str, timezone: str | None = None) -> datetime:
     if not isinstance(value, str) or not value.strip():
         raise Unprocessable("预约恢复计划变更缺少有效时间", details={"field": field})
     try:
@@ -72,6 +73,13 @@ def _aware_utc(value: Any, *, field: str) -> datetime:
         raise Unprocessable("预约恢复计划变更时间格式无效", details={"field": field}) from None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise Unprocessable("预约恢复计划变更时间必须包含时区偏移", details={"field": field})
+    if timezone is not None:
+        try:
+            customer_zone = ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise Unprocessable("预约重评引用了无效的客户 IANA 时区") from None
+        if parsed.astimezone(customer_zone).utcoffset() != parsed.utcoffset():
+            raise PlanVersionConflict("提交时间的 UTC offset 与客户 IANA 时区不一致")
     return parsed.astimezone(UTC)
 
 
@@ -155,6 +163,12 @@ def _validate_appointment_recovery_change(
     input_snapshot = run_output.get("input_snapshot")
     if not isinstance(input_snapshot, dict):
         raise Unprocessable("预约重评缺少可验证的输入快照")
+    customer_window_attestation = input_snapshot.get("customer_window_attestation")
+    if not isinstance(customer_window_attestation, dict):
+        raise Unprocessable("预约重评缺少客户窗口及其时区陈述")
+    attested_timezone = customer_window_attestation.get("timezone")
+    if not isinstance(attested_timezone, str) or not attested_timezone.strip():
+        raise Unprocessable("预约重评缺少客户预约窗口 IANA 时区")
     try:
         expected_update_id = UUID(str(input_snapshot.get("latest_operational_update_id")))
         expected_signal_id = UUID(str(input_snapshot.get("latest_signal_id")))
@@ -208,6 +222,8 @@ def _validate_appointment_recovery_change(
         or recommendation.get("requires_human_submission") is not True
     ):
         raise PlanVersionConflict("最新预约重评没有可供人工提交的计划变更建议")
+    if recommendation.get("timezone") != attested_timezone:
+        raise PlanVersionConflict("预约计划建议的客户时区与原始预约窗口陈述不一致")
     if (
         recommendation.get("operation_type") != CHANGE_VISIT_TIME
         or str(recommendation.get("visit_id") or "") != str(visit_id)
@@ -218,13 +234,21 @@ def _validate_appointment_recovery_change(
     ):
         raise PlanVersionConflict("预约恢复建议所依据的计划或行程版本已过期")
 
-    requested_start = _aware_utc(payload.get("new_window_start"), field="new_window_start")
-    requested_end = _aware_utc(payload.get("new_window_end"), field="new_window_end")
+    requested_start = _aware_utc(
+        payload.get("new_window_start"), field="new_window_start", timezone=attested_timezone
+    )
+    requested_end = _aware_utc(
+        payload.get("new_window_end"), field="new_window_end", timezone=attested_timezone
+    )
     proposed_start = _aware_utc(
-        recommendation.get("new_window_start"), field="proposal.new_window_start"
+        recommendation.get("new_window_start"),
+        field="proposal.new_window_start",
+        timezone=attested_timezone,
     )
     proposed_end = _aware_utc(
-        recommendation.get("new_window_end"), field="proposal.new_window_end"
+        recommendation.get("new_window_end"),
+        field="proposal.new_window_end",
+        timezone=attested_timezone,
     )
     if (
         requested_end <= requested_start
