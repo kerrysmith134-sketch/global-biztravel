@@ -11,9 +11,11 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.api.schemas import FlightOperationalUpdatePayload
 from app.models.flight_operations import FlightOperationalUpdate
 from app.models.flights import FlightSegmentPlanBinding, TripFlightSegment
 from app.models.integrations import ExternalSignal
@@ -294,10 +296,27 @@ def _assess_flight_operational_update(
         "operational_update_type": update.update_type,
     }
     metadata_matches = all(payload.get(key) == value for key, value in expected_metadata.items())
-    has_normalized_event = isinstance(payload.get("flight_operational_update"), dict)
+    raw_normalized_event = payload.get("flight_operational_update")
+    try:
+        normalized_event = FlightOperationalUpdatePayload.model_validate(raw_normalized_event)
+    except (ValidationError, TypeError, ValueError):
+        normalized_event = None
+
+    normalized_event_matches = normalized_event is not None and (
+        normalized_event.flight_segment_id == update.flight_segment_id
+        and normalized_event.provider_event_id == update.provider_event_id
+        and normalized_event.update_type == update.update_type
+        and normalized_event.flight_designator == update.flight_designator
+        and normalized_event.departure_airport_iata == update.departure_airport_iata
+        and normalized_event.arrival_airport_iata == update.arrival_airport_iata
+        and normalized_event.estimated_departure_at == update.estimated_departure_at
+        and normalized_event.estimated_arrival_at == update.estimated_arrival_at
+        and normalized_event.reported_arrival_airport_iata == update.reported_arrival_airport_iata
+        and normalized_event.source_payload_sha256 == update.source_payload_sha256
+    )
     if (
         not metadata_matches
-        or not has_normalized_event
+        or not normalized_event_matches
         or signal.dedupe_key != f"flight_ops:{update.provider_event_id}"
     ):
         return {
