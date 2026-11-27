@@ -546,5 +546,5 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - iOS TripRiskCase.resolutionBasis 改为开放字符串读模型，不再复用仅用于人工命令输入的六值枚举；因此服务端系统关闭依据（如 SOURCE_SUGGESTION_DISMISSED）和未来新增审计值不会导致整个风险列表解码失败。详情页显示已知关闭依据的本地化名称，未知值保留可读回退。
 - 新增 iOS 契约回归测试，直接把系统关闭依据注入服务端 Case JSON 并验证完整解码。
 - 新增迁移 0054_trip_risk_event_sequence_guards：对 case_version 增加正数 CHECK 与 (organization_id, trip_id, case_id, case_version) 唯一约束；若历史数据存在重复/非法版本，迁移明确失败，不改写审计历史。
-- 数据库 append-only 触发器现在同时拒绝 UPDATE 与 DELETE；保留 gbt_app 对 UPDATE/DELETE 的权限撤销。后端验收新增应用角色删除拒绝和重复事件版本拒绝断言。
+- 数据库 append-only 触发器现在拒绝直接 UPDATE/DELETE；针对 Trip/Case 父记录的显式删除，保留既有 FK ON DELETE CASCADE 行为（嵌套 FK 触发器上下文允许级联删除），应用角色仍无 UPDATE/DELETE 权限。后端验收新增应用角色删除拒绝、重复事件版本拒绝断言；Trip 清理路径会覆盖级联兼容，但仍需真实 PostgreSQL 运行确认。
 - **验证状态：** 本轮为代码与迁移推送；当前执行环境未运行 PostgreSQL 迁移/集成测试、Ruff、OpenAPI 样本生成、macOS Xcode 构建或 XCTest。不得视为通过 CI 或已部署。生产验收需先应用 0054，再运行 services/api/tests/test_trip_risk_cases.py 和 iOS TripRiskContractTests。
