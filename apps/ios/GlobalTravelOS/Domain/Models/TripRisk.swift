@@ -130,8 +130,8 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
             let missedCount = assessment["missed_visit_ids"]?.arrayValue?.count ?? 0
             let impactCount = affectedCount > 0 ? " · 受影响拜访 \(affectedCount) 项" : ""
             let missedSuffix = missedCount > 0 ? " · 超出预约窗口 \(missedCount) 项" : ""
-            let planVersion = assessment["plan_version_number"]?.integerValue
-                .map { " · 计划 v\($0)" } ?? ""
+            let planVersionValue = assessment["plan_version_number"]?.integerValue
+            let planVersion = planVersionValue.map { " · 计划 v\($0)" } ?? ""
             let explanation = assessment["explanation"]?.stringValue ?? ""
 
             return "\(signalLabel) · \(statusLabel)\(impactCount)\(missedSuffix)\(planVersion)\n\(explanation)"
