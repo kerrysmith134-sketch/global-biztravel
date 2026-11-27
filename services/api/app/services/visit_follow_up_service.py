@@ -107,6 +107,28 @@ def _load_recovery_run(
     return run, actions
 
 
+def load_recovery_action(
+    session: Session,
+    organization_id: UUID | str,
+    follow_up: VisitFollowUp,
+    *,
+    lock_run: bool = False,
+) -> tuple[AgentRun, dict]:
+    """Resolve the immutable source action for one accepted recovery follow-up."""
+    org = UUID(str(organization_id))
+    if (
+        follow_up.organization_id != org
+        or follow_up.source_type != "APPOINTMENT_RECOVERY"
+        or follow_up.source_agent_run_id is None
+        or follow_up.source_index is None
+    ):
+        raise Unprocessable("跟进项不是有效的预约恢复来源")
+    run, actions = _load_recovery_run(
+        session, org, follow_up.trip_id, follow_up.source_agent_run_id, lock_run=lock_run
+    )
+    return run, _recovery_action_for_visit(actions, follow_up.visit_id, follow_up.source_index)
+
+
 def _recovery_action_for_visit(actions: list, visit_id: UUID, index: int) -> dict:
     if index < 0 or index >= len(actions):
         raise Unprocessable("恢复动作索引超出 AgentRun 范围", details={"source_index": index})
@@ -325,6 +347,58 @@ def read_follow_up(
             source_action_context = _recovery_action_context(action)
         except (NotFound, Unprocessable):
             source_action_context = {"integrity_status": "SOURCE_LINK_UNVERIFIED"}
+    latest_reassessment = None
+    if row.source_type == "APPOINTMENT_RECOVERY":
+        candidates = session.scalars(
+            select(AgentRun)
+            .where(
+                AgentRun.organization_id == org,
+                AgentRun.agent_type == "APPOINTMENT_RECOVERY_REASSESSMENT",
+                AgentRun.status == "SUCCEEDED",
+                AgentRun.input["follow_up_id"].as_string() == str(row.id),
+            )
+            .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+            .limit(5)
+        )
+        for candidate in candidates:
+            workflow = session.scalars(
+                select(WorkflowInstance).where(
+                    WorkflowInstance.organization_id == org,
+                    WorkflowInstance.id == candidate.workflow_id,
+                    WorkflowInstance.trip_id == row.trip_id,
+                    WorkflowInstance.workflow_type == "APPOINTMENT_RECOVERY_REASSESSMENT",
+                    WorkflowInstance.status == "COMPLETED",
+                )
+            ).one_or_none()
+            run_input = candidate.input if isinstance(candidate.input, dict) else {}
+            workflow_payload = workflow.payload if workflow is not None and isinstance(workflow.payload, dict) else {}
+            if (
+                workflow is None
+                or run_input.get("trip_id") != str(row.trip_id)
+                or workflow_payload.get("agent_run_id") != str(candidate.id)
+                or workflow_payload.get("follow_up_id") != str(row.id)
+            ):
+                continue
+            output = candidate.output if isinstance(candidate.output, dict) else {}
+            after = output.get("after") if isinstance(output.get("after"), dict) else {}
+            latest_reassessment = {
+                "workflow_id": str(workflow.id),
+                "agent_run_id": str(candidate.id),
+                "outcome": output.get("outcome"),
+                "decision": output.get("decision"),
+                "created_at": candidate.finished_at or candidate.created_at,
+                "input_sha256": run_input.get("input_sha256"),
+                "current_plan_version_id": output.get("current_plan_version_id"),
+                "appointment_status": after.get("appointment_status"),
+                "projected_arrival_at": after.get("projected_arrival_at"),
+                "delay_minutes": after.get("delay_minutes"),
+                "customer_window_verification_status": output.get(
+                    "customer_window_verification_status", "NOT_PROVIDED"
+                ),
+                "evidence_ids": output.get("evidence_ids") or [],
+                "plan_change_recommendation": output.get("plan_change_recommendation"),
+            }
+            break
     return {
         "id": row.id,
         "visit_id": row.visit_id,
@@ -336,6 +410,7 @@ def read_follow_up(
         "source_title": row.source_title,
         "source_due_date": row.source_due_date,
         "source_action_context": source_action_context,
+        "latest_reassessment": latest_reassessment,
         "title": row.title,
         "due_date": row.due_date,
         "status": row.status,

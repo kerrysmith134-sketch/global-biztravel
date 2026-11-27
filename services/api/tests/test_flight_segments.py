@@ -17,7 +17,8 @@ from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.proactive import ProactiveSuggestion
 from app.models.trip import Trip, Visit
-from app.models.workflow import AgentRun, WorkflowInstance
+from app.models.records import VisitFollowUp
+from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import (
     external_impact_service,
     flight_segment_service,
@@ -1020,3 +1021,257 @@ def test_departure_delay_without_arrival_estimate_routes_visits_to_recovery_revi
                 )
             )
         cleanup(trip_id, place_id)
+
+def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_window(
+    client: TestClient,
+) -> None:
+    trip_id, place_id, visit_id = create_trip_and_place(client)
+    event_prefix = f"reassess-{uuid.uuid4().hex}"
+    follow_up_id: str | None = None
+    try:
+        booking = flight_payload()
+        scheduled_departure = datetime.fromisoformat(booking["scheduled_departure_at"])
+        scheduled_arrival = datetime.fromisoformat(booking["scheduled_arrival_at"])
+        plan_id, air_leg_id = create_plan(
+            trip_id, visit_id, version_number=1, mode="AIR",
+            arrive_at=scheduled_arrival + timedelta(hours=2), stale=False,
+        )
+        created = client.post(
+            f"/v1/trips/{trip_id}/flight-segments",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=booking,
+        )
+        assert created.status_code == 201, created.text
+        segment_id = created.json()["id"]
+        linked = client.post(
+            f"/v1/trips/{trip_id}/flight-segments/{segment_id}:link",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json={"plan_travel_leg_id": air_leg_id},
+        )
+        assert linked.status_code == 200, linked.text
+
+        original_observed_at = datetime.now(UTC)
+        original_event_id = f"{event_prefix}-missing-eta"
+        original_response = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json={
+                "provider": "sample-airline-feed",
+                "signal_type": "FLIGHT_STATUS",
+                "subject_type": "TRIP",
+                "subject_ref": trip_id,
+                "payload": {
+                    "summary": "Departure delay without arrival estimate",
+                    "flight_operational_update": {
+                        "flight_segment_id": segment_id,
+                        "provider_event_id": original_event_id,
+                        "update_type": "DEPARTURE_DELAY",
+                        "flight_designator": "LH123",
+                        "departure_airport_iata": "JFK",
+                        "arrival_airport_iata": "FRA",
+                        "estimated_departure_at": (
+                            scheduled_departure + timedelta(minutes=45)
+                        ).isoformat(),
+                    },
+                },
+                "confidence": 0.92,
+                "observed_at": original_observed_at.isoformat(),
+                "valid_until": (original_observed_at + timedelta(hours=24)).isoformat(),
+                "dedupe_key": f"flight_ops:{original_event_id}",
+            },
+        )
+        assert original_response.status_code == 201, original_response.text
+        original_signal_id = original_response.json()["id"]
+
+        with org_session(UUID(ORG_A)) as session:
+            trip = session.get(Trip, UUID(trip_id))
+            signal = session.get(ExternalSignal, UUID(original_signal_id))
+            assert trip is not None and signal is not None
+            scan = proactive_service.scan_trip(
+                session, UUID(ORG_A), UUID(trip_id),
+                now=original_observed_at + timedelta(seconds=2),
+            )
+            assert scan.errors == []
+            assert scan.suggestions == 1
+            suggestion = session.scalars(
+                select(ProactiveSuggestion).where(
+                    ProactiveSuggestion.organization_id == UUID(ORG_A),
+                    ProactiveSuggestion.trip_id == UUID(trip_id),
+                    ProactiveSuggestion.suggestion_type == "FLIGHT_STATUS_ALERT",
+                )
+            ).one()
+            recovery_run_id = suggestion.proposed_action["params"]["recovery_agent_run_id"]
+
+        feed = client.get(f"/v1/visits/{visit_id}/follow-ups", headers=headers())
+        assert feed.status_code == 200, feed.text
+        candidates = [
+            item for item in feed.json()["suggestions"]
+            if item["source_type"] == "APPOINTMENT_RECOVERY"
+        ]
+        assert candidates
+        candidate = candidates[0]
+        assert candidate["action_code"] == "REVALIDATE_TRAVEL_CHAIN"
+        accepted = client.post(
+            f"/v1/visits/{visit_id}/follow-ups",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "source_type": "APPOINTMENT_RECOVERY",
+                "decision": "ACCEPT",
+                "source_agent_run_id": recovery_run_id,
+                "source_index": candidate["source_index"],
+            },
+        )
+        assert accepted.status_code == 201, accepted.text
+        follow_up_id = accepted.json()["id"]
+
+        request_payload = {
+            "customer_window": {
+                "start_at": (scheduled_arrival + timedelta(hours=1, minutes=30)).isoformat(),
+                "end_at": (scheduled_arrival + timedelta(hours=4)).isoformat(),
+                "timezone": "Europe/Berlin",
+                "confirmation_method": "EMAIL",
+                "confirmation_reference": "CRM-ACT-2026-117",
+            }
+        }
+        no_new_evidence = client.post(
+            f"/v1/visit-follow-ups/{follow_up_id}:reassess",
+            headers=headers(key=str(uuid.uuid4())),
+            json=request_payload,
+        )
+        assert no_new_evidence.status_code == 409, no_new_evidence.text
+
+        trip_before = client.get(f"/v1/trips/{trip_id}", headers=headers()).json()
+        fresh_observed_at = original_observed_at + timedelta(minutes=3)
+        fresh_event_id = f"{event_prefix}-arrival-eta"
+        fresh_response = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json={
+                "provider": "sample-airline-feed",
+                "signal_type": "FLIGHT_STATUS",
+                "subject_type": "TRIP",
+                "subject_ref": trip_id,
+                "payload": {
+                    "summary": "Provider now supplies a later arrival estimate",
+                    "flight_operational_update": {
+                        "flight_segment_id": segment_id,
+                        "provider_event_id": fresh_event_id,
+                        "update_type": "ARRIVAL_DELAY",
+                        "flight_designator": "LH123",
+                        "departure_airport_iata": "JFK",
+                        "arrival_airport_iata": "FRA",
+                        "estimated_departure_at": (
+                            scheduled_departure + timedelta(minutes=45)
+                        ).isoformat(),
+                        "estimated_arrival_at": (
+                            scheduled_arrival + timedelta(minutes=45)
+                        ).isoformat(),
+                    },
+                },
+                "confidence": 0.96,
+                "observed_at": fresh_observed_at.isoformat(),
+                "valid_until": (fresh_observed_at + timedelta(hours=24)).isoformat(),
+                "dedupe_key": f"flight_ops:{fresh_event_id}",
+            },
+        )
+        assert fresh_response.status_code == 201, fresh_response.text
+
+        reassessed = client.post(
+            f"/v1/visit-follow-ups/{follow_up_id}:reassess",
+            headers=headers(key=str(uuid.uuid4())),
+            json=request_payload,
+        )
+        assert reassessed.status_code == 201, reassessed.text
+        result = reassessed.json()
+        assert result["outcome"] == "REASSESSED"
+        assert result["decision"] == "PLAN_CHANGE_RECOMMENDATION_READY"
+        assert result["flight_segment_id"] == segment_id
+        assert result["customer_window_verification_status"] == "PARTIALLY_VERIFIED"
+        assert result["plan_change_recommendation"]["requires_human_submission"] is True
+        assert result["plan_change_recommendation"]["base_plan_version_id"] == plan_id
+        assert result["guardrails"] == {
+            "plan_mutated": False,
+            "visit_mutated": False,
+            "trip_mutated": False,
+            "booking_changed": False,
+            "customer_contacted": False,
+            "customer_message_sent": False,
+            "follow_up_completed": False,
+            "customer_window_independently_verified": False,
+        }
+        assert result["evidence_ids"] and result["input_sha256"]
+
+        replay = client.post(
+            f"/v1/visit-follow-ups/{follow_up_id}:reassess",
+            headers=headers(key=str(uuid.uuid4())),
+            json=request_payload,
+        )
+        assert replay.status_code == 201, replay.text
+        assert replay.json()["agent_run_id"] == result["agent_run_id"]
+
+        read_feed = client.get(f"/v1/visits/{visit_id}/follow-ups", headers=headers())
+        assert read_feed.status_code == 200, read_feed.text
+        item = next(row for row in read_feed.json()["items"] if row["id"] == follow_up_id)
+        assert item["latest_reassessment"]["decision"] == "PLAN_CHANGE_RECOMMENDATION_READY"
+        assert any(event["event_type"] == "REASSESSED" for event in item["events"])
+        assert item["status"] == "OPEN"
+        after_trip = client.get(f"/v1/trips/{trip_id}", headers=headers()).json()
+        assert after_trip["version"] == trip_before["version"]
+
+        with org_session(UUID(ORG_A)) as session:
+            persisted_visit = session.get(Visit, UUID(visit_id))
+            assert persisted_visit is not None
+            assert persisted_visit.time_window_start is None
+            assert persisted_visit.time_window_end is None
+            evidence = list(session.scalars(
+                select(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "visit_follow_up",
+                    Evidence.subject_id == UUID(follow_up_id),
+                )
+            ))
+            assert {row.kind for row in evidence}.issuperset({
+                "FLIGHT_OPERATIONAL_UPDATE",
+                "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT",
+                "APPOINTMENT_WINDOW_ATTESTATION",
+                "APPOINTMENT_RECOVERY_REASSESSMENT",
+            })
+            attestation = next(row for row in evidence if row.kind == "APPOINTMENT_WINDOW_ATTESTATION")
+            assert attestation.verification_status == "PARTIALLY_VERIFIED"
+            assert attestation.quality["externally_verified"] is False
+    finally:
+        if follow_up_id is not None:
+            with org_session(UUID(ORG_A)) as session:
+                session.execute(delete(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "visit_follow_up",
+                    Evidence.subject_id == UUID(follow_up_id),
+                ))
+                session.execute(delete(VisitFollowUp).where(
+                    VisitFollowUp.organization_id == UUID(ORG_A),
+                    VisitFollowUp.id == UUID(follow_up_id),
+                ))
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(AgentRun).where(
+                AgentRun.organization_id == UUID(ORG_A),
+                AgentRun.agent_type.in_([
+                    "APPOINTMENT_RECOVERY", "APPOINTMENT_RECOVERY_REASSESSMENT"
+                ]),
+                AgentRun.input["trip_id"].as_string() == trip_id,
+            ))
+            session.execute(delete(WorkflowInstance).where(
+                WorkflowInstance.organization_id == UUID(ORG_A),
+                WorkflowInstance.trip_id == UUID(trip_id),
+            ))
+            session.execute(delete(ProactiveSuggestion).where(
+                ProactiveSuggestion.organization_id == UUID(ORG_A),
+                ProactiveSuggestion.trip_id == UUID(trip_id),
+            ))
+            session.execute(delete(ExternalSignal).where(
+                ExternalSignal.organization_id == UUID(ORG_A),
+                ExternalSignal.subject_ref == trip_id,
+                ExternalSignal.signal_type == "FLIGHT_STATUS",
+            ))
+        cleanup(trip_id, place_id)
+
+

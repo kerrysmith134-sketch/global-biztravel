@@ -164,7 +164,7 @@ class VisitFollowUpEvent(Base):
         ),
         UniqueConstraint("organization_id", "id", name="uq_visit_follow_up_events_org_id"),
         CheckConstraint(
-            "event_type IN ('ACCEPTED','DISMISSED','CREATED_MANUAL','STARTED','COMPLETED','REOPENED','UPDATED')",
+            "event_type IN ('ACCEPTED','DISMISSED','CREATED_MANUAL','STARTED','COMPLETED','REOPENED','UPDATED','REASSESSED')",
             name="event_type_allowed",
         ),
         Index("ix_visit_follow_up_events_org_follow_up_created", "organization_id", "follow_up_id", "created_at"),

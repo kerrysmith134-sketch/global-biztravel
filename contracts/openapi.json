@@ -11260,6 +11260,75 @@
           }
         }
       }
+    },
+    "/v1/visit-follow-ups/{follow_up_id}:reassess": {
+      "post": {
+        "tags": [
+          "visits"
+        ],
+        "summary": "使用新航班证据重新评估已接受的预约恢复跟进项",
+        "operationId": "reassess_visit_follow_up_v1_visit_follow_ups__follow_up_id__reassess_post",
+        "parameters": [
+          {
+            "name": "follow_up_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Follow Up Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppointmentRecoveryReassessmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentRecoveryReassessmentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -27820,6 +27889,16 @@
                 "type": "null"
               }
             ]
+          },
+          "latest_reassessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppointmentRecoveryReassessmentSummaryRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -28921,6 +29000,476 @@
           "updated_at"
         ],
         "title": "FlightSegmentRead"
+      },
+      "CustomerAppointmentWindowAttestationCreate": {
+        "properties": {
+          "start_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start At"
+          },
+          "end_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End At"
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "title": "Timezone"
+          },
+          "confirmation_method": {
+            "type": "string",
+            "enum": [
+              "EMAIL",
+              "PHONE",
+              "WHATSAPP",
+              "CRM",
+              "IN_PERSON",
+              "OTHER"
+            ],
+            "title": "Confirmation Method"
+          },
+          "confirmation_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Confirmation Reference",
+            "maxLength": 300
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_at",
+          "end_at",
+          "timezone",
+          "confirmation_method"
+        ],
+        "title": "CustomerAppointmentWindowAttestationCreate"
+      },
+      "AppointmentRecoveryReassessmentCreate": {
+        "properties": {
+          "customer_window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAppointmentWindowAttestationCreate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Customer Window"
+          },
+          "replacement_flight_segment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Flight Segment Id",
+            "default": null
+          }
+        },
+        "type": "object",
+        "title": "AppointmentRecoveryReassessmentCreate"
+      },
+      "AppointmentRecoveryReassessmentPointRead": {
+        "properties": {
+          "appointment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Status"
+          },
+          "projected_arrival_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Arrival At"
+          },
+          "delay_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Minutes"
+          },
+          "time_window_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Window Start"
+          },
+          "time_window_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Window End"
+          },
+          "arrival_before_window_start": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Before Window Start"
+          }
+        },
+        "type": "object",
+        "title": "AppointmentRecoveryReassessmentPointRead"
+      },
+      "PlanChangeRecommendationRead": {
+        "properties": {
+          "operation_type": {
+            "type": "string",
+            "enum": [
+              "CHANGE_VISIT_TIME"
+            ],
+            "title": "Operation Type"
+          },
+          "visit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Visit Id"
+          },
+          "base_plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Base Plan Version Id"
+          },
+          "base_trip_version": {
+            "type": "integer",
+            "title": "Base Trip Version"
+          },
+          "new_window_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "New Window Start"
+          },
+          "new_window_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "New Window End"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "requires_human_submission": {
+            "type": "boolean",
+            "default": true,
+            "title": "Requires Human Submission"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation_type",
+          "visit_id",
+          "base_plan_version_id",
+          "base_trip_version",
+          "new_window_start",
+          "new_window_end",
+          "reason"
+        ],
+        "title": "PlanChangeRecommendationRead"
+      },
+      "AppointmentRecoveryReassessmentSummaryRead": {
+        "properties": {
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workflow Id"
+          },
+          "agent_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Agent Run Id"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "input_sha256": {
+            "type": "string",
+            "title": "Input Sha256"
+          },
+          "current_plan_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Plan Version Id",
+            "default": null
+          },
+          "appointment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Status"
+          },
+          "projected_arrival_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Arrival At"
+          },
+          "delay_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Minutes"
+          },
+          "customer_window_verification_status": {
+            "type": "string",
+            "enum": [
+              "PARTIALLY_VERIFIED",
+              "NOT_PROVIDED"
+            ],
+            "title": "Customer Window Verification Status"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Evidence Ids"
+          },
+          "plan_change_recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanChangeRecommendationRead"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object",
+        "required": [
+          "workflow_id",
+          "agent_run_id",
+          "outcome",
+          "decision",
+          "created_at",
+          "input_sha256",
+          "customer_window_verification_status"
+        ],
+        "title": "AppointmentRecoveryReassessmentSummaryRead"
+      },
+      "AppointmentRecoveryReassessmentRead": {
+        "properties": {
+          "follow_up_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Follow Up Id"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workflow Id"
+          },
+          "agent_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Agent Run Id"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "source_signal_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Signal Id"
+          },
+          "flight_operational_update_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Flight Operational Update Id"
+          },
+          "flight_segment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Flight Segment Id"
+          },
+          "current_plan_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Plan Version Id",
+            "default": null
+          },
+          "input_sha256": {
+            "type": "string",
+            "title": "Input Sha256"
+          },
+          "before": {
+            "$ref": "#/components/schemas/AppointmentRecoveryReassessmentPointRead"
+          },
+          "after": {
+            "$ref": "#/components/schemas/AppointmentRecoveryReassessmentPointRead"
+          },
+          "changed_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed Fields",
+            "default": []
+          },
+          "data_gaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Data Gaps",
+            "default": []
+          },
+          "customer_window_verification_status": {
+            "type": "string",
+            "enum": [
+              "PARTIALLY_VERIFIED",
+              "NOT_PROVIDED"
+            ],
+            "title": "Customer Window Verification Status"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Evidence Ids",
+            "default": []
+          },
+          "plan_change_recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanChangeRecommendationRead"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "guardrails": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Guardrails"
+          }
+        },
+        "type": "object",
+        "required": [
+          "follow_up_id",
+          "workflow_id",
+          "agent_run_id",
+          "outcome",
+          "decision",
+          "source_signal_id",
+          "flight_operational_update_id",
+          "flight_segment_id",
+          "input_sha256",
+          "before",
+          "after",
+          "customer_window_verification_status",
+          "created_at",
+          "guardrails"
+        ],
+        "title": "AppointmentRecoveryReassessmentRead"
       }
     }
   }

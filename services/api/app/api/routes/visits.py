@@ -36,6 +36,8 @@ from app.api.schemas import (
     VisitBriefingRead,
     VisitFollowUpDecisionCreate,
     VisitFollowUpFeedRead,
+    AppointmentRecoveryReassessmentCreate,
+    AppointmentRecoveryReassessmentRead,
     VisitFollowUpRead,
     VisitFollowUpUpdate,
     VisitRead,
@@ -44,6 +46,7 @@ from app.api.schemas import (
     VisitUpdate,
 )
 from app.services import (
+    appointment_recovery_resolution_service,
     job_service,
     minutes_service,
     record_service,
@@ -61,6 +64,7 @@ MINUTES_DRAFT_ENDPOINT = "POST /v1/visits/{visit_id}/minutes:draft"
 
 VISIT_FOLLOW_UP_CREATE_ENDPOINT = "POST /v1/visits/{visit_id}/follow-ups"
 VISIT_FOLLOW_UP_UPDATE_ENDPOINT = "PATCH /v1/visit-follow-ups/{follow_up_id}"
+VISIT_FOLLOW_UP_REASSESS_ENDPOINT = "POST /v1/visit-follow-ups/{follow_up_id}:reassess"
 
 
 @router.get(
@@ -105,6 +109,40 @@ def create_visit_follow_up(
     body = VisitFollowUpRead.model_validate(
         visit_follow_up_service.read_follow_up(session, context.organization_id, row)
     )
+    return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
+
+
+@router.post(
+    "/visit-follow-ups/{follow_up_id}:reassess",
+    response_model=AppointmentRecoveryReassessmentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="使用新航班证据重新评估已接受的预约恢复跟进项",
+)
+def reassess_visit_follow_up(
+    follow_up_id: UUID,
+    payload: AppointmentRecoveryReassessmentCreate,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=VISIT_FOLLOW_UP_REASSESS_ENDPOINT,
+        key=idempotency_key,
+        payload={"follow_up_id": str(follow_up_id), **payload.model_dump(mode="json")},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+    result = appointment_recovery_resolution_service.reassess_follow_up(
+        session,
+        context.organization_id,
+        follow_up_id,
+        payload,
+        actor_user_id=context.user_id,
+    )
+    body = AppointmentRecoveryReassessmentRead.model_validate(result)
     return guard.finish(status_code=status.HTTP_201_CREATED, body=body)
 
 

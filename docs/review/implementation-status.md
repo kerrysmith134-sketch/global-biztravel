@@ -73,7 +73,7 @@
 | `swiftlint lint` | 2026-11-25 CI #45690696356：141 个 Swift 文件报告 **77 条 warning、0 serious**；11 条既有 serious violation 已固定在版本化 `swiftlint-baseline.json` 中；新增 serious violation 仍会失败，普通 warning debt 仍可见。 |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0051`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0052`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -118,6 +118,7 @@
                            0049_flight_segment_bookings
                            0050_flight_operational_updates
                            0051_recovery_follow_ups
+                           0052_recovery_reassessment_events
 ```
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
@@ -471,3 +472,14 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 服务端校验 AgentRun、WorkflowInstance、来源 ProactiveSuggestion 的三方引用和组织/Trip/Visit 归属；决策时锁定 AgentRun，原有唯一 source_key 防止重复受理。
 - iOS 展示恢复来源、优先级、原因和缺失输入。不改变正式行程，不联系客户、不订票、不自动改期。
 - 数据库迁移 0051_recovery_follow_ups 仅扩展现有 VisitFollowUp 来源约束，不新增实体表。
+
+
+## 2026-11-27 H2.24 — Evidence-backed Appointment Recovery Reassessment
+
+- 新增 `POST /v1/visit-follow-ups/{id}:reassess`：仅允许 OPEN/IN_PROGRESS 且来源为 APPOINTMENT_RECOVERY 的已接受跟进项进入重评。
+- 服务端重新校验原始 AgentRun、Workflow、ProactiveSuggestion、原航班事件及内容摘要；必须找到同一机票段（替代航班动作则要求用户显式指定已 BOOKED/TICKETED 且绑定当前 ACTIVE 计划的替代航班）晚于原事件、仍处于有效期的最新 FlightOperationalUpdate。
+- 使用现行确定性 external_impact_service 对当前 ACTIVE PlanVersion 重新传播；缺 ETA、传播不完整、航班绑定或计划版本不一致一律输出 REVIEW_REQUIRED / data_gaps，不产生计划变更提案。
+- 客户预约窗口由出差人提交 IANA 时区、起止时间、确认方式和可选外部参考编号；只保存用户陈述元数据，不上传邮件/消息正文、不采集客户联系方式，Evidence 标记 PARTIALLY_VERIFIED / externally_verified=false。
+- 原评估、新航班事件、当前计划传播结果、客户窗口陈述及重评结果分别形成 Evidence，SHA-256 绑定规范化快照；WorkflowInstance / AgentRun 记录前后评估、输入摘要和差异。
+- 仅在证据完整且预计到达满足所提供的客户窗口时返回 Plan Change 建议（CHANGE_VISIT_TIME + base plan/trip version）；不会调用 Plan Change 服务，不修改 Visit / Trip / PlanVersion / PlanStop / FlightSegment，不完成 FollowUp，不联系客户或改签。
+- 新增 REASSESSED 事件（迁移 0052_recovery_reassessment_events）；跟进 Feed 显示最新重评摘要。相同输入摘要在同一 FollowUp 下语义去重。

@@ -833,6 +833,98 @@ class VisitFollowUpActionContextRead(BaseModel):
     recommended_steps: list[str] = Field(default_factory=list)
 
 
+class CustomerAppointmentWindowAttestationCreate(BaseModel):
+    start_at: datetime
+    end_at: datetime
+    timezone: str = Field(min_length=1, max_length=80)
+    confirmation_method: Literal["EMAIL", "PHONE", "WHATSAPP", "CRM", "IN_PERSON", "OTHER"]
+    confirmation_reference: str | None = Field(default=None, max_length=300)
+
+    @model_validator(mode="after")
+    def _validate_customer_window(self) -> CustomerAppointmentWindowAttestationCreate:
+        if self.start_at.tzinfo is None or self.start_at.utcoffset() is None:
+            raise ValueError("start_at 必须包含明确时区偏移")
+        if self.end_at.tzinfo is None or self.end_at.utcoffset() is None:
+            raise ValueError("end_at 必须包含明确时区偏移")
+        if self.end_at <= self.start_at:
+            raise ValueError("预约窗口结束时间必须晚于开始时间")
+        try:
+            zone = ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("timezone 必须是有效的 IANA 时区标识") from None
+        if self.start_at <= datetime.now(ZoneInfo("UTC")):
+            raise ValueError("客户预约窗口开始时间必须在未来")
+        if (
+            self.start_at.astimezone(zone).utcoffset() != self.start_at.utcoffset()
+            or self.end_at.astimezone(zone).utcoffset() != self.end_at.utcoffset()
+        ):
+            raise ValueError("预约窗口时间偏移与指定 IANA 时区不一致")
+        return self
+
+
+class AppointmentRecoveryReassessmentCreate(BaseModel):
+    customer_window: CustomerAppointmentWindowAttestationCreate | None = None
+    replacement_flight_segment_id: UUID | None = None
+
+
+class AppointmentRecoveryReassessmentPointRead(BaseModel):
+    appointment_status: str | None = None
+    projected_arrival_at: datetime | None = None
+    delay_minutes: int | None = None
+    time_window_start: datetime | None = None
+    time_window_end: datetime | None = None
+    arrival_before_window_start: bool | None = None
+
+
+class PlanChangeRecommendationRead(BaseModel):
+    operation_type: Literal["CHANGE_VISIT_TIME"]
+    visit_id: UUID
+    base_plan_version_id: UUID
+    base_trip_version: int
+    new_window_start: datetime
+    new_window_end: datetime
+    reason: str
+    requires_human_submission: bool = True
+
+
+class AppointmentRecoveryReassessmentSummaryRead(BaseModel):
+    workflow_id: UUID
+    agent_run_id: UUID
+    outcome: str
+    decision: str
+    created_at: datetime
+    input_sha256: str
+    current_plan_version_id: UUID | None = None
+    appointment_status: str | None = None
+    projected_arrival_at: datetime | None = None
+    delay_minutes: int | None = None
+    customer_window_verification_status: Literal["PARTIALLY_VERIFIED", "NOT_PROVIDED"]
+    evidence_ids: list[UUID] = Field(default_factory=list)
+    plan_change_recommendation: PlanChangeRecommendationRead | None = None
+
+
+class AppointmentRecoveryReassessmentRead(BaseModel):
+    follow_up_id: UUID
+    workflow_id: UUID
+    agent_run_id: UUID
+    outcome: str
+    decision: str
+    source_signal_id: UUID
+    flight_operational_update_id: UUID
+    flight_segment_id: UUID
+    current_plan_version_id: UUID | None = None
+    input_sha256: str
+    before: AppointmentRecoveryReassessmentPointRead
+    after: AppointmentRecoveryReassessmentPointRead
+    changed_fields: list[str] = Field(default_factory=list)
+    data_gaps: list[str] = Field(default_factory=list)
+    customer_window_verification_status: Literal["PARTIALLY_VERIFIED", "NOT_PROVIDED"]
+    evidence_ids: list[UUID] = Field(default_factory=list)
+    plan_change_recommendation: PlanChangeRecommendationRead | None = None
+    created_at: datetime
+    guardrails: dict[str, bool]
+
+
 class VisitFollowUpRead(ORMModel):
     id: UUID
     visit_id: UUID
@@ -844,6 +936,7 @@ class VisitFollowUpRead(ORMModel):
     source_title: str | None = None
     source_due_date: str | None = None
     source_action_context: VisitFollowUpActionContextRead | None = None
+    latest_reassessment: AppointmentRecoveryReassessmentSummaryRead | None = None
     title: str
     due_date: str | None = None
     status: VisitFollowUpStatus
