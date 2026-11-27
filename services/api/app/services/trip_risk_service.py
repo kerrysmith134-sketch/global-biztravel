@@ -494,6 +494,16 @@ def _upsert_case(
             detail={"source_fingerprint": fingerprint, "reason": "new source evidence observed"},
         )
         report.cases_reopened += 1
+        inferred_after_reopen = _inferred_status(group, case.status)
+        if inferred_after_reopen != case.status:
+            _transition_system(
+                session,
+                case,
+                inferred_after_reopen,
+                now=now,
+                reason="新证据到达后按来源生命周期恢复处理状态",
+            )
+            report.cases_updated += 1
         return case
 
     inferred = _inferred_status(group, case.status)
