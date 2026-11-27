@@ -39,6 +39,7 @@ from app.api.routes import (
     research,
     sync,
     trips,
+    trip_risks,
     visa,
     visa_admin,
     visits,
@@ -47,6 +48,7 @@ from app.api.routes import (
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(trips.router)
+api_router.include_router(trip_risks.router)
 api_router.include_router(visits.router)
 api_router.include_router(visa.router)
 api_router.include_router(visa_admin.router)
