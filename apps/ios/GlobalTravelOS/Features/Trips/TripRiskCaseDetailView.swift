@@ -7,13 +7,11 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
-    private let repository: TripRiskRepository
     private let environment: AppEnvironment
 
     init(riskCase: TripRiskCase, environment: AppEnvironment) {
         self.riskCase = riskCase
         self.environment = environment
-        self.repository = environment.tripRiskRepository
     }
 
     func refresh() async {
@@ -21,13 +19,13 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let page = try await repository.cases(tripId: riskCase.tripId, status: nil, limit: 200)
+            let page = try await environment.tripRiskRepository.cases(tripId: riskCase.tripId, status: nil, limit: 200)
             guard let latest = page.items.first(where: { $0.id == riskCase.id }) else {
                 errorMessage = "该风险事项已不在当前行程的服务端记录中，请返回工作台重新加载"
                 return
             }
             riskCase = latest
-            events = try await repository.events(
+            events = try await environment.tripRiskRepository.events(
                 tripId: riskCase.tripId,
                 caseId: riskCase.id,
                 limit: 200
@@ -38,7 +36,7 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
     }
 
     func transition(_ request: TripRiskTransitionRequest) async throws -> TripRiskCase {
-        let outcome = try await repository.transition(
+        let outcome = try await environment.tripRiskRepository.transition(
             tripId: riskCase.tripId,
             caseId: riskCase.id,
             request: request
