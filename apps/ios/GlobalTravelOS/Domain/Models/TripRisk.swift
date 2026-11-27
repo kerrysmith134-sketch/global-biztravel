@@ -23,7 +23,7 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
     var escalatedAt: Date?
     var resolvedAt: Date?
     var dismissedAt: Date?
-    var resolutionBasis: String?
+    var resolutionBasis: TripRiskResolutionBasis?
     var resolutionNote: String?
     var version: Int
     var createdAt: Date
@@ -144,6 +144,28 @@ enum TripRiskTransitionTarget: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum TripRiskResolutionBasis: String, Codable, CaseIterable, Identifiable {
+    case planRevalidated = "PLAN_REVALIDATED"
+    case followUpCompleted = "FOLLOW_UP_COMPLETED"
+    case tripClosed = "TRIP_CLOSED"
+    case humanAttestation = "HUMAN_ATTESTATION"
+    case falsePositiveConfirmed = "FALSE_POSITIVE_CONFIRMED"
+    case followUpDismissed = "FOLLOW_UP_DISMISSED"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .planRevalidated: return "计划已重新验证"
+        case .followUpCompleted: return "来源跟进已完成"
+        case .tripClosed: return "行程已关闭"
+        case .humanAttestation: return "人工确认已解决"
+        case .falsePositiveConfirmed: return "全部主动建议已驳回"
+        case .followUpDismissed: return "全部来源跟进已驳回"
+        }
+    }
+}
+
 struct TripRiskCaseEvent: Codable, Equatable, Identifiable {
     /// case_version is the server's causal ordering key; created_at may collide at DB precision.
     static func orderedByCaseVersion(_ events: [TripRiskCaseEvent]) -> [TripRiskCaseEvent] {
@@ -204,7 +226,7 @@ struct TripRiskTransitionRequest: Codable, Equatable {
         toStatus: TripRiskTransitionTarget,
         note: String,
         nextReviewAt: Date? = nil,
-        resolutionBasis: String? = nil
+        resolutionBasis: TripRiskResolutionBasis? = nil
     ) {
         self.expectedVersion = expectedVersion
         self.toStatus = toStatus
