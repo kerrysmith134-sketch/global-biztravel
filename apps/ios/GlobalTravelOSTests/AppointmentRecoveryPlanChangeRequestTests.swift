@@ -9,6 +9,7 @@ final class AppointmentRecoveryPlanChangeRequestTests: XCTestCase {
             operationType: .changeVisitTime,
             payload: [
                 "visit_id": "22222222-2222-2222-2222-222222222222",
+                "recovery_follow_up_id": "33333333-3333-3333-3333-333333333333",
                 "new_window_start": "2027-03-28T01:30:00.000Z",
                 "new_window_end": "2027-03-28T02:30:00.000Z"
             ],
@@ -27,6 +28,7 @@ final class AppointmentRecoveryPlanChangeRequestTests: XCTestCase {
         XCTAssertEqual(object["source"] as? String, "APPOINTMENT_RECOVERY")
         XCTAssertEqual(object["operation_type"] as? String, "CHANGE_VISIT_TIME")
         XCTAssertEqual(payload["visit_id"], "22222222-2222-2222-2222-222222222222")
+        XCTAssertEqual(payload["recovery_follow_up_id"], "33333333-3333-3333-3333-333333333333")
         XCTAssertEqual(payload["new_window_start"], "2027-03-28T01:30:00.000Z")
         XCTAssertEqual(payload["new_window_end"], "2027-03-28T02:30:00.000Z")
     }
