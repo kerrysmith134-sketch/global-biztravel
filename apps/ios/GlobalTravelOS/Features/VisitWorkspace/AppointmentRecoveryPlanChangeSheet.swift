@@ -36,6 +36,7 @@ struct AppointmentRecoveryPlanChangeSheet: View {
             let generatedPlan,
             job?.resolvedStatus == .succeeded,
             generatedPlan.tripId == nil || generatedPlan.tripId == followUp.tripId,
+            generatedPlan.tripVersion == accepted.tripVersion,
             generatedPlan.status == .draft,
             generatedPlan.feasible == true,
             generatedPlan.unplacedList.isEmpty,
@@ -398,6 +399,10 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                 errorMessage = "任务返回的计划不属于当前行程，已阻止后续激活。"
                 return
             }
+            guard plan.tripVersion == accepted.tripVersion else {
+                errorMessage = "新计划所依据的 Trip Version 与本次计划变更结果不一致，已阻止激活。"
+                return
+            }
             let comparison = try await environment.planRepository.planDiff(
                 tripId: followUp.tripId,
                 planId: planId,
@@ -462,6 +467,7 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                 planId: generatedPlan.id
             )
             guard
+                latestPlan.tripVersion == latestTrip.version,
                 latestPlan.feasible == true,
                 latestPlan.unplacedList.isEmpty,
                 ["FEASIBLE", "OPTIMAL"].contains((latestPlan.solutionStatus ?? "").uppercased()),
