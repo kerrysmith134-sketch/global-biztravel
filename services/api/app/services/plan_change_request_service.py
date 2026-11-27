@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound, PlanVersionConflict, Unprocessable
@@ -125,8 +126,19 @@ def create_change_request(
     reason: str | None,
     actor_user_id: UUID | str | None,
 ) -> PlanChangeOutcome:
-    trip = trip_service.require_trip(session, organization_id, UUID(str(trip_id)))
-    base_plan = plan_service.require_plan_version(session, organization_id, base_plan_version_id)
+    org_id = UUID(str(organization_id))
+    resolved_trip_id = UUID(str(trip_id))
+    # Serialize plan changes for one Trip. Without this lock, two requests with different
+    # idempotency keys can both observe the same base version and mutate the Visit twice.
+    trip = session.scalars(
+        select(Trip)
+        .where(Trip.organization_id == org_id, Trip.id == resolved_trip_id)
+        .with_for_update()
+    ).one_or_none()
+    if trip is None:
+        raise NotFound("出行不存在", details={"trip_id": str(trip_id)})
+
+    base_plan = plan_service.require_plan_version(session, org_id, base_plan_version_id)
     if str(base_plan.trip_id) != str(trip.id):
         raise NotFound("计划版本不属于该出行")
     if trip.active_plan_version_id != base_plan.id:
