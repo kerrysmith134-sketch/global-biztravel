@@ -126,6 +126,23 @@ def test_plan_change_updates_input_and_enqueues_new_plan(client: TestClient) -> 
         target = next(item for item in visits if item["id"] == visit_id)
         assert target["time_window_start"] is not None
 
+        # Even with a freshly read Trip Version, the old ACTIVE plan is stale because
+        # its immutable trip_version still points to the inputs before the first mutation.
+        latest_trip = client.get(f"/v1/trips/{trip_id}", headers=headers()).json()
+        stale_active_plan = client.post(
+            f"/v1/trips/{trip_id}/plan-changes",
+            headers=headers(),
+            json={
+                "base_plan_version_id": plan_id,
+                "base_trip_version": latest_trip["version"],
+                "source": "CALENDAR",
+                "operation_type": "CANCEL_VISIT",
+                "payload": {"visit_id": visit_id},
+            },
+        )
+        assert stale_active_plan.status_code == 409, stale_active_plan.text
+        assert stale_active_plan.json()["error"]["code"] == "PLAN_VERSION_CONFLICT"
+
         # 用旧版本再提交：必须 409，不能悄悄基于旧输入生成计划。
         stale = client.post(
             f"/v1/trips/{trip_id}/plan-changes",
