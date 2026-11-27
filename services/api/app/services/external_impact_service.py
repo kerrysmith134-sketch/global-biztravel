@@ -499,14 +499,31 @@ def _assess_flight_operational_update(
             if update.estimated_departure_at is not None
             else None
         )
+        unassessed_impacts = [
+            {
+                "plan_stop_id": str(stop.id),
+                "visit_id": str(visit.id),
+                "planned_arrival_at": stop.arrive_at.isoformat(),
+                "projected_arrival_at": None,
+                "delay_minutes": None,
+                "appointment_status": "UNASSESSED",
+                "reason": "ARRIVAL_ESTIMATE_MISSING",
+                "time_window_end": visit.time_window_end.isoformat() if visit.time_window_end else None,
+            }
+            for stop, visit in downstream
+        ]
         return {
             **base,
             "status": "ARRIVAL_ESTIMATE_MISSING",
             "operational_delay_assessment": "ARRIVAL_TIME_NOT_DERIVABLE",
             "departure_delay_minutes": departure_delay,
+            "stop_impacts": unassessed_impacts,
+            "unassessed_visit_ids": [str(visit.id) for _stop, visit in downstream],
+            "propagation_complete": False,
             "explanation": (
-                "Provider 提供了航班运营事件，但没有可比较的预计到达时间；只能保留出发时刻信息，"
-                "不能将出发延误直接等同于到达延误或传播到拜访预约。"
+                "Provider 提供了出发时刻变化，但没有可比较的预计到达时间；只能保留出发延误，"
+                "所有后续拜访均标记为未评估。不能将出发延误直接等同于到达延误，"
+                "也不能把缺失 ETA 解释为没有预约影响。"
             ),
         }
 
@@ -515,13 +532,29 @@ def _assess_flight_operational_update(
     first_stop, _first_visit = downstream[0]
     landing_buffer = int((first_stop.arrive_at - segment.scheduled_arrival_at).total_seconds() // 60)
     if landing_buffer < 0:
+        unassessed_impacts = [
+            {
+                "plan_stop_id": str(stop.id),
+                "visit_id": str(visit.id),
+                "planned_arrival_at": stop.arrive_at.isoformat(),
+                "projected_arrival_at": None,
+                "delay_minutes": None,
+                "appointment_status": "UNASSESSED",
+                "reason": "PLAN_FLIGHT_ARRIVAL_INCONSISTENT",
+                "time_window_end": visit.time_window_end.isoformat() if visit.time_window_end else None,
+            }
+            for stop, visit in downstream
+        ]
         return {
             **base,
             "status": "PLAN_FLIGHT_ARRIVAL_INCONSISTENT",
             "flight_arrival_delta_minutes": arrival_delta,
+            "stop_impacts": unassessed_impacts,
+            "unassessed_visit_ids": [str(visit.id) for _stop, visit in downstream],
+            "propagation_complete": False,
             "explanation": (
                 "当前计划首个拜访停靠时间早于机票记录的计划落地时间；计划输入自相矛盾，"
-                "拒绝用负缓冲计算预约影响。"
+                "拒绝用负缓冲计算预约影响，所有后续拜访均保留为未评估。"
             ),
         }
 
