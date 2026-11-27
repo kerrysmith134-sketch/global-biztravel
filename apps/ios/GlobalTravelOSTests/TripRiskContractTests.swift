@@ -24,6 +24,36 @@ final class TripRiskContractTests: XCTestCase {
         XCTAssertEqual(value.resolutionBasisLabel, "来源主动建议已驳回")
     }
 
+    func testTripRiskCaseDecodesExternalImpactAssessmentContext() throws {
+        let sampleData = try XCTUnwrap(ContractSamples.tripRiskCase.data(using: .utf8))
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: sampleData) as? [String: Any]
+        )
+        payload["context"] = [
+            "external_signal_assessments": [
+                [
+                    "signal_id": "signal-1",
+                    "signal_type": "WEATHER_DISRUPTION",
+                    "impact_assessment": [
+                        "status": "PLACE_AND_TIME_OVERLAP",
+                        "plan_version_number": 2,
+                        "affected_visit_ids": ["visit-1"],
+                        "missed_visit_ids": [],
+                        "explanation": "天气信号与一个已排拜访在地点和时段上精确重叠。"
+                    ]
+                ]
+            ]
+        ]
+        let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let json = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+
+        let value = try DateCoding.decode(TripRiskCase.self, fromJSON: json)
+        XCTAssertEqual(value.impactAssessmentDescriptions.count, 1)
+        XCTAssertTrue(value.impactAssessmentDescriptions[0].contains("天气"))
+        XCTAssertTrue(value.impactAssessmentDescriptions[0].contains("地点与拜访时段精确重叠"))
+        XCTAssertTrue(value.impactAssessmentDescriptions[0].contains("受影响拜访 1 项"))
+    }
+
     func testTripRiskCaseEventContractSamplePreservesCaseVersion() throws {
         let value = try DateCoding.decode(
             TripRiskCaseEvent.self,
