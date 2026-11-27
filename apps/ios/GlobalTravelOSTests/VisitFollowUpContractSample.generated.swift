@@ -45,6 +45,7 @@ extension ContractSamples {
               "operation_type": "CHANGE_VISIT_TIME",
               "reason": "1",
               "requires_human_submission": true,
+              "timezone": "Europe/Berlin",
               "visit_id": "11111111-1111-1111-1111-111111111111"
             },
             "projected_arrival_at": "2026-11-09T09:00:00+00:00",
