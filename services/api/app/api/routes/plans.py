@@ -66,6 +66,7 @@ PLANS_GENERATE_ENDPOINT = "POST /v1/trips/{trip_id}/plans:generate"
 PLANS_ACTIVATE_ENDPOINT = "POST /v1/trips/{trip_id}/plans/{plan_version_id}:activate"
 PLANS_DIFF_ENDPOINT = "GET /v1/trips/{trip_id}/plans/{plan_version_id}:diff"
 PLAN_CHANGES_ENDPOINT = "POST /v1/trips/{trip_id}/plan-changes"
+PLAN_CHANGE_RETRY_ENDPOINT = "POST /v1/plan-changes/{workflow_id}:retry"
 
 #: 这两个状态是终态：出行已经收尾，不该再往里塞新计划。
 _TERMINAL_TRIP_STATUSES = ("CANCELLED", "COMPLETED")
@@ -355,6 +356,44 @@ def create_plan_change(
         operation_type=payload.operation_type,
         payload=payload.payload,
         reason=payload.reason,
+        actor_user_id=context.user_id,
+    )
+    body = PlanChangeRead(
+        change_request_id=outcome.workflow.id,
+        status=outcome.workflow.status,
+        optimization_job_id=outcome.job_id,
+        trip_version=outcome.trip_version,
+    )
+    return guard.finish(status_code=status.HTTP_202_ACCEPTED, body=body)
+
+
+@router.post(
+    "/plan-changes/{workflow_id}:retry",
+    response_model=PlanChangeRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="在原计划变更工作流下重新排队失败的规划任务",
+)
+def retry_plan_change(
+    workflow_id: UUID,
+    context: ContextDep,
+    session: SessionDep,
+    idempotency_key: IdempotencyKeyDep,
+):
+    require_role(context, ROLE_TRAVELER)
+    guard = IdempotentWrite(
+        session,
+        context.organization_id,
+        endpoint=PLAN_CHANGE_RETRY_ENDPOINT,
+        key=idempotency_key,
+        payload={"workflow_id": str(workflow_id)},
+    )
+    if (replay := guard.begin()) is not None:
+        return replay
+
+    outcome = plan_change_request_service.retry_plan_change(
+        session,
+        context.organization_id,
+        workflow_id,
         actor_user_id=context.user_id,
     )
     body = PlanChangeRead(
