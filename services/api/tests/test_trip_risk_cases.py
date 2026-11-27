@@ -18,6 +18,7 @@ from app.models.trip_risks import TripRiskCaseEvent
 from app.models.workflow import AgentRun, WorkflowInstance
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -260,6 +261,16 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
         assert events_response.status_code == 200, events_response.text
         event_types = {item["event_type"] for item in events_response.json()}
         assert {"OPENED", "ACKNOWLEDGED"} <= event_types
+
+        with pytest.raises(IntegrityError):
+            with org_session(UUID(ORG_A)) as session:
+                immutable_event = session.get(
+                    TripRiskCaseEvent,
+                    UUID(events_response.json()[0]["id"]),
+                )
+                assert immutable_event is not None
+                immutable_event.note = "Attempted audit mutation"
+                session.flush()
 
         wait_until = datetime.now(UTC) + timedelta(minutes=20)
         waiting = client.post(
