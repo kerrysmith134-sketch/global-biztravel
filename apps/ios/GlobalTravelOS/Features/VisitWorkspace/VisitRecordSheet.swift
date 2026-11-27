@@ -253,7 +253,8 @@ struct VisitRecordSheet: View {
                                             }
                                             if let proposal = latest.planChangeRecommendation {
                                                 Text(
-                                                    "建议窗口：\(proposal.newWindowStart.formatted(date: .abbreviated, time: .shortened)) – \(proposal.newWindowEnd.formatted(date: .abbreviated, time: .shortened))"
+                                                    "建议窗口：\(proposal.newWindowStart.formatted(date: .abbreviated, time: .shortened)) – " +
+                                                        proposal.newWindowEnd.formatted(date: .abbreviated, time: .shortened)
                                                 )
                                                 .font(.caption)
                                                 Text("计划变更仍需单独提交并经人工激活")

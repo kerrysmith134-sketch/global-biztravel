@@ -112,6 +112,9 @@ class Generator:
                     merged.update(value)
             return merged
 
+        if "const" in node:
+            return node["const"]
+
         enum = node.get("enum")
         if enum:
             return enum[0]

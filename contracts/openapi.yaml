@@ -29041,9 +29041,7 @@
                 "type": "null"
               }
             ],
-            "default": null,
-            "title": "Confirmation Reference",
-            "maxLength": 300
+            "title": "Confirmation Reference"
           }
         },
         "type": "object",
@@ -29065,9 +29063,7 @@
               {
                 "type": "null"
               }
-            ],
-            "default": null,
-            "title": "Customer Window"
+            ]
           },
           "replacement_flight_segment_id": {
             "anyOf": [
@@ -29079,8 +29075,7 @@
                 "type": "null"
               }
             ],
-            "title": "Replacement Flight Segment Id",
-            "default": null
+            "title": "Replacement Flight Segment Id"
           }
         },
         "type": "object",
@@ -29165,10 +29160,8 @@
         "properties": {
           "operation_type": {
             "type": "string",
-            "enum": [
-              "CHANGE_VISIT_TIME"
-            ],
-            "title": "Operation Type"
+            "title": "Operation Type",
+            "const": "CHANGE_VISIT_TIME"
           },
           "visit_id": {
             "type": "string",
@@ -29255,8 +29248,7 @@
                 "type": "null"
               }
             ],
-            "title": "Current Plan Version Id",
-            "default": null
+            "title": "Current Plan Version Id"
           },
           "appointment_status": {
             "anyOf": [
@@ -29316,8 +29308,7 @@
               {
                 "type": "null"
               }
-            ],
-            "default": null
+            ]
           }
         },
         "type": "object",
@@ -29382,8 +29373,7 @@
                 "type": "null"
               }
             ],
-            "title": "Current Plan Version Id",
-            "default": null
+            "title": "Current Plan Version Id"
           },
           "input_sha256": {
             "type": "string",
@@ -29400,16 +29390,14 @@
               "type": "string"
             },
             "type": "array",
-            "title": "Changed Fields",
-            "default": []
+            "title": "Changed Fields"
           },
           "data_gaps": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Data Gaps",
-            "default": []
+            "title": "Data Gaps"
           },
           "customer_window_verification_status": {
             "type": "string",
@@ -29425,8 +29413,7 @@
               "format": "uuid"
             },
             "type": "array",
-            "title": "Evidence Ids",
-            "default": []
+            "title": "Evidence Ids"
           },
           "plan_change_recommendation": {
             "anyOf": [
@@ -29436,8 +29423,7 @@
               {
                 "type": "null"
               }
-            ],
-            "default": null
+            ]
           },
           "created_at": {
             "type": "string",
