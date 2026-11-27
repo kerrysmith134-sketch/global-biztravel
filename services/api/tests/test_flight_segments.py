@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from app.api.errors import Unprocessable
@@ -1126,8 +1127,12 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
 
         request_payload = {
             "customer_window": {
-                "start_at": (scheduled_arrival + timedelta(hours=1, minutes=30)).isoformat(),
-                "end_at": (scheduled_arrival + timedelta(hours=4)).isoformat(),
+                "start_at": (
+                    scheduled_arrival + timedelta(hours=1, minutes=30)
+                ).astimezone(ZoneInfo("Europe/Berlin")).isoformat(),
+                "end_at": (
+                    scheduled_arrival + timedelta(hours=4)
+                ).astimezone(ZoneInfo("Europe/Berlin")).isoformat(),
                 "timezone": "Europe/Berlin",
                 "confirmation_method": "EMAIL",
                 "confirmation_reference": "CRM-ACT-2026-117",
