@@ -288,18 +288,26 @@ def scan_proactive(org_id: str, *, force: bool = False) -> proactive_service.Sca
     with org_session(org_id) as session:
         report = proactive_service.scan_organization(session, org_id)
         risk_reports = trip_risk_service.reconcile_organization(session, org_id)
-        created = sum(item.cases_created for item in risk_reports)
-        updated = sum(item.cases_updated for item in risk_reports)
-        escalated = sum(item.escalated for item in risk_reports)
-        risk_errors = sum(len(item.errors) for item in risk_reports)
-        if created or updated or escalated or risk_errors:
+        report.risk_cases_created = sum(item.cases_created for item in risk_reports)
+        report.risk_cases_updated = sum(item.cases_updated for item in risk_reports)
+        report.risk_cases_reopened = sum(item.cases_reopened for item in risk_reports)
+        report.risk_cases_escalated = sum(item.escalated for item in risk_reports)
+        report.risk_cases_reviewed = sum(item.reviewed for item in risk_reports)
+        report.risk_errors = sum(len(item.errors) for item in risk_reports)
+        if (
+            report.risk_cases_created
+            or report.risk_cases_updated
+            or report.risk_cases_escalated
+            or report.risk_cases_reviewed
+            or report.risk_errors
+        ):
             logger.info(
                 "组织 %s Trip Risk 对账：新建 %d、更新 %d、升级 %d、错误 %d",
                 org_id,
-                created,
-                updated,
-                escalated,
-                risk_errors,
+                report.risk_cases_created,
+                report.risk_cases_updated,
+                report.risk_cases_escalated,
+                report.risk_errors,
             )
         return report
 
@@ -439,18 +447,23 @@ def run_cycle(
 
         try:
             scan = scan_proactive(org_id, force=proactive_force)
-            if scan is not None and scan.did_work:
-                did_work = True
-                logger.info(
-                    "组织 %s 主动式扫描：出行 %d、新触发 %d、新建议 %d（推送 %d / 保留 %d / 抑制 %d）",
-                    org_id,
-                    scan.trips_scanned,
-                    scan.triggers,
-                    scan.suggestions,
-                    scan.pushed,
-                    scan.withheld,
-                    scan.suppressed,
-                )
+            if scan is not None:
+                if scan.triggers or scan.suggestions:
+                    did_work = True
+                    logger.info(
+                        "组织 %s 主动式扫描：出行 %d、新触发 %d、新建议 %d（推送 %d / 保留 %d / 抑制 %d）",
+                        org_id,
+                        scan.trips_scanned,
+                        scan.triggers,
+                        scan.suggestions,
+                        scan.pushed,
+                        scan.withheld,
+                        scan.suppressed,
+                    )
+                if scan.did_work:
+                    # A new escalation may have queued an in-app/APNs notification.
+                    # Do not sleep before the next cycle has a chance to dispatch it.
+                    did_work = True
             if scan is not None and scan.errors:
                 logger.warning("组织 %s 主动式扫描有 %d 条规则失败", org_id, len(scan.errors))
         except Exception:  # noqa: BLE001
