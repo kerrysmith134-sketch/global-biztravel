@@ -155,6 +155,7 @@ struct PolicyViolation: Codable, Equatable, Identifiable {
 struct PlanVersionDetail: Codable, Equatable, Identifiable {
     var id: String
     var tripId: String?
+    var tripVersion: Int?
     var versionNumber: Int?
     var status: PlanStatus?
     var solver: String?
@@ -176,6 +177,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
     init(
         id: String,
         tripId: String? = nil,
+        tripVersion: Int? = nil,
         versionNumber: Int? = nil,
         status: PlanStatus? = nil,
         solver: String? = nil,
@@ -196,6 +198,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
     ) {
         self.id = id
         self.tripId = tripId
+        self.tripVersion = tripVersion
         self.versionNumber = versionNumber
         self.status = status
         self.solver = solver
@@ -218,6 +221,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case id
         case tripId
+        case tripVersion
         case versionNumber
         case status
         case solver
@@ -266,6 +270,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
         self.tripId = try container.decodeIfPresent(String.self, forKey: .tripId)
+        self.tripVersion = try container.decodeIfPresent(Int.self, forKey: .tripVersion)
         self.versionNumber = try container.decodeIfPresent(Int.self, forKey: .versionNumber)
         self.status = try container.decodeIfPresent(PlanStatus.self, forKey: .status)
         self.solver = try container.decodeIfPresent(String.self, forKey: .solver)
@@ -324,6 +329,7 @@ struct PlanVersionDetail: Codable, Equatable, Identifiable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encodeIfPresent(tripId, forKey: .tripId)
+        try container.encodeIfPresent(tripVersion, forKey: .tripVersion)
         try container.encodeIfPresent(versionNumber, forKey: .versionNumber)
         try container.encodeIfPresent(status, forKey: .status)
         try container.encodeIfPresent(solver, forKey: .solver)
