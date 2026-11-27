@@ -132,6 +132,7 @@ def upgrade() -> None:
         sa.Column("organization_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("trip_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("case_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("case_version", sa.Integer(), nullable=False),
         sa.Column("event_type", sa.Text(), nullable=False),
         sa.Column("from_status", sa.Text(), nullable=True),
         sa.Column("to_status", sa.Text(), nullable=False),
