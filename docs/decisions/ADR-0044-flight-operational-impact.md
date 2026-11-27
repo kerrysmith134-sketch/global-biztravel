@@ -34,3 +34,6 @@ OpenSky 等 ADS-B 航迹源提供的是航空器遥测快照，不能证明航�
 - 影响评估时重新核对服务端事件引用、内容 SHA-256、事件类型、Provider、dedupe key、观察时间、`valid_from`、`valid_until`、置信度与摘要。任一字段不一致时停止传播，返回 `OPERATIONAL_UPDATE_EVIDENCE_MISMATCH` 或 `OPERATIONAL_UPDATE_ENVELOPE_MISMATCH`。
 - 该校验防止把已存在的旧事件 ID 重新包装成一个新的观察时间/有效期，从而人为延长预警有效性；同时保留同一事件相同内容的幂等重放。
 - 新增 PostgreSQL 集成断言：服务端引用字段伪造被请求层拒绝；信号内容指纹被篡改时影响评估被拒绝；观察时间被篡改时有效封装校验被拒绝。以上测试必须以严格 CI 的真实 PostgreSQL 运行结果作为最终验收依据。
+
+
+- **嵌套事件逐字段核对**：影响评估重新使用 `FlightOperationalUpdatePayload` 校验 `ExternalSignal.payload.flight_operational_update`，并将航段 ID、Provider 事件 ID、类型、航班号、计划机场、预计起降时刻、备降机场和源 payload 哈希逐项与 append-only 事件行比较。不能仅因嵌套对象存在或外层摘要匹配就接受。
