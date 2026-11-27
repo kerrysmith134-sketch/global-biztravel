@@ -145,6 +145,19 @@ enum TripRiskTransitionTarget: String, Codable, CaseIterable, Identifiable {
 }
 
 struct TripRiskCaseEvent: Codable, Equatable, Identifiable {
+    /// case_version is the server's causal ordering key; created_at may collide at DB precision.
+    static func orderedByCaseVersion(_ events: [TripRiskCaseEvent]) -> [TripRiskCaseEvent] {
+        events.sorted { lhs, rhs in
+            if lhs.caseVersion != rhs.caseVersion {
+                return lhs.caseVersion < rhs.caseVersion
+            }
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt < rhs.createdAt
+            }
+            return lhs.id < rhs.id
+        }
+    }
+
     var id: String
     var organizationId: String
     var tripId: String
