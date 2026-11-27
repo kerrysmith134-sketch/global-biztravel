@@ -254,8 +254,17 @@ def _build_groups(
         )
         group = groups.get(group_key)
         if group is None:
-            if follow_up.status not in ACTIVE_FOLLOW_UP_STATUSES:
-                continue
+            should_create = follow_up.status in ACTIVE_FOLLOW_UP_STATUSES
+            if not should_create:
+                existing_case = session.scalars(
+                    select(TripRiskCase.id).where(
+                        TripRiskCase.organization_id == organization_id,
+                        TripRiskCase.trip_id == trip.id,
+                        TripRiskCase.case_key == group_key,
+                    )
+                ).one_or_none()
+                if existing_case is None:
+                    continue
             group = {
                 "case_key": group_key,
                 "risk_type": _risk_type(None, follow_up.source_type),
@@ -267,7 +276,7 @@ def _build_groups(
                 "context": {"follow_up_only": True},
                 "suggestion": None,
                 "follow_ups": [],
-                "should_create": True,
+                "should_create": should_create,
             }
             groups[group_key] = group
 
@@ -474,6 +483,58 @@ def _upsert_case(
     case.evidence_refs = evidence_refs
     case.context = {**(case.context or {}), **group["context"], "source_fingerprint": fingerprint}
     case.last_observed_at = now
+
+    # A FollowUp-only Case follows the terminal state of its source task. Do not leave
+    # a zombie OPEN risk behind after the task is completed or dismissed.
+    linked_follow_ups = group.get("follow_ups", [])
+    if group.get("suggestion") is None and linked_follow_ups:
+        if all(row.status == "COMPLETED" for row in linked_follow_ups):
+            target_status = "RESOLVED"
+            resolution_basis = "FOLLOW_UP_COMPLETED"
+            resolution_note = "全部来源跟进项已完成"
+        elif all(row.status == "DISMISSED" for row in linked_follow_ups):
+            target_status = "DISMISSED"
+            resolution_basis = "FOLLOW_UP_DISMISSED"
+            resolution_note = "全部来源跟进项已驳回"
+        else:
+            target_status = None
+            resolution_basis = None
+            resolution_note = None
+
+        if target_status is not None:
+            if case.status != target_status:
+                previous_status = case.status
+                case.status = target_status
+                case.resolved_at = now if target_status == "RESOLVED" else None
+                case.dismissed_at = now if target_status == "DISMISSED" else None
+                case.resolution_basis = resolution_basis
+                case.resolution_note = resolution_note
+                case.next_review_at = None
+                case.version += 1
+                _append_event(
+                    session,
+                    case,
+                    event_type=target_status,
+                    from_status=previous_status,
+                    note=resolution_note,
+                    detail={
+                        "resolution_basis": resolution_basis,
+                        "source_fingerprint": fingerprint,
+                    },
+                )
+                report.cases_updated += 1
+            elif source_changed:
+                case.version += 1
+                _append_event(
+                    session,
+                    case,
+                    event_type="SOURCE_LINKED",
+                    from_status=case.status,
+                    detail={"source_fingerprint": fingerprint, "source_refs": source_refs},
+                )
+                report.cases_updated += 1
+            return case
+
     if case.status in TERMINAL_STATUSES and source_changed:
         case.status = "OPEN"
         case.resolved_at = None
