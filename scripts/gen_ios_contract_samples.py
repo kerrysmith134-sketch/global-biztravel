@@ -224,19 +224,19 @@ def main() -> int:
         if index == 0:
             output_path = OUT_FILE
             file_header = header
-            closing = "}\\n"
+            closing = "}\n"
         else:
             output_path = OUT_FILE.with_name(
                 f"{OUT_FILE.stem}.part{index + 1}{OUT_FILE.suffix}"
             )
             file_header = (
-                "// 自动生成，请勿手改：scripts/gen_ios_contract_samples.py\\n"
-                "// ContractSamples 分片；与主样本文件由同一 OpenAPI schema 生成。\\n\\n"
-                "extension ContractSamples {\\n"
+                "// 自动生成，请勿手改：scripts/gen_ios_contract_samples.py\n"
+                "// ContractSamples 分片；与主样本文件由同一 OpenAPI schema 生成。\n\n"
+                "extension ContractSamples {\n"
             )
-            closing = "}\\n"
+            closing = "}\n"
         output_path.write_text(
-            file_header + "\\n".join(chunk) + "\\n" + closing,
+            file_header + "\n".join(chunk) + "\n" + closing,
             encoding="utf-8",
         )
         generated_parts.add(output_path)
