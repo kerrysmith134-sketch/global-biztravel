@@ -330,6 +330,14 @@ def _build_groups(
             for subject_type, subject_ref in subject_refs
         ]
     )
+    existing_case_keys = set(
+        session.scalars(
+            select(TripRiskCase.case_key).where(
+                TripRiskCase.organization_id == organization_id,
+                TripRiskCase.trip_id == trip.id,
+            )
+        ).all()
+    )
     external_signals = list(
         session.scalars(
             select(ExternalSignal)
@@ -381,7 +389,21 @@ def _build_groups(
             continue
 
         signal_id = str(signal.id)
-        case_key = signal_group_keys.get(signal_id, f"external_signal:{signal_id}")
+        signal_case_key = f"external_signal:{signal_id}"
+        suggestion_key = signal_group_keys.get(signal_id)
+        if signal_case_key in existing_case_keys:
+            case_key = signal_case_key
+        elif suggestion_key and suggestion_key in existing_case_keys:
+            # Preserve a suggestion-key Case created by the earlier projection version.
+            case_key = suggestion_key
+        else:
+            # New signal-backed episodes use the stable source identity, not a transient
+            # suggestion ID. A suggestion can be regenerated as signal content changes.
+            case_key = signal_case_key
+        if case_key == signal_case_key and suggestion_key and suggestion_key in groups:
+            linked_group = groups.pop(suggestion_key)
+            linked_group["case_key"] = signal_case_key
+            groups[signal_case_key] = linked_group
         group = groups.get(case_key)
         assessment_hash = hashlib.sha256(
             _canonical_json(impact).encode("utf-8")
@@ -607,6 +629,7 @@ def _build_groups(
             assessments, key=lambda item: (str(item.get("observed_at")), str(item.get("signal_id")))
         )
         group["context"]["external_signal_count"] = len(assessments)
+        existing_case_keys.add(case_key)
 
     # Stable order and no duplicated exact source reference.
     for group in groups.values():
