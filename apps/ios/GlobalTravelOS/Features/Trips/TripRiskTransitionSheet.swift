@@ -1,12 +1,5 @@
 import SwiftUI
 
-private struct ResolutionBasisOption: Identifiable {
-    let value: String
-    let label: String
-
-    var id: String { value }
-}
-
 struct TripRiskTransitionSheet: View {
     @Environment(\.dismiss) private var dismiss
     let riskCase: TripRiskCase
@@ -15,7 +8,7 @@ struct TripRiskTransitionSheet: View {
 
     @State private var note = ""
     @State private var nextReviewAt = Date().addingTimeInterval(2 * 60 * 60)
-    @State private var resolutionBasis: String
+    @State private var resolutionBasis: TripRiskResolutionBasis
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
@@ -28,26 +21,32 @@ struct TripRiskTransitionSheet: View {
         self.target = target
         self.onSubmit = onSubmit
         _resolutionBasis = State(
-            initialValue: target == .resolved ? "HUMAN_ATTESTATION" : "FALSE_POSITIVE_CONFIRMED"
+            initialValue: target == .resolved ? .humanAttestation : .falsePositiveConfirmed
         )
     }
 
-    private var basisOptions: [ResolutionBasisOption] {
-        if target == .resolved {
-            return [
-                .init(value: "HUMAN_ATTESTATION", label: "人工确认已解决"),
-                .init(value: "PLAN_REVALIDATED", label: "计划已重新验证"),
-                .init(value: "FOLLOW_UP_COMPLETED", label: "来源跟进已完成"),
-                .init(value: "TRIP_CLOSED", label: "行程已关闭")
-            ]
+    private var basisOptions: [TripRiskResolutionBasis] {
+        switch target {
+        case .resolved:
+            return [.humanAttestation, .planRevalidated, .followUpCompleted, .tripClosed]
+        case .dismissed:
+            return [.falsePositiveConfirmed, .followUpDismissed]
+        default:
+            return []
         }
-        if target == .dismissed {
-            return [
-                .init(value: "FALSE_POSITIVE_CONFIRMED", label: "全部主动建议已驳回"),
-                .init(value: "FOLLOW_UP_DISMISSED", label: "全部来源跟进已驳回")
-            ]
-        }
-        return []
+    }
+
+    private var cleanedNote: String {
+        note.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Python/Pydantic string length counts Unicode code points; UnicodeScalarView matches it.
+    private var noteLength: Int {
+        cleanedNote.unicodeScalars.count
+    }
+
+    private var isNoteValid: Bool {
+        (3 ... 2_000).contains(noteLength)
     }
 
     var body: some View {
@@ -76,7 +75,7 @@ struct TripRiskTransitionSheet: View {
                     Section("关闭依据") {
                         Picker("依据", selection: $resolutionBasis) {
                             ForEach(basisOptions) { option in
-                                Text(option.label).tag(option.value)
+                                Text(option.label).tag(option)
                             }
                         }
                         Text(target == .resolved
@@ -90,9 +89,14 @@ struct TripRiskTransitionSheet: View {
                 Section("处置说明") {
                     TextEditor(text: $note)
                         .frame(minHeight: 110)
-                    Text("至少填写 3 个字符。说明会写入不可变审计事件。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("填写 3–2,000 个字符。说明会写入不可变审计事件。")
+                        Spacer()
+                        Text("\(noteLength)/2,000")
+                            .monospacedDigit()
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(noteLength > 2_000 ? DS.ColorToken.danger : .secondary)
                 }
 
                 if let errorMessage {
@@ -120,7 +124,7 @@ struct TripRiskTransitionSheet: View {
                             Text("确认")
                         }
                     }
-                    .disabled(isSubmitting || note.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+                    .disabled(isSubmitting || !isNoteValid)
                 }
             }
         }
@@ -128,8 +132,8 @@ struct TripRiskTransitionSheet: View {
 
     @MainActor
     private func submit() async {
-        let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard cleanNote.count >= 3 else { return }
+        let cleanNote = cleanedNote
+        guard (3 ... 2_000).contains(cleanNote.unicodeScalars.count) else { return }
         isSubmitting = true
         errorMessage = nil
         defer { isSubmitting = false }
