@@ -5,6 +5,7 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
     @Published private(set) var riskCase: TripRiskCase
     @Published private(set) var events: [TripRiskCaseEvent] = []
     @Published private(set) var isLoading = false
+    @Published private(set) var isCaseFresh = false
     @Published var errorMessage: String?
 
     private let environment: AppEnvironment
@@ -16,32 +17,49 @@ final class TripRiskCaseDetailViewModel: ObservableObject {
 
     func refresh() async {
         isLoading = true
+        isCaseFresh = false
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let page = try await environment.tripRiskRepository.cases(tripId: riskCase.tripId, status: nil, limit: 200)
+            let page = try await environment.tripRiskRepository.cases(
+                tripId: riskCase.tripId,
+                status: nil,
+                limit: 200
+            )
             guard let latest = page.items.first(where: { $0.id == riskCase.id }) else {
+                events = []
                 errorMessage = "该风险事项已不在当前行程的服务端记录中，请返回工作台重新加载"
                 return
             }
             riskCase = latest
-            events = try await environment.tripRiskRepository.events(
-                tripId: riskCase.tripId,
-                caseId: riskCase.id,
-                limit: 200
-            ).sorted { $0.createdAt < $1.createdAt }
+            isCaseFresh = true
+            do {
+                events = try await environment.tripRiskRepository.events(
+                    tripId: riskCase.tripId,
+                    caseId: riskCase.id,
+                    limit: 200
+                ).sorted { $0.createdAt < $1.createdAt }
+            } catch {
+                events = []
+                errorMessage = environment.errorMessage(error)
+            }
         } catch {
+            events = []
             errorMessage = environment.errorMessage(error)
         }
     }
 
     func transition(_ request: TripRiskTransitionRequest) async throws -> TripRiskCase {
+        guard isCaseFresh else {
+            throw RepositoryError.requiresNetwork("风险状态尚未成功刷新，当前不能提交处置")
+        }
         let outcome = try await environment.tripRiskRepository.transition(
             tripId: riskCase.tripId,
             caseId: riskCase.id,
             request: request
         )
         riskCase = outcome.caseItem
+        isCaseFresh = true
         events.append(outcome.event)
         events.sort { $0.createdAt < $1.createdAt }
         return outcome.caseItem
@@ -117,7 +135,18 @@ struct TripRiskCaseDetailView: View {
                     }
                 }
 
-                if !viewModel.riskCase.isTerminal {
+                if !viewModel.isCaseFresh {
+                    Section {
+                        Label(
+                            "当前风险状态未成功刷新，暂不允许提交处置",
+                            systemImage: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(DS.ColorToken.warning)
+                    }
+                }
+
+                if !viewModel.riskCase.isTerminal && viewModel.isCaseFresh {
                     Section {
                         ForEach(viewModel.riskCase.availableTransitions) { target in
                             Button {
