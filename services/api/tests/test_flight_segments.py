@@ -901,3 +901,122 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
                 )
             )
         cleanup(trip_id, place_id)
+
+
+def test_departure_delay_without_arrival_estimate_routes_visits_to_recovery_review(
+    client: TestClient,
+) -> None:
+    trip_id, place_id, visit_id = create_trip_and_place(client)
+    event_id = f"departure-only-{uuid.uuid4().hex}"
+    try:
+        booking = flight_payload()
+        scheduled_departure = datetime.fromisoformat(booking["scheduled_departure_at"])
+        plan_id, air_leg_id = create_plan(
+            trip_id, visit_id, version_number=1, mode="AIR", stale=False
+        )
+        created = client.post(
+            f"/v1/trips/{trip_id}/flight-segments",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=booking,
+        )
+        assert created.status_code == 201, created.text
+        segment_id = created.json()["id"]
+        linked = client.post(
+            f"/v1/trips/{trip_id}/flight-segments/{segment_id}:link",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json={"plan_travel_leg_id": air_leg_id},
+        )
+        assert linked.status_code == 200, linked.text
+
+        observed_at = datetime.now(UTC)
+        operational_update = {
+            "flight_segment_id": segment_id,
+            "provider_event_id": event_id,
+            "update_type": "DEPARTURE_DELAY",
+            "flight_designator": "LH123",
+            "departure_airport_iata": "JFK",
+            "arrival_airport_iata": "FRA",
+            "estimated_departure_at": (
+                scheduled_departure + timedelta(minutes=45)
+            ).isoformat(),
+        }
+        signal_response = client.post(
+            "/v1/integrations/signals",
+            headers=headers(),
+            json={
+                "provider": "sample-airline-feed",
+                "signal_type": "FLIGHT_STATUS",
+                "subject_type": "TRIP",
+                "subject_ref": trip_id,
+                "payload": {
+                    "summary": "Provider reports departure delay without arrival estimate",
+                    "flight_operational_update": operational_update,
+                },
+                "confidence": 0.9,
+                "observed_at": observed_at.isoformat(),
+                "valid_until": (observed_at + timedelta(hours=24)).isoformat(),
+                "dedupe_key": f"flight_ops:{event_id}",
+            },
+        )
+        assert signal_response.status_code == 201, signal_response.text
+        signal_id = signal_response.json()["id"]
+
+        with org_session(UUID(ORG_A)) as session:
+            trip = session.get(Trip, UUID(trip_id))
+            signal = session.get(ExternalSignal, UUID(signal_id))
+            assert trip is not None
+            assert signal is not None
+            impact = external_impact_service.assess_flight_signal_impact(
+                session, UUID(ORG_A), trip, signal
+            )
+            assert impact["status"] == "ARRIVAL_ESTIMATE_MISSING"
+            assert impact["departure_delay_minutes"] == 45
+            assert impact["unassessed_visit_ids"] == [visit_id]
+            assert impact["propagation_complete"] is False
+            assert impact["stop_impacts"][0]["appointment_status"] == "UNASSESSED"
+            assert impact["stop_impacts"][0]["reason"] == "ARRIVAL_ESTIMATE_MISSING"
+
+            report = proactive_service.scan_trip(
+                session,
+                UUID(ORG_A),
+                UUID(trip_id),
+                now=observed_at + timedelta(seconds=2),
+            )
+            assert report.errors == []
+            assert report.suggestions == 1
+            suggestions = session.scalars(
+                select(ProactiveSuggestion).where(
+                    ProactiveSuggestion.organization_id == UUID(ORG_A),
+                    ProactiveSuggestion.trip_id == UUID(trip_id),
+                    ProactiveSuggestion.suggestion_type == "FLIGHT_STATUS_ALERT",
+                )
+            ).all()
+            suggestion = next(
+                item
+                for item in suggestions
+                if item.proposed_action["params"]["signal_id"] == signal_id
+            )
+            recovery = suggestion.proposed_action["params"]["recovery_brief"]
+            assert recovery["status"] == "REVIEW_REQUIRED"
+            assert recovery["unassessed_visit_ids"] == [visit_id]
+            assert recovery["actions"][0]["action_code"] == "REVALIDATE_TRAVEL_CHAIN"
+            assert recovery["actions"][0]["decision_status"] == "DATA_REVALIDATION_REQUIRED"
+            assert recovery["guardrails"]["plan_mutated"] is False
+            assert recovery["guardrails"]["customer_contacted"] is False
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(AgentRun).where(
+                    AgentRun.organization_id == UUID(ORG_A),
+                    AgentRun.agent_type == "APPOINTMENT_RECOVERY",
+                    AgentRun.input["trip_id"].as_string() == trip_id,
+                )
+            )
+            session.execute(
+                delete(ExternalSignal).where(
+                    ExternalSignal.organization_id == UUID(ORG_A),
+                    ExternalSignal.subject_ref == trip_id,
+                    ExternalSignal.signal_type == "FLIGHT_STATUS",
+                )
+            )
+        cleanup(trip_id, place_id)
