@@ -727,6 +727,30 @@ def _validate_resolution(
         )
         if any(row.status not in allowed_statuses for row in rows):
             raise Unprocessable("并非所有来源 FollowUp 都满足关闭依据")
+        suggestion_ids = [
+            UUID(str(ref["id"]))
+            for ref in (case.source_refs or [])
+            if ref.get("type") == "PROACTIVE_SUGGESTION" and ref.get("id")
+        ]
+        if suggestion_ids:
+            suggestions = list(
+                session.scalars(
+                    select(ProactiveSuggestion).where(
+                        ProactiveSuggestion.organization_id == case.organization_id,
+                        ProactiveSuggestion.trip_id == trip.id,
+                        ProactiveSuggestion.id.in_(suggestion_ids),
+                    )
+                ).all()
+            )
+            if len(suggestions) != len(suggestion_ids):
+                raise Unprocessable("主动建议来源记录不完整，不能关闭风险")
+            allowed_suggestion_statuses = (
+                {"EXECUTED", "DISMISSED", "EXPIRED"}
+                if basis == "FOLLOW_UP_COMPLETED"
+                else {"DISMISSED", "EXPIRED"}
+            )
+            if any(row.status not in allowed_suggestion_statuses for row in suggestions):
+                raise Unprocessable("主动建议来源仍未完成或驳回，不能仅凭 FollowUp 关闭风险")
     elif basis == "TRIP_CLOSED":
         if trip.status not in {"COMPLETED", "CANCELLED"}:
             raise Unprocessable("出行尚未完成或取消")
@@ -749,8 +773,27 @@ def _validate_resolution(
                     ProactiveSuggestion.status == "DISMISSED",
                 )
             )
-            if not dismissed:
-                raise Unprocessable("请先在主动建议中驳回对应建议，再关闭误报风险")
+            if dismissed != len(suggestion_ids):
+                raise Unprocessable("必须先驳回全部关联主动建议，再关闭误报风险")
+            follow_up_ids = [
+                UUID(str(ref["id"]))
+                for ref in (case.source_refs or [])
+                if ref.get("type") == "VISIT_FOLLOW_UP" and ref.get("id")
+            ]
+            if follow_up_ids:
+                follow_up_rows = list(
+                    session.scalars(
+                        select(VisitFollowUp).where(
+                            VisitFollowUp.organization_id == case.organization_id,
+                            VisitFollowUp.trip_id == trip.id,
+                            VisitFollowUp.id.in_(follow_up_ids),
+                        )
+                    ).all()
+                )
+                if len(follow_up_rows) != len(follow_up_ids) or any(
+                    row.status not in {"COMPLETED", "DISMISSED"} for row in follow_up_rows
+                ):
+                    raise Unprocessable("仍有未完成或未驳回的来源 FollowUp，不能关闭误报风险")
     else:
         raise Unprocessable("必须提供有效的风险关闭依据")
 
