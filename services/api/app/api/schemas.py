@@ -881,6 +881,7 @@ class PlanChangeRecommendationRead(BaseModel):
     base_trip_version: int
     new_window_start: datetime
     new_window_end: datetime
+    timezone: str | None = None
     reason: str
     requires_human_submission: bool = True
 
