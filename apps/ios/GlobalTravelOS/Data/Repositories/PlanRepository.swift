@@ -14,6 +14,7 @@ protocol PlanRepository {
     func job(id: String) async throws -> PlanJob
     /// 统一计划变更入口：服务端校验基础版本后改输入并重新入队求解（202）。
     func createPlanChange(tripId: String, request: PlanChangeCreate) async throws -> PlanChangeAccepted
+    func retryPlanChange(workflowId: String) async throws -> PlanChangeAccepted
 }
 
 /// Talks to `/v1/trips/{id}/plans*` and `/v1/jobs/{id}`.
@@ -62,6 +63,13 @@ final class RemotePlanRepository: PlanRepository {
     func createPlanChange(tripId: String, request: PlanChangeCreate) async throws -> PlanChangeAccepted {
         try await client.send(
             try Endpoints.createPlanChange(tripId: tripId, body: request),
+            as: PlanChangeAccepted.self
+        )
+    }
+
+    func retryPlanChange(workflowId: String) async throws -> PlanChangeAccepted {
+        try await client.send(
+            Endpoints.retryPlanChange(workflowId: workflowId),
             as: PlanChangeAccepted.self
         )
     }
@@ -159,6 +167,10 @@ final class OfflinePlanRepository: PlanRepository {
     /// there is no offline stand-in (and a queued local edit would silently diverge).
     func createPlanChange(tripId: String, request: PlanChangeCreate) async throws -> PlanChangeAccepted {
         try await remote.createPlanChange(tripId: tripId, request: request)
+    }
+
+    func retryPlanChange(workflowId: String) async throws -> PlanChangeAccepted {
+        try await remote.retryPlanChange(workflowId: workflowId)
     }
 
     /// Always live: the solver runs on the server, there is no offline stand-in.
