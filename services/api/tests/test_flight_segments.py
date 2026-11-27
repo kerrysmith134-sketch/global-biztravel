@@ -1301,6 +1301,43 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
             recommendation["new_window_start"]
         ).utcoffset() == timedelta(hours=1)
 
+        # Reassessment approval is not trusted independently of its stored Evidence hash.
+        with org_session(UUID(ORG_A)) as session:
+            attestation_evidence = session.scalars(
+                select(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "visit_follow_up",
+                    Evidence.subject_id == UUID(follow_up_id),
+                    Evidence.kind == "APPOINTMENT_WINDOW_ATTESTATION",
+                    Evidence.ref == f"customer-window-attestation:{result['agent_run_id']}",
+                )
+            ).one()
+            original_attestation_payload = dict(attestation_evidence.payload)
+            tampered_attestation_payload = dict(original_attestation_payload)
+            tampered_customer_window = dict(tampered_attestation_payload["customer_window"])
+            tampered_customer_window["timezone"] = "UTC"
+            tampered_attestation_payload["customer_window"] = tampered_customer_window
+            attestation_evidence.payload = tampered_attestation_payload
+
+        tampered_evidence_submit = client.post(
+            f"/v1/trips/{trip_id}/plan-changes",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=plan_change_payload,
+        )
+        assert tampered_evidence_submit.status_code == 409, tampered_evidence_submit.text
+
+        with org_session(UUID(ORG_A)) as session:
+            attestation_evidence = session.scalars(
+                select(Evidence).where(
+                    Evidence.organization_id == UUID(ORG_A),
+                    Evidence.subject_type == "visit_follow_up",
+                    Evidence.subject_id == UUID(follow_up_id),
+                    Evidence.kind == "APPOINTMENT_WINDOW_ATTESTATION",
+                    Evidence.ref == f"customer-window-attestation:{result['agent_run_id']}",
+                )
+            ).one()
+            attestation_evidence.payload = original_attestation_payload
+
         submitted = client.post(
             f"/v1/trips/{trip_id}/plan-changes",
             headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
