@@ -387,6 +387,7 @@ def reassess_follow_up(
                 "base_trip_version": trip.version,
                 "new_window_start": _iso(window.start_at),
                 "new_window_end": _iso(window.end_at),
+                "timezone": window.timezone,
                 "reason": "客户预约窗口由出差人提供确认依据，且新航班事件在当前计划下预计可满足该窗口。",
                 "requires_human_submission": True,
             }
