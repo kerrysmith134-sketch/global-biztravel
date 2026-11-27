@@ -18,7 +18,7 @@ from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun, WorkflowInstance
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError
 
 pytestmark = [pytest.mark.integration, pytest.mark.acceptance]
 
@@ -271,7 +271,9 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
         assert event_versions["OPENED"] == 1
         assert event_versions["ACKNOWLEDGED"] == 2
 
-        with pytest.raises(IntegrityError):
+        # The application role is revoked UPDATE privilege; the database trigger remains
+        # a second defence for privileged maintenance sessions.
+        with pytest.raises(DBAPIError) as mutation_error:
             with org_session(UUID(ORG_A)) as session:
                 immutable_event = session.get(
                     TripRiskCaseEvent,
@@ -280,6 +282,7 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
                 assert immutable_event is not None
                 immutable_event.note = "Attempted audit mutation"
                 session.flush()
+        assert getattr(mutation_error.value.orig, "sqlstate", None) in {"42501", "55000"}
 
         wait_until = datetime.now(UTC) + timedelta(minutes=20)
         waiting = client.post(
