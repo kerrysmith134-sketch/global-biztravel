@@ -427,6 +427,18 @@ def test_follow_up_only_case_resolves_when_manual_follow_up_completes(
         assert case["status"] == "ACKNOWLEDGED"
         assert {item["id"] for item in case["source_refs"]} == {follow_up_id}
 
+        wrong_close_basis = client.post(
+            f"/v1/trips/{trip_id}/risk-cases/{case['id']}:transition",
+            headers=headers(key=str(uuid.uuid4())),
+            json={
+                "expected_version": case["version"],
+                "to_status": "RESOLVED",
+                "note": "A dismissed follow-up cannot be used as a resolved basis.",
+                "resolution_basis": "FOLLOW_UP_DISMISSED",
+            },
+        )
+        assert wrong_close_basis.status_code == 422, wrong_close_basis.text
+
         completed = client.patch(
             f"/v1/visit-follow-ups/{follow_up_id}",
             headers=headers(key=str(uuid.uuid4())),
