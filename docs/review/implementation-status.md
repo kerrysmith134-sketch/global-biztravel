@@ -555,7 +555,7 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - Trip Risk 对账现在直接读取当前有效的 ExternalSignal，匹配 Trip UUID 与行程覆盖国家；按 observed_at、valid_from、valid_until 使用同一对账时钟过滤，避免把未来或已失效的信号误当作当前风险。
 - Signal-backed Case 使用稳定的 external_signal:{signal_id} 身份；如果已有主动建议通过 proposed_action.params.signal_id 指向该信号，则把建议与跟进来源合并到同一个 Case，避免建议重新生成时产生重复风险工单。已有旧版 suggestion:{id} Case 会优先保持原身份。
 - 每个 Signal 留存 Provider、类型、主体、观察/有效时间、去重键和 payload 快照 SHA-256；另存影响评估 SHA-256。天气评估追加 ACTIVE PlanVersion、精确 Place/时间窗匹配的 PlanStop；航班运营事件追加 FlightOperationalUpdate、机票段、当前计划绑定、拜访影响与交通段引用。
-- OpenSky 位置/速度/高度快照不会单独进入航班风险队列；只有具备规范化 FlightOperationalUpdate 服务端引用的航班信号才进行运营影响评估。即便运营事件完整性校验失败，也只形成待核验风险，不推断延误或预约损失。
+- OpenSky 位置/速度/高度快照不会单独进入航班风险队列；即使该 Signal 已被主动建议域包装为 FLIGHT_STATUS_ALERT，只要缺少服务端规范化 FlightOperationalUpdate 引用，Risk 聚合会同时排除原始 Signal 与其关联 Suggestion，防止绕过来源门禁。原建议仍留在独立的人工核验建议域。只有具备规范化 FlightOperationalUpdate 服务端引用的航班信号才进行运营影响评估；即便运营事件完整性校验失败，也只形成待核验风险，不推断延误或预约损失。
 - VISA_POLICY_CHANGE 与 FX_VOLATILITY 当前只记录可信来源身份和待人工核验状态；没有完成确定性规则和政策/汇率影响评估前，不声称签证结论或财务损失。
 - iOS 风险详情新增“行程影响评估”，展示来源类型、评估状态、受影响/错过预约数量、计划版本与评估解释；来源和证据类型增加本地化标签。
 - 新增 PostgreSQL 集成测试：天气信号与同一 PlanStop 精确地点/时间窗重叠时，必须并入已引用该 Signal 的建议 Case，生成唯一 Case、可追溯计划证据并在重复扫描时保持幂等；另验证 OpenSky telemetry 不会被提升成航班风险。
