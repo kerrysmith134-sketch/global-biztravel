@@ -137,7 +137,13 @@ struct TripRiskWorkspaceView: View {
             }
 
             Section {
-                if visibleCases.isEmpty {
+                if viewModel.isLoading && viewModel.cases.isEmpty {
+                    ProgressView("正在加载风险事项…")
+                        .frame(maxWidth: .infinity, minHeight: 120)
+                } else if viewModel.errorMessage != nil && viewModel.cases.isEmpty {
+                    Label("风险数据暂时不可用", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(DS.ColorToken.warning)
+                } else if visibleCases.isEmpty {
                     ContentUnavailableView(
                         filter == .closed ? "暂无已结束事项" : "暂无风险事项",
                         systemImage: "checkmark.shield",
