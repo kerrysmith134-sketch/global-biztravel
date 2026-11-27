@@ -9,13 +9,11 @@ final class TripRiskWorkspaceViewModel: ObservableObject {
     @Published var statusMessage: String?
 
     private let tripId: String
-    private let repository: TripRiskRepository
     private let environment: AppEnvironment
 
     init(tripId: String, environment: AppEnvironment) {
         self.tripId = tripId
         self.environment = environment
-        self.repository = environment.tripRiskRepository
     }
 
     func load() async {
@@ -23,7 +21,7 @@ final class TripRiskWorkspaceViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let page = try await repository.cases(tripId: tripId, status: nil, limit: 200)
+            let page = try await environment.tripRiskRepository.cases(tripId: tripId, status: nil, limit: 200)
             cases = page.items
         } catch {
             errorMessage = environment.errorMessage(error)
@@ -37,7 +35,7 @@ final class TripRiskWorkspaceViewModel: ObservableObject {
         errorMessage = nil
         defer { isReconciling = false }
         do {
-            let report = try await repository.reconcile(tripId: tripId)
+            let report = try await environment.tripRiskRepository.reconcile(tripId: tripId)
             statusMessage = report.errors.isEmpty
                 ? "来源核对完成 · " + report.summary
                 : "来源核对完成，但有 \(report.errors.count) 项未能处理"
