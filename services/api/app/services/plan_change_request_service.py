@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -24,8 +24,9 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound, PlanVersionConflict, Unprocessable
 from app.api.schemas import VisitCreate, VisitUpdate
+from app.models.records import VisitFollowUp
 from app.models.trip import Trip
-from app.models.workflow import WorkflowInstance
+from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import job_service, plan_service, trip_service, visit_service
 
 CHANGE_VISIT_TIME = "CHANGE_VISIT_TIME"
@@ -56,6 +57,114 @@ def _require(payload: dict[str, Any], key: str) -> Any:
         raise Unprocessable("计划变更缺少字段", details={"missing": key})
     return value
 
+
+
+
+
+def _aware_utc(value: Any, *, field: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise Unprocessable("预约恢复计划变更缺少有效时间", details={"field": field})
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise Unprocessable("预约恢复计划变更时间格式无效", details={"field": field}) from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise Unprocessable("预约恢复计划变更时间必须包含时区偏移", details={"field": field})
+    return parsed.astimezone(UTC)
+
+
+def _validate_appointment_recovery_change(
+    session: Session,
+    organization_id: UUID,
+    trip: Trip,
+    base_plan_id: UUID,
+    base_trip_version: int,
+    payload: dict[str, Any],
+) -> UUID:
+    """Bind the write to the latest successful reassessment proposal for this FollowUp."""
+    try:
+        follow_up_id = UUID(str(_require(payload, "recovery_follow_up_id")))
+        visit_id = UUID(str(_require(payload, "visit_id")))
+    except ValueError:
+        raise Unprocessable("预约恢复计划变更必须引用有效的 FollowUp 和 Visit") from None
+
+    follow_up = session.scalars(
+        select(VisitFollowUp).where(
+            VisitFollowUp.organization_id == organization_id,
+            VisitFollowUp.id == follow_up_id,
+            VisitFollowUp.trip_id == trip.id,
+            VisitFollowUp.visit_id == visit_id,
+            VisitFollowUp.source_type == "APPOINTMENT_RECOVERY",
+        )
+    ).one_or_none()
+    if follow_up is None:
+        raise NotFound("预约恢复 FollowUp 与当前行程/拜访不匹配")
+    if follow_up.status not in {"OPEN", "IN_PROGRESS"}:
+        raise PlanVersionConflict("预约恢复 FollowUp 已关闭，不能再提交计划变更")
+
+    run = session.scalars(
+        select(AgentRun)
+        .where(
+            AgentRun.organization_id == organization_id,
+            AgentRun.agent_type == "APPOINTMENT_RECOVERY_REASSESSMENT",
+            AgentRun.status == "SUCCEEDED",
+            AgentRun.input["follow_up_id"].as_string() == str(follow_up.id),
+        )
+        .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+        .limit(1)
+    ).one_or_none()
+    if run is None or run.workflow_id is None:
+        raise Unprocessable("该 FollowUp 尚无成功的预约恢复重评记录")
+
+    run_input = run.input if isinstance(run.input, dict) else {}
+    run_output = run.output if isinstance(run.output, dict) else {}
+    if (
+        run_input.get("trip_id") != str(trip.id)
+        or run_input.get("visit_id") != str(visit_id)
+        or run_output.get("decision") != "PLAN_CHANGE_RECOMMENDATION_READY"
+        or run_output.get("data_gaps") not in ([], None)
+        or run_output.get("customer_window_verification_status") != "PARTIALLY_VERIFIED"
+    ):
+        raise PlanVersionConflict("最新预约重评未提供可提交的计划变更建议")
+
+    workflow = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == organization_id,
+            WorkflowInstance.id == run.workflow_id,
+            WorkflowInstance.trip_id == trip.id,
+            WorkflowInstance.workflow_type == "APPOINTMENT_RECOVERY_REASSESSMENT",
+            WorkflowInstance.status == "COMPLETED",
+        )
+    ).one_or_none()
+    workflow_payload = workflow.payload if workflow is not None and isinstance(workflow.payload, dict) else {}
+    if (
+        workflow is None
+        or workflow_payload.get("agent_run_id") != str(run.id)
+        or workflow_payload.get("follow_up_id") != str(follow_up.id)
+    ):
+        raise Unprocessable("预约恢复重评的 Workflow/AgentRun 血缘校验失败")
+
+    recommendation = run_output.get("plan_change_recommendation")
+    if not isinstance(recommendation, dict) or recommendation.get("requires_human_submission") is not True:
+        raise PlanVersionConflict("最新预约重评没有可供人工提交的计划变更建议")
+    if (
+        recommendation.get("operation_type") != CHANGE_VISIT_TIME
+        or str(recommendation.get("visit_id") or "") != str(visit_id)
+        or str(recommendation.get("base_plan_version_id") or "") != str(base_plan_id)
+        or recommendation.get("base_trip_version") != base_trip_version
+        or trip.active_plan_version_id != base_plan_id
+        or trip.version != base_trip_version
+    ):
+        raise PlanVersionConflict("预约恢复建议所依据的计划或行程版本已过期")
+
+    requested_start = _aware_utc(payload.get("new_window_start"), field="new_window_start")
+    requested_end = _aware_utc(payload.get("new_window_end"), field="new_window_end")
+    proposed_start = _aware_utc(recommendation.get("new_window_start"), field="proposal.new_window_start")
+    proposed_end = _aware_utc(recommendation.get("new_window_end"), field="proposal.new_window_end")
+    if requested_end <= requested_start or requested_start != proposed_start or requested_end != proposed_end:
+        raise PlanVersionConflict("提交的预约窗口与最新重评建议不一致")
+
+    return follow_up.id
 
 def _apply_change(
     session: Session,
@@ -157,6 +266,19 @@ def create_change_request(
             details={"base_trip_version": base_trip_version, "current_trip_version": trip.version},
         )
 
+    recovery_follow_up_id = None
+    if source == "APPOINTMENT_RECOVERY":
+        if operation_type != CHANGE_VISIT_TIME:
+            raise Unprocessable("预约恢复来源当前只允许提交拜访时间窗变更")
+        recovery_follow_up_id = _validate_appointment_recovery_change(
+            session,
+            org_id,
+            trip,
+            base_plan.id,
+            base_trip_version,
+            payload,
+        )
+
     changed_trip = _apply_change(
         session, organization_id, trip.id, operation_type, payload
     )
@@ -180,6 +302,10 @@ def create_change_request(
             "reason": reason,
             "base_plan_version_id": str(base_plan.id),
             "base_trip_version": base_trip_version,
+            "result_trip_version": changed_trip.version,
+            "recovery_follow_up_id": (
+                str(recovery_follow_up_id) if recovery_follow_up_id is not None else None
+            ),
         },
         job_id=job.id,
         created_by_user_id=None if actor_user_id is None else str(actor_user_id),
