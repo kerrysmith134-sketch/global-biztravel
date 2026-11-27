@@ -17,6 +17,17 @@ protocol PlanRepository {
     func retryPlanChange(workflowId: String) async throws -> PlanChangeAccepted
 }
 
+extension PlanRepository {
+    func retryPlanChange(workflowId: String) async throws -> PlanChangeAccepted {
+        throw APIError.serverError(
+            code: "PLAN_CHANGE_RETRY_UNSUPPORTED",
+            message: "当前计划仓库不支持重试计划变更工作流。",
+            traceId: nil,
+            details: ["workflow_id": workflowId]
+        )
+    }
+}
+
 /// Talks to `/v1/trips/{id}/plans*` and `/v1/jobs/{id}`.
 final class RemotePlanRepository: PlanRepository {
     private let client: APIClient
