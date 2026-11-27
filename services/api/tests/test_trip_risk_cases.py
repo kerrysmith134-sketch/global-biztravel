@@ -155,6 +155,9 @@ def seed_flight_recovery_sources(trip_id: str, visit_id: str) -> tuple[str, str,
                 finished_at=now,
             )
         )
+        # VisitFollowUp has a database FK to AgentRun but no ORM relationship;
+        # flush the principal explicitly before inserting the dependent record.
+        session.flush()
         session.add(
             VisitFollowUp(
                 id=follow_up_id,
