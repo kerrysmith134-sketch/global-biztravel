@@ -594,7 +594,7 @@ def test_trip_risk_merges_weather_signal_and_plan_impact_into_linked_suggestion(
         case = feed.json()["items"][0]
         assert case["risk_type"] == "WEATHER"
         assert case["severity"] == "HIGH"
-        assert case["case_key"] == f"suggestion:{suggestion_id}"
+        assert case["case_key"] == f"external_signal:{signal_id}"
         source_types = {item["type"] for item in case["source_refs"]}
         assert source_types == {"PROACTIVE_SUGGESTION", "EXTERNAL_SIGNAL"}
         assert {item["id"] for item in case["source_refs"]} >= {
