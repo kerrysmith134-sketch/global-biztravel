@@ -254,6 +254,102 @@ class TripRead(ORMModel):
     plan_version_count: int = 0
 
 
+# ------------------------------------------------------- trip risk & recovery
+TripRiskStatus = Literal[
+    "OPEN",
+    "ACKNOWLEDGED",
+    "IN_PROGRESS",
+    "WAITING_EXTERNAL",
+    "ESCALATED",
+    "RESOLVED",
+    "DISMISSED",
+]
+TripRiskSeverity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+
+
+class TripRiskCaseRead(ORMModel):
+    id: UUID
+    organization_id: UUID
+    trip_id: UUID
+    case_key: str
+    risk_type: str
+    status: TripRiskStatus
+    severity: TripRiskSeverity
+    title: str
+    summary: str
+    source_refs: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
+    first_seen_at: datetime
+    last_observed_at: datetime
+    next_review_at: datetime | None
+    acknowledged_at: datetime | None
+    started_at: datetime | None
+    waiting_since: datetime | None
+    escalated_at: datetime | None
+    resolved_at: datetime | None
+    dismissed_at: datetime | None
+    resolution_basis: str | None
+    resolution_note: str | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class TripRiskCaseEventRead(ORMModel):
+    id: UUID
+    organization_id: UUID
+    trip_id: UUID
+    case_id: UUID
+    event_type: str
+    from_status: TripRiskStatus | None
+    to_status: TripRiskStatus
+    actor_type: Literal["SYSTEM", "USER"]
+    actor_user_id: UUID | None
+    note: str | None
+    detail: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class TripRiskTransitionRequest(BaseModel):
+    expected_version: int = Field(ge=1)
+    to_status: Literal[
+        "OPEN",
+        "ACKNOWLEDGED",
+        "IN_PROGRESS",
+        "WAITING_EXTERNAL",
+        "RESOLVED",
+        "DISMISSED",
+    ]
+    note: str = Field(min_length=3, max_length=2000)
+    next_review_at: datetime | None = None
+    resolution_basis: Literal[
+        "PLAN_REVALIDATED",
+        "FOLLOW_UP_COMPLETED",
+        "TRIP_CLOSED",
+        "HUMAN_ATTESTATION",
+        "FALSE_POSITIVE_CONFIRMED",
+    ] | None = None
+
+    @model_validator(mode="after")
+    def _waiting_requires_future_review(self) -> TripRiskTransitionRequest:
+        if self.next_review_at is not None and (
+            self.next_review_at.tzinfo is None or self.next_review_at.utcoffset() is None
+        ):
+            raise ValueError("next_review_at 必须包含时区偏移")
+        return self
+
+
+class TripRiskReconciliationRead(BaseModel):
+    trip_id: UUID
+    cases_created: int = 0
+    cases_updated: int = 0
+    cases_reopened: int = 0
+    escalated: int = 0
+    reviewed: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
 # ------------------------------------------------------------------ visits
 class VisitCreate(BaseModel):
     place_id: UUID
