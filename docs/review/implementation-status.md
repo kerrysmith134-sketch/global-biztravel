@@ -490,3 +490,13 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 回归测试覆盖合法 DST 跨越、开始时间 offset 错误、DST 跳时段及结束时间 offset 错误。
 - 不改变 API 字段结构，不新增数据库迁移；决策依据登记在 ADR-0048。
 - 本轮未执行本地测试或 CI；GitHub 对本轮提交尚未返回状态检查，测试结果待验证。
+
+### 2026-11-27 H2.24.2 — Appointment Recovery → Plan Change end-to-end bridge
+
+- iOS FollowUp 工作区新增“提交计划变更”入口，复用既有 PlanRepository / Plan Change API；提交前重新读取 Trip，核对建议的 ACTIVE Plan ID 与 Trip Version。
+- 请求携带 `recovery_follow_up_id`；服务端对 APPOINTMENT_RECOVERY 来源重新解析最新成功的 Appointment Recovery Reassessment AgentRun / Workflow，核对租户、Trip、Visit、建议决策、数据缺口、基础版本及窗口时间的 UTC 瞬间完全一致，拒绝篡改和过期建议。
+- 提交后沿用现有 BackgroundJob；iOS 可查询任务、读取新 PlanVersion、拉取相对基础计划的 Diff。只有 FEASIBLE/OPTIMAL、无未排拜访、草稿状态及 Diff 完整时开放人工激活；激活前再次读取 Trip 和 Plan，服务器仍做最终并发/策略校验。
+- 规划任务失败或取消时，客户端可在当前已提交的 Visit 输入上重新排队求解，不重复写入时间窗；不会自动激活、订票或联系客户。
+- Plan Change 先锁 Trip；Visit 创建/修改/删除统一 Trip → Visit 锁顺序。Workflow 保存 FollowUp 关联与变更后的 Trip Version；无新增数据库迁移。
+- 后端集成测试新增伪造时间窗口、有效提交、重复/过期版本拒绝及 Workflow 血缘断言；iOS 增加计划变更请求 wire-contract 单测。
+- **验证状态：** 代码与测试已推送 main；本环境未运行 PostgreSQL 集成测试、Swift XCTest 或 Xcode build，GitHub 当前未返回可用的状态检查。不得视为 CI 通过。
