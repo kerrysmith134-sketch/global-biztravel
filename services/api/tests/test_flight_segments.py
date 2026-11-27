@@ -1281,6 +1281,26 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
         )
         assert forged.status_code == 409, forged.text
 
+        wrong_offset_payload = {
+            **plan_change_payload,
+            "payload": {
+                **plan_change_payload["payload"],
+                "new_window_start": datetime.fromisoformat(
+                    recommendation["new_window_start"]
+                ).astimezone(UTC).isoformat(),
+            },
+        }
+        wrong_offset = client.post(
+            f"/v1/trips/{trip_id}/plan-changes",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=wrong_offset_payload,
+        )
+        assert wrong_offset.status_code == 409, wrong_offset.text
+        assert recommendation["timezone"] == "Europe/Berlin"
+        assert datetime.fromisoformat(
+            recommendation["new_window_start"]
+        ).utcoffset() == timedelta(hours=1)
+
         submitted = client.post(
             f"/v1/trips/{trip_id}/plan-changes",
             headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
