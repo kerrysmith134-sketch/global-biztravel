@@ -136,7 +136,11 @@ def _validate_appointment_recovery_change(
             WorkflowInstance.status == "COMPLETED",
         )
     ).one_or_none()
-    workflow_payload = workflow.payload if workflow is not None and isinstance(workflow.payload, dict) else {}
+    workflow_payload = (
+        workflow.payload
+        if workflow is not None and isinstance(workflow.payload, dict)
+        else {}
+    )
     if (
         workflow is None
         or workflow_payload.get("agent_run_id") != str(run.id)
@@ -145,7 +149,10 @@ def _validate_appointment_recovery_change(
         raise Unprocessable("预约恢复重评的 Workflow/AgentRun 血缘校验失败")
 
     recommendation = run_output.get("plan_change_recommendation")
-    if not isinstance(recommendation, dict) or recommendation.get("requires_human_submission") is not True:
+    if (
+        not isinstance(recommendation, dict)
+        or recommendation.get("requires_human_submission") is not True
+    ):
         raise PlanVersionConflict("最新预约重评没有可供人工提交的计划变更建议")
     if (
         recommendation.get("operation_type") != CHANGE_VISIT_TIME
@@ -159,12 +166,21 @@ def _validate_appointment_recovery_change(
 
     requested_start = _aware_utc(payload.get("new_window_start"), field="new_window_start")
     requested_end = _aware_utc(payload.get("new_window_end"), field="new_window_end")
-    proposed_start = _aware_utc(recommendation.get("new_window_start"), field="proposal.new_window_start")
-    proposed_end = _aware_utc(recommendation.get("new_window_end"), field="proposal.new_window_end")
-    if requested_end <= requested_start or requested_start != proposed_start or requested_end != proposed_end:
+    proposed_start = _aware_utc(
+        recommendation.get("new_window_start"), field="proposal.new_window_start"
+    )
+    proposed_end = _aware_utc(
+        recommendation.get("new_window_end"), field="proposal.new_window_end"
+    )
+    if (
+        requested_end <= requested_start
+        or requested_start != proposed_start
+        or requested_end != proposed_end
+    ):
         raise PlanVersionConflict("提交的预约窗口与最新重评建议不一致")
 
     return follow_up.id
+
 
 def _apply_change(
     session: Session,
