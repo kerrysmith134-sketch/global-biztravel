@@ -88,6 +88,56 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
         }
     }
 
+    var impactAssessmentDescriptions: [String] {
+        let assessments = context?["external_signal_assessments"]?.arrayValue ?? []
+        return assessments.compactMap { item in
+            guard
+                let record = item.objectValue,
+                let assessment = record["impact_assessment"]?.objectValue,
+                let status = assessment["status"]?.stringValue
+            else {
+                return nil
+            }
+
+            let signalType = record["signal_type"]?.stringValue ?? "EXTERNAL"
+            let signalLabel: String
+            switch signalType {
+            case "WEATHER_DISRUPTION": signalLabel = "天气"
+            case "FLIGHT_STATUS": signalLabel = "航班"
+            case "VISA_POLICY_CHANGE": signalLabel = "签证"
+            case "FX_VOLATILITY": signalLabel = "汇率"
+            default: signalLabel = signalType
+            }
+
+            let statusLabel: String
+            switch status {
+            case "PLACE_AND_TIME_OVERLAP": statusLabel = "地点与拜访时段精确重叠"
+            case "PLACE_MATCH_NO_TIME_OVERLAP": statusLabel = "地点匹配但时段未重叠"
+            case "OPERATIONAL_DELAY_ASSESSED": statusLabel = "航班运营影响已计算"
+            case "FLIGHT_CANCELLED": statusLabel = "航班取消"
+            case "FLIGHT_DIVERTED": statusLabel = "航班备降"
+            case "ARRIVAL_ESTIMATE_MISSING": statusLabel = "缺少到达时间估计"
+            case "NO_SCHEDULE_IMPACT_REPORTED": statusLabel = "未报告时刻影响"
+            case "SOURCE_ONLY_REQUIRES_HUMAN_REVIEW": statusLabel = "仅有外部来源，需人工核验"
+            case "OPERATIONAL_UPDATE_EVIDENCE_MISMATCH",
+                 "OPERATIONAL_UPDATE_ENVELOPE_MISMATCH":
+                statusLabel = "运营事件证据不一致"
+            case "NO_ACTIVE_PLAN": statusLabel = "缺少有效计划，影响未评估"
+            default: statusLabel = status
+            }
+
+            let affectedCount = assessment["affected_visit_ids"]?.arrayValue?.count ?? 0
+            let missedCount = assessment["missed_visit_ids"]?.arrayValue?.count ?? 0
+            let impactCount = affectedCount > 0 ? " · 受影响拜访 \(affectedCount) 项" : ""
+            let missedSuffix = missedCount > 0 ? " · 超出预约窗口 \(missedCount) 项" : ""
+            let planVersion = assessment["plan_version_number"]?.integerValue
+                .map { " · 计划 v\($0)" } ?? ""
+            let explanation = assessment["explanation"]?.stringValue ?? ""
+
+            return "\(signalLabel) · \(statusLabel)\(impactCount)\(missedSuffix)\(planVersion)\n\(explanation)"
+        }
+    }
+
     var sourceDescriptions: [String] {
         (sourceRefs ?? []).map { reference in
             let type = reference["type"]?.stringValue
@@ -97,6 +147,7 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
             switch type.uppercased() {
             case "PROACTIVE_SUGGESTION": label = "主动建议"
             case "VISIT_FOLLOW_UP": label = "拜访跟进"
+            case "EXTERNAL_SIGNAL": label = "外部信号"
             default: label = type
             }
             guard let identifier = reference["id"]?.stringValue else { return label }
@@ -106,9 +157,22 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
 
     var evidenceDescriptions: [String] {
         (evidenceRefs ?? []).map { reference in
-            let kind = reference["kind"]?.stringValue
+            let rawKind = reference["kind"]?.stringValue
                 ?? reference["type"]?.stringValue
                 ?? "证据"
+            let kind: String
+            switch rawKind {
+            case "EXTERNAL_SIGNAL_PAYLOAD": kind = "外部信号内容指纹"
+            case "IMPACT_ASSESSMENT": kind = "影响评估指纹"
+            case "PLAN_VERSION": kind = "计划版本"
+            case "PLAN_STOP": kind = "计划停靠点"
+            case "PLAN_STOP_IMPACT": kind = "拜访时刻影响"
+            case "PLAN_TRAVEL_LEG": kind = "计划交通段"
+            case "FLIGHT_OPERATIONAL_UPDATE": kind = "航班运营事件"
+            case "FLIGHT_SEGMENT": kind = "机票段"
+            case "FLIGHT_SEGMENT_PLAN_BINDING": kind = "机票段计划绑定"
+            default: kind = rawKind
+            }
             let ref = reference["ref"]?.stringValue
                 ?? reference["id"]?.stringValue
             return ref.map { "\(kind) · \($0)" } ?? kind
