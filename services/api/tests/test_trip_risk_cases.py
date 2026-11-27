@@ -13,7 +13,8 @@ from app.models.geo import Place
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp
 from app.models.trip import Trip
-from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
+from app.models.notifications import Notification
+from app.models.trip_risks import TripRiskCaseEvent
 from app.models.workflow import AgentRun, WorkflowInstance
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
@@ -265,6 +266,20 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
         escalated = fetch_case(client, trip_id)
         assert escalated["status"] == "ESCALATED"
         assert escalated["escalated_at"] is not None
+        with org_session(UUID(ORG_A)) as session:
+            risk_notifications = list(
+                session.scalars(
+                    select(Notification).where(
+                        Notification.organization_id == UUID(ORG_A),
+                        Notification.user_id == UUID(USER_A),
+                        Notification.kind == "TRIP_RISK_ESCALATION",
+                        Notification.issue_key.like(f"trip-risk:{case['id']}:escalated:%"),
+                    )
+                )
+            )
+            assert len(risk_notifications) == 1
+            assert risk_notifications[0].priority == "P0"
+            assert risk_notifications[0].status == "PENDING"
 
         stale_transition = client.post(
             f"/v1/trips/{trip_id}/risk-cases/{case['id']}:transition",
