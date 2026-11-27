@@ -453,3 +453,11 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 不新增迁移和 API：恢复简报随现有 Suggestion proposed_action.params.recovery_brief 返回，recovery_agent_run_id / recovery_workflow_id 指向完整审计记录。
 - 安全边界：不推断替代时间窗口；不生成假客户消息；不修改 Trip / Visit / PlanVersion / PlanStop / PlanTravelLeg / FlightSegment；不订票、不改签、不联系客户。后续执行必须取得客户确认的可用窗口并经过独立审批。
 - 本切片的 PostgreSQL 集成测试覆盖 AgentRun/Workflow 血缘、无虚构时间、无外部动作与计划不变性；最终验收以当前 main 的 GitHub Actions 全绿为准。
+
+
+### 2026-11-27 H2.22.1 — Appointment Recovery fail-closed integrity hardening
+
+- Recovery planner 只在传播标记严格为布尔 `true` 且逐站快照无结构冲突时返回 `NO_RECOVERY_ACTION_REQUIRED`。
+- 将受影响 / 错过 / 未评估 Visit ID 与逐站影响记录交叉核对；缺行、重复冲突、未知状态、非法延误值均生成明确复核动作。
+- 无 ACTIVE 计划、航段绑定失效等没有站点行的早退评估，转为 trip-level 影响链复核，而不是被误报为“无需恢复”。
+- Agent 版本更新为 `appointment-recovery-v1.1`，schema `1.1`；无数据库迁移、无自动计划/预订/外部沟通操作。

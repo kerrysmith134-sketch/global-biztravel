@@ -25,3 +25,12 @@
 - 已错过、可能受影响及无法评估的拜访有不同恢复路径，不会把未知状态混作确定性失败。
 - 当前版本不连接客户日历/CRM 可用时段，不生成虚构备选时间，也不进行外部写操作。
 - 本 ADR 不新增数据库迁移和 API 端点；恢复简报作为已有 ProactiveSuggestion 的结构化 proposed_action 一部分提供，并由 AgentRun 保存完整输出。
+
+
+## H2.22.1 — 影响评估不完整时 fail-closed
+
+- Recovery planner 只有在 `propagation_complete is True` 且站点快照结构无冲突时，才允许返回 `NO_RECOVERY_ACTION_REQUIRED`；字符串 `"true"`、缺字段和空的早退结果均不视为完整评估。
+- 将 `unassessed_visit_ids`、`affected_visit_ids`、`missed_visit_ids` 与逐站 `stop_impacts` 交叉核对；列表中缺失站点行时补出显式 `UNASSESSED` / `REVALIDATE_TRAVEL_CHAIN` 动作。
+- 同一 Visit 出现相互冲突的重复站点快照、未知 appointment status、非法 delay 值或缺少窗口内延误值时，降级为未评估，不选择其中一条或静默丢弃。
+- 没有 ACTIVE 计划、绑定失效等导致无逐站结果的早退场景，生成 trip-level `REVALIDATE_FLIGHT_PLAN_IMPACT_ASSESSMENT` 动作，阻止“无需恢复”的错误结论。
+- Agent 版本更新为 `appointment-recovery-v1.1` / schema `1.1`。本切片仍只产生确定性复核建议，不改变计划、预订或客户沟通状态。
