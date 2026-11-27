@@ -21,6 +21,7 @@ struct VisitRecordSheet: View {
     @State private var isLoadingFollowUps = false
     @State private var busyFollowUpIds: Set<String> = []
     @State private var reopenTarget: VisitFollowUp?
+    @State private var reassessmentTarget: VisitFollowUp?
     @State private var reopenReason = ""
     @State private var showReopenPrompt = false
     @State private var errorMessage: String?
@@ -236,7 +237,43 @@ struct VisitRecordSheet: View {
                                                 .foregroundStyle(.orange)
                                         }
                                     }
+                                    if let latest = item.latestReassessment {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("最近重评：\(latest.decision)")
+                                                .font(.caption.weight(.semibold))
+                                            if let arrival = latest.projectedArrivalAt {
+                                                Text("预计到达：\(arrival.formatted(date: .abbreviated, time: .shortened))")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            if latest.customerWindowVerificationStatus == "PARTIALLY_VERIFIED" {
+                                                Text("客户预约窗口由出差人提供，尚未获得外部独立验证")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.orange)
+                                            }
+                                            if let proposal = latest.planChangeRecommendation {
+                                                Text(
+                                                    "建议窗口：\(proposal.newWindowStart.formatted(date: .abbreviated, time: .shortened)) – \(proposal.newWindowEnd.formatted(date: .abbreviated, time: .shortened))"
+                                                )
+                                                .font(.caption)
+                                                Text("计划变更仍需单独提交并经人工激活")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        .padding(.vertical, 3)
+                                    }
                                     HStack(spacing: 10) {
+                                        if item.sourceType == "APPOINTMENT_RECOVERY"
+                                            && (item.status == "OPEN" || item.status == "IN_PROGRESS") {
+                                            Button {
+                                                reassessmentTarget = item
+                                            } label: {
+                                                Label("重新评估", systemImage: "arrow.triangle.2.circlepath")
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .disabled(busyFollowUpIds.contains(item.id))
+                                        }
                                         if item.status == "OPEN" {
                                             followUpActionButton(
                                                 "开始处理",
@@ -366,6 +403,11 @@ struct VisitRecordSheet: View {
         } message: {
             Text("请说明该事项为何需要重新打开，原因会记录在操作历史中。")
         }
+        .sheet(item: $reassessmentTarget) { item in
+            AppointmentRecoveryReassessmentSheet(item: item) { request in
+                Task { await reassessFollowUp(item, request: request) }
+            }
+        }
         .task { await loadFollowUps() }
     }
 
@@ -470,6 +512,25 @@ struct VisitRecordSheet: View {
                 request: request
             )
             await loadFollowUps()
+        } catch {
+            errorMessage = environment.errorMessage(error)
+        }
+    }
+
+    private func reassessFollowUp(
+        _ item: VisitFollowUp,
+        request: AppointmentRecoveryReassessmentRequest
+    ) async {
+        busyFollowUpIds.insert(item.id)
+        defer { busyFollowUpIds.remove(item.id) }
+        errorMessage = nil
+        do {
+            _ = try await environment.visitRepository.reassessFollowUp(
+                id: item.id,
+                request: request
+            )
+            await loadFollowUps()
+            reassessmentTarget = nil
         } catch {
             errorMessage = environment.errorMessage(error)
         }

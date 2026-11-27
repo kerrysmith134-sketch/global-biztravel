@@ -58,6 +58,7 @@ TARGETS: dict[str, str] = {
     "ExpenseReport": "ExpenseReportRead",
     "ImportParseResult": "ImportParseRead",
     "SyncSummary": "SyncSummaryRead",
+    "VisitFollowUp": "VisitFollowUpRead",
     "VisitRecord": "VisitRecordRead",
     "TravelerProfile": "TravelerProfileRead",
     "AppNotification": "NotificationRead",

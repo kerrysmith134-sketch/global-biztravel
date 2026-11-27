@@ -17,6 +17,10 @@ protocol VisitRepository {
     func followUps(visitId: String) async throws -> VisitFollowUpFeed
     func decideFollowUp(visitId: String, request: VisitFollowUpDecisionRequest) async throws -> VisitFollowUp
     func updateFollowUp(id: String, request: VisitFollowUpUpdateRequest) async throws -> VisitFollowUp
+    func reassessFollowUp(
+        id: String,
+        request: AppointmentRecoveryReassessmentRequest
+    ) async throws -> AppointmentRecoveryReassessmentResponse
 }
 
 final class RemoteVisitRepository: VisitRepository {
@@ -116,6 +120,16 @@ final class RemoteVisitRepository: VisitRepository {
         try await client.send(
             try Endpoints.updateVisitFollowUp(id: id, request: request),
             as: VisitFollowUp.self
+        )
+    }
+
+    func reassessFollowUp(
+        id: String,
+        request: AppointmentRecoveryReassessmentRequest
+    ) async throws -> AppointmentRecoveryReassessmentResponse {
+        try await client.send(
+            try Endpoints.reassessVisitFollowUp(id: id, request: request),
+            as: AppointmentRecoveryReassessmentResponse.self
         )
     }
 
@@ -243,6 +257,13 @@ final class OfflineVisitRepository: VisitRepository {
         request: VisitFollowUpUpdateRequest
     ) async throws -> VisitFollowUp {
         try await remote.updateFollowUp(id: id, request: request)
+    }
+
+    func reassessFollowUp(
+        id: String,
+        request: AppointmentRecoveryReassessmentRequest
+    ) async throws -> AppointmentRecoveryReassessmentResponse {
+        try await remote.reassessFollowUp(id: id, request: request)
     }
 
     func updateObjective(visitId: String, objective: String?) async throws -> TripVisit {

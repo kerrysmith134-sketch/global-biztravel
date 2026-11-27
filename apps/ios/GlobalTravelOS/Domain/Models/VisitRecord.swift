@@ -204,6 +204,7 @@ struct VisitFollowUpEvent: Codable, Equatable, Identifiable {
         case "COMPLETED": return "已完成"
         case "REOPENED": return "重新打开"
         case "UPDATED": return "已修改"
+        case "REASSESSED": return "已重新评估"
         default: return eventType
         }
     }
@@ -220,6 +221,77 @@ struct VisitFollowUpActionContext: Codable, Equatable {
     var recommendedSteps: [String]?
 }
 
+struct AppointmentRecoveryReassessmentPoint: Decodable, Equatable {
+    var appointmentStatus: String?
+    var projectedArrivalAt: Date?
+    var delayMinutes: Int?
+    var timeWindowStart: Date?
+    var timeWindowEnd: Date?
+    var arrivalBeforeWindowStart: Bool?
+}
+
+struct AppointmentRecoveryPlanChangeRecommendation: Codable, Equatable {
+    var operationType: String
+    var visitId: String
+    var basePlanVersionId: String
+    var baseTripVersion: Int
+    var newWindowStart: Date
+    var newWindowEnd: Date
+    var reason: String
+    var requiresHumanSubmission: Bool
+}
+
+struct AppointmentRecoveryReassessmentSummary: Decodable, Equatable {
+    var workflowId: String
+    var agentRunId: String
+    var outcome: String
+    var decision: String
+    var createdAt: Date
+    var inputSha256: String
+    var currentPlanVersionId: String?
+    var appointmentStatus: String?
+    var projectedArrivalAt: Date?
+    var delayMinutes: Int?
+    var customerWindowVerificationStatus: String
+    var evidenceIds: [String]
+    var planChangeRecommendation: AppointmentRecoveryPlanChangeRecommendation?
+}
+
+struct CustomerAppointmentWindowAttestationRequest: Encodable, Equatable {
+    var startAt: Date
+    var endAt: Date
+    var timezone: String
+    var confirmationMethod: String
+    var confirmationReference: String?
+}
+
+struct AppointmentRecoveryReassessmentRequest: Encodable, Equatable {
+    var customerWindow: CustomerAppointmentWindowAttestationRequest?
+    var replacementFlightSegmentId: String?
+}
+
+struct AppointmentRecoveryReassessmentResponse: Decodable, Equatable {
+    var followUpId: String
+    var workflowId: String
+    var agentRunId: String
+    var outcome: String
+    var decision: String
+    var sourceSignalId: String
+    var flightOperationalUpdateId: String
+    var flightSegmentId: String
+    var currentPlanVersionId: String?
+    var inputSha256: String
+    var before: AppointmentRecoveryReassessmentPoint
+    var after: AppointmentRecoveryReassessmentPoint
+    var changedFields: [String]
+    var dataGaps: [String]
+    var customerWindowVerificationStatus: String
+    var evidenceIds: [String]
+    var planChangeRecommendation: AppointmentRecoveryPlanChangeRecommendation?
+    var createdAt: Date
+    var guardrails: [String: Bool]
+}
+
 struct VisitFollowUp: Codable, Equatable, Identifiable {
     var id: String
     var visitId: String
@@ -231,6 +303,7 @@ struct VisitFollowUp: Codable, Equatable, Identifiable {
     var sourceTitle: String?
     var sourceDueDate: String?
     var sourceActionContext: VisitFollowUpActionContext?
+    var latestReassessment: AppointmentRecoveryReassessmentSummary?
     var title: String
     var dueDate: String?
     var status: String
