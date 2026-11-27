@@ -175,6 +175,30 @@ def seed_flight_recovery_sources(trip_id: str, visit_id: str) -> tuple[str, str,
     return str(suggestion_id), str(run_id), str(follow_up_id)
 
 
+def seed_manual_follow_up(trip_id: str, visit_id: str) -> str:
+    follow_up_id = uuid.uuid4()
+    now = datetime.now(UTC)
+    with org_session(UUID(ORG_A)) as session:
+        session.add(
+            VisitFollowUp(
+                id=follow_up_id,
+                organization_id=UUID(ORG_A),
+                trip_id=UUID(trip_id),
+                visit_id=UUID(visit_id),
+                source_type="MANUAL",
+                source_key=f"MANUAL:{uuid.uuid4()}",
+                source_index=None,
+                title="Submit visit outcome and confirm next steps",
+                due_date=(now + timedelta(days=1)).date().isoformat(),
+                status="OPEN",
+                created_by_user_id=UUID(ADMIN_A),
+                confirmed_by_user_id=UUID(ADMIN_A),
+                confirmed_at=now,
+            )
+        )
+    return str(follow_up_id)
+
+
 def cleanup(trip_id: str, place_id: str) -> None:
     with org_session(UUID(ORG_A)) as session:
         session.execute(delete(Trip).where(Trip.organization_id == UUID(ORG_A), Trip.id == UUID(trip_id)))
@@ -362,6 +386,50 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
             assert "REOPENED" in {row.event_type for row in case_events}
             persisted_run = session.get(AgentRun, UUID(run_id))
             assert persisted_run is not None
+    finally:
+        cleanup(trip_id, place_id)
+
+
+def test_follow_up_only_case_resolves_when_manual_follow_up_completes(
+    client: TestClient,
+) -> None:
+    trip_id, place_id, visit_id = make_trip(client)
+    try:
+        follow_up_id = seed_manual_follow_up(trip_id, visit_id)
+        reconciled = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert reconciled.status_code == 200, reconciled.text
+        assert reconciled.json()["cases_created"] == 1
+
+        cases = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert cases.status_code == 200, cases.text
+        case = cases.json()["items"][0]
+        assert case["risk_type"] == "VISIT_FOLLOW_UP"
+        assert case["status"] == "ACKNOWLEDGED"
+        assert {item["id"] for item in case["source_refs"]} == {follow_up_id}
+
+        completed = client.patch(
+            f"/v1/visit-follow-ups/{follow_up_id}",
+            headers=headers(key=str(uuid.uuid4())),
+            json={"status": "COMPLETED"},
+        )
+        assert completed.status_code == 200, completed.text
+        assert completed.json()["status"] == "COMPLETED"
+
+        after = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert after.status_code == 200, after.text
+        completed_case = after.json()["items"][0]
+        assert completed_case["status"] == "RESOLVED"
+        assert completed_case["resolution_basis"] == "FOLLOW_UP_COMPLETED"
+
+        timeline = client.get(
+            f"/v1/trips/{trip_id}/risk-cases/{case['id']}/events",
+            headers=headers(),
+        )
+        assert timeline.status_code == 200, timeline.text
+        assert "RESOLVED" in {item["event_type"] for item in timeline.json()}
     finally:
         cleanup(trip_id, place_id)
 
