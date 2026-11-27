@@ -96,8 +96,8 @@ struct TripRiskCaseDetailView: View {
                         Text("服务端未返回可展示的来源引用")
                             .foregroundStyle(DS.ColorToken.textSecondary)
                     } else {
-                        ForEach(Array(viewModel.riskCase.sourceDescriptions.enumerated()), id: \.offset) { _, source in
-                            Label(source, systemImage: "arrow.up.right.square")
+                        ForEach(Array(viewModel.riskCase.sourceDescriptions.enumerated()), id: \.offset) { item in
+                            Label(item.element, systemImage: "arrow.up.right.square")
                                 .font(.subheadline)
                         }
                     }
@@ -108,8 +108,8 @@ struct TripRiskCaseDetailView: View {
                         Text("暂无结构化证据引用")
                             .foregroundStyle(DS.ColorToken.textSecondary)
                     } else {
-                        ForEach(Array(viewModel.riskCase.evidenceDescriptions.enumerated()), id: \.offset) { _, evidence in
-                            Label(evidence, systemImage: "doc.text.magnifyingglass")
+                        ForEach(Array(viewModel.riskCase.evidenceDescriptions.enumerated()), id: \.offset) { item in
+                            Label(item.element, systemImage: "doc.text.magnifyingglass")
                                 .font(.subheadline)
                         }
                     }
