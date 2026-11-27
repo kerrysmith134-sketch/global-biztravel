@@ -548,3 +548,14 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 新增迁移 0054_trip_risk_event_sequence_guards：对 case_version 增加正数 CHECK 与 (organization_id, trip_id, case_id, case_version) 唯一约束；若历史数据存在重复/非法版本，迁移明确失败，不改写审计历史。
 - 数据库 append-only 触发器现在拒绝直接 UPDATE/DELETE；针对 Trip/Case 父记录的显式删除，保留既有 FK ON DELETE CASCADE 行为（嵌套 FK 触发器上下文允许级联删除），应用角色仍无 UPDATE/DELETE 权限。后端验收新增应用角色删除拒绝、重复事件版本拒绝断言；Trip 清理路径会覆盖级联兼容，但仍需真实 PostgreSQL 运行确认。
 - **验证状态：** 本轮为代码与迁移推送；当前执行环境未运行 PostgreSQL 迁移/集成测试、Ruff、OpenAPI 样本生成、macOS Xcode 构建或 XCTest。不得视为通过 CI 或已部署。生产验收需先应用 0054，再运行 services/api/tests/test_trip_risk_cases.py 和 iOS TripRiskContractTests。
+
+### 2026-11-27 H2.26.1 — ExternalSignal → Trip Risk evidence projection
+
+- Trip Risk 对账现在直接读取当前有效的 ExternalSignal，匹配 Trip UUID 与行程覆盖国家；按 observed_at、valid_from、valid_until 使用同一对账时钟过滤，避免把未来或已失效的信号误当作当前风险。
+- Signal-backed Case 使用稳定的 external_signal:{signal_id} 身份；如果已有主动建议通过 proposed_action.params.signal_id 指向该信号，则把建议与跟进来源合并到同一个 Case，避免建议重新生成时产生重复风险工单。已有旧版 suggestion:{id} Case 会优先保持原身份。
+- 每个 Signal 留存 Provider、类型、主体、观察/有效时间、去重键和 payload 快照 SHA-256；另存影响评估 SHA-256。天气评估追加 ACTIVE PlanVersion、精确 Place/时间窗匹配的 PlanStop；航班运营事件追加 FlightOperationalUpdate、机票段、当前计划绑定、拜访影响与交通段引用。
+- OpenSky 位置/速度/高度快照不会单独进入航班风险队列；只有具备规范化 FlightOperationalUpdate 服务端引用的航班信号才进行运营影响评估。即便运营事件完整性校验失败，也只形成待核验风险，不推断延误或预约损失。
+- VISA_POLICY_CHANGE 与 FX_VOLATILITY 当前只记录可信来源身份和待人工核验状态；没有完成确定性规则和政策/汇率影响评估前，不声称签证结论或财务损失。
+- iOS 风险详情新增“行程影响评估”，展示来源类型、评估状态、受影响/错过预约数量、计划版本与评估解释；来源和证据类型增加本地化标签。
+- 新增 PostgreSQL 集成测试：天气信号与同一 PlanStop 精确地点/时间窗重叠时，必须并入已引用该 Signal 的建议 Case，生成唯一 Case、可追溯计划证据并在重复扫描时保持幂等；另验证 OpenSky telemetry 不会被提升成航班风险。
+- **验证状态：** 代码和测试已推送 main，但当前工作环境不能访问 GitHub 工作区/运行项目依赖，尚未执行 PostgreSQL 迁移、test_trip_risk_cases.py、Ruff、Xcode 构建或 XCTest。GitHub Checks 必须以最新 HEAD 的实际结果为准；本轮不能视为 CI 通过或生产验收完成。
