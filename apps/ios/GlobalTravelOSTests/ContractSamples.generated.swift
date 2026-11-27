@@ -1121,4 +1121,119 @@ enum ContractSamples {
   "visit_id": "11111111-1111-1111-1111-111111111111"
 }
 """
+    static let tripRiskCase = """
+{
+  "acknowledged_at": "2026-11-09T09:00:00+00:00",
+  "case_key": "1",
+  "context": {},
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "dismissed_at": "2026-11-09T09:00:00+00:00",
+  "escalated_at": "2026-11-09T09:00:00+00:00",
+  "evidence_refs": [
+    {}
+  ],
+  "first_seen_at": "2026-11-09T09:00:00+00:00",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "last_observed_at": "2026-11-09T09:00:00+00:00",
+  "next_review_at": "2026-11-09T09:00:00+00:00",
+  "organization_id": "11111111-1111-1111-1111-111111111111",
+  "resolution_basis": "1",
+  "resolution_note": "1",
+  "resolved_at": "2026-11-09T09:00:00+00:00",
+  "risk_type": "1",
+  "severity": "LOW",
+  "source_refs": [
+    {}
+  ],
+  "started_at": "2026-11-09T09:00:00+00:00",
+  "status": "OPEN",
+  "summary": "1",
+  "title": "1",
+  "trip_id": "11111111-1111-1111-1111-111111111111",
+  "updated_at": "2026-11-09T09:00:00+00:00",
+  "version": 1,
+  "waiting_since": "2026-11-09T09:00:00+00:00"
+}
+"""
+    static let tripRiskCaseEvent = """
+{
+  "actor_type": "SYSTEM",
+  "actor_user_id": "11111111-1111-1111-1111-111111111111",
+  "case_id": "11111111-1111-1111-1111-111111111111",
+  "case_version": 1,
+  "created_at": "2026-11-09T09:00:00+00:00",
+  "detail": {},
+  "event_type": "1",
+  "from_status": "OPEN",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "note": "1",
+  "organization_id": "11111111-1111-1111-1111-111111111111",
+  "to_status": "OPEN",
+  "trip_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let tripRiskReconciliation = """
+{
+  "cases_created": 1,
+  "cases_reopened": 1,
+  "cases_updated": 1,
+  "errors": [
+    "1"
+  ],
+  "escalated": 1,
+  "reviewed": 1,
+  "trip_id": "11111111-1111-1111-1111-111111111111"
+}
+"""
+    static let tripRiskTransition = """
+{
+  "case": {
+    "acknowledged_at": "2026-11-09T09:00:00+00:00",
+    "case_key": "1",
+    "context": {},
+    "created_at": "2026-11-09T09:00:00+00:00",
+    "dismissed_at": "2026-11-09T09:00:00+00:00",
+    "escalated_at": "2026-11-09T09:00:00+00:00",
+    "evidence_refs": [
+      {}
+    ],
+    "first_seen_at": "2026-11-09T09:00:00+00:00",
+    "id": "11111111-1111-1111-1111-111111111111",
+    "last_observed_at": "2026-11-09T09:00:00+00:00",
+    "next_review_at": "2026-11-09T09:00:00+00:00",
+    "organization_id": "11111111-1111-1111-1111-111111111111",
+    "resolution_basis": "1",
+    "resolution_note": "1",
+    "resolved_at": "2026-11-09T09:00:00+00:00",
+    "risk_type": "1",
+    "severity": "LOW",
+    "source_refs": [
+      {}
+    ],
+    "started_at": "2026-11-09T09:00:00+00:00",
+    "status": "OPEN",
+    "summary": "1",
+    "title": "1",
+    "trip_id": "11111111-1111-1111-1111-111111111111",
+    "updated_at": "2026-11-09T09:00:00+00:00",
+    "version": 1,
+    "waiting_since": "2026-11-09T09:00:00+00:00"
+  },
+  "event": {
+    "actor_type": "SYSTEM",
+    "actor_user_id": "11111111-1111-1111-1111-111111111111",
+    "case_id": "11111111-1111-1111-1111-111111111111",
+    "case_version": 1,
+    "created_at": "2026-11-09T09:00:00+00:00",
+    "detail": {},
+    "event_type": "1",
+    "from_status": "OPEN",
+    "id": "11111111-1111-1111-1111-111111111111",
+    "note": "1",
+    "organization_id": "11111111-1111-1111-1111-111111111111",
+    "to_status": "OPEN",
+    "trip_id": "11111111-1111-1111-1111-111111111111"
+  }
+}
+"""
 }
