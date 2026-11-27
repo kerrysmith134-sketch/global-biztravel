@@ -219,7 +219,7 @@ struct TripRiskTransitionRequest: Codable, Equatable {
     var toStatus: TripRiskTransitionTarget
     var note: String
     var nextReviewAt: Date?
-    var resolutionBasis: String?
+    var resolutionBasis: TripRiskResolutionBasis?
 
     init(
         expectedVersion: Int,
