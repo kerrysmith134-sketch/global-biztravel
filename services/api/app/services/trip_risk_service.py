@@ -925,6 +925,13 @@ def transition_case(
         case.waiting_since = now
         case.next_review_at = next_review_at
     elif to_status == "RESOLVED":
+        if resolution_basis not in {
+            "PLAN_REVALIDATED",
+            "FOLLOW_UP_COMPLETED",
+            "TRIP_CLOSED",
+            "HUMAN_ATTESTATION",
+        }:
+            raise Unprocessable("RESOLVED 必须使用已完成、已验证或人工确认类关闭依据")
         _validate_resolution(session, case, trip, basis=resolution_basis)
         case.resolution_basis = resolution_basis
         case.resolution_note = note.strip()
