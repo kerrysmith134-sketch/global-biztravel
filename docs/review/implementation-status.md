@@ -497,9 +497,10 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 请求携带 `recovery_follow_up_id`；服务端对 APPOINTMENT_RECOVERY 来源重新解析最新成功的 Appointment Recovery Reassessment AgentRun / Workflow，核对租户、Trip、Visit、建议决策、数据缺口、基础版本及窗口时间的 UTC 瞬间完全一致，拒绝篡改和过期建议。
 - 提交后沿用现有 BackgroundJob；iOS 可查询任务、读取新 PlanVersion、拉取相对基础计划的 Diff。只有 FEASIBLE/OPTIMAL、无未排拜访、草稿状态及 Diff 完整时开放人工激活；激活前再次读取 Trip 和 Plan，服务器仍做最终并发/策略校验。
 - 规划任务失败或取消时，客户端可在当前已提交的 Visit 输入上重新排队求解，不重复写入时间窗；不会自动激活、订票或联系客户。
-- Plan Change 先锁 Trip；Visit 创建/修改/删除统一 Trip → Visit 锁顺序。Workflow 保存 FollowUp 关联与变更后的 Trip Version；无新增数据库迁移。
+- Plan Change 先锁 Trip；Visit 创建/修改/删除统一 Trip → Visit 锁顺序。Workflow 保存 FollowUp 关联与变更后的 Trip Version；无新增数据库迁移。 失败任务通过原 Workflow 的 `:retry` 端点重新入队，更新 `WorkflowInstance.job_id` 并追加有界重试历史，不再产生只存在于客户端内存里的孤立 Job。
 - 后端集成测试新增伪造时间窗口、有效提交、重复/过期版本拒绝及 Workflow 血缘断言；iOS 增加计划变更请求 wire-contract 单测。
 - **验证状态：** 代码与测试已推送 main；本环境未运行 PostgreSQL 集成测试、Swift XCTest 或 Xcode build，GitHub 当前未返回可用的状态检查。不得视为 CI 通过。
 - 后端进一步 fail-closed：计划变更提交时验证原航班事件仍为该航班段最新事件、内容 SHA-256 未变、外部信号仍有效；基础计划必须为 ACTIVE 且其 `trip_version` 与当前 Trip Version 一致。
+- 预约时间建议保留客户本地 UTC offset，并在 API/iOS 模型中传递 IANA timezone；iOS 日期显示和两个提交请求均按客户时区编码。API 契约 JSON/YAML 与独立 FollowUp 样本同步更新。
 - 回归场景新增：重评信号过期后提交 409；Trip Version 刷新后仍引用旧 ACTIVE PlanVersion 提交 409；导入批次原始 Visit 插入同样遵循 Trip 行锁。
 
