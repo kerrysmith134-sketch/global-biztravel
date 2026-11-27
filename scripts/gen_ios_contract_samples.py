@@ -18,8 +18,7 @@
 
     .venv/bin/python scripts/gen_ios_contract_samples.py
 
-输出：``apps/ios/GlobalTravelOSTests/ContractSamples/<SchemaName>.json``（生成产物，入库便于
-Xcode 测试直接读；`make ios-contract-samples` 重新生成，`make ios-contract-check` 校验是否过期）。
+输出：`ContractSamples.generated.swift` 与独立的 `VisitFollowUpContractSample.generated.swift`。大尺寸响应样本使用独立扩展，避免生成文件超过 SwiftLint 的文件/类型体积门槛。
 """
 
 from __future__ import annotations
@@ -32,6 +31,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts" / "openapi.json"
 OUT_FILE = ROOT / "apps" / "ios" / "GlobalTravelOSTests" / "ContractSamples.generated.swift"
+OUT_FOLLOW_UP_FILE = ROOT / "apps" / "ios" / "GlobalTravelOSTests" / "VisitFollowUpContractSample.generated.swift"
 
 #: 生成哪些 schema 的样本：与 iOS 解码测试覆盖的模型一一对应（模型名 → 契约 schema）。
 TARGETS: dict[str, str] = {
@@ -166,6 +166,7 @@ def main() -> int:
     written = 0
     missing: list[str] = []
     blocks: list[str] = []
+    follow_up_block: str | None = None
     for model, schema_name in sorted(TARGETS.items()):
         schema = schemas.get(schema_name)
         if schema is None:
@@ -174,7 +175,17 @@ def main() -> int:
         payload = generator.sample(schema)
         body = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
         ident = model[0].lower() + model[1:]
-        blocks.append(f'    static let {ident} = """\n{body}\n"""')
+        if model == "VisitFollowUp":
+            indented_body = "\n".join(f"        {line}" for line in body.splitlines())
+            follow_up_block = (
+                "    static var visitFollowUp: String {\n"
+                "        \"\"\"\n"
+                f"{indented_body}\n"
+                "        \"\"\"\n"
+                "    }"
+            )
+        else:
+            blocks.append(f'    static let {ident} = """\n{body}\n"""')
         written += 1
 
     header = (
@@ -186,6 +197,18 @@ def main() -> int:
         "enum ContractSamples {\n"
     )
     OUT_FILE.write_text(header + "\n".join(blocks) + "\n}\n", encoding="utf-8")
+    if follow_up_block is not None:
+        follow_up_header = (
+            "// 自动生成，请勿手改：scripts/gen_ios_contract_samples.py\n"
+            "// 独立存放 VisitFollowUp 大响应样本，避免公共样本枚举超过 SwiftLint 体积门槛。\n\n"
+            "extension ContractSamples {\n"
+        )
+        OUT_FOLLOW_UP_FILE.write_text(
+            follow_up_header + follow_up_block + "\n}\n",
+            encoding="utf-8",
+        )
+    elif OUT_FOLLOW_UP_FILE.exists():
+        OUT_FOLLOW_UP_FILE.unlink()
 
     if missing:
         print("[FAIL] 契约里找不到这些 schema：", file=sys.stderr)

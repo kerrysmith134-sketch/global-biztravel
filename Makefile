@@ -84,6 +84,7 @@ ios-contract-samples: ## 从 openapi 契约生成 iOS 解码样本（S6）
 ios-contract-check: ## 校验 iOS 契约样本与 openapi 同步（漂移即失败，S6）
 	$(PY) scripts/gen_ios_contract_samples.py
 	@git diff --exit-code --quiet -- apps/ios/GlobalTravelOSTests/ContractSamples.generated.swift \
+		apps/ios/GlobalTravelOSTests/VisitFollowUpContractSample.generated.swift \
 		|| (echo "契约样本已过期：make ios-contract-samples 后提交新样本"; exit 1)
 
 bench: ## 规划引擎基准：N3 实例族（覆盖/能力声明/金目标；ARGS="--skip-ortools" 快跑）
