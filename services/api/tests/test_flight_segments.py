@@ -1209,6 +1209,72 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
         assert replay.status_code == 201, replay.text
         assert replay.json()["agent_run_id"] == result["agent_run_id"]
 
+        recommendation = result["plan_change_recommendation"]
+        plan_change_payload = {
+            "base_plan_version_id": recommendation["base_plan_version_id"],
+            "base_trip_version": recommendation["base_trip_version"],
+            "source": "APPOINTMENT_RECOVERY",
+            "operation_type": "CHANGE_VISIT_TIME",
+            "payload": {
+                "visit_id": visit_id,
+                "recovery_follow_up_id": follow_up_id,
+                "new_window_start": recommendation["new_window_start"],
+                "new_window_end": recommendation["new_window_end"],
+            },
+            "reason": recommendation["reason"],
+        }
+
+        # A client cannot alter the proposed appointment window while reusing the same evidence.
+        forged_payload = {
+            **plan_change_payload,
+            "payload": {
+                **plan_change_payload["payload"],
+                "new_window_start": (
+                    datetime.fromisoformat(
+                        recommendation["new_window_start"].replace("Z", "+00:00")
+                    ) + timedelta(minutes=1)
+                ).isoformat(),
+            },
+        }
+        forged = client.post(
+            f"/v1/trips/{trip_id}/plan-changes",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=forged_payload,
+        )
+        assert forged.status_code == 409, forged.text
+
+        submitted = client.post(
+            f"/v1/trips/{trip_id}/plan-changes",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=plan_change_payload,
+        )
+        assert submitted.status_code == 202, submitted.text
+        plan_change_result = submitted.json()
+        assert plan_change_result["status"] == "ACCEPTED"
+        assert plan_change_result["trip_version"] > recommendation["base_trip_version"]
+
+        with org_session(UUID(ORG_A)) as session:
+            plan_change_workflow = session.get(
+                WorkflowInstance, UUID(plan_change_result["change_request_id"])
+            )
+            assert plan_change_workflow is not None
+            assert plan_change_workflow.workflow_type == "PLAN_CHANGE"
+            assert plan_change_workflow.payload["source"] == "APPOINTMENT_RECOVERY"
+            assert plan_change_workflow.payload["recovery_follow_up_id"] == follow_up_id
+            assert (
+                plan_change_workflow.payload["operation_payload"]["recovery_follow_up_id"]
+                == follow_up_id
+            )
+            assert plan_change_workflow.payload["result_trip_version"] == plan_change_result["trip_version"]
+
+        # A second request using the original recommendation/version must fail closed.
+        duplicate_submission = client.post(
+            f"/v1/trips/{trip_id}/plan-changes",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+            json=plan_change_payload,
+        )
+        assert duplicate_submission.status_code == 409, duplicate_submission.text
+
         read_feed = client.get(f"/v1/visits/{visit_id}/follow-ups", headers=headers())
         assert read_feed.status_code == 200, read_feed.text
         item = next(row for row in read_feed.json()["items"] if row["id"] == follow_up_id)
@@ -1216,13 +1282,15 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
         assert any(event["event_type"] == "REASSESSED" for event in item["events"])
         assert item["status"] == "OPEN"
         after_trip = client.get(f"/v1/trips/{trip_id}", headers=headers()).json()
-        assert after_trip["version"] == trip_before["version"]
+        assert after_trip["version"] == plan_change_result["trip_version"]
+        assert after_trip["version"] > trip_before["version"]
 
         with org_session(UUID(ORG_A)) as session:
             persisted_visit = session.get(Visit, UUID(visit_id))
             assert persisted_visit is not None
-            assert persisted_visit.time_window_start is None
-            assert persisted_visit.time_window_end is None
+            assert persisted_visit.time_window_start is not None
+            assert persisted_visit.time_window_end is not None
+            assert persisted_visit.time_window_end > persisted_visit.time_window_start
             evidence = list(session.scalars(
                 select(Evidence).where(
                     Evidence.organization_id == UUID(ORG_A),
