@@ -178,7 +178,6 @@ struct TripRiskWorkspaceView: View {
         .task { await viewModel.load() }
         .sheet(item: $selectedCase) { riskCase in
             TripRiskCaseDetailView(
-                tripId: riskCase.tripId,
                 riskCase: riskCase,
                 environment: environment
             ) { updated in
