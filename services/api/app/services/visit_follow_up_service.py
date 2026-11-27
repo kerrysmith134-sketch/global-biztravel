@@ -13,7 +13,7 @@ from app.api.errors import Conflict, NotFound, Unprocessable
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp, VisitFollowUpEvent, VisitRecord
 from app.models.workflow import AgentRun, WorkflowInstance
-from app.services import visit_service
+from app.services import trip_risk_service, visit_service
 
 
 def _normalise_task(value: object) -> dict[str, str | None] | None:
@@ -620,6 +620,7 @@ def create_follow_up(
         actor_user_id=actor, note=payload.note,
     )
     session.flush()
+    trip_risk_service.reconcile_trip(session, org, row.trip_id)
     return row
 
 
@@ -698,6 +699,7 @@ def update_follow_up(
             actor_user_id=actor, note=note,
         )
     session.flush()
+    trip_risk_service.reconcile_trip(session, org, row.trip_id)
     return row
 
 
