@@ -73,7 +73,7 @@
 | `swiftlint lint` | 2026-11-25 CI #45690696356：141 个 Swift 文件报告 **77 条 warning、0 serious**；11 条既有 serious violation 已固定在版本化 `swiftlint-baseline.json` 中；新增 serious violation 仍会失败，普通 warning debt 仍可见。 |
 | `make stack-up` + E2E | Docker DB/API/Worker 健康（`env=docker` 容器 API 接管 8080），对容器栈重跑真实全链路 e2e 通过；本地 uvicorn 栈此前同样通过 |
 
-## 5. 迁移清单（当前源码 head `0053`；部署库版本以 `alembic current` 为准）
+## 5. 迁移清单（当前源码 head `0054`；部署库版本以 `alembic current` 为准）
 
 ```text
 0001_core_identity         0010_security_rls
@@ -120,6 +120,7 @@
                            0051_recovery_follow_ups
                            0052_recovery_reassessment_events
                            0053_trip_risk_cases
+                           0054_trip_risk_event_sequence_guards
 ```
 
 - **拜访跟进闭环（H2.12）**：`visit_follow_ups` 保存经用户逐项 ACCEPT/DISMISS 的现场记录或会议纪要任务，以及用户手工创建的跟进项；`visit_follow_up_events` 追加记录确认、驳回、启动、完成、重开与修改。来源校验限定在同一组织/拜访；行动中心聚合 OPEN/IN_PROGRESS 与近 7 天 COMPLETED。强制租户 RLS；不递增 Trip 计划版本、不自动更新 CRM、不发送客户消息。API：`GET/POST /visits/{id}/follow-ups`、`PATCH /visit-follow-ups/{id}`。
