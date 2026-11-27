@@ -469,6 +469,14 @@ def retry_plan_change(
     except (TypeError, ValueError):
         raise Unprocessable("计划变更工作流缺少基础版本或结果版本记录") from None
 
+    if workflow.status not in {"ACCEPTED", "FAILED"}:
+        raise PlanVersionConflict(
+            "当前计划变更工作流状态不允许重试",
+            details={"workflow_id": str(workflow.id), "status": workflow.status},
+        )
+    base_plan = plan_service.require_plan_version(session, org_id, base_plan_id)
+    if str(base_plan.trip_id) != str(trip.id) or base_plan.status != "ACTIVE":
+        raise PlanVersionConflict("计划变更工作流的基础计划不再是当前 ACTIVE 计划")
     if trip.status in {"CANCELLED", "COMPLETED"}:
         raise Unprocessable("已取消或已完成的出行不能重新规划")
     if trip.version != result_trip_version:
