@@ -673,7 +673,7 @@ def assess_flight_signal_impact(
     organization = UUID(str(organization_id))
     plan = _active_plan(session, organization, trip)
     payload = signal.payload or {}
-    if payload.get("operational_update_id"):
+    if payload.get("operational_update_id") or payload.get("flight_operational_update"):
         return _assess_flight_operational_update(session, organization, trip, signal)
     callsign = str(payload.get("callsign") or "").strip() or None
     icao24 = str(payload.get("icao24") or "").strip().lower() or None
