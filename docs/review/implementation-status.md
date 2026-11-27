@@ -1,6 +1,6 @@
 # 工程实施进度核对（PRD MVP-1 基线 / 设计文档 v2.0）
 
-- 核对时间：2026-11-25（iOS 本地存储、票据证据快照与主动式触发可靠性增量更新）
+- 核对时间：2026-11-27（Trip Risk & Recovery 服务端聚合及 iOS 工作台增量更新）
 - 核对方式：逐条对照原始 PRD 的 MVP-1 执行基线（`37314–38017`）、API 契约（`32633–33240`）、
   规划引擎契约（`33241–34236`）、DDL（`31849–32632`）与设计文档 v2.0；在真实 PostgreSQL 上执行
   后端测试、迁移/契约漂移检查、MyPy、Docker E2E、iOS 构建/单测/UI 冒烟。
@@ -518,3 +518,13 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 独立的人工/现场 FollowUp 进入 COMPLETED / DISMISSED 终态时，其独立风险 Case 会同步 RESOLVED / DISMISSED；若 Case 同时关联主动建议，则关闭依据还必须覆盖关联建议状态，不能因一个子任务完成就关闭全部来源风险。
 - API 与 OpenAPI JSON/YAML 同步更新；新增 PostgreSQL 集成测试覆盖跨源合并、幂等对账、复核升级、过期 Version 冲突、关闭依据和来源证据更新后重开。
 - **验证状态：** 代码、迁移、API 契约与测试已推送 main；本环境未运行 PostgreSQL 迁移/集成测试、Ruff、OpenAPI 生成器或 CI。GitHub 当前状态检查需以最新 commit 的实际 Checks 为准，不视为验收通过。
+
+
+### 2026-11-27 H2.25.1 — Trip Risk & Recovery iOS Workspace
+
+- 新增 iOS TripRiskCase / TripRiskCaseEvent / Reconciliation / Transition wire models，事件模型完整保留服务端单调递增的 `case_version`；风险和事件契约样本纳入 `scripts/gen_ios_contract_samples.py`，由 OpenAPI 样本驱动 XCTest 解码门禁。
+- 新增 iOS GET 风险列表、GET 事件、POST 来源核对、POST 人工状态转换的 Endpoint 与 Repository；请求字段使用统一 snake_case 编码，所有写操作携带 Idempotency-Key，转换请求携带 `expected_version`，保持服务端乐观并发语义。
+- 行程概览新增“风险与恢复工作台”：按活动/全部/已结束筛选，查看严重级别、下一次复核、来源引用、证据引用和完整追加事件时间线。
+- 人工处置表单根据当前状态只展示可用转换；等待外部必须设置未来复核时间；解决/驳回必须选择关闭依据并填写审计说明。服务端仍重新验证依据和来源状态，客户端不直接关闭数据源、不联系客户、不订票或修改行程计划。
+- 风险工作台不缓存状态数据；切换账号、API 地址或运行模式时通过 AppEnvironment 当前 Repository 访问最新身份配置。Local-first 尚未纳入风险源表，因此显式返回“需联网/云端模式”，不伪造本地风险视图。
+- **验证状态：** 新增 9 项 Trip Risk 模型、端点、编码及状态映射 XCTest；更新 OpenAPI 样本生成器。当前执行环境没有运行 macOS Xcode / SwiftUI 构建、iOS XCTest 或真实后端集成测试；不得视为构建通过、CI 通过或已部署。以最新 main 的实际 GitHub Checks 和后续 Xcode 运行结果验收。
