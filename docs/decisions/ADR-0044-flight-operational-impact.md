@@ -37,3 +37,11 @@ OpenSky 等 ADS-B 航迹源提供的是航空器遥测快照，不能证明航�
 
 
 - **嵌套事件逐字段核对**：影响评估重新使用 `FlightOperationalUpdatePayload` 校验 `ExternalSignal.payload.flight_operational_update`，并将航段 ID、Provider 事件 ID、类型、航班号、计划机场、预计起降时刻、备降机场和源 payload 哈希逐项与 append-only 事件行比较。不能仅因嵌套对象存在或外层摘要匹配就接受。
+
+
+## H2.21.3 补充：预警展示等级由已验证影响决定
+
+- 带有 `flight_operational_update` 的信号即使丢失服务端 `operational_update_id`，也必须进入运营事件校验分支，不能降级成普通 OpenSky 遥测信号。
+- 运营事件引用、摘要、时间窗或规范化字段完整性核验失败时，主动式运行时 fail-closed，不生成可执行的航班建议。
+- 对通过验证的运营事件，展示标题由航班号与运营事件类型确定；通知风险等级由取消/备降、错过预约窗口、实际受影响拜访及已被缓冲吸收的延误确定，不采信 Provider 自报 `title` / `severity`。`content_sha256` 与影响快照共同构成去重输入，避免非权威展示字段改变造成重复通知。
+- PostgreSQL 集成验收增加：移除服务端事件引用后不得创建通用航班建议；即使信号展示层被改成低风险，真实错过客户预约仍应得到 HIGH 风险级别。
