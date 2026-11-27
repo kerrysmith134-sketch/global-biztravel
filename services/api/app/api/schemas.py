@@ -849,16 +849,11 @@ class CustomerAppointmentWindowAttestationCreate(BaseModel):
         if self.end_at <= self.start_at:
             raise ValueError("预约窗口结束时间必须晚于开始时间")
         try:
-            zone = ZoneInfo(self.timezone)
+            ZoneInfo(self.timezone)
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError("timezone 必须是有效的 IANA 时区标识") from None
         if self.start_at <= datetime.now(ZoneInfo("UTC")):
             raise ValueError("客户预约窗口开始时间必须在未来")
-        if (
-            self.start_at.astimezone(zone).utcoffset() != self.start_at.utcoffset()
-            or self.end_at.astimezone(zone).utcoffset() != self.end_at.utcoffset()
-        ):
-            raise ValueError("预约窗口时间偏移与指定 IANA 时区不一致")
         return self
 
 

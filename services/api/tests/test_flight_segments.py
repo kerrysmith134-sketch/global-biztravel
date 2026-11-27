@@ -16,8 +16,8 @@ from app.models.geo import Place
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.proactive import ProactiveSuggestion
-from app.models.trip import Trip, Visit
 from app.models.records import VisitFollowUp
+from app.models.trip import Trip, Visit
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import (
     external_impact_service,

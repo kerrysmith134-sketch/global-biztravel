@@ -26,6 +26,8 @@ from app.api.deps import (
 from app.api.idempotent import IdempotentWrite
 from app.api.routes.trips import trip_read
 from app.api.schemas import (
+    AppointmentRecoveryReassessmentCreate,
+    AppointmentRecoveryReassessmentRead,
     ConflictRecordRead,
     MinutesDraftRead,
     MinutesDraftRequest,
@@ -36,8 +38,6 @@ from app.api.schemas import (
     VisitBriefingRead,
     VisitFollowUpDecisionCreate,
     VisitFollowUpFeedRead,
-    AppointmentRecoveryReassessmentCreate,
-    AppointmentRecoveryReassessmentRead,
     VisitFollowUpRead,
     VisitFollowUpUpdate,
     VisitRead,
