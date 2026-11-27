@@ -274,6 +274,7 @@ def _assess_flight_operational_update(
     if (
         update is None
         or update.provider.casefold() != signal.provider.strip().casefold()
+        or signal.signal_type != "FLIGHT_STATUS"
         or signal.subject_type != "TRIP"
         or signal.subject_ref != str(trip.id)
     ):
@@ -281,7 +282,44 @@ def _assess_flight_operational_update(
             "signal_id": str(signal.id),
             "operational_update_id": str(update_id),
             "status": "OPERATIONAL_UPDATE_SCOPE_MISMATCH",
-            "explanation": "运营事件的 Provider、组织、出行或信号主体不一致；拒绝关联当前计划。",
+            "explanation": "运营事件的 Provider、信号类型、组织、出行或信号主体不一致；拒绝关联当前计划。",
+        }
+
+    # The immutable row is authoritative. The mutable ExternalSignal envelope is
+    # accepted only when it still carries the exact server-generated reference,
+    # digest and event identity that were committed with that row.
+    expected_metadata = {
+        "operational_update_id": str(update.id),
+        "operational_update_content_sha256": update.content_sha256,
+        "operational_update_type": update.update_type,
+    }
+    metadata_matches = all(payload.get(key) == value for key, value in expected_metadata.items())
+    has_normalized_event = isinstance(payload.get("flight_operational_update"), dict)
+    if (
+        not metadata_matches
+        or not has_normalized_event
+        or signal.dedupe_key != f"flight_ops:{update.provider_event_id}"
+    ):
+        return {
+            "signal_id": str(signal.id),
+            "operational_update_id": str(update.id),
+            "expected_content_sha256": update.content_sha256,
+            "status": "OPERATIONAL_UPDATE_EVIDENCE_MISMATCH",
+            "explanation": "ExternalSignal 未保留服务端生成的规范化事件引用、内容指纹或事件去重身份；拒绝使用该信号评估航班影响。",
+        }
+
+    if (
+        signal.observed_at != update.observed_at
+        or signal.valid_from != update.observed_at
+        or signal.valid_until != update.valid_until
+        or signal.confidence != update.confidence
+        or payload.get("summary") != update.summary
+    ):
+        return {
+            "signal_id": str(signal.id),
+            "operational_update_id": str(update.id),
+            "status": "OPERATIONAL_UPDATE_ENVELOPE_MISMATCH",
+            "explanation": "ExternalSignal 的观察时间、有效期、置信度或摘要与不可变运营事件不一致；拒绝延长或重写事件有效窗口。",
         }
 
     segment = session.scalars(
