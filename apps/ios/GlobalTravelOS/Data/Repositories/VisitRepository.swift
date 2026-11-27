@@ -23,6 +23,22 @@ protocol VisitRepository {
     ) async throws -> AppointmentRecoveryReassessmentResponse
 }
 
+/// The local-only store has no authoritative provider events or active-plan propagation.
+/// Reassessment is therefore server-only; the remote and offline wrappers supply live behavior.
+extension VisitRepository {
+    func reassessFollowUp(
+        id: String,
+        request: AppointmentRecoveryReassessmentRequest
+    ) async throws -> AppointmentRecoveryReassessmentResponse {
+        throw APIError.serverError(
+            code: "LOCAL_MODE_UNSUPPORTED",
+            message: "预约重评需要服务端最新航班运营证据，本地模式无法执行。",
+            traceId: nil,
+            details: ["follow_up_id": id]
+        )
+    }
+}
+
 final class RemoteVisitRepository: VisitRepository {
     private let client: APIClient
 
