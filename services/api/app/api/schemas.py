@@ -806,7 +806,8 @@ class VisitRecordRead(BaseModel):
 
 
 # --------------------------------------------------------- visit follow-ups
-VisitFollowUpSource = Literal["RECORD", "MINUTES_DRAFT", "MANUAL"]
+VisitFollowUpSource = Literal["RECORD", "MINUTES_DRAFT", "APPOINTMENT_RECOVERY", "MANUAL"]
+VisitFollowUpSuggestionSource = Literal["RECORD", "MINUTES_DRAFT", "APPOINTMENT_RECOVERY"]
 VisitFollowUpDecision = Literal["ACCEPT", "DISMISS", "CREATE"]
 VisitFollowUpStatus = Literal["OPEN", "IN_PROGRESS", "COMPLETED", "DISMISSED"]
 
@@ -821,6 +822,17 @@ class VisitFollowUpEventRead(BaseModel):
     created_at: datetime
 
 
+class VisitFollowUpActionContextRead(BaseModel):
+    integrity_status: str | None = None
+    action_code: str | None = None
+    priority: str | None = None
+    decision_status: str | None = None
+    appointment_status: str | None = None
+    rationale: str | None = None
+    required_inputs: list[str] = Field(default_factory=list)
+    recommended_steps: list[str] = Field(default_factory=list)
+
+
 class VisitFollowUpRead(ORMModel):
     id: UUID
     visit_id: UUID
@@ -831,6 +843,7 @@ class VisitFollowUpRead(ORMModel):
     source_index: int | None = None
     source_title: str | None = None
     source_due_date: str | None = None
+    source_action_context: VisitFollowUpActionContextRead | None = None
     title: str
     due_date: str | None = None
     status: VisitFollowUpStatus
@@ -845,13 +858,20 @@ class VisitFollowUpRead(ORMModel):
 
 
 class VisitFollowUpSuggestionRead(BaseModel):
-    source_type: Literal["RECORD", "MINUTES_DRAFT"]
+    source_type: VisitFollowUpSuggestionSource
     source_record_id: UUID | None = None
     source_agent_run_id: UUID | None = None
     source_index: int
     title: str
     due_date: str | None = None
     source_created_at: datetime
+    action_code: str | None = None
+    priority: str | None = None
+    decision_status: str | None = None
+    appointment_status: str | None = None
+    rationale: str | None = None
+    required_inputs: list[str] = Field(default_factory=list)
+    recommended_steps: list[str] = Field(default_factory=list)
 
 
 class VisitFollowUpFeedRead(BaseModel):

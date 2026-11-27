@@ -361,3 +361,201 @@ def test_manual_follow_up_has_origin_and_audited_edit(client: TestClient) -> Non
 
             session.execute(delete(Place).where(Place.id == UUID(place_id)))
 
+
+def test_appointment_recovery_actions_enter_human_follow_up_lifecycle(
+    client: TestClient,
+) -> None:
+    from app.models.proactive import ProactiveSuggestion
+    from app.models.workflow import WorkflowInstance
+
+    trip_id, visit_id, place_id = make_visit(client)
+    second_visit = client.post(
+        f"/v1/trips/{trip_id}/visits",
+        headers=headers(key=str(uuid.uuid4())),
+        json={"place_id": place_id, "title": "Secondary buyer meeting", "service_minutes": 45},
+    )
+    assert second_visit.status_code == 201, second_visit.text
+    second_visit_id = second_visit.json()["id"]
+
+    workflow_id, suggestion_id, run_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    now = datetime.now(UTC)
+    workflow = WorkflowInstance(
+        id=workflow_id,
+        organization_id=UUID(ORG_A),
+        trip_id=UUID(trip_id),
+        workflow_type="APPOINTMENT_RECOVERY",
+        status="COMPLETED",
+        payload={
+            "source_suggestion_id": str(suggestion_id),
+            "agent_type": "APPOINTMENT_RECOVERY",
+            "agent_run_id": str(run_id),
+            "recovery_status": "REVIEW_REQUIRED",
+        },
+    )
+    suggestion = ProactiveSuggestion(
+        id=suggestion_id,
+        organization_id=UUID(ORG_A),
+        trip_id=UUID(trip_id),
+        suggestion_type="FLIGHT_STATUS_ALERT",
+        status="PENDING",
+        title="Flight disruption requires appointment review",
+        rationale="Provider event impacts the active itinerary.",
+        evidence=[],
+        proposed_action={"kind": "REVIEW_EXTERNAL_CHANGE", "params": {
+            "recovery_workflow_id": str(workflow_id),
+            "recovery_agent_run_id": str(run_id),
+        }},
+        confidence=0.95,
+        requires_approval=True,
+        severity="MEDIUM",
+        dedupe_key=f"test-recovery-{uuid.uuid4()}",
+        push_status="PUSHED",
+    )
+    output = {
+        "agent_type": "APPOINTMENT_RECOVERY",
+        "agent_version": "appointment-recovery-v1.1",
+        "schema_version": "1.1",
+        "status": "REVIEW_REQUIRED",
+        "actions": [
+            {
+                "scope": "VISIT",
+                "visit_id": visit_id,
+                "action_code": "REVALIDATE_TRAVEL_CHAIN",
+                "priority": "MEDIUM",
+                "decision_status": "DATA_REVALIDATION_REQUIRED",
+                "appointment_status": "UNASSESSED",
+                "rationale": "A travel segment is missing and must be refreshed.",
+                "required_inputs": ["FRESH_NON_STALE_TRAVEL_LEG"],
+                "recommended_steps": ["Refresh travel segment evidence."],
+            },
+            {
+                "scope": "VISIT",
+                "visit_id": second_visit_id,
+                "action_code": "CONFIRM_CUSTOMER_APPOINTMENT_WINDOW",
+                "priority": "MEDIUM",
+                "decision_status": "CUSTOMER_CONFIRMATION_REQUIRED",
+                "appointment_status": "WINDOW_END_UNKNOWN",
+                "rationale": "The appointment end time is not known.",
+                "required_inputs": ["CUSTOMER_CONFIRMED_APPOINTMENT_WINDOW"],
+                "recommended_steps": ["Confirm the customer time window."],
+            },
+            {
+                "scope": "TRIP",
+                "visit_id": None,
+                "action_code": "REVALIDATE_FLIGHT_PLAN_IMPACT_ASSESSMENT",
+                "priority": "MEDIUM",
+                "decision_status": "DATA_REVALIDATION_REQUIRED",
+                "appointment_status": "UNASSESSED",
+                "required_inputs": ["CURRENT_ACTIVE_PLAN"],
+                "recommended_steps": ["Repair the plan binding."],
+            },
+        ],
+    }
+    run = AgentRun(
+        id=run_id,
+        organization_id=UUID(ORG_A),
+        workflow_id=workflow_id,
+        agent_type="APPOINTMENT_RECOVERY",
+        status="SUCCEEDED",
+        input={"trip_id": trip_id, "suggestion_id": str(suggestion_id)},
+        output=output,
+        started_at=now,
+        finished_at=now,
+    )
+    try:
+        with org_session(UUID(ORG_A)) as session:
+            session.add(workflow)
+            session.add(suggestion)
+            session.flush()
+            session.add(run)
+            session.flush()
+
+        trip_before = client.get(f"/v1/trips/{trip_id}", headers=headers()).json()
+        feed = client.get(f"/v1/visits/{visit_id}/follow-ups", headers=headers())
+        assert feed.status_code == 200, feed.text
+        candidates = [item for item in feed.json()["suggestions"]
+                      if item["source_type"] == "APPOINTMENT_RECOVERY"]
+        assert len(candidates) == 1
+        candidate = candidates[0]
+        assert candidate["source_agent_run_id"] == str(run_id)
+        assert candidate["source_index"] == 0
+        assert candidate["action_code"] == "REVALIDATE_TRAVEL_CHAIN"
+        assert candidate["decision_status"] == "DATA_REVALIDATION_REQUIRED"
+        assert candidate["required_inputs"] == ["FRESH_NON_STALE_TRAVEL_LEG"]
+
+        cross_visit = client.post(
+            f"/v1/visits/{second_visit_id}/follow-ups",
+            headers=headers(key=str(uuid.uuid4())),
+            json={"source_type":"APPOINTMENT_RECOVERY","decision":"ACCEPT",
+                  "source_agent_run_id":str(run_id),"source_index":0},
+        )
+        assert cross_visit.status_code == 404, cross_visit.text
+
+        accept_key = str(uuid.uuid4())
+        accept_payload = {
+            "source_type":"APPOINTMENT_RECOVERY","decision":"ACCEPT",
+            "source_agent_run_id":str(run_id),"source_index":0,
+            "note":"Traveler accepted the data revalidation action.",
+        }
+        accepted = client.post(
+            f"/v1/visits/{visit_id}/follow-ups",
+            headers=headers(key=accept_key),
+            json=accept_payload,
+        )
+        assert accepted.status_code == 201, accepted.text
+        body = accepted.json()
+        assert body["status"] == "OPEN"
+        assert body["source_type"] == "APPOINTMENT_RECOVERY"
+        assert body["source_agent_run_id"] == str(run_id)
+        assert body["source_index"] == 0
+        assert body["source_action_context"]["integrity_status"] == "VERIFIED"
+        assert body["source_action_context"]["action_code"] == "REVALIDATE_TRAVEL_CHAIN"
+        follow_up_id = body["id"]
+
+        replay = client.post(
+            f"/v1/visits/{visit_id}/follow-ups",
+            headers=headers(key=accept_key),
+            json=accept_payload,
+        )
+        assert replay.status_code == 201
+        assert replay.headers.get("Idempotent-Replay") == "true"
+        assert replay.json()["id"] == follow_up_id
+
+        center = client.get("/v1/action-center", headers=headers(), params={"trip_id":trip_id})
+        assert center.status_code == 200, center.text
+        center_item = next(
+            item for section in center.json()["sections"] for item in section["items"]
+            if item["entity_id"] == follow_up_id
+        )
+        assert center_item["kind"] == "VISIT_FOLLOW_UP"
+        assert center_item["status"] == "OPEN"
+
+        dismissed = client.post(
+            f"/v1/visits/{second_visit_id}/follow-ups",
+            headers=headers(key=str(uuid.uuid4())),
+            json={"source_type":"APPOINTMENT_RECOVERY","decision":"DISMISS",
+                  "source_agent_run_id":str(run_id),"source_index":1,
+                  "note":"Customer appointment window already confirmed separately."},
+        )
+        assert dismissed.status_code == 201, dismissed.text
+        assert dismissed.json()["status"] == "DISMISSED"
+
+        trip_after = client.get(f"/v1/trips/{trip_id}", headers=headers()).json()
+        assert trip_after["version"] == trip_before["version"]
+        with org_session(UUID(ORG_A)) as session:
+            events = list(session.scalars(
+                select(VisitFollowUpEvent).where(
+                    VisitFollowUpEvent.follow_up_id == UUID(follow_up_id)
+                ).order_by(VisitFollowUpEvent.created_at.asc())
+            ))
+            assert [event.event_type for event in events] == ["ACCEPTED"]
+            assert all(event.actor_user_id == UUID(ADMIN_A) for event in events)
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(delete(VisitFollowUp).where(VisitFollowUp.source_agent_run_id == run_id))
+            session.execute(delete(AgentRun).where(AgentRun.id == run_id))
+            session.execute(delete(ProactiveSuggestion).where(ProactiveSuggestion.id == suggestion_id))
+            session.execute(delete(WorkflowInstance).where(WorkflowInstance.id == workflow_id))
+            session.execute(delete(Trip).where(Trip.id == UUID(trip_id)))
+            from app.models.geo import Place
+            session.execute(delete(Place).where(Place.id == UUID(place_id)))

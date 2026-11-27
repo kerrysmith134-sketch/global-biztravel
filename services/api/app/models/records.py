@@ -108,13 +108,15 @@ class VisitFollowUp(Base):
         ),
         UniqueConstraint("organization_id", "id", name="uq_visit_follow_ups_org_id"),
         UniqueConstraint("organization_id", "visit_id", "source_key", name="uq_visit_follow_ups_source_key"),
-        CheckConstraint("source_type IN ('RECORD','MINUTES_DRAFT','MANUAL')", name="source_type_allowed"),
+        CheckConstraint("source_type IN ('RECORD','MINUTES_DRAFT','APPOINTMENT_RECOVERY','MANUAL')", name="source_type_allowed"),
         CheckConstraint("status IN ('OPEN','IN_PROGRESS','COMPLETED','DISMISSED')", name="status_allowed"),
         CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
         CheckConstraint(
             "(source_type = 'RECORD' AND source_record_id IS NOT NULL AND source_agent_run_id IS NULL "
             "AND source_index IS NOT NULL AND source_index >= 0) OR "
             "(source_type = 'MINUTES_DRAFT' AND source_record_id IS NULL AND source_agent_run_id IS NOT NULL "
+            "AND source_index IS NOT NULL AND source_index >= 0) OR "
+            "(source_type = 'APPOINTMENT_RECOVERY' AND source_record_id IS NULL AND source_agent_run_id IS NOT NULL "
             "AND source_index IS NOT NULL AND source_index >= 0) OR "
             "(source_type = 'MANUAL' AND source_record_id IS NULL AND source_agent_run_id IS NULL "
             "AND source_index IS NULL)",

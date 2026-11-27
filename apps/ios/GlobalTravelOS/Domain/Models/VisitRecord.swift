@@ -209,6 +209,17 @@ struct VisitFollowUpEvent: Codable, Equatable, Identifiable {
     }
 }
 
+struct VisitFollowUpActionContext: Codable, Equatable {
+    var integrityStatus: String?
+    var actionCode: String?
+    var priority: String?
+    var decisionStatus: String?
+    var appointmentStatus: String?
+    var rationale: String?
+    var requiredInputs: [String]?
+    var recommendedSteps: [String]?
+}
+
 struct VisitFollowUp: Codable, Equatable, Identifiable {
     var id: String
     var visitId: String
@@ -219,6 +230,7 @@ struct VisitFollowUp: Codable, Equatable, Identifiable {
     var sourceIndex: Int?
     var sourceTitle: String?
     var sourceDueDate: String?
+    var sourceActionContext: VisitFollowUpActionContext?
     var title: String
     var dueDate: String?
     var status: String
@@ -245,6 +257,7 @@ struct VisitFollowUp: Codable, Equatable, Identifiable {
         switch sourceType {
         case "RECORD": return "现场记录"
         case "MINUTES_DRAFT": return "AI 会议纪要"
+        case "APPOINTMENT_RECOVERY": return "航班预约恢复"
         case "MANUAL": return "手工创建"
         default: return sourceType
         }
@@ -259,13 +272,25 @@ struct VisitFollowUpSuggestion: Codable, Equatable, Identifiable {
     var title: String
     var dueDate: String?
     var sourceCreatedAt: Date
+    var actionCode: String?
+    var priority: String?
+    var decisionStatus: String?
+    var appointmentStatus: String?
+    var rationale: String?
+    var requiredInputs: [String]?
+    var recommendedSteps: [String]?
 
     var id: String {
         "\(sourceType):\(sourceRecordId ?? sourceAgentRunId ?? "unknown"):\(sourceIndex)"
     }
 
     var sourceLabel: String {
-        sourceType == "RECORD" ? "来自现场记录" : "来自 AI 会议纪要"
+        switch sourceType {
+        case "RECORD": return "来自现场记录"
+        case "MINUTES_DRAFT": return "来自 AI 会议纪要"
+        case "APPOINTMENT_RECOVERY": return "来自航班预约恢复 Agent"
+        default: return sourceType
+        }
     }
 }
 

@@ -27346,6 +27346,7 @@
             "enum": [
               "RECORD",
               "MINUTES_DRAFT",
+              "APPOINTMENT_RECOVERY",
               "MANUAL"
             ],
             "title": "Source Type"
@@ -27538,6 +27539,92 @@
         ],
         "title": "VisitFollowUpFeedRead"
       },
+      "VisitFollowUpActionContextRead": {
+        "properties": {
+          "integrity_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrity Status"
+          },
+          "action_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Code"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "decision_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Status"
+          },
+          "appointment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Status"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "required_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Inputs"
+          },
+          "recommended_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Steps"
+          }
+        },
+        "type": "object",
+        "title": "VisitFollowUpActionContextRead"
+      },
       "VisitFollowUpRead": {
         "properties": {
           "id": {
@@ -27560,6 +27647,7 @@
             "enum": [
               "RECORD",
               "MINUTES_DRAFT",
+              "APPOINTMENT_RECOVERY",
               "MANUAL"
             ],
             "title": "Source Type"
@@ -27722,6 +27810,17 @@
             },
             "type": "array",
             "title": "Events"
+          },
+          "source_action_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisitFollowUpActionContextRead"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Action Context"
           }
         },
         "type": "object",
@@ -27743,7 +27842,8 @@
             "type": "string",
             "enum": [
               "RECORD",
-              "MINUTES_DRAFT"
+              "MINUTES_DRAFT",
+              "APPOINTMENT_RECOVERY"
             ],
             "title": "Source Type"
           },
@@ -27794,6 +27894,75 @@
             "type": "string",
             "format": "date-time",
             "title": "Source Created At"
+          },
+          "action_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Code"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "decision_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Status"
+          },
+          "appointment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Status"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "required_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Inputs"
+          },
+          "recommended_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Steps"
           }
         },
         "type": "object",

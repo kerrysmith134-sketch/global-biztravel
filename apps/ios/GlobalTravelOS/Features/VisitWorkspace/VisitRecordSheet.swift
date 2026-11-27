@@ -153,7 +153,7 @@ struct VisitRecordSheet: View {
                         ProgressView("读取跟进事项…")
                     } else if let followUpFeed {
                         if !followUpFeed.suggestions.isEmpty {
-                            Text("以下事项来自现场记录或 AI 会议纪要，必须逐条确认后才会进入行动中心。")
+                            Text("以下事项来自现场记录、AI 会议纪要或航班恢复分析，必须逐条确认后才会进入行动中心。")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                             ForEach(followUpFeed.suggestions) { suggestion in
@@ -165,9 +165,22 @@ struct VisitRecordSheet: View {
                                         if let dueDate = suggestion.dueDate, !dueDate.isEmpty {
                                             Text("· 截止 \(dueDate)")
                                         }
+                                        if let priority = suggestion.priority {
+                                            Text("· \(priority == "HIGH" ? "高优先级" : priority == "MEDIUM" ? "中优先级" : "普通")")
+                                        }
                                     }
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    if let rationale = suggestion.rationale, !rationale.isEmpty {
+                                        Text(rationale)
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if let inputs = suggestion.requiredInputs, !inputs.isEmpty {
+                                        Text("待补充：\(inputs.joined(separator: "、"))")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                    }
                                     HStack(spacing: 10) {
                                         Button {
                                             Task { await decideFollowUp(suggestion, decision: "ACCEPT") }
@@ -211,6 +224,18 @@ struct VisitRecordSheet: View {
                                     }
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    if let context = item.sourceActionContext {
+                                        if let rationale = context.rationale, !rationale.isEmpty {
+                                            Text(rationale)
+                                                .font(.footnote)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        if let inputs = context.requiredInputs, !inputs.isEmpty {
+                                            Text("待补充：\(inputs.joined(separator: "、"))")
+                                                .font(.caption2)
+                                                .foregroundStyle(.orange)
+                                        }
+                                    }
                                     HStack(spacing: 10) {
                                         if item.status == "OPEN" {
                                             followUpActionButton(

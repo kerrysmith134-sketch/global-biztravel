@@ -461,3 +461,12 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 将受影响 / 错过 / 未评估 Visit ID 与逐站影响记录交叉核对；缺行、重复冲突、未知状态、非法延误值均生成明确复核动作。
 - 无 ACTIVE 计划、航段绑定失效等没有站点行的早退评估，转为 trip-level 影响链复核，而不是被误报为“无需恢复”。
 - Agent 版本更新为 `appointment-recovery-v1.1`，schema `1.1`；无数据库迁移、无自动计划/预订/外部沟通操作。
+
+
+## 2026-11-27 H2.23 — Appointment Recovery Decision & Resolution Lifecycle
+
+- 复用现有 VisitFollowUp，不新增通用任务表：新增来源 APPOINTMENT_RECOVERY，每项动作以 AgentRun ID + action index 精确定位；trip-level 动作不作为任意 Visit 的待办。
+- Recovery suggestion 进入原有 follow-up feed，只有出差人 ACCEPT 后才进入 Action Center；DISMISS 保留既有审计。接受后继续使用 OPEN → IN_PROGRESS → COMPLETED / DISMISSED 状态链。
+- 服务端校验 AgentRun、WorkflowInstance、来源 ProactiveSuggestion 的三方引用和组织/Trip/Visit 归属；决策时锁定 AgentRun，原有唯一 source_key 防止重复受理。
+- iOS 展示恢复来源、优先级、原因和缺失输入。不改变正式行程，不联系客户、不订票、不自动改期。
+- 数据库迁移 0051_recovery_follow_ups 仅扩展现有 VisitFollowUp 来源约束，不新增实体表。

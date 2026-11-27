@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.errors import Conflict, NotFound, Unprocessable
+from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp, VisitFollowUpEvent, VisitRecord
-from app.models.workflow import AgentRun
+from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import visit_service
 
 
@@ -29,6 +30,113 @@ def _normalise_task(value: object) -> dict[str, str | None] | None:
 
 def _source_key(source_type: str, source_id: UUID, source_index: int) -> str:
     return f"{source_type}:{source_id}:{source_index}"
+
+
+_RECOVERY_ACTION_TITLES = {
+    "REQUEST_CUSTOMER_RESCHEDULE_WINDOW": "确认客户改期窗口",
+    "VERIFY_REPLACEMENT_FLIGHT_AND_RECONFIRM": "核实替代航班并重新确认客户拜访",
+    "REVALIDATE_TRAVEL_CHAIN": "补齐交通链证据并重新评估",
+    "CONFIRM_CUSTOMER_APPOINTMENT_WINDOW": "确认客户预约时间窗口",
+    "RECONFIRM_ARRIVAL_AND_KEEP_APPOINTMENT_PROVISIONAL": "复核到达时间并确认预约",
+}
+
+
+def _load_recovery_run(
+    session: Session,
+    organization_id: UUID,
+    trip_id: UUID,
+    run_id: UUID,
+    *,
+    lock_run: bool = False,
+) -> tuple[AgentRun, list]:
+    statement = select(AgentRun).where(
+        AgentRun.organization_id == organization_id,
+        AgentRun.id == run_id,
+        AgentRun.agent_type == "APPOINTMENT_RECOVERY",
+        AgentRun.status == "SUCCEEDED",
+    )
+    if lock_run:
+        statement = statement.with_for_update()
+    run = session.scalars(statement).one_or_none()
+    if run is None:
+        raise NotFound("成功的预约恢复 AgentRun 不存在")
+    run_input = run.input if isinstance(run.input, dict) else {}
+    if str(run_input.get("trip_id") or "") != str(trip_id) or run.workflow_id is None:
+        raise NotFound("预约恢复 AgentRun 不属于当前出行")
+
+    workflow = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == organization_id,
+            WorkflowInstance.id == run.workflow_id,
+            WorkflowInstance.trip_id == trip_id,
+            WorkflowInstance.workflow_type == "APPOINTMENT_RECOVERY",
+            WorkflowInstance.status == "COMPLETED",
+        )
+    ).one_or_none()
+    if workflow is None:
+        raise NotFound("预约恢复 Workflow 不属于当前出行或尚未完成")
+
+    try:
+        suggestion_id = UUID(str(run_input.get("suggestion_id")))
+    except (TypeError, ValueError):
+        raise NotFound("预约恢复运行缺少有效的来源建议") from None
+    suggestion = session.scalars(
+        select(ProactiveSuggestion).where(
+            ProactiveSuggestion.organization_id == organization_id,
+            ProactiveSuggestion.trip_id == trip_id,
+            ProactiveSuggestion.id == suggestion_id,
+        )
+    ).one_or_none()
+    if suggestion is None:
+        raise NotFound("预约恢复运行的来源建议不存在")
+
+    params = (suggestion.proposed_action or {}).get("params") or {}
+    workflow_payload = workflow.payload if isinstance(workflow.payload, dict) else {}
+    if (
+        params.get("recovery_agent_run_id") != str(run.id)
+        or params.get("recovery_workflow_id") != str(workflow.id)
+        or workflow_payload.get("agent_run_id") != str(run.id)
+        or workflow_payload.get("source_suggestion_id") != str(suggestion.id)
+    ):
+        raise NotFound("预约恢复 AgentRun 的建议、工作流血缘不一致")
+
+    output = run.output if isinstance(run.output, dict) else {}
+    actions = output.get("actions")
+    if not isinstance(actions, list):
+        raise NotFound("预约恢复 AgentRun 缺少结构化动作清单")
+    return run, actions
+
+
+def _recovery_action_for_visit(actions: list, visit_id: UUID, index: int) -> dict:
+    if index < 0 or index >= len(actions):
+        raise Unprocessable("恢复动作索引超出 AgentRun 范围", details={"source_index": index})
+    action = actions[index]
+    if not isinstance(action, dict):
+        raise NotFound("预约恢复动作不是有效对象")
+    scope = action.get("scope") or ("VISIT" if action.get("visit_id") else "TRIP")
+    if scope != "VISIT" or str(action.get("visit_id") or "") != str(visit_id):
+        raise NotFound("预约恢复动作不属于当前拜访")
+    action_code = action.get("action_code")
+    if action_code not in _RECOVERY_ACTION_TITLES:
+        raise Unprocessable("预约恢复动作类型不支持转为拜访跟进项")
+    return action
+
+
+def _recovery_action_context(action: dict) -> dict:
+    return {
+        "integrity_status": "VERIFIED",
+        "action_code": action.get("action_code"),
+        "priority": action.get("priority"),
+        "decision_status": action.get("decision_status"),
+        "appointment_status": action.get("appointment_status"),
+        "rationale": action.get("rationale"),
+        "required_inputs": [
+            item for item in action.get("required_inputs", []) if isinstance(item, str)
+        ] if isinstance(action.get("required_inputs"), list) else [],
+        "recommended_steps": [
+            item for item in action.get("recommended_steps", []) if isinstance(item, str)
+        ] if isinstance(action.get("recommended_steps"), list) else [],
+    }
 
 
 def _append_event(
@@ -55,7 +163,7 @@ def _append_event(
 
 
 def _candidate_suggestions(
-    session: Session, organization_id: UUID, visit_id: UUID, existing_keys: set[str]
+    session: Session, organization_id: UUID, visit_id: UUID, trip_id: UUID, existing_keys: set[str]
 ) -> list[dict]:
     suggestions: list[dict] = []
     records = session.scalars(
@@ -125,6 +233,53 @@ def _candidate_suggestions(
                     "source_created_at": run.created_at,
                 }
             )
+    recovery_runs = session.scalars(
+        select(AgentRun)
+        .where(
+            AgentRun.organization_id == organization_id,
+            AgentRun.agent_type == "APPOINTMENT_RECOVERY",
+            AgentRun.status == "SUCCEEDED",
+            AgentRun.input["trip_id"].as_string() == str(trip_id),
+        )
+        .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+        .limit(30)
+    )
+    for candidate_run in recovery_runs:
+        try:
+            run, actions = _load_recovery_run(
+                session, organization_id, trip_id, candidate_run.id
+            )
+        except NotFound:
+            continue
+        if len(actions) > 100:
+            continue
+        for index, action in enumerate(actions):
+            if not isinstance(action, dict):
+                continue
+            scope = action.get("scope") or ("VISIT" if action.get("visit_id") else "TRIP")
+            if scope != "VISIT" or str(action.get("visit_id") or "") != str(visit_id):
+                continue
+            source_key = _source_key("APPOINTMENT_RECOVERY", run.id, index)
+            if source_key in existing_keys:
+                continue
+            try:
+                _recovery_action_for_visit(actions, visit_id, index)
+            except (NotFound, Unprocessable):
+                continue
+            action_code = action["action_code"]
+            suggestions.append(
+                {
+                    "source_type": "APPOINTMENT_RECOVERY",
+                    "source_record_id": None,
+                    "source_agent_run_id": run.id,
+                    "source_index": index,
+                    "title": _RECOVERY_ACTION_TITLES[action_code],
+                    "due_date": None,
+                    "source_created_at": run.created_at,
+                    **_recovery_action_context(action),
+                }
+            )
+
     suggestions.sort(key=lambda item: item["source_created_at"], reverse=True)
     return suggestions
 
@@ -156,6 +311,20 @@ def read_follow_up(
     session: Session, organization_id: UUID | str, row: VisitFollowUp
 ) -> dict:
     org = UUID(str(organization_id))
+    source_action_context = None
+    if (
+        row.source_type == "APPOINTMENT_RECOVERY"
+        and row.source_agent_run_id is not None
+        and row.source_index is not None
+    ):
+        try:
+            _run, actions = _load_recovery_run(
+                session, org, row.trip_id, row.source_agent_run_id
+            )
+            action = _recovery_action_for_visit(actions, row.visit_id, row.source_index)
+            source_action_context = _recovery_action_context(action)
+        except (NotFound, Unprocessable):
+            source_action_context = {"integrity_status": "SOURCE_LINK_UNVERIFIED"}
     return {
         "id": row.id,
         "visit_id": row.visit_id,
@@ -166,6 +335,7 @@ def read_follow_up(
         "source_index": row.source_index,
         "source_title": row.source_title,
         "source_due_date": row.source_due_date,
+        "source_action_context": source_action_context,
         "title": row.title,
         "due_date": row.due_date,
         "status": row.status,
@@ -200,7 +370,7 @@ def list_follow_ups(session: Session, organization_id: UUID | str, visit_id: UUI
         "trip_id": visit.trip_id,
         "items": [read_follow_up(session, org, row) for row in rows],
         "suggestions": _candidate_suggestions(
-            session, org, visit_uuid, existing_keys
+            session, org, visit_uuid, visit.trip_id, existing_keys
         ),
     }
 
@@ -225,6 +395,24 @@ def _task_from_record(
     if task is None:
         raise Unprocessable("来源跟进项缺少有效标题")
     return task
+
+
+def _task_from_recovery(
+    session: Session,
+    organization_id: UUID,
+    visit_id: UUID,
+    trip_id: UUID,
+    run_id: UUID,
+    index: int,
+) -> dict[str, str | None]:
+    _run, actions = _load_recovery_run(
+        session, organization_id, trip_id, run_id, lock_run=True
+    )
+    action = _recovery_action_for_visit(actions, visit_id, index)
+    return {
+        "title": _RECOVERY_ACTION_TITLES[action["action_code"]],
+        "due_date": None,
+    }
 
 
 def _task_from_minutes(
@@ -289,11 +477,22 @@ def create_follow_up(
                 raise Unprocessable("现场记录来源必须提供 source_record_id")
             task = _task_from_record(session, org, visit_uuid, source_record_id, source_index)
             source_key = _source_key(source_type, source_record_id, source_index)
-        else:
+        elif source_type == "MINUTES_DRAFT":
             if source_agent_run_id is None or source_record_id is not None:
                 raise Unprocessable("会议纪要来源必须提供 source_agent_run_id")
-            task = _task_from_minutes(session, org, visit_uuid, source_agent_run_id, source_index)
+            task = _task_from_minutes(
+                session, org, visit_uuid, source_agent_run_id, source_index
+            )
             source_key = _source_key(source_type, source_agent_run_id, source_index)
+        elif source_type == "APPOINTMENT_RECOVERY":
+            if source_agent_run_id is None or source_record_id is not None:
+                raise Unprocessable("预约恢复来源必须提供 source_agent_run_id")
+            task = _task_from_recovery(
+                session, org, visit_uuid, visit.trip_id, source_agent_run_id, source_index
+            )
+            source_key = _source_key(source_type, source_agent_run_id, source_index)
+        else:
+            raise Unprocessable("不支持的跟进来源类型")
         source_title = task["title"]
         source_due_date = task["due_date"]
         duplicate = session.scalars(
