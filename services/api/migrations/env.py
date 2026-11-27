@@ -17,7 +17,18 @@ import sys
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import (
+    Column,
+    MetaData,
+    PrimaryKeyConstraint,
+    String,
+    engine_from_config,
+    inspect,
+    pool,
+    text,
+)
+from sqlalchemy.engine import Connection
+from sqlalchemy.schema import Table
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -74,6 +85,61 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _ensure_revision_storage(connection: Connection) -> None:
+    """Keep Alembic's revision column wide enough for semantic revision identifiers.
+
+    Alembic defaults to VARCHAR(32), while this repository intentionally uses descriptive
+    revision IDs (for example, 0052_recovery_reassessment_events). Bootstrap before
+    Alembic's first version update so both fresh and existing PostgreSQL databases can
+    traverse the full migration chain without rewriting already-published revision IDs.
+    """
+    version_table = config.get_main_option("version_table") or "alembic_version"
+    schema = config.get_main_option("version_table_schema") or None
+    inspector = inspect(connection)
+
+    if not inspector.has_table(version_table, schema=schema):
+        Table(
+            version_table,
+            MetaData(),
+            Column("version_num", String(128), nullable=False),
+            PrimaryKeyConstraint("version_num", name="alembic_version_pkc"),
+            schema=schema,
+        ).create(connection)
+        return
+
+    version_column = next(
+        (
+            column
+            for column in inspector.get_columns(version_table, schema=schema)
+            if column["name"] == "version_num"
+        ),
+        None,
+    )
+    if version_column is None:
+        raise RuntimeError(f"{version_table} is missing its version_num column")
+
+    current_length = getattr(version_column["type"], "length", None)
+    if current_length is None or current_length >= 128:
+        return
+    if connection.dialect.name != "postgresql":
+        raise RuntimeError(
+            f"{version_table}.version_num must support at least 128 characters"
+        )
+
+    preparer = connection.dialect.identifier_preparer
+    qualified_table = (
+        f"{preparer.quote_schema(schema)}.{preparer.quote(version_table)}"
+        if schema
+        else preparer.quote(version_table)
+    )
+    connection.execute(
+        text(
+            f"ALTER TABLE {qualified_table} "
+            f"ALTER COLUMN {preparer.quote('version_num')} TYPE VARCHAR(128)"
+        )
+    )
+
+
 def run_migrations_online() -> None:
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
@@ -81,6 +147,9 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        # Widen/create Alembic's own bookkeeping table before the first revision update.
+        with connection.begin():
+            _ensure_revision_storage(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
