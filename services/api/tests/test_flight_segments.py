@@ -826,7 +826,7 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
                     ProactiveSuggestion.suggestion_type == "FLIGHT_STATUS_ALERT",
                 )
             ).one()
-            assert suggestion.title == "LH123 航班到达延误"
+            assert suggestion.title == "LH123 到达延误"
             assert suggestion.severity == "HIGH"
             evidence_kinds = {item["kind"] for item in suggestion.evidence}
             assert "FLIGHT_OPERATIONAL_UPDATE" in evidence_kinds
