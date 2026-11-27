@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -24,6 +24,8 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import NotFound, PlanVersionConflict, Unprocessable
 from app.api.schemas import VisitCreate, VisitUpdate
+from app.models.flight_operations import FlightOperationalUpdate
+from app.models.integrations import ExternalSignal
 from app.models.records import VisitFollowUp
 from app.models.trip import Trip
 from app.models.workflow import AgentRun, WorkflowInstance
@@ -148,6 +150,58 @@ def _validate_appointment_recovery_change(
     ):
         raise Unprocessable("预约恢复重评的 Workflow/AgentRun 血缘校验失败")
 
+    # Reassessment is a point-in-time decision. Do not accept it after its source
+    # provider signal expires or a newer operational update supersedes it.
+    input_snapshot = run_output.get("input_snapshot")
+    if not isinstance(input_snapshot, dict):
+        raise Unprocessable("预约重评缺少可验证的输入快照")
+    try:
+        expected_update_id = UUID(str(input_snapshot.get("latest_operational_update_id")))
+        expected_signal_id = UUID(str(input_snapshot.get("latest_signal_id")))
+        flight_segment_id = UUID(str(input_snapshot.get("flight_segment_id")))
+    except (TypeError, ValueError):
+        raise Unprocessable("预约重评缺少有效的航班证据引用") from None
+
+    latest_update = session.scalars(
+        select(FlightOperationalUpdate)
+        .where(
+            FlightOperationalUpdate.organization_id == organization_id,
+            FlightOperationalUpdate.trip_id == trip.id,
+            FlightOperationalUpdate.flight_segment_id == flight_segment_id,
+        )
+        .order_by(
+            FlightOperationalUpdate.observed_at.desc(),
+            FlightOperationalUpdate.id.desc(),
+        )
+        .limit(1)
+    ).one_or_none()
+    if (
+        latest_update is None
+        or latest_update.id != expected_update_id
+        or latest_update.content_sha256 != input_snapshot.get("latest_operational_update_sha256")
+    ):
+        raise PlanVersionConflict("重评所依据的航班更新已被更新事件取代或内容摘要不一致")
+
+    signal = session.scalars(
+        select(ExternalSignal).where(
+            ExternalSignal.organization_id == organization_id,
+            ExternalSignal.id == expected_signal_id,
+            ExternalSignal.provider == latest_update.provider,
+            ExternalSignal.signal_type == "FLIGHT_STATUS",
+            ExternalSignal.subject_type == "TRIP",
+            ExternalSignal.subject_ref == str(trip.id),
+            ExternalSignal.dedupe_key == f"flight_ops:{latest_update.provider_event_id}",
+        )
+    ).one_or_none()
+    now = datetime.now(UTC)
+    if (
+        signal is None
+        or signal.valid_until is None
+        or signal.valid_until <= now
+        or signal.observed_at > now + timedelta(minutes=5)
+    ):
+        raise PlanVersionConflict("重评所依据的航班信号已过期或无效，请重新评估")
+
     recommendation = run_output.get("plan_change_recommendation")
     if (
         not isinstance(recommendation, dict)
@@ -266,7 +320,7 @@ def create_change_request(
     base_plan = plan_service.require_plan_version(session, org_id, base_plan_version_id)
     if str(base_plan.trip_id) != str(trip.id):
         raise NotFound("计划版本不属于该出行")
-    if trip.active_plan_version_id != base_plan.id:
+    if trip.active_plan_version_id != base_plan.id or base_plan.status != "ACTIVE":
         raise PlanVersionConflict(
             "只能在当前生效计划的基础上提出变更",
             details={
@@ -274,6 +328,15 @@ def create_change_request(
                 "active_plan_version_id": (
                     str(trip.active_plan_version_id) if trip.active_plan_version_id else None
                 ),
+                "base_plan_status": base_plan.status,
+            },
+        )
+    if base_plan.trip_version != trip.version:
+        raise PlanVersionConflict(
+            "当前生效计划基于旧的行程输入，必须先重新生成并激活计划",
+            details={
+                "base_plan_trip_version": base_plan.trip_version,
+                "current_trip_version": trip.version,
             },
         )
     if trip.version != base_trip_version:
