@@ -2,6 +2,30 @@ import XCTest
 @testable import GlobalTravelOS
 
 final class AppointmentRecoveryPlanChangeRequestTests: XCTestCase {
+    func testCustomerAppointmentWindowEncodesOffsetsFromIanaTimezoneAcrossDST() throws {
+        let parser = ISO8601DateFormatter()
+        let start = try XCTUnwrap(parser.date(from: "2027-03-28T00:30:00Z"))
+        let end = try XCTUnwrap(parser.date(from: "2027-03-28T01:30:00Z"))
+        let request = CustomerAppointmentWindowAttestationRequest(
+            startAt: start,
+            endAt: end,
+            timezone: "Europe/Berlin",
+            confirmationMethod: "EMAIL",
+            confirmationReference: nil
+        )
+
+        let data = try DateCoding.encode(request)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let startAt = try XCTUnwrap(object["start_at"] as? String)
+        let endAt = try XCTUnwrap(object["end_at"] as? String)
+
+        XCTAssertTrue(startAt.hasSuffix("+01:00"), startAt)
+        XCTAssertTrue(endAt.hasSuffix("+02:00"), endAt)
+        XCTAssertEqual(object["timezone"] as? String, "Europe/Berlin")
+    }
+
     func testRecoveryPlanChangeUsesExistingPlanChangeContract() throws {
         let request = PlanChangeCreate(
             basePlanVersionId: "11111111-1111-1111-1111-111111111111",
