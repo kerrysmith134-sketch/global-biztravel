@@ -23,6 +23,7 @@ final class AppEnvironment: ObservableObject {
     private(set) var planRepository: PlanRepository
     private(set) var visitRepository: VisitRepository
     private(set) var proactiveRepository: ProactiveRepository
+    private(set) var tripRiskRepository: TripRiskRepository
     private(set) var memoryRepository: MemoryRepository
     private(set) var actionCenterRepository: ActionCenterRepository
     private(set) var notificationRepository: NotificationRepository
@@ -87,6 +88,7 @@ final class AppEnvironment: ObservableObject {
         self.planRepository = bundle.plans
         self.visitRepository = bundle.visits
         self.proactiveRepository = bundle.proactive
+        self.tripRiskRepository = bundle.tripRisks
         self.memoryRepository = bundle.memory
         self.actionCenterRepository = bundle.actionCenter
         self.notificationRepository = bundle.notifications
@@ -113,6 +115,7 @@ final class AppEnvironment: ObservableObject {
         planRepository = bundle.plans
         visitRepository = bundle.visits
         proactiveRepository = bundle.proactive
+        tripRiskRepository = bundle.tripRisks
         memoryRepository = bundle.memory
         actionCenterRepository = bundle.actionCenter
         notificationRepository = bundle.notifications
@@ -146,6 +149,7 @@ final class AppEnvironment: ObservableObject {
         let plans: PlanRepository
         let visits: VisitRepository
         let proactive: ProactiveRepository
+        let tripRisks: TripRiskRepository
         let memory: MemoryRepository
         let actionCenter: ActionCenterRepository
         let notifications: NotificationRepository
@@ -179,6 +183,7 @@ final class AppEnvironment: ObservableObject {
                     plans: plans,
                     visits: visits,
                     proactive: LocalProactiveRepository(database: database),
+                    tripRisks: UnavailableLocalTripRiskRepository(),
                     memory: LocalMemoryRepository(database: database),
                     actionCenter: LocalActionCenterRepository(database: database),
                     notifications: RemoteNotificationRepository(client: client),
@@ -211,6 +216,7 @@ final class AppEnvironment: ObservableObject {
                 directory: directory,
                 indicator: indicator
             ),
+            tripRisks: RemoteTripRiskRepository(client: client),
             memory: OfflineMemoryRepository(
                 remote: RemoteMemoryRepository(client: client),
                 directory: directory,
