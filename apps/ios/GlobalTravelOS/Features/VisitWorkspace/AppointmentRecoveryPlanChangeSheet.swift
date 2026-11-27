@@ -292,6 +292,7 @@ struct AppointmentRecoveryPlanChangeSheet: View {
                 operationType: .changeVisitTime,
                 payload: [
                     "visit_id": proposal.visitId,
+                    "recovery_follow_up_id": followUp.id,
                     "new_window_start": apiTimestamp(proposal.newWindowStart),
                     "new_window_end": apiTimestamp(proposal.newWindowEnd)
                 ],
