@@ -241,7 +241,7 @@ struct AppointmentRecoveryPlanChangeRecommendation: Codable, Equatable {
     var requiresHumanSubmission: Bool
 }
 
-struct AppointmentRecoveryReassessmentSummary: Decodable, Equatable {
+struct AppointmentRecoveryReassessmentSummary: Codable, Equatable {
     var workflowId: String
     var agentRunId: String
     var outcome: String

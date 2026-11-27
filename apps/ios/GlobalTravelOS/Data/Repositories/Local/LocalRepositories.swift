@@ -468,7 +468,19 @@ final class LocalVisitRepository: VisitRepository {
             payload: try DateCoding.encode(visit)
         )
         return visit
+    }    func reassessFollowUp(
+        id: String,
+        request: AppointmentRecoveryReassessmentRequest
+    ) async throws -> AppointmentRecoveryReassessmentResponse {
+        throw APIError.serverError(
+            code: "LOCAL_MODE_UNSUPPORTED",
+            message: "预约重评需要服务端最新航班运营证据，本地模式无法执行。",
+            traceId: nil,
+            details: ["follow_up_id": id]
+        )
     }
+
+
 }
 
 // MARK: - ProactiveRepository（P3 充实：规则扫描/审批；P1 先读本地表）
