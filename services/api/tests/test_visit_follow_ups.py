@@ -6,9 +6,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+import pytest
 from sqlalchemy import delete, select
 
 from app.api.schemas import CustomerAppointmentWindowAttestationCreate
