@@ -30,4 +30,4 @@
 
 - ExternalSignal 不是建议的附属元数据；它是 Provider 事实的权威可追溯来源。Case 以 `external_signal:{signal_id}` 为稳定身份，proactive suggestion 与 VisitFollowUp 在该 Case 上作为派生处置/行动来源。
 - 同一 signal 因 payload/计划影响变化而重新生成建议时，应更新原 Case 的来源指纹与影响证据，不应因 suggestion ID 变化而产生第二个开放风险事项。
-- Weather impact 仅在 Place ID 精确匹配且时间窗重叠时标记暴露；Flight impact 仅在 ExternalSignal 的规范化运营事件引用、完整性指纹和当前 FlightSegmentPlanBinding 均通过验证时计算。OpenSky telemetry 不构成航空公司运营事实。
+- Weather impact 仅在 Place ID 精确匹配且时间窗重叠时标记暴露；Flight impact 仅在 ExternalSignal 的规范化运营事件引用、完整性指纹和当前 FlightSegmentPlanBinding 均通过验证时计算。OpenSky telemetry 不构成航空公司运营事实；即使 telemetry 被包装成 ProactiveSuggestion，只要缺少 FlightOperationalUpdate，也不能进入 Trip Risk Case。
