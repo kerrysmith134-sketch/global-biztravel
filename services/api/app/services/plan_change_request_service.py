@@ -547,9 +547,13 @@ def retry_plan_change(
         raise NotFound("计划变更工作流不存在")
 
     workflow_payload = workflow.payload if isinstance(workflow.payload, dict) else {}
+    raw_result_trip_version = workflow_payload.get("result_trip_version")
+    raw_base_plan_id = workflow_payload.get("base_plan_version_id")
+    if raw_result_trip_version is None or raw_base_plan_id is None:
+        raise Unprocessable("计划变更工作流缺少基础版本或结果版本记录")
     try:
-        result_trip_version = int(workflow_payload.get("result_trip_version"))
-        base_plan_id = UUID(str(workflow_payload.get("base_plan_version_id")))
+        result_trip_version = int(raw_result_trip_version)
+        base_plan_id = UUID(str(raw_base_plan_id))
     except (TypeError, ValueError):
         raise Unprocessable("计划变更工作流缺少基础版本或结果版本记录") from None
 
