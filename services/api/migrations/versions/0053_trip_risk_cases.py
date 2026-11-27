@@ -184,9 +184,32 @@ def upgrade() -> None:
         ["organization_id", "trip_id", "case_id", "created_at"],
     )
     helpers.enable_org_rls("trip_risk_case_events", force=True)
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION prevent_trip_risk_case_event_update() RETURNS trigger AS $
+        BEGIN
+            RAISE EXCEPTION 'trip_risk_case_events is append-only'
+                USING ERRCODE = '55000';
+        END
+        $ LANGUAGE plpgsql
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_trip_risk_case_events_append_only
+        BEFORE UPDATE ON trip_risk_case_events
+        FOR EACH ROW EXECUTE FUNCTION prevent_trip_risk_case_event_update()
+        """
+    )
+    if helpers.role_exists("gbt_app"):
+        op.execute("REVOKE UPDATE, DELETE ON trip_risk_case_events FROM gbt_app")
 
 
 def downgrade() -> None:
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_trip_risk_case_events_append_only ON trip_risk_case_events"
+    )
+    op.execute("DROP FUNCTION IF EXISTS prevent_trip_risk_case_event_update()")
     helpers.disable_org_rls("trip_risk_case_events")
     helpers.disable_org_rls("trip_risk_cases")
     op.drop_table("trip_risk_case_events")
