@@ -420,6 +420,128 @@ def create_change_request(
     )
 
 
+def retry_plan_change(
+    session: Session,
+    organization_id: UUID | str,
+    workflow_id: UUID | str,
+    *,
+    actor_user_id: UUID | str,
+) -> PlanChangeOutcome:
+    """Re-enqueue the existing Plan Change job without reapplying its Visit mutation."""
+    org_id = UUID(str(organization_id))
+    resolved_workflow_id = UUID(str(workflow_id))
+    reference = session.scalars(
+        select(WorkflowInstance).where(
+            WorkflowInstance.organization_id == org_id,
+            WorkflowInstance.id == resolved_workflow_id,
+            WorkflowInstance.workflow_type == "PLAN_CHANGE",
+        )
+    ).one_or_none()
+    if reference is None or reference.trip_id is None:
+        raise NotFound("计划变更工作流不存在")
+
+    # Keep the same Trip → Workflow lock order used by Plan Change creation.
+    trip = session.scalars(
+        select(Trip)
+        .where(Trip.organization_id == org_id, Trip.id == reference.trip_id)
+        .with_for_update()
+    ).one_or_none()
+    if trip is None:
+        raise NotFound("计划变更所属出行不存在")
+
+    workflow = session.scalars(
+        select(WorkflowInstance)
+        .where(
+            WorkflowInstance.organization_id == org_id,
+            WorkflowInstance.id == resolved_workflow_id,
+            WorkflowInstance.trip_id == trip.id,
+            WorkflowInstance.workflow_type == "PLAN_CHANGE",
+        )
+        .with_for_update()
+    ).one_or_none()
+    if workflow is None:
+        raise NotFound("计划变更工作流不存在")
+
+    workflow_payload = workflow.payload if isinstance(workflow.payload, dict) else {}
+    try:
+        result_trip_version = int(workflow_payload.get("result_trip_version"))
+        base_plan_id = UUID(str(workflow_payload.get("base_plan_version_id")))
+    except (TypeError, ValueError):
+        raise Unprocessable("计划变更工作流缺少基础版本或结果版本记录") from None
+
+    if trip.status in {"CANCELLED", "COMPLETED"}:
+        raise Unprocessable("已取消或已完成的出行不能重新规划")
+    if trip.version != result_trip_version:
+        raise PlanVersionConflict(
+            "计划变更后的行程输入再次发生变化，不能重试旧工作流",
+            details={
+                "workflow_trip_version": result_trip_version,
+                "current_trip_version": trip.version,
+            },
+        )
+    if trip.active_plan_version_id != base_plan_id:
+        raise PlanVersionConflict("生效计划已变化，不能重试基于旧计划的变更工作流")
+    if workflow.job_id is None:
+        raise Unprocessable("计划变更工作流没有关联规划任务")
+
+    previous_job = job_service.get_job(session, org_id, workflow.job_id)
+    if (
+        previous_job.job_type != job_service.JOB_TYPE_PLAN_TRIP
+        or str((previous_job.payload or {}).get("trip_id") or "") != str(trip.id)
+        or (previous_job.payload or {}).get("trip_version") != result_trip_version
+    ):
+        raise Unprocessable("计划变更关联的任务与当前行程版本不匹配")
+
+    if previous_job.status in {"PENDING", "RUNNING"}:
+        return PlanChangeOutcome(
+            workflow=workflow,
+            job_id=previous_job.id,
+            trip_version=trip.version,
+        )
+    if previous_job.status not in {"FAILED", "DEAD", "CANCELLED"}:
+        raise PlanVersionConflict(
+            "当前规划任务不是可重试的失败或取消状态",
+            details={"job_id": str(previous_job.id), "status": previous_job.status},
+        )
+
+    dedupe_key = f"plan_trip:{trip.id}:{trip.version}"
+    retried_job = job_service.enqueue(
+        session,
+        org_id,
+        job_type=job_service.JOB_TYPE_PLAN_TRIP,
+        payload={"trip_id": str(trip.id), "trip_version": trip.version},
+        dedupe_key=dedupe_key,
+        created_by_user_id=actor_user_id,
+    )
+    if retried_job.status not in {"PENDING", "RUNNING"}:
+        raise Unprocessable("重新入队未能创建或复用在途规划任务")
+
+    retry_history = workflow_payload.get("retry_history")
+    history = list(retry_history) if isinstance(retry_history, list) else []
+    history.append(
+        {
+            "previous_job_id": str(previous_job.id),
+            "previous_job_status": previous_job.status,
+            "job_id": str(retried_job.id),
+            "queued_at": datetime.now(UTC).isoformat(),
+            "actor_user_id": str(actor_user_id),
+        }
+    )
+    workflow_payload["retry_history"] = history[-20:]
+    workflow_payload["retry_count"] = len(history)
+    workflow_payload["latest_retry_job_id"] = str(retried_job.id)
+    workflow.job_id = retried_job.id
+    workflow.status = "ACCEPTED"
+    workflow.payload = workflow_payload
+    session.flush()
+
+    return PlanChangeOutcome(
+        workflow=workflow,
+        job_id=retried_job.id,
+        trip_version=trip.version,
+    )
+
+
 __all__ = [
     "ADD_VISIT",
     "CANCEL_VISIT",
@@ -429,4 +551,5 @@ __all__ = [
     "REMOVE_VISIT",
     "SUPPORTED_OPERATIONS",
     "create_change_request",
+    "retry_plan_change",
 ]
