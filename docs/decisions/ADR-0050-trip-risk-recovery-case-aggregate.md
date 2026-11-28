@@ -39,3 +39,8 @@
 - Reassessment 必须关联原恢复 AgentRun、当前航班运营事件、PlanVersion、输入指纹及三类结构化 Evidence。窗口陈述保持 PARTIALLY_VERIFIED / externally_verified=false；不把出差人陈述视为客户已确认。
 - 当前事件、计划或来源发生变化时旧 Reassessment 标记过期。系统只提供下一步复核/人工提交建议，不自动修改计划、联系客户或关闭 Risk Case。
 - Recovery Readiness 完整性失败时 fail closed；只有来源、运行、FollowUp、重评回执及 Evidence 全部匹配，才允许投影为已验证的恢复状态。
+## H2.26.3 补充：ACTIVE Plan 还必须匹配当前 Trip 输入版本
+
+- `PlanVersion.status == ACTIVE` 仅表示生命周期状态；若 `PlanVersion.trip_version != Trip.version`，该 Plan 不再代表当前行程输入。外部天气/航班影响评估必须返回 `STALE_ACTIVE_PLAN_INPUT`，不能使用旧 PlanStop 或 PlanTravelLeg 继续推断当前预约影响。
+- Recovery Brief、Workflow、AgentRun 和 Reassessment 必须携带 Plan/Trip 版本指纹。Trip 输入变化后，既有 Brief/Reassessment 自动变为 stale，需要先重建并激活当前计划，再重新评估。
+- 不新增 PlanVersion 状态，也不自动 SUPERSEDE/激活计划；继续由现有 Plan Change / planning workflow 管理计划生命周期。
