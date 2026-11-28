@@ -62,7 +62,7 @@ final class TripRiskContractTests: XCTestCase {
         )
         payload["context"] = [
             "recovery_readiness": [
-                "status": "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED",
+                "status": "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION",
                 "integrity_status": "VERIFIED",
                 "expected_action_count": 1,
                 "accepted_action_count": 1,
@@ -77,6 +77,14 @@ final class TripRiskContractTests: XCTestCase {
                             "status": "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED",
                             "decision": "PLAN_CHANGE_RECOMMENDATION_READY",
                             "customer_window_verification_status": "PARTIALLY_VERIFIED"
+                        ],
+                        "plan_change": [
+                            "status": "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION",
+                            "integrity_status": "VERIFIED",
+                            "job_status": "SUCCEEDED",
+                            "candidate_plan_version_id": "plan-2",
+                            "candidate_plan_version_number": 2,
+                            "candidate_plan_status": "DRAFT"
                         ]
                     ]
                 ]
@@ -87,11 +95,13 @@ final class TripRiskContractTests: XCTestCase {
 
         let value = try DateCoding.decode(TripRiskCase.self, fromJSON: json)
         XCTAssertEqual(value.recoveryReadinessDescriptions.count, 2)
-        XCTAssertTrue(value.recoveryReadinessDescriptions[0].contains("等待人工提交计划变更"))
+        XCTAssertTrue(value.recoveryReadinessDescriptions[0].contains("候选计划已生成，等待人工激活"))
         XCTAssertTrue(value.recoveryReadinessDescriptions[0].contains("证据链已验证"))
         XCTAssertTrue(value.recoveryReadinessDescriptions[1].contains("征求客户改期窗口"))
         XCTAssertTrue(value.recoveryReadinessDescriptions[1].contains("已完成"))
         XCTAssertTrue(value.recoveryReadinessDescriptions[1].contains("重评待人工提交计划"))
+        XCTAssertTrue(value.recoveryReadinessDescriptions[1].contains("候选计划已生成，待人工激活"))
+        XCTAssertTrue(value.recoveryReadinessDescriptions[1].contains("候选计划 v2"))
     }
 
     func testTripRiskCaseEventContractSamplePreservesCaseVersion() throws {
