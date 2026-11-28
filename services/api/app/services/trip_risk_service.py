@@ -24,7 +24,7 @@ from app.models.records import VisitFollowUp, VisitFollowUpEvent
 from app.models.trip import Trip
 from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
-from app.services import external_impact_service, notification_service
+from app.services import appointment_recovery_service, external_impact_service, notification_service
 from app.services.signal_clock_policy import MAX_FUTURE_OBSERVED_AT_SKEW
 
 TERMINAL_STATUSES = frozenset({"RESOLVED", "DISMISSED"})
@@ -140,6 +140,36 @@ def _append_event(
 
 def _source_ref(source_type: str, source_id: UUID, **fields: Any) -> dict[str, Any]:
     return {"type": source_type, "id": str(source_id), **fields}
+
+
+def _recovery_brief_recomputation_issue(
+    brief: dict[str, Any],
+    current_assessment: dict[str, Any],
+) -> tuple[str, str] | None:
+    """Rebuild a persisted deterministic brief from current source facts.
+
+    Returns (classification, reason), where classification is STALE or FAILED.
+    This checks more than the mutable Suggestion/AgentRun copies agreeing with each
+    other: the action manifest must still be reproducible from the current plan impact.
+    """
+    if brief.get("agent_version") != appointment_recovery_service.AGENT_VERSION:
+        return ("STALE", "RECOVERY_BRIEF_AGENT_VERSION_CHANGED")
+    raw_generated_at = brief.get("generated_at")
+    if not isinstance(raw_generated_at, str) or not raw_generated_at.strip():
+        return ("FAILED", "RECOVERY_BRIEF_GENERATED_AT_MISSING")
+    try:
+        generated_at = datetime.fromisoformat(raw_generated_at.replace("Z", "+00:00"))
+    except ValueError:
+        return ("FAILED", "RECOVERY_BRIEF_GENERATED_AT_INVALID")
+    if generated_at.tzinfo is None or generated_at.utcoffset() is None:
+        return ("FAILED", "RECOVERY_BRIEF_GENERATED_AT_NOT_TIMEZONE_AWARE")
+    rebuilt = appointment_recovery_service.build_recovery_brief(
+        current_assessment,
+        generated_at=generated_at,
+    )
+    if _canonical_json(rebuilt) != _canonical_json(brief):
+        return ("FAILED", "RECOVERY_BRIEF_RECOMPUTATION_MISMATCH")
+    return None
 
 
 
@@ -608,6 +638,16 @@ def _recovery_readiness(
                     no_action_stale_reasons.append(
                         f"NO_ACTION_CURRENT_{field_name.upper()}_CHANGED"
                     )
+            if not no_action_stale_reasons:
+                brief_issue = _recovery_brief_recomputation_issue(brief, current_impact)
+                if brief_issue is not None:
+                    classification, reason = brief_issue
+                    target = (
+                        no_action_stale_reasons
+                        if classification == "STALE"
+                        else no_action_failures
+                    )
+                    target.append(reason)
             if current_impact.get("propagation_complete") is not True:
                 no_action_stale_reasons.append("NO_ACTION_CURRENT_PROPAGATION_INCOMPLETE")
             if current_impact.get("status") not in {
@@ -787,9 +827,11 @@ def _recovery_readiness(
         and isinstance(matching_assessments[-1].get("impact_assessment"), dict)
         else None
     )
+    current_assessment_matches_brief = current_assessment is not None
     if current_assessment is not None:
         if current_assessment.get("plan_input_current") is not True:
             stale_reasons.append("CURRENT_PLAN_INPUT_STALE")
+            current_assessment_matches_brief = False
         source_flight_segment_id = source.get("flight_segment_id")
         source_operational_update_id = source.get("operational_update_id")
         if source_flight_segment_id and source_operational_update_id:
@@ -823,6 +865,13 @@ def _recovery_readiness(
         for field_name, current_value in current_source_fields.items():
             if source.get(field_name) != current_value:
                 stale_reasons.append(f"CURRENT_IMPACT_{field_name.upper()}_CHANGED")
+                current_assessment_matches_brief = False
+        if current_assessment_matches_brief:
+            brief_issue = _recovery_brief_recomputation_issue(brief, current_assessment)
+            if brief_issue is not None:
+                classification, reason = brief_issue
+                target = stale_reasons if classification == "STALE" else integrity_failures
+                target.append(reason)
     elif signal_id:
         stale_reasons.append("CURRENT_SIGNAL_IMPACT_NOT_AVAILABLE")
 
