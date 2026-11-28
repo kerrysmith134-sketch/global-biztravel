@@ -1148,6 +1148,26 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
             ).one()
             recovery_run_id = suggestion.proposed_action["params"]["recovery_agent_run_id"]
 
+        initial_reconcile = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert initial_reconcile.status_code == 200, initial_reconcile.text
+        initial_feed = client.get(
+            f"/v1/trips/{trip_id}/risk-cases",
+            headers=headers(),
+        )
+        assert initial_feed.status_code == 200, initial_feed.text
+        initial_case = next(
+            item for item in initial_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{original_signal_id}"
+        )
+        initial_readiness = initial_case["context"]["recovery_readiness"]
+        assert initial_readiness["integrity_status"] == "VERIFIED"
+        assert initial_readiness["status"] == "AWAITING_HUMAN_DECISION"
+        assert initial_readiness["expected_action_count"] == 1
+        assert initial_readiness["accepted_action_count"] == 0
+
         feed = client.get(f"/v1/visits/{visit_id}/follow-ups", headers=headers())
         assert feed.status_code == 200, feed.text
         candidates = [
@@ -1169,6 +1189,19 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
         )
         assert accepted.status_code == 201, accepted.text
         follow_up_id = accepted.json()["id"]
+        accepted_risk_feed = client.get(
+            f"/v1/trips/{trip_id}/risk-cases",
+            headers=headers(),
+        )
+        assert accepted_risk_feed.status_code == 200, accepted_risk_feed.text
+        accepted_case = next(
+            item for item in accepted_risk_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{original_signal_id}"
+        )
+        accepted_readiness = accepted_case["context"]["recovery_readiness"]
+        assert accepted_readiness["status"] == "AWAITING_HUMAN_ACTION"
+        assert accepted_readiness["accepted_action_count"] == 1
+        assert accepted_readiness["actions"][0]["follow_up_id"] == follow_up_id
 
         request_payload = {
             "customer_window": {
@@ -1250,6 +1283,28 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
             "customer_window_independently_verified": False,
         }
         assert result["evidence_ids"] and result["input_sha256"]
+
+        reassessment_reconcile = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert reassessment_reconcile.status_code == 200, reassessment_reconcile.text
+        reassessed_risk_feed = client.get(
+            f"/v1/trips/{trip_id}/risk-cases",
+            headers=headers(),
+        )
+        assert reassessed_risk_feed.status_code == 200, reassessed_risk_feed.text
+        reassessed_case = next(
+            item for item in reassessed_risk_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{original_signal_id}"
+        )
+        reassessed_readiness = reassessed_case["context"]["recovery_readiness"]
+        assert reassessed_readiness["status"] == "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED"
+        reassessment = reassessed_readiness["actions"][0]["reassessment"]
+        assert reassessment["integrity_status"] == "VERIFIED"
+        assert reassessment["decision"] == "PLAN_CHANGE_RECOMMENDATION_READY"
+        assert reassessment["customer_window_verification_status"] == "PARTIALLY_VERIFIED"
+        assert reassessed_case["status"] != "RESOLVED"
 
         replay = client.post(
             f"/v1/visit-follow-ups/{follow_up_id}:reassess",
@@ -1392,6 +1447,25 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
         plan_change_result = submitted.json()
         assert plan_change_result["status"] == "ACCEPTED"
         assert plan_change_result["trip_version"] > recommendation["base_trip_version"]
+
+        stale_recovery_reconcile = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert stale_recovery_reconcile.status_code == 200, stale_recovery_reconcile.text
+        stale_recovery_feed = client.get(
+            f"/v1/trips/{trip_id}/risk-cases",
+            headers=headers(),
+        )
+        assert stale_recovery_feed.status_code == 200, stale_recovery_feed.text
+        stale_recovery_case = next(
+            item for item in stale_recovery_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{original_signal_id}"
+        )
+        stale_readiness = stale_recovery_case["context"]["recovery_readiness"]
+        assert stale_readiness["status"] == "STALE_BRIEF"
+        assert stale_readiness["integrity_status"] == "VERIFIED"
+        assert stale_recovery_case["status"] != "RESOLVED"
 
         with org_session(UUID(ORG_A)) as session:
             plan_change_workflow = session.get(
