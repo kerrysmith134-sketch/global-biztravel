@@ -44,3 +44,10 @@
 - `PlanVersion.status == ACTIVE` 仅表示生命周期状态；若 `PlanVersion.trip_version != Trip.version`，该 Plan 不再代表当前行程输入。外部天气/航班影响评估必须返回 `STALE_ACTIVE_PLAN_INPUT`，不能使用旧 PlanStop 或 PlanTravelLeg 继续推断当前预约影响。
 - Recovery Brief、Workflow、AgentRun 和 Reassessment 必须携带 Plan/Trip 版本指纹。Trip 输入变化后，既有 Brief/Reassessment 自动变为 stale，需要先重建并激活当前计划，再重新评估。
 - 不新增 PlanVersion 状态，也不自动 SUPERSEDE/激活计划；继续由现有 Plan Change / planning workflow 管理计划生命周期。
+
+## H2.26.4 补充：Recovery Brief 必须能从当前权威事实重建
+
+- Suggestion 与 AgentRun 的两份 JSON 输出一致仅能证明副本一致，不能单独证明动作清单真实来自当前影响事实。Risk Readiness 必须使用当前可验证的 FlightOperationalUpdate / ExternalSignal / Plan impact 和原始 generated_at 重新运行确定性 Brief builder，并比较完整规范化输出。
+- Agent 算法版本变化使 Brief 过期；generated_at 无效或同版本下不能重现完整 Brief 则为完整性失败。不能让对两个副本的同步篡改绕过核验。
+- Provider 时间戳容差统一为最多五分钟的有限时钟偏差，超过容差的未来信号不进入当前风险聚合；有效结束时间始终按当前真实时钟判断。
+- Case Event API 以 case_version 表示因果顺序；created_at 不作为审计事件的主排序键。
