@@ -910,7 +910,10 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
         risk_impact = risk_case["context"]["external_signal_assessments"][0]["impact_assessment"]
         assert risk_impact["status"] == "OPERATIONAL_DELAY_ASSESSED"
         assert risk_impact["missed_visit_ids"] == [first_visit_id, second_visit_id]
-        risk_evidence_types = {item["type"] for item in risk_case["evidence_refs"]}
+        risk_evidence_types = {
+            item.get("type") or item.get("kind")
+            for item in risk_case["evidence_refs"]
+        }
         assert {
             "EXTERNAL_SIGNAL_PAYLOAD",
             "IMPACT_ASSESSMENT",
