@@ -637,7 +637,7 @@ def _recovery_readiness(
         no_action_evidence = [
             {
                 "type": "APPOINTMENT_RECOVERY_READINESS",
-                "id": expected_source_suggestion_id,
+                "id": str(suggestion.id),
                 "status": no_action_status,
                 "integrity_status": no_action_integrity,
                 "sha256": no_action_hash,
