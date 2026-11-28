@@ -840,13 +840,12 @@ def _recovery_readiness(
             ("operational_update_id", "operational_update_id"),
             ("content_sha256", "content_sha256"),
             ("plan_version_id", "plan_version_id"),
+            ("trip_version", "trip_version"),
             ("plan_trip_version", "plan_trip_version"),
             ("plan_input_current", "plan_input_current"),
         ):
             if run_input.get(input_key) != source.get(source_key):
                 integrity_failures.append(f"RECOVERY_AGENT_RUN_{input_key.upper()}_MISMATCH")
-        if run_input.get("trip_version") != trip.version:
-            integrity_failures.append("RECOVERY_AGENT_RUN_TRIP_VERSION_MISMATCH")
         if workflow is not None and isinstance(workflow.payload, dict):
             if workflow.payload.get("trip_version") != run_input.get("trip_version"):
                 integrity_failures.append("RECOVERY_WORKFLOW_TRIP_VERSION_MISMATCH")
