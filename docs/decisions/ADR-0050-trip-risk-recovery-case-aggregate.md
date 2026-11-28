@@ -31,3 +31,11 @@
 - ExternalSignal 不是建议的附属元数据；它是 Provider 事实的权威可追溯来源。Case 以 `external_signal:{signal_id}` 为稳定身份，proactive suggestion 与 VisitFollowUp 在该 Case 上作为派生处置/行动来源。
 - 同一 signal 因 payload/计划影响变化而重新生成建议时，应更新原 Case 的来源指纹与影响证据，不应因 suggestion ID 变化而产生第二个开放风险事项。
 - Weather impact 仅在 Place ID 精确匹配且时间窗重叠时标记暴露；Flight impact 仅在 ExternalSignal 的规范化运营事件引用、完整性指纹和当前 FlightSegmentPlanBinding 均通过验证时计算。OpenSky telemetry 不构成航空公司运营事实；即使 telemetry 被包装成 ProactiveSuggestion，只要缺少 FlightOperationalUpdate，也不能进入 Trip Risk Case。
+
+## H2.26.2 补充：Recovery Readiness 是证据投影，不是第二套恢复工作流
+
+- Case 通过原有 Suggestion、Appointment Recovery Workflow/AgentRun、VisitFollowUp、Appointment Recovery Reassessment Workflow/AgentRun、REASSESSED Event 与 Evidence 计算恢复就绪度；不新增任务状态真相源，不复制或重写恢复流程。
+- Recovery Brief action 必须与人类接受的 FollowUp 按 AgentRun ID、source_index、source_key 一对一对应。生成方案不代表授权、执行或完成；FollowUp 完成也不等同于风险可以关闭。
+- Reassessment 必须关联原恢复 AgentRun、当前航班运营事件、PlanVersion、输入指纹及三类结构化 Evidence。窗口陈述保持 PARTIALLY_VERIFIED / externally_verified=false；不把出差人陈述视为客户已确认。
+- 当前事件、计划或来源发生变化时旧 Reassessment 标记过期。系统只提供下一步复核/人工提交建议，不自动修改计划、联系客户或关闭 Risk Case。
+- Recovery Readiness 完整性失败时 fail closed；只有来源、运行、FollowUp、重评回执及 Evidence 全部匹配，才允许投影为已验证的恢复状态。
