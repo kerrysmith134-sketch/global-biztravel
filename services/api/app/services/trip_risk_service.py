@@ -533,13 +533,17 @@ def _recovery_readiness(
     integrity_failures: list[str] = []
     stale_reasons: list[str] = []
 
-    if workflow is None:
+    if workflow is None and workflow_id:
+        integrity_failures.append("RECOVERY_WORKFLOW_POINTER_NOT_FOUND")
+    if workflow is None and not workflow_id:
         if len(workflows_for_suggestion) == 1:
             workflow = workflows_for_suggestion[0]
         elif len(workflows_for_suggestion) > 1:
             integrity_failures.append("MULTIPLE_RECOVERY_WORKFLOWS_FOR_SUGGESTION")
         else:
             integrity_failures.append("RECOVERY_WORKFLOW_MISSING")
+    if workflow is not None and workflow_id and str(workflow.id) != workflow_id:
+        integrity_failures.append("RECOVERY_WORKFLOW_POINTER_MISMATCH")
     if workflow is not None:
         if workflow.workflow_type != "APPOINTMENT_RECOVERY":
             integrity_failures.append("RECOVERY_WORKFLOW_TYPE_MISMATCH")
@@ -643,7 +647,7 @@ def _recovery_readiness(
 
     if workflow is not None and isinstance(workflow.payload, dict):
         payload = workflow.payload
-        if payload.get("source_signal_id") not in (signal_id, ""):
+        if payload.get("source_signal_id") != (signal_id or ""):
             integrity_failures.append("RECOVERY_WORKFLOW_SIGNAL_MISMATCH")
         if payload.get("agent_type") != brief.get("agent_type"):
             integrity_failures.append("RECOVERY_WORKFLOW_AGENT_TYPE_MISMATCH")
@@ -730,6 +734,11 @@ def _recovery_readiness(
                     continue
                 if row.source_key != f"APPOINTMENT_RECOVERY:{run.id}:{index}":
                     integrity_failures.append("RECOVERY_FOLLOW_UP_SOURCE_KEY_MISMATCH")
+                expected_visit_id = actions[index].get("visit_id")
+                if expected_visit_id and str(row.visit_id) != str(expected_visit_id):
+                    integrity_failures.append("RECOVERY_FOLLOW_UP_VISIT_MISMATCH")
+                if row.confirmed_at is None or row.confirmed_by_user_id is None:
+                    integrity_failures.append("RECOVERY_FOLLOW_UP_HUMAN_CONFIRMATION_MISSING")
                 if index in follow_up_by_index:
                     duplicate_indexes.add(index)
                 else:
