@@ -641,13 +641,24 @@ def _plan_change_readiness(
 
     raw_result_trip_version = payload.get("result_trip_version")
     raw_base_plan_id = payload.get("base_plan_version_id")
+    if (
+        isinstance(raw_result_trip_version, bool)
+        or not isinstance(raw_result_trip_version, (int, str))
+        or not str(raw_result_trip_version).strip()
+    ):
+        result_trip_version = -1
+        failures.append("PLAN_CHANGE_RESULT_TRIP_VERSION_INVALID")
+    else:
+        try:
+            result_trip_version = int(raw_result_trip_version)
+        except ValueError:
+            result_trip_version = -1
+            failures.append("PLAN_CHANGE_RESULT_TRIP_VERSION_INVALID")
     try:
-        result_trip_version = int(raw_result_trip_version)
         base_plan_id = UUID(str(raw_base_plan_id))
     except (TypeError, ValueError):
-        result_trip_version = -1
         base_plan_id = None
-        failures.append("PLAN_CHANGE_VERSION_POINTER_INVALID")
+        failures.append("PLAN_CHANGE_BASE_PLAN_ID_INVALID")
     if (
         result_trip_version < 1
         or workflow.job_id is None
