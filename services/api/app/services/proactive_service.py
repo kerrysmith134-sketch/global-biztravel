@@ -905,6 +905,9 @@ def _record_candidate(
                 "operational_update_id": recovery_brief.get("source", {}).get("operational_update_id"),
                 "content_sha256": recovery_brief.get("source", {}).get("content_sha256"),
                 "plan_version_id": recovery_brief.get("source", {}).get("plan_version_id"),
+                "trip_version": trip.version,
+                "plan_trip_version": recovery_brief.get("source", {}).get("plan_trip_version"),
+                "plan_input_current": recovery_brief.get("source", {}).get("plan_input_current"),
                 "agent_version": appointment_recovery_service.AGENT_VERSION,
                 "schema_version": appointment_recovery_service.SCHEMA_VERSION,
             },
@@ -919,6 +922,9 @@ def _record_candidate(
             **workflow.payload,
             "agent_run_id": str(recovery_run.id),
             "recovery_status": recovery_brief.get("status"),
+            "trip_version": trip.version,
+            "plan_trip_version": recovery_brief.get("source", {}).get("plan_trip_version"),
+            "plan_input_current": recovery_brief.get("source", {}).get("plan_input_current"),
         }
         action_params["recovery_workflow_id"] = str(workflow.id)
         action_params["recovery_agent_run_id"] = str(recovery_run.id)
