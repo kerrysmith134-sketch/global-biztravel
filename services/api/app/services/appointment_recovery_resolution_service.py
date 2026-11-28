@@ -655,7 +655,10 @@ def reassess_follow_up(
     session.flush()
     evidence_ids = [str(row.id) for row in rows]
     output["evidence_ids"] = evidence_ids
-    run.output = output
+    # AgentRun already received the initial dict at construction time. Assign a
+    # fresh mapping so SQLAlchemy's JSONB attribute instrumentation persists the
+    # post-flush evidence manifest instead of relying on same-object reassignment.
+    run.output = dict(output)
     session.add(
         VisitFollowUpEvent(
             organization_id=org,
