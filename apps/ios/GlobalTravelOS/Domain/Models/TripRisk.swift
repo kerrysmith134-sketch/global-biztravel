@@ -138,6 +138,83 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
         }
     }
 
+
+    var recoveryReadinessDescriptions: [String] {
+        guard let readiness = context?["recovery_readiness"]?.objectValue else { return [] }
+        let rawStatus = readiness["status"]?.stringValue ?? "UNKNOWN"
+        let statusLabel: String
+        switch rawStatus {
+        case "NOT_AVAILABLE": statusLabel = "尚未生成恢复方案"
+        case "INTEGRITY_FAILURE": statusLabel = "恢复证据完整性校验失败"
+        case "STALE_BRIEF": statusLabel = "恢复方案已过期，需要重新评估"
+        case "AWAITING_HUMAN_DECISION": statusLabel = "等待人工确认恢复动作"
+        case "AWAITING_HUMAN_ACTION": statusLabel = "等待执行已确认的恢复动作"
+        case "PARTIALLY_ACCEPTED": statusLabel = "部分恢复动作尚未确认"
+        case "IN_PROGRESS": statusLabel = "恢复动作处理中"
+        case "REASSESSMENT_REQUIRED": statusLabel = "恢复动作已完成，等待重新评估"
+        case "REASSESSMENT_REVIEW_REQUIRED": statusLabel = "重评仍有数据缺口，需要复核"
+        case "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED": statusLabel = "恢复建议已形成，等待人工提交计划变更"
+        case "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION":
+            statusLabel = "重评通过，仍需人工确认风险关闭"
+        case "HUMAN_REVIEW_REQUIRED": statusLabel = "恢复动作已驳回，需要人工复核"
+        case "NO_ACTION_REQUIRED_VERIFIED": statusLabel = "完整影响评估确认无需恢复动作"
+        default: statusLabel = rawStatus
+        }
+
+        let integrity = readiness["integrity_status"]?.stringValue ?? "UNKNOWN"
+        let integrityLabel = integrity == "VERIFIED" ? "证据链已验证" : "证据链未通过验证"
+        let expected = readiness["expected_action_count"]?.integerValue ?? 0
+        let accepted = readiness["accepted_action_count"]?.integerValue ?? 0
+        let completed = readiness["completed_action_count"]?.integerValue ?? 0
+        let summary = "\(statusLabel) · \(integrityLabel) · 已确认 \(accepted)/\(expected) · 已完成 \(completed)"
+
+        let actions = readiness["actions"]?.arrayValue ?? []
+        let details = actions.compactMap { item -> String? in
+            guard let action = item.objectValue else { return nil }
+            let code = action["action_code"]?.stringValue ?? "恢复动作"
+            let actionLabel: String
+            switch code {
+            case "REQUEST_CUSTOMER_RESCHEDULE_WINDOW": actionLabel = "征求客户改期窗口"
+            case "VERIFY_REPLACEMENT_FLIGHT_AND_RECONFIRM": actionLabel = "核实替代航班"
+            case "REVALIDATE_TRAVEL_CHAIN": actionLabel = "重新核验交通链"
+            case "CONFIRM_CUSTOMER_APPOINTMENT_WINDOW": actionLabel = "确认客户预约窗口"
+            case "RECONFIRM_ARRIVAL_AND_KEEP_APPOINTMENT_PROVISIONAL": actionLabel = "复核到达时间并暂留预约"
+            default: actionLabel = code
+            }
+
+            let followUpStatus = action["follow_up_status"]?.stringValue ?? "AWAITING_HUMAN_DECISION"
+            let followUpLabel: String
+            switch followUpStatus {
+            case "AWAITING_HUMAN_DECISION": followUpLabel = "待人工确认"
+            case "OPEN": followUpLabel = "待执行"
+            case "IN_PROGRESS": followUpLabel = "处理中"
+            case "COMPLETED": followUpLabel = "已完成"
+            case "DISMISSED": followUpLabel = "已驳回"
+            default: followUpLabel = followUpStatus
+            }
+
+            let reassessment = action["reassessment"]?.objectValue
+            let reassessmentStatus = reassessment?["status"]?.stringValue
+            let reassessmentLabel: String
+            switch reassessmentStatus {
+            case "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED":
+                reassessmentLabel = " · 重评待人工提交计划"
+            case "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION":
+                reassessmentLabel = " · 重评通过，待人工关闭"
+            case "REASSESSMENT_REVIEW_REQUIRED":
+                reassessmentLabel = " · 重评仍需复核"
+            case "INTEGRITY_FAILURE":
+                reassessmentLabel = " · 重评证据异常"
+            case "NOT_REASSESSED":
+                reassessmentLabel = " · 尚未重评"
+            default:
+                reassessmentLabel = ""
+            }
+            return "\(actionLabel) · \(followUpLabel)\(reassessmentLabel)"
+        }
+        return [summary] + details
+    }
+
     var sourceDescriptions: [String] {
         (sourceRefs ?? []).map { reference in
             let type = reference["type"]?.stringValue
