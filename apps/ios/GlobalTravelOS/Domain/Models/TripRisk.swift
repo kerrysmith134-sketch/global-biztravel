@@ -204,6 +204,8 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
                 reassessmentLabel = " · 重评通过，待人工关闭"
             case "REASSESSMENT_REVIEW_REQUIRED":
                 reassessmentLabel = " · 重评仍需复核"
+            case "REASSESSMENT_STALE":
+                reassessmentLabel = " · 重评依据已变化"
             case "INTEGRITY_FAILURE":
                 reassessmentLabel = " · 重评证据异常"
             case "NOT_REASSESSED":
