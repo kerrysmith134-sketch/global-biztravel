@@ -177,6 +177,26 @@ struct TripRiskCaseDetailView: View {
                     }
                 }
 
+
+                if !viewModel.riskCase.recoveryReadinessDescriptions.isEmpty {
+                    Section("恢复就绪度") {
+                        ForEach(
+                            Array(viewModel.riskCase.recoveryReadinessDescriptions.enumerated()),
+                            id: \.offset
+                        ) { item in
+                            Text(item.element)
+                                .font(item.offset == 0 ? .subheadline.weight(.medium) : .footnote)
+                                .foregroundStyle(
+                                    item.offset == 0
+                                        ? DS.ColorToken.textPrimary
+                                        : DS.ColorToken.textSecondary
+                                )
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.vertical, DS.Spacing.xs)
+                        }
+                    }
+                }
+
                 Section("证据引用") {
                     if viewModel.riskCase.evidenceDescriptions.isEmpty {
                         Text("暂无结构化证据引用")
