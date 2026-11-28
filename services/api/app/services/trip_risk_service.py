@@ -179,7 +179,10 @@ def _follow_up_reassessment_readiness(
 
     if workflow.workflow_type != "APPOINTMENT_RECOVERY_REASSESSMENT":
         failures.append("REASSESSMENT_WORKFLOW_TYPE_MISMATCH")
-    if workflow.organization_id != follow_up.organization_id or workflow.trip_id != follow_up.trip_id:
+    if (
+        workflow.organization_id != follow_up.organization_id
+        or workflow.trip_id != follow_up.trip_id
+    ):
         failures.append("REASSESSMENT_WORKFLOW_SCOPE_MISMATCH")
     if workflow.status != "COMPLETED":
         failures.append("REASSESSMENT_WORKFLOW_NOT_COMPLETED")
@@ -196,7 +199,10 @@ def _follow_up_reassessment_readiness(
             failures.append("REASSESSMENT_AGENT_RUN_ORG_MISMATCH")
         if run.workflow_id != workflow.id:
             failures.append("REASSESSMENT_AGENT_RUN_WORKFLOW_MISMATCH")
-        if run.agent_type != "APPOINTMENT_RECOVERY_REASSESSMENT" or run.status != "SUCCEEDED":
+        if (
+            run.agent_type != "APPOINTMENT_RECOVERY_REASSESSMENT"
+            or run.status != "SUCCEEDED"
+        ):
             failures.append("REASSESSMENT_AGENT_RUN_NOT_SUCCEEDED")
         if run.finished_at is None:
             failures.append("REASSESSMENT_AGENT_RUN_FINISH_TIME_MISSING")
@@ -214,7 +220,10 @@ def _follow_up_reassessment_readiness(
             if snapshot.get("source_recovery_action_index") != follow_up.source_index:
                 failures.append("REASSESSMENT_SOURCE_ACTION_INDEX_MISMATCH")
             source_input = source_run.input if isinstance(source_run.input, dict) else {}
-            if snapshot.get("source_operational_update_id") != source_input.get("operational_update_id"):
+            if (
+                snapshot.get("source_operational_update_id")
+                != source_input.get("operational_update_id")
+            ):
                 failures.append("REASSESSMENT_SOURCE_FLIGHT_EVENT_MISMATCH")
             if snapshot.get("source_signal_id") != source_input.get("signal_id"):
                 failures.append("REASSESSMENT_SOURCE_SIGNAL_MISMATCH")
@@ -233,8 +242,29 @@ def _follow_up_reassessment_readiness(
             or hashlib.sha256(_canonical_json(snapshot).encode("utf-8")).hexdigest() != input_sha256
         ):
             failures.append("REASSESSMENT_INPUT_FINGERPRINT_MISMATCH")
-        if payload.get("decision") != output.get("decision") or payload.get("outcome") != output.get("outcome"):
+        if (
+            payload.get("decision") != output.get("decision")
+            or payload.get("outcome") != output.get("outcome")
+        ):
             failures.append("REASSESSMENT_WORKFLOW_OUTPUT_MISMATCH")
+        if payload.get("source_recovery_agent_run_id") != run_input.get(
+            "source_recovery_agent_run_id"
+        ):
+            failures.append("REASSESSMENT_WORKFLOW_SOURCE_RUN_MISMATCH")
+        if payload.get("source_signal_id") != output.get("source_signal_id"):
+            failures.append("REASSESSMENT_WORKFLOW_SIGNAL_MISMATCH")
+        if payload.get("operational_update_id") != output.get(
+            "flight_operational_update_id"
+        ):
+            failures.append("REASSESSMENT_WORKFLOW_FLIGHT_EVENT_MISMATCH")
+        if payload.get("plan_version_id") != output.get("current_plan_version_id"):
+            failures.append("REASSESSMENT_WORKFLOW_PLAN_VERSION_MISMATCH")
+        if payload.get("input_sha256") != output.get("input_sha256"):
+            failures.append("REASSESSMENT_WORKFLOW_INPUT_HASH_MISMATCH")
+        if payload.get("agent_version") != output.get("agent_version"):
+            failures.append("REASSESSMENT_WORKFLOW_AGENT_VERSION_MISMATCH")
+        if payload.get("schema_version") != output.get("schema_version"):
+            failures.append("REASSESSMENT_WORKFLOW_SCHEMA_VERSION_MISMATCH")
 
     expected_event_note_prefix = f"AgentRun {run_id} · "
     if run is not None and not any(
@@ -251,7 +281,9 @@ def _follow_up_reassessment_readiness(
         if row.subject_type == "visit_follow_up" and row.subject_id == follow_up.id
     }
     expected_evidence = {
-        "FLIGHT_OPERATIONAL_UPDATE": f"flight-operational-update:{output.get('flight_operational_update_id')}",
+        "FLIGHT_OPERATIONAL_UPDATE": (
+            f"flight-operational-update:{output.get('flight_operational_update_id')}"
+        ),
         "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT": f"reassessment-impact:{run_id}",
         "APPOINTMENT_RECOVERY_REASSESSMENT": f"appointment-reassessment:{run_id}",
     }
@@ -262,10 +294,50 @@ def _follow_up_reassessment_readiness(
             failures.append(f"REASSESSMENT_EVIDENCE_MISSING:{kind}")
             continue
         evidence_ids.add(str(row.id))
-        if hashlib.sha256(_canonical_json(row.payload).encode("utf-8")).hexdigest() != row.content_hash:
+        payload_hash = hashlib.sha256(
+            _canonical_json(row.payload).encode("utf-8")
+        ).hexdigest()
+        if payload_hash != row.content_hash:
             failures.append(f"REASSESSMENT_EVIDENCE_HASH_MISMATCH:{kind}")
         if row.verification_status in {"DISPUTED", "REJECTED", "UNVERIFIED"}:
             failures.append(f"REASSESSMENT_EVIDENCE_NOT_ACCEPTABLE:{kind}")
+
+        evidence_payload = row.payload if isinstance(row.payload, dict) else {}
+        if kind == "FLIGHT_OPERATIONAL_UPDATE":
+            event = output.get("flight_operational_event")
+            expected_event = event if isinstance(event, dict) else {}
+            if _canonical_json(evidence_payload) != _canonical_json(expected_event):
+                failures.append("REASSESSMENT_FLIGHT_EVIDENCE_CONTENT_MISMATCH")
+        elif kind == "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT":
+            if (
+                evidence_payload.get("signal_id") != output.get("source_signal_id")
+                or evidence_payload.get("operational_update_id")
+                != output.get("flight_operational_update_id")
+                or evidence_payload.get("content_sha256")
+                != output.get("flight_operational_event", {}).get("content_sha256")
+                or evidence_payload.get("plan_version_id")
+                != output.get("current_plan_version_id")
+                or _canonical_json(evidence_payload.get("assessment"))
+                != _canonical_json(output.get("impact_assessment"))
+            ):
+                failures.append("REASSESSMENT_IMPACT_EVIDENCE_CONTENT_MISMATCH")
+        elif kind == "APPOINTMENT_RECOVERY_REASSESSMENT":
+            expected_reassessment = {
+                "workflow_id": str(workflow.id),
+                "agent_run_id": run_id,
+                "follow_up_id": str(follow_up.id),
+                "outcome": output.get("outcome"),
+                "decision": output.get("decision"),
+                "input_sha256": output.get("input_sha256"),
+                "before": output.get("before"),
+                "after": output.get("after"),
+                "changed_fields": output.get("changed_fields"),
+                "data_gaps": output.get("data_gaps"),
+                "plan_change_recommendation": output.get("plan_change_recommendation"),
+                "guardrails": output.get("guardrails"),
+            }
+            if _canonical_json(evidence_payload) != _canonical_json(expected_reassessment):
+                failures.append("REASSESSMENT_RESULT_EVIDENCE_CONTENT_MISMATCH")
     output_evidence_ids = output.get("evidence_ids")
     if (
         not isinstance(output_evidence_ids, list)
@@ -394,6 +466,10 @@ def _recovery_readiness(
         workflow_payload = workflow.payload if isinstance(workflow.payload, dict) else {}
         if workflow_payload.get("source_suggestion_id") != expected_source_suggestion_id:
             integrity_failures.append("RECOVERY_WORKFLOW_SUGGESTION_MISMATCH")
+        if workflow_payload.get("source_trigger_id") != (
+            str(suggestion.source_trigger_id) if suggestion.source_trigger_id else None
+        ):
+            integrity_failures.append("RECOVERY_WORKFLOW_TRIGGER_MISMATCH")
         if workflow.status != "COMPLETED":
             integrity_failures.append("RECOVERY_WORKFLOW_NOT_COMPLETED")
 
@@ -430,10 +506,25 @@ def _recovery_readiness(
         integrity_failures.append("RECOVERY_GUARDRAILS_MISSING")
     elif any(guardrails.get(key) is not False for key in required_guardrails):
         integrity_failures.append("RECOVERY_SIDE_EFFECT_GUARDRAIL_FAILED")
-    if guardrails.get("candidate_windows") not in ([], None):
+    if guardrails.get("candidate_windows") != []:
         integrity_failures.append("RECOVERY_CANDIDATE_WINDOWS_MUST_BE_EMPTY")
     if actions_invalid:
         integrity_failures.append("RECOVERY_ACTION_LIST_INVALID")
+    for action_index, action_item in enumerate(actions):
+        if not isinstance(action_item, dict):
+            continue
+        if action_item.get("candidate_windows") != []:
+            integrity_failures.append(
+                f"RECOVERY_ACTION_CANDIDATE_WINDOWS_NOT_EMPTY:{action_index}"
+            )
+        customer_message = action_item.get("customer_message")
+        if (
+            not isinstance(customer_message, dict)
+            or customer_message.get("status") != "NOT_DRAFTED"
+        ):
+            integrity_failures.append(
+                f"RECOVERY_ACTION_CUSTOMER_MESSAGE_NOT_GUARDED:{action_index}"
+            )
     if not isinstance(brief.get("agent_version"), str) or not brief.get("agent_version"):
         integrity_failures.append("RECOVERY_AGENT_VERSION_MISSING")
     if not isinstance(brief.get("schema_version"), str) or not brief.get("schema_version"):
@@ -441,7 +532,7 @@ def _recovery_readiness(
 
     signal_id_value = params.get("signal_id")
     signal_id = str(signal_id_value).strip() if signal_id_value else ""
-    if source.get("signal_id") and str(source.get("signal_id")) != signal_id:
+    if source.get("signal_id") != (signal_id or None):
         integrity_failures.append("RECOVERY_BRIEF_SIGNAL_MISMATCH")
     matching_assessments = [
         item
@@ -535,7 +626,9 @@ def _recovery_readiness(
             else:
                 readiness_status = "INTEGRITY_FAILURE"
                 integrity_status = "FAILED"
-                integrity_failures.append("EMPTY_RECOVERY_ACTIONS_WITHOUT_COMPLETE_NO_ACTION_ASSESSMENT")
+                integrity_failures.append(
+                    "EMPTY_RECOVERY_ACTIONS_WITHOUT_COMPLETE_NO_ACTION_ASSESSMENT"
+                )
         else:
             if guardrails.get("human_decision_required") is not True:
                 integrity_failures.append("RECOVERY_HUMAN_DECISION_GUARDRAIL_MISMATCH")
@@ -567,7 +660,10 @@ def _recovery_readiness(
             else:
                 missing_indexes = sorted(set(range(len(actions))) - set(follow_up_by_index))
                 statuses = [row.status for row in follow_up_by_index.values()]
-                if any(status not in {"OPEN", "IN_PROGRESS", "COMPLETED", "DISMISSED"} for status in statuses):
+                if any(
+                    status not in {"OPEN", "IN_PROGRESS", "COMPLETED", "DISMISSED"}
+                    for status in statuses
+                ):
                     integrity_status = "FAILED"
                     readiness_status = "INTEGRITY_FAILURE"
                     integrity_failures.append("RECOVERY_FOLLOW_UP_STATUS_INVALID")
@@ -581,7 +677,10 @@ def _recovery_readiness(
                     readiness_status = "REASSESSMENT_REQUIRED"
                 elif all(status == "DISMISSED" for status in statuses) and not missing_indexes:
                     readiness_status = "HUMAN_REVIEW_REQUIRED"
-                elif all(status in {"COMPLETED", "DISMISSED"} for status in statuses) and not missing_indexes:
+                elif (
+                    all(status in {"COMPLETED", "DISMISSED"} for status in statuses)
+                    and not missing_indexes
+                ):
                     readiness_status = "REASSESSMENT_REQUIRED"
                 elif follow_up_by_index:
                     readiness_status = "PARTIALLY_ACCEPTED"
@@ -606,7 +705,9 @@ def _recovery_readiness(
                 "visit_id": action_item.get("visit_id"),
                 "decision_status": action_item.get("decision_status"),
                 "follow_up_id": str(follow_up.id) if follow_up is not None else None,
-                "follow_up_status": follow_up.status if follow_up is not None else "AWAITING_HUMAN_DECISION",
+                "follow_up_status": (
+                    follow_up.status if follow_up is not None else "AWAITING_HUMAN_DECISION"
+                ),
             }
         )
 
