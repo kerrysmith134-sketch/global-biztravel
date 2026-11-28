@@ -465,11 +465,17 @@ def _follow_up_reassessment_readiness(
         failures.append("REASSESSMENT_WINDOW_ATTESTATION_INPUT_MISMATCH")
 
     output_evidence_ids = output.get("evidence_ids")
-    if (
-        not isinstance(output_evidence_ids, list)
-        or not evidence_ids.issubset({str(item) for item in output_evidence_ids})
-    ):
-        failures.append("REASSESSMENT_EVIDENCE_MANIFEST_MISMATCH")
+    if not isinstance(output_evidence_ids, list):
+        failures.append("REASSESSMENT_EVIDENCE_MANIFEST_INVALID")
+        manifest_missing_ids = sorted(evidence_ids)
+    else:
+        declared_evidence_ids = {str(item) for item in output_evidence_ids}
+        manifest_missing_ids = sorted(evidence_ids - declared_evidence_ids)
+        if manifest_missing_ids:
+            failures.append(
+                "REASSESSMENT_EVIDENCE_MANIFEST_MISMATCH:"
+                + ",".join(manifest_missing_ids)
+            )
 
     guardrails_value = output.get("guardrails")
     guardrails = guardrails_value if isinstance(guardrails_value, dict) else {}
@@ -526,6 +532,12 @@ def _follow_up_reassessment_readiness(
         "plan_change_recommendation": output.get("plan_change_recommendation"),
         "customer_window_verification_status": output.get("customer_window_verification_status"),
         "evidence_ids": sorted(evidence_ids),
+        "manifest_missing_evidence_ids": manifest_missing_ids,
+        "declared_evidence_ids": (
+            sorted({str(item) for item in output_evidence_ids})
+            if isinstance(output_evidence_ids, list)
+            else []
+        ),
         "reasons": sorted(set(failures + stale_reasons)),
     }
 
