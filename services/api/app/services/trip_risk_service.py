@@ -25,6 +25,7 @@ from app.models.trip import Trip
 from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import external_impact_service, notification_service
+from app.services.signal_clock_policy import MAX_FUTURE_OBSERVED_AT_SKEW
 
 TERMINAL_STATUSES = frozenset({"RESOLVED", "DISMISSED"})
 ACTIVE_SUGGESTION_STATUSES = frozenset({"PENDING", "APPROVED", "EXECUTED", "SUPPRESSED"})
@@ -1351,6 +1352,7 @@ def _build_groups(
     # OpenSky telemetry deliberately stays out of the risk queue unless a separately
     # validated FlightOperationalUpdate envelope is present.
     evaluation_now = now or session.scalar(select(func.clock_timestamp()))
+    observed_at_cutoff = evaluation_now + MAX_FUTURE_OBSERVED_AT_SKEW
     subject_refs: list[tuple[str, str]] = [("TRIP", str(trip.id))]
     subject_refs.extend(
         ("COUNTRY", str(country).upper())
@@ -1378,8 +1380,8 @@ def _build_groups(
             .where(
                 ExternalSignal.organization_id == organization_id,
                 signal_subject_filter,
-                ExternalSignal.observed_at <= evaluation_now,
-                ExternalSignal.valid_from <= evaluation_now,
+                ExternalSignal.observed_at <= observed_at_cutoff,
+                ExternalSignal.valid_from <= observed_at_cutoff,
                 or_(
                     ExternalSignal.valid_until.is_(None),
                     ExternalSignal.valid_until > evaluation_now,
@@ -2526,7 +2528,7 @@ def list_case_events(
                 TripRiskCaseEvent.trip_id == trip,
                 TripRiskCaseEvent.case_id == case,
             )
-            .order_by(TripRiskCaseEvent.created_at.desc(), TripRiskCaseEvent.id.desc())
+            .order_by(TripRiskCaseEvent.case_version.desc())
             .limit(max(1, min(limit, 500)))
         ).all()
     )
