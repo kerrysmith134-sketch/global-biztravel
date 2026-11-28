@@ -403,7 +403,9 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
                 "note": "Manual reopen without changed source evidence.",
             },
         )
-        assert manual_reopen.status_code == 422, manual_reopen.text
+        # OPEN is intentionally excluded from the public transition schema.
+        # Reopening is reconciler-owned and requires changed source evidence.
+        assert manual_reopen.status_code == 400, manual_reopen.text
 
         with org_session(UUID(ORG_A)) as session:
             source = session.get(ProactiveSuggestion, UUID(suggestion_id))
