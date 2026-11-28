@@ -709,6 +709,7 @@ def _build_groups(
             )
         }
 
+    reassessment_run_ids: set[UUID] = set()
     reassessment_workflows = list(
         session.scalars(
             select(WorkflowInstance)
@@ -735,7 +736,7 @@ def _build_groups(
         reassessment_run_id = workflow_payload.get("agent_run_id")
         if reassessment_run_id:
             try:
-                recovery_run_ids.add(UUID(str(reassessment_run_id)))
+                reassessment_run_ids.add(UUID(str(reassessment_run_id)))
             except (TypeError, ValueError):
                 continue
 
@@ -751,7 +752,7 @@ def _build_groups(
         ).all()
     )
     recovery_workflows_by_suggestion: dict[str, list[WorkflowInstance]] = {}
-    recovery_run_ids: set[UUID] = set()
+    recovery_run_ids: set[UUID] = set(reassessment_run_ids)
     for recovery_workflow in recovery_workflows:
         workflow_payload = (
             recovery_workflow.payload if isinstance(recovery_workflow.payload, dict) else {}
@@ -1319,7 +1320,7 @@ def _build_groups(
                 if action_item is None:
                     continue
                 source_run = runs.get(follow_up.source_agent_run_id)
-                action_item["reassessment"] = _follow_up_reassessment_readiness(
+                reassessment = _follow_up_reassessment_readiness(
                     follow_up,
                     source_run,
                     reassessment_workflows_by_follow_up.get(str(follow_up.id), []),
@@ -1327,6 +1328,17 @@ def _build_groups(
                     reassessment_events_by_follow_up.get(follow_up.id, []),
                     reassessment_evidence_by_follow_up.get(follow_up.id, []),
                 )
+                action_item["reassessment"] = reassessment
+                if reassessment.get("status") != "NOT_REASSESSED":
+                    group["evidence_refs"].append(
+                        {
+                            "type": "APPOINTMENT_RECOVERY_REASSESSMENT_READINESS",
+                            "id": str(reassessment.get("agent_run_id") or follow_up.id),
+                            "status": reassessment.get("status"),
+                            "integrity_status": reassessment.get("integrity_status"),
+                            "evidence_ids": reassessment.get("evidence_ids", []),
+                        }
+                    )
             actions = recovery_readiness.get("actions", [])
             follow_up_statuses = [
                 item.get("follow_up_status")
