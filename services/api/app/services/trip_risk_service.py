@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.api.errors import Conflict, NotFound, Unprocessable
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanVersion
+from app.models.reliability import BackgroundJob
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp, VisitFollowUpEvent
 from app.models.trip import Trip
@@ -522,10 +523,251 @@ def _follow_up_reassessment_readiness(
         "latest_flight_operational_update_id": output.get("flight_operational_update_id"),
         "latest_signal_id": output.get("source_signal_id"),
         "plan_version_id": output.get("current_plan_version_id"),
+        "plan_change_recommendation": output.get("plan_change_recommendation"),
         "customer_window_verification_status": output.get("customer_window_verification_status"),
         "evidence_ids": sorted(evidence_ids),
         "reasons": sorted(set(failures + stale_reasons)),
     }
+
+def _plan_change_readiness(
+    session: Session,
+    organization_id: UUID,
+    trip: Trip,
+    follow_up: VisitFollowUp,
+    reassessment: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Project the real PLAN_CHANGE job and candidate/active PlanVersion state.
+
+    The Workflow's ACCEPTED status only means the input mutation was accepted. The
+    BackgroundJob result proves candidate generation; Trip.active_plan_version_id
+    and PlanVersion.status prove human activation. None of these stages closes a
+    FollowUp or Risk Case automatically.
+    """
+    workflows = list(
+        session.scalars(
+            select(WorkflowInstance)
+            .where(
+                WorkflowInstance.organization_id == organization_id,
+                WorkflowInstance.trip_id == trip.id,
+                WorkflowInstance.workflow_type == "PLAN_CHANGE",
+            )
+            .order_by(WorkflowInstance.created_at, WorkflowInstance.id)
+        ).all()
+    )
+    matched = []
+    for candidate in workflows:
+        payload = candidate.payload if isinstance(candidate.payload, dict) else {}
+        if (
+            payload.get("source") == "APPOINTMENT_RECOVERY"
+            and str(payload.get("recovery_follow_up_id") or "") == str(follow_up.id)
+        ):
+            matched.append(candidate)
+    if not matched:
+        return (
+            {
+                "status": "NOT_SUBMITTED",
+                "integrity_status": "NOT_APPLICABLE",
+                "workflow_id": None,
+                "job_id": None,
+                "candidate_plan_version_id": None,
+                "active_plan_version_id": (
+                    str(trip.active_plan_version_id) if trip.active_plan_version_id else None
+                ),
+                "reasons": [],
+            },
+            [],
+        )
+
+    workflow = matched[-1]
+    payload = workflow.payload if isinstance(workflow.payload, dict) else {}
+    recommendation_value = reassessment.get("plan_change_recommendation")
+    recommendation = recommendation_value if isinstance(recommendation_value, dict) else {}
+    operation_value = payload.get("operation_payload")
+    operation_payload = operation_value if isinstance(operation_value, dict) else {}
+    failures: list[str] = []
+    stale_reasons: list[str] = []
+
+    if workflow.workflow_type != "PLAN_CHANGE" or workflow.status not in {
+        "ACCEPTED", "FAILED", "COMPLETED"
+    }:
+        failures.append("PLAN_CHANGE_WORKFLOW_STATE_INVALID")
+    if workflow.organization_id != organization_id or workflow.trip_id != trip.id:
+        failures.append("PLAN_CHANGE_WORKFLOW_SCOPE_MISMATCH")
+    if payload.get("source") != "APPOINTMENT_RECOVERY":
+        failures.append("PLAN_CHANGE_SOURCE_MISMATCH")
+    if payload.get("operation_type") != "CHANGE_VISIT_TIME":
+        failures.append("PLAN_CHANGE_OPERATION_TYPE_MISMATCH")
+    if str(payload.get("recovery_follow_up_id") or "") != str(follow_up.id):
+        failures.append("PLAN_CHANGE_FOLLOW_UP_MISMATCH")
+    if str(operation_payload.get("recovery_follow_up_id") or "") != str(follow_up.id):
+        failures.append("PLAN_CHANGE_OPERATION_FOLLOW_UP_MISMATCH")
+    if str(operation_payload.get("visit_id") or "") != str(follow_up.visit_id):
+        failures.append("PLAN_CHANGE_VISIT_MISMATCH")
+    if recommendation:
+        if payload.get("base_plan_version_id") != recommendation.get("base_plan_version_id"):
+            failures.append("PLAN_CHANGE_BASE_PLAN_MISMATCH")
+        if payload.get("base_trip_version") != recommendation.get("base_trip_version"):
+            failures.append("PLAN_CHANGE_BASE_TRIP_VERSION_MISMATCH")
+        if operation_payload.get("new_window_start") != recommendation.get("new_window_start"):
+            failures.append("PLAN_CHANGE_WINDOW_START_MISMATCH")
+        if operation_payload.get("new_window_end") != recommendation.get("new_window_end"):
+            failures.append("PLAN_CHANGE_WINDOW_END_MISMATCH")
+    else:
+        stale_reasons.append("CURRENT_REASSESSMENT_RECOMMENDATION_NOT_AVAILABLE")
+
+    raw_result_trip_version = payload.get("result_trip_version")
+    raw_base_plan_id = payload.get("base_plan_version_id")
+    try:
+        result_trip_version = int(raw_result_trip_version)
+        base_plan_id = UUID(str(raw_base_plan_id))
+    except (TypeError, ValueError):
+        result_trip_version = -1
+        base_plan_id = None
+        failures.append("PLAN_CHANGE_VERSION_POINTER_INVALID")
+    if (
+        result_trip_version < 1
+        or workflow.job_id is None
+        or base_plan_id is None
+    ):
+        failures.append("PLAN_CHANGE_JOB_OR_BASE_PLAN_POINTER_MISSING")
+
+    job: BackgroundJob | None = None
+    if workflow.job_id is not None:
+        job = session.scalars(
+            select(BackgroundJob).where(
+                BackgroundJob.organization_id == organization_id,
+                BackgroundJob.id == workflow.job_id,
+            )
+        ).one_or_none()
+    if job is None:
+        failures.append("PLAN_CHANGE_BACKGROUND_JOB_MISSING")
+    else:
+        job_payload = job.payload if isinstance(job.payload, dict) else {}
+        if job.job_type != "plan_trip":
+            failures.append("PLAN_CHANGE_JOB_TYPE_MISMATCH")
+        if str(job_payload.get("trip_id") or "") != str(trip.id):
+            failures.append("PLAN_CHANGE_JOB_TRIP_MISMATCH")
+        if job_payload.get("trip_version") != result_trip_version:
+            failures.append("PLAN_CHANGE_JOB_TRIP_VERSION_MISMATCH")
+
+    candidate_plan: PlanVersion | None = None
+    candidate_plan_id: str | None = None
+    readiness_status = "PLAN_CHANGE_INTEGRITY_FAILURE"
+    integrity_status = "FAILED"
+    if not failures and not stale_reasons and job is not None:
+        if job.status in {"PENDING", "RUNNING"}:
+            readiness_status = "PLAN_CHANGE_OPTIMIZATION_PENDING"
+            integrity_status = "VERIFIED"
+        elif job.status in {"FAILED", "DEAD", "CANCELLED"}:
+            readiness_status = "PLAN_CHANGE_OPTIMIZATION_FAILED"
+            integrity_status = "VERIFIED"
+        elif job.status == "SUCCEEDED":
+            result = job.result if isinstance(job.result, dict) else {}
+            raw_plan_id = result.get("plan_version_id")
+            try:
+                plan_id = UUID(str(raw_plan_id))
+            except (TypeError, ValueError):
+                plan_id = None
+            if plan_id is None:
+                failures.append("PLAN_CHANGE_JOB_RESULT_PLAN_VERSION_MISSING")
+            else:
+                candidate_plan = session.scalars(
+                    select(PlanVersion).where(
+                        PlanVersion.organization_id == organization_id,
+                        PlanVersion.trip_id == trip.id,
+                        PlanVersion.id == plan_id,
+                    )
+                ).one_or_none()
+                if candidate_plan is None:
+                    failures.append("PLAN_CHANGE_RESULT_PLAN_VERSION_NOT_FOUND")
+                else:
+                    candidate_plan_id = str(candidate_plan.id)
+                    if candidate_plan.trip_version != result_trip_version:
+                        failures.append("PLAN_CHANGE_RESULT_PLAN_TRIP_VERSION_MISMATCH")
+                    if (
+                        result.get("version_number") is not None
+                        and result.get("version_number") != candidate_plan.version_number
+                    ):
+                        failures.append("PLAN_CHANGE_RESULT_PLAN_VERSION_NUMBER_MISMATCH")
+                    if trip.version != result_trip_version:
+                        stale_reasons.append("PLAN_CHANGE_INPUT_CHANGED_AFTER_SUBMISSION")
+                    elif candidate_plan.status == "DRAFT":
+                        if trip.active_plan_version_id == candidate_plan.id:
+                            failures.append("DRAFT_PLAN_IS_TRIP_ACTIVE_PLAN")
+                        else:
+                            readiness_status = "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION"
+                            integrity_status = "VERIFIED"
+                    elif candidate_plan.status == "ACTIVE":
+                        if trip.active_plan_version_id != candidate_plan.id:
+                            failures.append("ACTIVE_PLAN_POINTER_MISMATCH")
+                        else:
+                            readiness_status = "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED"
+                            integrity_status = "VERIFIED"
+                    elif candidate_plan.status == "SUPERSEDED":
+                        stale_reasons.append("PLAN_CHANGE_RESULT_PLAN_ALREADY_SUPERSEDED")
+                    else:
+                        failures.append("PLAN_CHANGE_RESULT_PLAN_STATUS_INVALID")
+        else:
+            failures.append("PLAN_CHANGE_JOB_STATUS_INVALID")
+
+    if failures:
+        readiness_status = "PLAN_CHANGE_INTEGRITY_FAILURE"
+        integrity_status = "FAILED"
+    elif stale_reasons:
+        readiness_status = "PLAN_CHANGE_STALE"
+        integrity_status = "VERIFIED"
+
+    readiness = {
+        "status": readiness_status,
+        "integrity_status": integrity_status,
+        "workflow_id": str(workflow.id),
+        "workflow_status": workflow.status,
+        "job_id": str(job.id) if job is not None else None,
+        "job_status": job.status if job is not None else None,
+        "candidate_plan_version_id": candidate_plan_id,
+        "candidate_plan_version_number": (
+            candidate_plan.version_number if candidate_plan is not None else None
+        ),
+        "candidate_plan_status": candidate_plan.status if candidate_plan is not None else None,
+        "active_plan_version_id": (
+            str(trip.active_plan_version_id) if trip.active_plan_version_id else None
+        ),
+        "base_plan_version_id": str(base_plan_id) if base_plan_id is not None else None,
+        "base_trip_version": payload.get("base_trip_version"),
+        "result_trip_version": result_trip_version if result_trip_version >= 0 else None,
+        "reasons": sorted(set(failures + stale_reasons)),
+    }
+    evidence = [
+        {
+            "type": "APPOINTMENT_RECOVERY_PLAN_CHANGE",
+            "id": str(workflow.id),
+            "status": readiness_status,
+            "integrity_status": integrity_status,
+            "job_id": str(job.id) if job is not None else None,
+            "candidate_plan_version_id": candidate_plan_id,
+        }
+    ]
+    if job is not None:
+        evidence.append(
+            {
+                "type": "PLAN_CHANGE_BACKGROUND_JOB",
+                "id": str(job.id),
+                "status": job.status,
+                "job_type": job.job_type,
+            }
+        )
+    if candidate_plan is not None:
+        evidence.append(
+            {
+                "type": "PLAN_CHANGE_RESULT_PLAN_VERSION",
+                "id": str(candidate_plan.id),
+                "version_number": candidate_plan.version_number,
+                "status": candidate_plan.status,
+                "trip_version": candidate_plan.trip_version,
+            }
+        )
+    return readiness, evidence
+
 
 def _recovery_readiness(
     trip: Trip,
