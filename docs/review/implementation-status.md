@@ -560,3 +560,14 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - iOS 风险详情新增“行程影响评估”，展示来源类型、评估状态、受影响/错过预约数量、计划版本与评估解释；来源和证据类型增加本地化标签。
 - 新增 PostgreSQL 集成测试：天气信号与同一 PlanStop 精确地点/时间窗重叠时，必须并入已引用该 Signal 的建议 Case，生成唯一 Case、可追溯计划证据并在重复扫描时保持幂等；另验证 OpenSky telemetry 不会被提升成航班风险。
 - **验证状态：** 代码和测试已推送 main，但当前工作环境不能访问 GitHub 工作区/运行项目依赖，尚未执行 PostgreSQL 迁移、test_trip_risk_cases.py、Ruff、Xcode 构建或 XCTest。GitHub Checks 必须以最新 HEAD 的实际结果为准；本轮不能视为 CI 通过或生产验收完成。
+### 2026-11-28 H2.26.2 — Recovery Readiness Intelligence
+
+- Trip Risk 对每个 Appointment Recovery Suggestion 做只读恢复就绪度投影，核验 Suggestion → APPOINTMENT_RECOVERY WorkflowInstance → AgentRun 的来源 Suggestion、Trigger、Signal、Trip、Workflow、Agent/Schema version、运行成功状态，以及 AgentRun output 与原始 recovery_brief 的规范化 JSON 完全一致。
+- 每个 Recovery Brief action 按 `source_index` 与 `source_key = APPOINTMENT_RECOVERY:{agent_run_id}:{source_index}` 精确匹配 VisitFollowUp；拒绝重复索引、错误来源、错误 Visit、缺少人类确认记录或状态不合法。输出等待人工决策、等待执行、处理中、部分接受、重新评估、人工复核等状态及逐项计数。
+- Recovery Brief 的 plan/booking/customer contact/message/candidate window guardrails 均做服务端再次检查；每个动作必须保持空的候选窗口且客户消息未起草。生成 Brief 不代表执行或完成。
+- 对已接受的恢复 FollowUp，进一步关联 Appointment Recovery Reassessment Workflow、AgentRun、REASSESSED 审计事件及 Evidence。核验最新航班事件、输入摘要、原恢复 Run 与 action index、当前 PlanVersion、重评决策、Evidence 内容哈希与回执清单；重评证据缺失、被篡改或血缘不一致时失败关闭。
+- 客户预约窗口 Evidence 明确保持 `PARTIALLY_VERIFIED` 且 `externally_verified=false`；该出差人陈述不等同于客户独立确认。即使重评结果为 REASSESSMENT_CLEARED，也只投影为待人工关闭，不能自动 RESOLVE Risk Case。
+- 重新核对当前有效 Signal 的运营事件与计划版本；来源已失效/更换或当前计划发生变化时，原重评标记为 STALE，须重新评估。计划变更建议始终保持人工提交门槛。
+- iOS Risk Case 详情新增“恢复就绪度”区，展示恢复链完整性、动作确认/完成数、FollowUp 状态及重评结果；过期重评显式展示为需重新评估。
+- 不新增实体表、不新增数据库迁移，不复制 Appointment Recovery 或 Reassessment 工作流；继续复用现有 WorkflowInstance、AgentRun、VisitFollowUp、VisitFollowUpEvent 与 Evidence。
+- **验证状态：** 本轮代码与集成/单元测试已推送 main。GitHub Actions 以最新 HEAD 的 Backend PostgreSQL/pytest 和 iOS Build/XCTest 实际结论为准；在其全部完成前不标记通过或生产就绪。
