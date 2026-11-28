@@ -3,7 +3,7 @@ name: ci
 # Versioned concurrency key: isolate the Trip Risk & Recovery and migration compatibility lane
 # from older validation work while still cancelling superseded runs for this PR/ref.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-25-1-trip-risk-recovery-validation
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-h2-26-5-recovery-readiness-validation
   cancel-in-progress: true
 
 on:
