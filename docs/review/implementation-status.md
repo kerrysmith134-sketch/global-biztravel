@@ -597,5 +597,5 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - Post-activation 最新重评若仍有数据缺口/Integrity Failure，状态优先级保持 REASSESSMENT_REVIEW_REQUIRED / INTEGRITY_FAILURE，不会被计划激活状态覆盖。客户窗口仍是 PARTIALLY_VERIFIED，必须人工处理 FollowUp 与风险关闭。
 - 新增真实集成流程：验证计划变更排队 → 注入已完成 Job 及 DRAFT PlanVersion → 对账验证候选计划待激活 → 调用真实 plans/:activate API → 对账验证激活后待重评，期间 Risk Case 与 FollowUp 都不得自动关闭。iOS 新增本地化阶段与候选计划版本号展示。
 - 无新增数据库迁移或实体；复用 PLAN_CHANGE Workflow、BackgroundJob、PlanVersion、Trip、VisitFollowUp、Reassessment AgentRun 和现有证据链。
-- Recovery Reassessment 的 Evidence Manifest 在 Evidence 写入后再持久化到 AgentRun.output；必须通过新的 JSONB dict 赋值触发 SQLAlchemy dirty tracking，不能复用构造 AgentRun 时的同一 dict 对象。集成测试回读数据库，要求 AgentRun.output.evidence_ids 与当前 FollowUp 的三类核心 Evidence + 可选客户窗口 Attestation 行 ID 集合完全一致。
+- Recovery Reassessment 的 Evidence Manifest 在 Evidence 写入后再持久化到 AgentRun.output。AgentRun 初始 output dict 已进入 ORM committed snapshot 后，不能再原地追加 evidence_ids；必须基于未修改的初始快照构造独立 final_output 并替换 JSONB 属性，否则 committed snapshot 会一起被原地改写，赋值比较时可能被误判为未变更。集成测试回读数据库，要求 AgentRun.output.evidence_ids 与当前 FollowUp 的三类核心 Evidence + 可选客户窗口 Attestation 行 ID 集合完全一致。
 - **验证状态：** 代码、集成测试、iOS 展示与文档已推送 main。以最新 HEAD 的 GitHub Backend Static/Type/Contract/Docs、PostgreSQL Migration/pytest 和 iOS SwiftLint/Build/XCTest 实际结果为准；Checks 完成前不标记通过或生产就绪。
