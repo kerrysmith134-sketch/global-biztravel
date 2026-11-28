@@ -153,6 +153,7 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
         case "IN_PROGRESS": statusLabel = "恢复动作处理中"
         case "REASSESSMENT_REQUIRED": statusLabel = "恢复动作已完成，等待重新评估"
         case "REASSESSMENT_REVIEW_REQUIRED": statusLabel = "重评仍有数据缺口，需要复核"
+        case "REASSESSMENT_STALE": statusLabel = "重评依据已变化，需要重新评估"
         case "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED": statusLabel = "恢复建议已形成，等待人工提交计划变更"
         case "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION":
             statusLabel = "重评通过，仍需人工确认风险关闭"
