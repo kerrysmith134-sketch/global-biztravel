@@ -157,6 +157,12 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
         case "REASSESSMENT_REVIEW_REQUIRED": statusLabel = "重评仍有数据缺口，需要复核"
         case "REASSESSMENT_STALE": statusLabel = "重评依据已变化，需要重新评估"
         case "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED": statusLabel = "恢复建议已形成，等待人工提交计划变更"
+        case "PLAN_CHANGE_OPTIMIZATION_PENDING": statusLabel = "计划变更已受理，等待优化任务完成"
+        case "PLAN_CHANGE_OPTIMIZATION_FAILED": statusLabel = "计划优化失败，需要重试或人工处理"
+        case "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION": statusLabel = "候选计划已生成，等待人工激活"
+        case "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED": statusLabel = "新计划已激活，等待重新评估"
+        case "PLAN_CHANGE_STALE": statusLabel = "计划变更依据已过期，需要重新评估"
+        case "PLAN_CHANGE_INTEGRITY_FAILURE": statusLabel = "计划变更执行证据链校验失败"
         case "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION":
             statusLabel = "重评通过，仍需人工确认风险关闭"
         case "HUMAN_REVIEW_REQUIRED": statusLabel = "恢复动作已驳回，需要人工复核"
@@ -215,7 +221,28 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
             default:
                 reassessmentLabel = ""
             }
-            return "\(actionLabel) · \(followUpLabel)\(reassessmentLabel)"
+            let planChange = action["plan_change"]?.objectValue
+            let planChangeStatus = planChange?["status"]?.stringValue
+            let planChangeLabel: String
+            switch planChangeStatus {
+            case "PLAN_CHANGE_OPTIMIZATION_PENDING":
+                planChangeLabel = " · 计划优化排队/执行中"
+            case "PLAN_CHANGE_OPTIMIZATION_FAILED":
+                planChangeLabel = " · 计划优化失败"
+            case "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION":
+                planChangeLabel = " · 候选计划已生成，待人工激活"
+            case "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED":
+                planChangeLabel = " · 计划已激活，待重新评估"
+            case "PLAN_CHANGE_STALE":
+                planChangeLabel = " · 计划变更依据已过期"
+            case "PLAN_CHANGE_INTEGRITY_FAILURE":
+                planChangeLabel = " · 计划变更证据异常"
+            default:
+                planChangeLabel = ""
+            }
+            let candidateVersion = planChange?["candidate_plan_version_number"]?.integerValue
+            let candidateVersionLabel = candidateVersion.map { " · 候选计划 v\($0)" } ?? ""
+            return "\(actionLabel) · \(followUpLabel)\(reassessmentLabel)\(planChangeLabel)\(candidateVersionLabel)"
         }
         return [summary] + details
     }
