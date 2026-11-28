@@ -54,6 +54,46 @@ final class TripRiskContractTests: XCTestCase {
         XCTAssertTrue(value.impactAssessmentDescriptions[0].contains("受影响拜访 1 项"))
     }
 
+
+    func testTripRiskCaseDecodesRecoveryReadinessAndReassessmentEvidence() throws {
+        let sampleData = try XCTUnwrap(ContractSamples.tripRiskCase.data(using: .utf8))
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: sampleData) as? [String: Any]
+        )
+        payload["context"] = [
+            "recovery_readiness": [
+                "status": "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED",
+                "integrity_status": "VERIFIED",
+                "expected_action_count": 1,
+                "accepted_action_count": 1,
+                "completed_action_count": 1,
+                "actions": [
+                    [
+                        "action_code": "REQUEST_CUSTOMER_RESCHEDULE_WINDOW",
+                        "visit_id": "visit-1",
+                        "follow_up_id": "follow-up-1",
+                        "follow_up_status": "COMPLETED",
+                        "reassessment": [
+                            "status": "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED",
+                            "decision": "PLAN_CHANGE_RECOMMENDATION_READY",
+                            "customer_window_verification_status": "PARTIALLY_VERIFIED"
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let json = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+
+        let value = try DateCoding.decode(TripRiskCase.self, fromJSON: json)
+        XCTAssertEqual(value.recoveryReadinessDescriptions.count, 2)
+        XCTAssertTrue(value.recoveryReadinessDescriptions[0].contains("等待人工提交计划变更"))
+        XCTAssertTrue(value.recoveryReadinessDescriptions[0].contains("证据链已验证"))
+        XCTAssertTrue(value.recoveryReadinessDescriptions[1].contains("征求客户改期窗口"))
+        XCTAssertTrue(value.recoveryReadinessDescriptions[1].contains("已完成"))
+        XCTAssertTrue(value.recoveryReadinessDescriptions[1].contains("重评待人工提交计划"))
+    }
+
     func testTripRiskCaseEventContractSamplePreservesCaseVersion() throws {
         let value = try DateCoding.decode(
             TripRiskCaseEvent.self,
