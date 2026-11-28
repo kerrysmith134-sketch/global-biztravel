@@ -879,6 +879,9 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
             assert recovery_run.agent_type == "APPOINTMENT_RECOVERY"
             assert recovery_run.status == "SUCCEEDED"
             assert recovery_run.input["content_sha256"] == assessment["content_sha256"]
+            assert recovery_run.input["trip_version"] == assessment["trip_version"]
+            assert recovery_run.input["plan_trip_version"] == assessment["plan_trip_version"]
+            assert recovery_run.input["plan_input_current"] is True
             assert recovery_run.output == recovery
             assert {item["kind"] for item in suggestion.evidence}.issuperset(
                 {
