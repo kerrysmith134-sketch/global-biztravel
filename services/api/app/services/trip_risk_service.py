@@ -529,6 +529,24 @@ def _follow_up_reassessment_readiness(
         "reasons": sorted(set(failures + stale_reasons)),
     }
 
+def _same_aware_instant(left: Any, right: Any) -> bool:
+    if not isinstance(left, str) or not isinstance(right, str):
+        return False
+    try:
+        left_at = datetime.fromisoformat(left.replace("Z", "+00:00"))
+        right_at = datetime.fromisoformat(right.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if (
+        left_at.tzinfo is None
+        or left_at.utcoffset() is None
+        or right_at.tzinfo is None
+        or right_at.utcoffset() is None
+    ):
+        return False
+    return left_at.astimezone(UTC) == right_at.astimezone(UTC)
+
+
 def _plan_change_readiness(
     session: Session,
     organization_id: UUID,
@@ -588,7 +606,7 @@ def _plan_change_readiness(
     stale_reasons: list[str] = []
 
     if workflow.workflow_type != "PLAN_CHANGE" or workflow.status not in {
-        "ACCEPTED", "FAILED", "COMPLETED"
+        "ACCEPTED", "RUNNING", "FAILED", "COMPLETED", "REJECTED"
     }:
         failures.append("PLAN_CHANGE_WORKFLOW_STATE_INVALID")
     if workflow.organization_id != organization_id or workflow.trip_id != trip.id:
@@ -608,9 +626,15 @@ def _plan_change_readiness(
             failures.append("PLAN_CHANGE_BASE_PLAN_MISMATCH")
         if payload.get("base_trip_version") != recommendation.get("base_trip_version"):
             failures.append("PLAN_CHANGE_BASE_TRIP_VERSION_MISMATCH")
-        if operation_payload.get("new_window_start") != recommendation.get("new_window_start"):
+        if not _same_aware_instant(
+            operation_payload.get("new_window_start"),
+            recommendation.get("new_window_start"),
+        ):
             failures.append("PLAN_CHANGE_WINDOW_START_MISMATCH")
-        if operation_payload.get("new_window_end") != recommendation.get("new_window_end"):
+        if not _same_aware_instant(
+            operation_payload.get("new_window_end"),
+            recommendation.get("new_window_end"),
+        ):
             failures.append("PLAN_CHANGE_WINDOW_END_MISMATCH")
     else:
         stale_reasons.append("CURRENT_REASSESSMENT_RECOMMENDATION_NOT_AVAILABLE")
