@@ -1215,7 +1215,7 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
         # the action manifest must also be reproducible from the current verified impact.
         with org_session(UUID(ORG_A)) as session:
             persisted_suggestion = session.get(
-                ProactiveSuggestion, UUID(recovery_suggestion_id)
+                ProactiveSuggestion, recovery_suggestion_id
             )
             persisted_run = session.get(AgentRun, UUID(recovery_run_id))
             assert persisted_suggestion is not None
@@ -1248,7 +1248,7 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
 
         with org_session(UUID(ORG_A)) as session:
             persisted_suggestion = session.get(
-                ProactiveSuggestion, UUID(recovery_suggestion_id)
+                ProactiveSuggestion, recovery_suggestion_id
             )
             persisted_run = session.get(AgentRun, UUID(recovery_run_id))
             assert persisted_suggestion is not None
