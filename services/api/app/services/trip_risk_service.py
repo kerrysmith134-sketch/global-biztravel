@@ -655,6 +655,24 @@ def _plan_change_readiness(
     ):
         failures.append("PLAN_CHANGE_JOB_OR_BASE_PLAN_POINTER_MISSING")
 
+    base_plan: PlanVersion | None = None
+    if base_plan_id is not None:
+        base_plan = session.scalars(
+            select(PlanVersion).where(
+                PlanVersion.organization_id == organization_id,
+                PlanVersion.trip_id == trip.id,
+                PlanVersion.id == base_plan_id,
+            )
+        ).one_or_none()
+        if base_plan is None:
+            failures.append("PLAN_CHANGE_BASE_PLAN_NOT_FOUND")
+        elif base_plan.trip_version != payload.get("base_trip_version"):
+            failures.append("PLAN_CHANGE_BASE_PLAN_TRIP_VERSION_MISMATCH")
+    if trip.version != result_trip_version:
+        stale_reasons.append("PLAN_CHANGE_INPUT_CHANGED_AFTER_SUBMISSION")
+    elif base_plan_id is not None and trip.active_plan_version_id != base_plan_id:
+        stale_reasons.append("PLAN_CHANGE_BASE_PLAN_NO_LONGER_ACTIVE")
+
     job: BackgroundJob | None = None
     if workflow.job_id is not None:
         job = session.scalars(
@@ -708,16 +726,18 @@ def _plan_change_readiness(
                     candidate_plan_id = str(candidate_plan.id)
                     if candidate_plan.trip_version != result_trip_version:
                         failures.append("PLAN_CHANGE_RESULT_PLAN_TRIP_VERSION_MISMATCH")
+                    if candidate_plan.job_id != job.id:
+                        failures.append("PLAN_CHANGE_RESULT_PLAN_JOB_MISMATCH")
                     if (
                         result.get("version_number") is not None
                         and result.get("version_number") != candidate_plan.version_number
                     ):
                         failures.append("PLAN_CHANGE_RESULT_PLAN_VERSION_NUMBER_MISMATCH")
-                    if trip.version != result_trip_version:
-                        stale_reasons.append("PLAN_CHANGE_INPUT_CHANGED_AFTER_SUBMISSION")
-                    elif candidate_plan.status == "DRAFT":
+                    if candidate_plan.status == "DRAFT":
                         if trip.active_plan_version_id == candidate_plan.id:
                             failures.append("DRAFT_PLAN_IS_TRIP_ACTIVE_PLAN")
+                        elif trip.active_plan_version_id != base_plan_id:
+                            stale_reasons.append("PLAN_CHANGE_BASE_PLAN_NO_LONGER_ACTIVE")
                         else:
                             readiness_status = "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION"
                             integrity_status = "VERIFIED"
