@@ -51,3 +51,11 @@
 - Agent 算法版本变化使 Brief 过期；generated_at 无效或同版本下不能重现完整 Brief 则为完整性失败。不能让对两个副本的同步篡改绕过核验。
 - Provider 时间戳容差统一为最多五分钟的有限时钟偏差，超过容差的未来信号不进入当前风险聚合；有效结束时间始终按当前真实时钟判断。
 - Case Event API 以 case_version 表示因果顺序；created_at 不作为审计事件的主排序键。
+
+## H2.26.5 补充：PLAN_CHANGE 的受理、候选生成与激活必须分阶段
+
+- PLAN_CHANGE Workflow.status=ACCEPTED 仅代表请求已受理并创建/关联 plan_trip BackgroundJob；只有 Job.status=SUCCEEDED 且 result.plan_version_id 指向同组织、同 Trip、匹配 Trip Version 的 PlanVersion，才代表候选计划已生成。
+- 候选计划 DRAFT 仍须由出差人通过现有 plans/:activate API 人工激活。激活事实必须同时满足 PlanVersion.status=ACTIVE 与 Trip.active_plan_version_id 指向该版本。
+- 新计划激活后，旧 Reassessment 的 Plan/Trip 版本快照自然过期；必须基于当前 ACTIVE Plan 再次重评。计划激活本身不能自动完成 VisitFollowUp，也不能自动关闭 TripRiskCase。
+- 对 Workflow、BackgroundJob、PlanVersion 的来源、组织/Trip、版本、操作和预约时间窗进行一致性核验；Job 失败、缺少结果计划、计划过期或关联不一致时分别投影为失败/过期/完整性异常状态。
+- iOS 只展示服务端阶段投影与证据引用，不自行推断候选计划已激活，也不以 Job 成功或计划激活代替客户独立确认。
