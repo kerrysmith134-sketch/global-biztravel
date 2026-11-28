@@ -1390,34 +1390,30 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
             )
             assert persisted_reassessment_run is not None
             assert persisted_reassessment_run.output["evidence_ids"] == result["evidence_ids"]
+            manifest_ids = [UUID(str(item)) for item in result["evidence_ids"]]
+            assert len(manifest_ids) == len(set(manifest_ids))
             persisted_reassessment_evidence = list(
                 session.scalars(
                     select(Evidence).where(
                         Evidence.organization_id == UUID(ORG_A),
+                        Evidence.id.in_(manifest_ids),
                         Evidence.subject_type == "visit_follow_up",
                         Evidence.subject_id == UUID(follow_up_id),
-                        Evidence.kind.in_(
-                            [
-                                "FLIGHT_OPERATIONAL_UPDATE",
-                                "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT",
-                                "APPOINTMENT_RECOVERY_REASSESSMENT",
-                                "APPOINTMENT_WINDOW_ATTESTATION",
-                            ]
-                        ),
-                        Evidence.ref.in_(
-                            [
-                                f"flight-operational-update:{result['flight_operational_update_id']}",
-                                f"reassessment-impact:{result['agent_run_id']}",
-                                f"appointment-reassessment:{result['agent_run_id']}",
-                                f"customer-window-attestation:{result['agent_run_id']}",
-                            ]
-                        ),
                     )
                 ).all()
             )
+            assert len(persisted_reassessment_evidence) == len(manifest_ids)
             assert {
                 str(item.id) for item in persisted_reassessment_evidence
-            } == set(result["evidence_ids"])
+            } == {str(item) for item in manifest_ids}
+            assert {
+                item.kind for item in persisted_reassessment_evidence
+            } == {
+                "FLIGHT_OPERATIONAL_UPDATE",
+                "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT",
+                "APPOINTMENT_RECOVERY_REASSESSMENT",
+                "APPOINTMENT_WINDOW_ATTESTATION",
+            }
 
         reassessment_reconcile = client.post(
             f"/v1/trips/{trip_id}/risk-cases:reconcile",
