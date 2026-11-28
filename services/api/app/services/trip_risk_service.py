@@ -152,6 +152,7 @@ def _follow_up_reassessment_readiness(
     runs: dict[UUID, AgentRun],
     events: list[VisitFollowUpEvent],
     evidence_rows: list[Evidence],
+    signal_assessments: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Verify one persisted, evidence-backed reassessment without treating attestation as proof."""
     if not workflows:
@@ -172,6 +173,7 @@ def _follow_up_reassessment_readiness(
         run_uuid = None
     run = runs.get(run_uuid) if run_uuid is not None else None
     failures: list[str] = []
+    stale_reasons: list[str] = []
     output = run.output if run is not None and isinstance(run.output, dict) else {}
     run_input = run.input if run is not None and isinstance(run.input, dict) else {}
     input_snapshot = output.get("input_snapshot")
@@ -266,6 +268,38 @@ def _follow_up_reassessment_readiness(
         if payload.get("schema_version") != output.get("schema_version"):
             failures.append("REASSESSMENT_WORKFLOW_SCHEMA_VERSION_MISMATCH")
 
+    latest_signal_id = str(output.get("source_signal_id") or "")
+    current_signal_rows = [
+        item
+        for item in signal_assessments
+        if isinstance(item, dict)
+        and str(item.get("signal_id") or "") == latest_signal_id
+    ]
+    current_signal_impact = (
+        current_signal_rows[-1].get("impact_assessment")
+        if current_signal_rows
+        and isinstance(current_signal_rows[-1].get("impact_assessment"), dict)
+        else None
+    )
+    if latest_signal_id and current_signal_impact is None:
+        stale_reasons.append("REASSESSMENT_SIGNAL_NOT_CURRENT_OR_ACTIVE")
+    elif current_signal_impact is not None:
+        reassessment_source_fields = {
+            "operational_update_id": output.get("flight_operational_update_id"),
+            "content_sha256": (
+                output.get("flight_operational_event", {}).get("content_sha256")
+                if isinstance(output.get("flight_operational_event"), dict)
+                else None
+            ),
+            "plan_version_id": output.get("current_plan_version_id"),
+            "flight_segment_id": output.get("flight_segment_id"),
+        }
+        for field_name, recorded_value in reassessment_source_fields.items():
+            if current_signal_impact.get(field_name) != recorded_value:
+                stale_reasons.append(
+                    f"REASSESSMENT_CURRENT_{field_name.upper()}_CHANGED"
+                )
+
     expected_event_note_prefix = f"AgentRun {run_id} · "
     if run is not None and not any(
         event.event_type == "REASSESSED"
@@ -288,6 +322,10 @@ def _follow_up_reassessment_readiness(
         "APPOINTMENT_RECOVERY_REASSESSMENT": f"appointment-reassessment:{run_id}",
     }
     evidence_ids: set[str] = set()
+    flight_event_value = output.get("flight_operational_event")
+    flight_event = flight_event_value if isinstance(flight_event_value, dict) else {}
+    impact_value = output.get("impact_assessment")
+    impact = impact_value if isinstance(impact_value, dict) else {}
     for kind, ref in expected_evidence.items():
         row = evidence_by_ref.get((kind, ref))
         if row is None:
@@ -304,9 +342,7 @@ def _follow_up_reassessment_readiness(
 
         evidence_payload = row.payload if isinstance(row.payload, dict) else {}
         if kind == "FLIGHT_OPERATIONAL_UPDATE":
-            event = output.get("flight_operational_event")
-            expected_event = event if isinstance(event, dict) else {}
-            if _canonical_json(evidence_payload) != _canonical_json(expected_event):
+            if _canonical_json(evidence_payload) != _canonical_json(flight_event):
                 failures.append("REASSESSMENT_FLIGHT_EVIDENCE_CONTENT_MISMATCH")
         elif kind == "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT":
             if (
@@ -314,11 +350,14 @@ def _follow_up_reassessment_readiness(
                 or evidence_payload.get("operational_update_id")
                 != output.get("flight_operational_update_id")
                 or evidence_payload.get("content_sha256")
-                != output.get("flight_operational_event", {}).get("content_sha256")
+                != flight_event.get("content_sha256")
                 or evidence_payload.get("plan_version_id")
                 != output.get("current_plan_version_id")
+                or evidence_payload.get("target_visit_id") != str(follow_up.visit_id)
                 or _canonical_json(evidence_payload.get("assessment"))
-                != _canonical_json(output.get("impact_assessment"))
+                != _canonical_json(impact)
+                or _canonical_json(evidence_payload.get("target_visit_projection"))
+                != _canonical_json(output.get("after"))
             ):
                 failures.append("REASSESSMENT_IMPACT_EVIDENCE_CONTENT_MISMATCH")
         elif kind == "APPOINTMENT_RECOVERY_REASSESSMENT":
@@ -338,6 +377,46 @@ def _follow_up_reassessment_readiness(
             }
             if _canonical_json(evidence_payload) != _canonical_json(expected_reassessment):
                 failures.append("REASSESSMENT_RESULT_EVIDENCE_CONTENT_MISMATCH")
+    attestation = output.get("customer_window_attestation")
+    attestation_ref = f"customer-window-attestation:{run_id}"
+    attestation_row = evidence_by_ref.get(
+        ("APPOINTMENT_WINDOW_ATTESTATION", attestation_ref)
+    )
+    if isinstance(attestation, dict):
+        if attestation_row is None:
+            failures.append("REASSESSMENT_WINDOW_ATTESTATION_EVIDENCE_MISSING")
+        else:
+            attestation_payload = (
+                attestation_row.payload
+                if isinstance(attestation_row.payload, dict)
+                else {}
+            )
+            attestation_quality = (
+                attestation_row.quality
+                if isinstance(attestation_row.quality, dict)
+                else {}
+            )
+            attestation_hash = hashlib.sha256(
+                _canonical_json(attestation_payload).encode("utf-8")
+            ).hexdigest()
+            evidence_ids.add(str(attestation_row.id))
+            if attestation_hash != attestation_row.content_hash:
+                failures.append("REASSESSMENT_WINDOW_ATTESTATION_HASH_MISMATCH")
+            if attestation_payload.get("customer_window") != attestation:
+                failures.append("REASSESSMENT_WINDOW_ATTESTATION_CONTENT_MISMATCH")
+            if not attestation_payload.get("asserted_by_user_id"):
+                failures.append("REASSESSMENT_WINDOW_ATTESTATION_ACTOR_MISSING")
+            if attestation_quality.get("externally_verified") is not False:
+                failures.append("REASSESSMENT_WINDOW_ATTESTATION_OVERCLAIMED")
+            if attestation_row.verification_status != "PARTIALLY_VERIFIED":
+                failures.append("REASSESSMENT_WINDOW_ATTESTATION_STATUS_MISMATCH")
+    elif attestation_row is not None:
+        failures.append("REASSESSMENT_UNEXPECTED_WINDOW_ATTESTATION")
+
+    snapshot_window = snapshot.get("customer_window_attestation")
+    if _canonical_json(snapshot_window) != _canonical_json(attestation):
+        failures.append("REASSESSMENT_WINDOW_ATTESTATION_INPUT_MISMATCH")
+
     output_evidence_ids = output.get("evidence_ids")
     if (
         not isinstance(output_evidence_ids, list)
@@ -369,6 +448,9 @@ def _follow_up_reassessment_readiness(
     if failures:
         status = "INTEGRITY_FAILURE"
         integrity_status = "FAILED"
+    elif stale_reasons:
+        status = "REASSESSMENT_STALE"
+        integrity_status = "VERIFIED"
     elif has_data_gaps:
         status = "REASSESSMENT_REVIEW_REQUIRED"
         integrity_status = "VERIFIED"
@@ -396,7 +478,7 @@ def _follow_up_reassessment_readiness(
         "plan_version_id": output.get("current_plan_version_id"),
         "customer_window_verification_status": output.get("customer_window_verification_status"),
         "evidence_ids": sorted(evidence_ids),
-        "reasons": sorted(set(failures)),
+        "reasons": sorted(set(failures + stale_reasons)),
     }
 
 def _recovery_readiness(
@@ -1383,6 +1465,7 @@ def _build_groups(
                         "FLIGHT_OPERATIONAL_UPDATE",
                         "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT",
                         "APPOINTMENT_RECOVERY_REASSESSMENT",
+                        "APPOINTMENT_WINDOW_ATTESTATION",
                     ]
                 ),
             )
@@ -1428,6 +1511,7 @@ def _build_groups(
                     runs,
                     reassessment_events_by_follow_up.get(follow_up.id, []),
                     reassessment_evidence_by_follow_up.get(follow_up.id, []),
+                    group["context"].get("external_signal_assessments", []),
                 )
                 action_item["reassessment"] = reassessment
                 if reassessment.get("status") != "NOT_REASSESSED":
@@ -1469,7 +1553,11 @@ def _build_groups(
                     recovery_readiness["status"] = "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED"
                 elif any(
                     isinstance(item, dict)
-                    and item.get("status") in {"REASSESSMENT_REVIEW_REQUIRED", "INTEGRITY_FAILURE"}
+                    and item.get("status") in {
+                        "REASSESSMENT_REVIEW_REQUIRED",
+                        "REASSESSMENT_STALE",
+                        "INTEGRITY_FAILURE",
+                    }
                     for item in reassessments
                 ):
                     recovery_readiness["status"] = "REASSESSMENT_REVIEW_REQUIRED"
