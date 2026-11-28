@@ -931,6 +931,42 @@ def test_provider_operational_update_propagates_delay_through_plan_buffers_and_w
         assert risk_replay.status_code == 200, risk_replay.text
         assert risk_replay.json()["cases_created"] == 0
         assert risk_replay.json()["cases_updated"] == 0
+
+        # ACTIVE is a lifecycle label, not proof that a plan still represents
+        # current trip inputs. A plan change increments Trip.version before a
+        # replacement PlanVersion is generated and activated.
+        with org_session(UUID(ORG_A)) as session:
+            persisted_trip = session.get(Trip, UUID(trip_id))
+            persisted_signal = session.get(ExternalSignal, UUID(signal_id))
+            persisted_plan = session.get(PlanVersion, UUID(plan_id))
+            assert persisted_trip is not None
+            assert persisted_signal is not None
+            assert persisted_plan is not None
+            original_plan_trip_version = persisted_plan.trip_version
+            persisted_trip.version += 1
+            session.flush()
+            stale_impact = external_impact_service.assess_flight_signal_impact(
+                session, UUID(ORG_A), persisted_trip, persisted_signal
+            )
+            assert stale_impact["status"] == "STALE_ACTIVE_PLAN_INPUT"
+            assert stale_impact["trip_version"] == original_plan_trip_version + 1
+            assert stale_impact["plan_trip_version"] == original_plan_trip_version
+            assert stale_impact["plan_input_current"] is False
+
+        stale_reconciliation = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert stale_reconciliation.status_code == 200, stale_reconciliation.text
+        stale_feed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert stale_feed.status_code == 200, stale_feed.text
+        stale_case = next(
+            item for item in stale_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{signal_id}"
+        )
+        stale_readiness = stale_case["context"]["recovery_readiness"]
+        assert stale_readiness["status"] == "STALE_BRIEF"
+        assert stale_readiness["integrity_status"] == "VERIFIED"
     finally:
         with org_session(UUID(ORG_A)) as session:
             session.execute(
