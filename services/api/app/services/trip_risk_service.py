@@ -787,6 +787,8 @@ def _recovery_readiness(
         else None
     )
     if current_assessment is not None:
+        if current_assessment.get("plan_input_current") is not True:
+            stale_reasons.append("CURRENT_PLAN_INPUT_STALE")
         current_source_fields = {
             "operational_update_id": current_assessment.get("operational_update_id"),
             "content_sha256": current_assessment.get("content_sha256"),
