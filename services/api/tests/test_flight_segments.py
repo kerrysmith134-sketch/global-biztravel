@@ -19,6 +19,7 @@ from app.models.integrations import ExternalSignal
 from app.models.planning import PlanStop, PlanTravelLeg, PlanVersion
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp
+from app.models.reliability import BackgroundJob
 from app.models.trip import Trip, Visit
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import (
@@ -1574,9 +1575,13 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
             if item["case_key"] == f"external_signal:{original_signal_id}"
         )
         stale_readiness = stale_recovery_case["context"]["recovery_readiness"]
-        assert stale_readiness["status"] == "STALE_BRIEF"
+        assert stale_readiness["status"] == "PLAN_CHANGE_OPTIMIZATION_PENDING"
         assert stale_readiness["integrity_status"] == "VERIFIED"
         assert stale_recovery_case["status"] != "RESOLVED"
+        initial_plan_change = stale_readiness["actions"][0]["plan_change"]
+        assert initial_plan_change["status"] == "PLAN_CHANGE_OPTIMIZATION_PENDING"
+        assert initial_plan_change["workflow_status"] == "ACCEPTED"
+        assert initial_plan_change["job_status"] == "PENDING"
 
         with org_session(UUID(ORG_A)) as session:
             plan_change_workflow = session.get(
@@ -1591,6 +1596,104 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
                 == follow_up_id
             )
             assert plan_change_workflow.payload["result_trip_version"] == plan_change_result["trip_version"]
+            plan_job = session.get(BackgroundJob, plan_change_workflow.job_id)
+            assert plan_job is not None
+            assert plan_job.status == "PENDING"
+            trip_row = session.get(Trip, UUID(trip_id))
+            persisted_visit = session.get(Visit, UUID(visit_id))
+            assert trip_row is not None and persisted_visit is not None
+            candidate_plan = PlanVersion(
+                organization_id=UUID(ORG_A),
+                trip_id=trip_row.id,
+                version_number=2,
+                status="DRAFT",
+                problem_hash=f"recovery-plan-change:{uuid.uuid4().hex}",
+                solver="heuristic",
+                objective_value=0.0,
+                solution_status="FEASIBLE",
+                trip_version=plan_change_result["trip_version"],
+                validation={"feasible": True},
+                unplaced=[],
+                policy_violations=[],
+                job_id=plan_job.id,
+            )
+            session.add(candidate_plan)
+            session.flush()
+            assert persisted_visit.time_window_start is not None
+            assert persisted_visit.time_window_end is not None
+            session.add(
+                PlanStop(
+                    organization_id=UUID(ORG_A),
+                    plan_version_id=candidate_plan.id,
+                    visit_id=persisted_visit.id,
+                    day_index=0,
+                    sequence=1,
+                    day_date=persisted_visit.time_window_start.date(),
+                    arrive_at=persisted_visit.time_window_start,
+                    depart_at=persisted_visit.time_window_end,
+                    travel_minutes=0,
+                    service_minutes=persisted_visit.service_minutes,
+                )
+            )
+            plan_job.status = "SUCCEEDED"
+            plan_job.result = {
+                "plan_version_id": str(candidate_plan.id),
+                "version_number": candidate_plan.version_number,
+            }
+            plan_job.finished_at = datetime.now(UTC)
+            candidate_plan_id = str(candidate_plan.id)
+
+        generated_plan_reconcile = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert generated_plan_reconcile.status_code == 200, generated_plan_reconcile.text
+        generated_plan_feed = client.get(
+            f"/v1/trips/{trip_id}/risk-cases", headers=headers()
+        )
+        assert generated_plan_feed.status_code == 200, generated_plan_feed.text
+        generated_plan_case = next(
+            item for item in generated_plan_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{original_signal_id}"
+        )
+        generated_readiness = generated_plan_case["context"]["recovery_readiness"]
+        assert generated_readiness["status"] == "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION"
+        generated_plan_state = generated_readiness["actions"][0]["plan_change"]
+        assert generated_plan_state["job_status"] == "SUCCEEDED"
+        assert generated_plan_state["candidate_plan_version_id"] == candidate_plan_id
+        assert generated_plan_state["candidate_plan_status"] == "DRAFT"
+        assert generated_plan_case["status"] != "RESOLVED"
+
+        activated_plan = client.post(
+            f"/v1/trips/{trip_id}/plans/{candidate_plan_id}:activate",
+            headers=headers(
+                **{
+                    "Idempotency-Key": str(uuid.uuid4()),
+                    "If-Match": str(plan_change_result["trip_version"]),
+                }
+            ),
+        )
+        assert activated_plan.status_code == 200, activated_plan.text
+        assert activated_plan.json()["plan_version_id"] == candidate_plan_id
+
+        activation_reconcile = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert activation_reconcile.status_code == 200, activation_reconcile.text
+        activated_feed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert activated_feed.status_code == 200, activated_feed.text
+        activated_case = next(
+            item for item in activated_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{original_signal_id}"
+        )
+        activated_readiness = activated_case["context"]["recovery_readiness"]
+        assert activated_readiness["status"] == "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED"
+        activated_plan_state = activated_readiness["actions"][0]["plan_change"]
+        assert activated_plan_state["status"] == "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED"
+        assert activated_plan_state["candidate_plan_status"] == "ACTIVE"
+        assert activated_plan_state["active_plan_version_id"] == candidate_plan_id
+        assert activated_case["status"] != "RESOLVED"
 
         # A second request using the original recommendation/version must fail closed.
         duplicate_submission = client.post(
