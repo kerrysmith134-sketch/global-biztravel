@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -1186,6 +1187,7 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
                 )
             ).one()
             recovery_run_id = suggestion.proposed_action["params"]["recovery_agent_run_id"]
+            recovery_suggestion_id = suggestion.id
 
         initial_reconcile = client.post(
             f"/v1/trips/{trip_id}/risk-cases:reconcile",
@@ -1206,6 +1208,65 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
         assert initial_readiness["status"] == "AWAITING_HUMAN_DECISION"
         assert initial_readiness["expected_action_count"] == 1
         assert initial_readiness["accepted_action_count"] == 0
+
+
+        # A mutable Suggestion/AgentRun pair agreeing with each other is not enough:
+        # the action manifest must also be reproducible from the current verified impact.
+        with org_session(UUID(ORG_A)) as session:
+            persisted_suggestion = session.get(
+                ProactiveSuggestion, UUID(recovery_suggestion_id)
+            )
+            persisted_run = session.get(AgentRun, UUID(recovery_run_id))
+            assert persisted_suggestion is not None
+            assert persisted_run is not None
+            original_action = deepcopy(persisted_suggestion.proposed_action)
+            original_brief = deepcopy(
+                persisted_suggestion.proposed_action["params"]["recovery_brief"]
+            )
+            tampered_brief = deepcopy(original_brief)
+            tampered_brief["actions"][0]["rationale"] = "Altered after AgentRun completion."
+            tampered_action = deepcopy(original_action)
+            tampered_action["params"]["recovery_brief"] = tampered_brief
+            persisted_suggestion.proposed_action = tampered_action
+            persisted_run.output = tampered_brief
+
+        tampered_reconcile = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert tampered_reconcile.status_code == 200, tampered_reconcile.text
+        tampered_feed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert tampered_feed.status_code == 200, tampered_feed.text
+        tampered_case = next(
+            item for item in tampered_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{original_signal_id}"
+        )
+        tampered_readiness = tampered_case["context"]["recovery_readiness"]
+        assert tampered_readiness["integrity_status"] == "FAILED"
+        assert "RECOVERY_BRIEF_RECOMPUTATION_MISMATCH" in tampered_readiness["reasons"]
+
+        with org_session(UUID(ORG_A)) as session:
+            persisted_suggestion = session.get(
+                ProactiveSuggestion, UUID(recovery_suggestion_id)
+            )
+            persisted_run = session.get(AgentRun, UUID(recovery_run_id))
+            assert persisted_suggestion is not None
+            assert persisted_run is not None
+            persisted_suggestion.proposed_action = original_action
+            persisted_run.output = original_brief
+
+        restored_reconcile = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(**{"Idempotency-Key": str(uuid.uuid4())}),
+        )
+        assert restored_reconcile.status_code == 200, restored_reconcile.text
+        restored_feed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert restored_feed.status_code == 200, restored_feed.text
+        restored_case = next(
+            item for item in restored_feed.json()["items"]
+            if item["case_key"] == f"external_signal:{original_signal_id}"
+        )
+        assert restored_case["context"]["recovery_readiness"]["integrity_status"] == "VERIFIED"
 
         feed = client.get(f"/v1/visits/{visit_id}/follow-ups", headers=headers())
         assert feed.status_code == 200, feed.text
