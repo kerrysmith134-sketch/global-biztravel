@@ -60,4 +60,4 @@
 - 对 Workflow、BackgroundJob、PlanVersion 的来源、组织/Trip、版本、操作和预约时间窗进行一致性核验；Job 失败、缺少结果计划、计划过期或关联不一致时分别投影为失败/过期/完整性异常状态。
 - iOS 只展示服务端阶段投影与证据引用，不自行推断候选计划已激活，也不以 Job 成功或计划激活代替客户独立确认。
 - Plan Change 的 Job.result.plan_version_id 必须反向绑定到 PlanVersion.job_id；候选 PlanVersion 的 organization、Trip、trip_version 与 Job payload/result 一致。候选 DRAFT 只有在原基础 Plan 仍为当前 ACTIVE 时才可提交人工激活；激活后只有当前 Trip.active_plan_version_id 指向候选 PlanVersion 才能投影为已激活。
-- Reassessment 的 AgentRun.output 在初始 Workflow/AgentRun 创建后会追加 Evidence IDs；持久化时必须替换 JSONB 顶层 dict，避免原 dict 同对象重复赋值不触发 ORM dirty tracking。Risk Readiness 重新从 Evidence 表解析后，必须能逐项匹配 AgentRun 的 evidence_ids manifest；缺失或不一致 fail closed。
+- Reassessment 的 AgentRun.output 在初始 Workflow/AgentRun 创建后会追加 Evidence IDs；初始 dict 已进入 ORM committed snapshot 后不得原地修改，必须基于未变更的初始值构造独立 final_output 再替换 JSONB 属性，避免 committed snapshot 一起变化导致更新被判为相等。Risk Readiness 重新从 Evidence 表解析后，必须能逐项匹配 AgentRun 的 evidence_ids manifest；缺失或不一致 fail closed。
