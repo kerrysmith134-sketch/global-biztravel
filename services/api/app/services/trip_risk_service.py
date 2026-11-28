@@ -23,7 +23,7 @@ from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp
 from app.models.trip import Trip
 from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
-from app.models.workflow import AgentRun
+from app.models.workflow import AgentRun, WorkflowInstance
 from app.services import external_impact_service, notification_service
 
 TERMINAL_STATUSES = frozenset({"RESOLVED", "DISMISSED"})
@@ -141,6 +141,333 @@ def _source_ref(source_type: str, source_id: UUID, **fields: Any) -> dict[str, A
     return {"type": source_type, "id": str(source_id), **fields}
 
 
+
+
+def _recovery_readiness(
+    trip: Trip,
+    suggestion: ProactiveSuggestion,
+    workflows: list[WorkflowInstance],
+    runs: dict[UUID, AgentRun],
+    follow_ups: list[VisitFollowUp],
+    signal_assessments: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Verify the persisted recovery chain; a generated brief is not a completed recovery."""
+    action = suggestion.proposed_action if isinstance(suggestion.proposed_action, dict) else {}
+    raw_params = action.get("params")
+    params: dict[str, Any] = raw_params if isinstance(raw_params, dict) else {}
+    brief = params.get("recovery_brief")
+    if not isinstance(brief, dict):
+        return (
+            {
+                "status": "NOT_AVAILABLE",
+                "integrity_status": "NOT_APPLICABLE",
+                "expected_action_count": 0,
+                "accepted_action_count": 0,
+                "active_action_count": 0,
+                "completed_action_count": 0,
+                "dismissed_action_count": 0,
+                "missing_action_indexes": [],
+                "actions": [],
+                "reasons": ["RECOVERY_BRIEF_NOT_PRESENT"],
+            },
+            [],
+        )
+
+    actions_value = brief.get("actions")
+    actions = actions_value if isinstance(actions_value, list) else []
+    if any(not isinstance(item, dict) for item in actions):
+        actions = []
+        actions_invalid = True
+    else:
+        actions_invalid = False
+
+    expected_source_suggestion_id = str(suggestion.id)
+    workflow_by_id: dict[str, WorkflowInstance] = {str(row.id): row for row in workflows}
+    workflows_for_suggestion = [
+        row
+        for row in workflows
+        if isinstance(row.payload, dict)
+        and row.payload.get("source_suggestion_id") == expected_source_suggestion_id
+    ]
+    raw_workflow_id = params.get("recovery_workflow_id")
+    workflow_id = str(raw_workflow_id).strip() if raw_workflow_id else ""
+    workflow: WorkflowInstance | None = workflow_by_id.get(workflow_id) if workflow_id else None
+    integrity_failures: list[str] = []
+    stale_reasons: list[str] = []
+
+    if workflow is None:
+        if len(workflows_for_suggestion) == 1:
+            workflow = workflows_for_suggestion[0]
+        elif len(workflows_for_suggestion) > 1:
+            integrity_failures.append("MULTIPLE_RECOVERY_WORKFLOWS_FOR_SUGGESTION")
+        else:
+            integrity_failures.append("RECOVERY_WORKFLOW_MISSING")
+    if workflow is not None:
+        if workflow.workflow_type != "APPOINTMENT_RECOVERY":
+            integrity_failures.append("RECOVERY_WORKFLOW_TYPE_MISMATCH")
+        if workflow.organization_id != suggestion.organization_id or workflow.trip_id != trip.id:
+            integrity_failures.append("RECOVERY_WORKFLOW_SCOPE_MISMATCH")
+        workflow_payload = workflow.payload if isinstance(workflow.payload, dict) else {}
+        if workflow_payload.get("source_suggestion_id") != expected_source_suggestion_id:
+            integrity_failures.append("RECOVERY_WORKFLOW_SUGGESTION_MISMATCH")
+        if workflow.status != "COMPLETED":
+            integrity_failures.append("RECOVERY_WORKFLOW_NOT_COMPLETED")
+
+    raw_run_id = params.get("recovery_agent_run_id")
+    run_id = str(raw_run_id).strip() if raw_run_id else ""
+    if workflow is not None:
+        payload_run_id = str((workflow.payload or {}).get("agent_run_id") or "").strip()
+        if run_id and payload_run_id and run_id != payload_run_id:
+            integrity_failures.append("RECOVERY_AGENT_RUN_REFERENCE_MISMATCH")
+        if not run_id:
+            run_id = payload_run_id
+
+    run_uuid: UUID | None = None
+    try:
+        run_uuid = UUID(run_id) if run_id else None
+    except (TypeError, ValueError):
+        integrity_failures.append("RECOVERY_AGENT_RUN_ID_INVALID")
+    run = runs.get(run_uuid) if run_uuid is not None else None
+    if run is None:
+        integrity_failures.append("RECOVERY_AGENT_RUN_MISSING")
+
+    source_value = brief.get("source")
+    source = source_value if isinstance(source_value, dict) else {}
+    guardrails_value = brief.get("guardrails")
+    guardrails = guardrails_value if isinstance(guardrails_value, dict) else {}
+    required_guardrails = (
+        "plan_mutated",
+        "booking_changed",
+        "customer_contacted",
+        "customer_message_sent",
+        "candidate_windows_inferred",
+    )
+    if not isinstance(guardrails_value, dict):
+        integrity_failures.append("RECOVERY_GUARDRAILS_MISSING")
+    elif any(guardrails.get(key) is not False for key in required_guardrails):
+        integrity_failures.append("RECOVERY_SIDE_EFFECT_GUARDRAIL_FAILED")
+    if guardrails.get("candidate_windows") not in ([], None):
+        integrity_failures.append("RECOVERY_CANDIDATE_WINDOWS_MUST_BE_EMPTY")
+    if actions_invalid:
+        integrity_failures.append("RECOVERY_ACTION_LIST_INVALID")
+    if not isinstance(brief.get("agent_version"), str) or not brief.get("agent_version"):
+        integrity_failures.append("RECOVERY_AGENT_VERSION_MISSING")
+    if not isinstance(brief.get("schema_version"), str) or not brief.get("schema_version"):
+        integrity_failures.append("RECOVERY_SCHEMA_VERSION_MISSING")
+
+    signal_id_value = params.get("signal_id")
+    signal_id = str(signal_id_value).strip() if signal_id_value else ""
+    if source.get("signal_id") and str(source.get("signal_id")) != signal_id:
+        integrity_failures.append("RECOVERY_BRIEF_SIGNAL_MISMATCH")
+    matching_assessments = [
+        item
+        for item in signal_assessments
+        if isinstance(item, dict) and str(item.get("signal_id") or "") == signal_id
+    ]
+    current_assessment = (
+        matching_assessments[-1].get("impact_assessment")
+        if matching_assessments
+        and isinstance(matching_assessments[-1].get("impact_assessment"), dict)
+        else None
+    )
+    if current_assessment is not None:
+        current_source_fields = {
+            "operational_update_id": current_assessment.get("operational_update_id"),
+            "content_sha256": current_assessment.get("content_sha256"),
+            "plan_version_id": current_assessment.get("plan_version_id"),
+            "binding_id": current_assessment.get("binding_id"),
+            "flight_segment_id": current_assessment.get("flight_segment_id"),
+        }
+        for field_name, current_value in current_source_fields.items():
+            if source.get(field_name) != current_value:
+                stale_reasons.append(f"CURRENT_IMPACT_{field_name.upper()}_CHANGED")
+    elif signal_id:
+        stale_reasons.append("CURRENT_SIGNAL_IMPACT_NOT_AVAILABLE")
+
+    if workflow is not None and isinstance(workflow.payload, dict):
+        payload = workflow.payload
+        if payload.get("source_signal_id") not in (signal_id, ""):
+            integrity_failures.append("RECOVERY_WORKFLOW_SIGNAL_MISMATCH")
+        if payload.get("agent_type") != brief.get("agent_type"):
+            integrity_failures.append("RECOVERY_WORKFLOW_AGENT_TYPE_MISMATCH")
+        if payload.get("agent_version") != brief.get("agent_version"):
+            integrity_failures.append("RECOVERY_WORKFLOW_AGENT_VERSION_MISMATCH")
+        if payload.get("recovery_status") != brief.get("status"):
+            integrity_failures.append("RECOVERY_WORKFLOW_STATUS_MISMATCH")
+        if payload.get("plan_version_id") != source.get("plan_version_id"):
+            integrity_failures.append("RECOVERY_WORKFLOW_PLAN_VERSION_MISMATCH")
+
+    if run is not None:
+        run_input = run.input if isinstance(run.input, dict) else {}
+        if run.organization_id != suggestion.organization_id:
+            integrity_failures.append("RECOVERY_AGENT_RUN_ORG_MISMATCH")
+        if run.workflow_id != (workflow.id if workflow is not None else None):
+            integrity_failures.append("RECOVERY_AGENT_RUN_WORKFLOW_MISMATCH")
+        if run.agent_type != brief.get("agent_type") or run.agent_type != "APPOINTMENT_RECOVERY":
+            integrity_failures.append("RECOVERY_AGENT_RUN_TYPE_MISMATCH")
+        if run.status != "SUCCEEDED" or run.finished_at is None:
+            integrity_failures.append("RECOVERY_AGENT_RUN_NOT_SUCCEEDED")
+        if run_input.get("trip_id") != str(trip.id):
+            integrity_failures.append("RECOVERY_AGENT_RUN_TRIP_MISMATCH")
+        if run_input.get("suggestion_id") != expected_source_suggestion_id:
+            integrity_failures.append("RECOVERY_AGENT_RUN_SUGGESTION_MISMATCH")
+        if run_input.get("trigger_id") != (
+            str(suggestion.source_trigger_id) if suggestion.source_trigger_id else None
+        ):
+            integrity_failures.append("RECOVERY_AGENT_RUN_TRIGGER_MISMATCH")
+        if run_input.get("signal_id") != (signal_id or ""):
+            integrity_failures.append("RECOVERY_AGENT_RUN_SIGNAL_MISMATCH")
+        for input_key, source_key in (
+            ("operational_update_id", "operational_update_id"),
+            ("content_sha256", "content_sha256"),
+            ("plan_version_id", "plan_version_id"),
+        ):
+            if run_input.get(input_key) != source.get(source_key):
+                integrity_failures.append(f"RECOVERY_AGENT_RUN_{input_key.upper()}_MISMATCH")
+        if run_input.get("agent_version") != brief.get("agent_version"):
+            integrity_failures.append("RECOVERY_AGENT_RUN_VERSION_MISMATCH")
+        if run_input.get("schema_version") != brief.get("schema_version"):
+            integrity_failures.append("RECOVERY_AGENT_RUN_SCHEMA_MISMATCH")
+        if _canonical_json(run.output) != _canonical_json(brief):
+            integrity_failures.append("RECOVERY_AGENT_RUN_OUTPUT_MISMATCH")
+
+    if integrity_failures:
+        integrity_status = "FAILED"
+        readiness_status = "INTEGRITY_FAILURE"
+    elif stale_reasons:
+        integrity_status = "VERIFIED"
+        readiness_status = "STALE_BRIEF"
+    else:
+        integrity_status = "VERIFIED"
+        brief_status = brief.get("status")
+        if not actions:
+            if (
+                brief_status == "NO_RECOVERY_ACTION_REQUIRED"
+                and brief.get("propagation_complete") is True
+                and brief.get("impact_snapshot_complete") is True
+                and not brief.get("data_gaps")
+            ):
+                readiness_status = "NO_ACTION_REQUIRED_VERIFIED"
+            else:
+                readiness_status = "INTEGRITY_FAILURE"
+                integrity_status = "FAILED"
+                integrity_failures.append("EMPTY_RECOVERY_ACTIONS_WITHOUT_COMPLETE_NO_ACTION_ASSESSMENT")
+        else:
+            if guardrails.get("human_decision_required") is not True:
+                integrity_failures.append("RECOVERY_HUMAN_DECISION_GUARDRAIL_MISMATCH")
+                integrity_status = "FAILED"
+                readiness_status = "INTEGRITY_FAILURE"
+            follow_up_by_index: dict[int, VisitFollowUp] = {}
+            duplicate_indexes: set[int] = set()
+            for row in follow_ups:
+                if row.source_agent_run_id != run.id if run is not None else True:
+                    continue
+                if row.source_type != "APPOINTMENT_RECOVERY":
+                    integrity_failures.append("RECOVERY_FOLLOW_UP_SOURCE_TYPE_MISMATCH")
+                    continue
+                index = row.source_index
+                if index is None or index < 0 or index >= len(actions):
+                    integrity_failures.append("RECOVERY_FOLLOW_UP_SOURCE_INDEX_INVALID")
+                    continue
+                if row.source_key != f"APPOINTMENT_RECOVERY:{run.id}:{index}":
+                    integrity_failures.append("RECOVERY_FOLLOW_UP_SOURCE_KEY_MISMATCH")
+                if index in follow_up_by_index:
+                    duplicate_indexes.add(index)
+                else:
+                    follow_up_by_index[index] = row
+            if duplicate_indexes:
+                integrity_failures.append("DUPLICATE_RECOVERY_FOLLOW_UP_SOURCE_INDEX")
+            if integrity_failures:
+                integrity_status = "FAILED"
+                readiness_status = "INTEGRITY_FAILURE"
+            else:
+                missing_indexes = sorted(set(range(len(actions))) - set(follow_up_by_index))
+                statuses = [row.status for row in follow_up_by_index.values()]
+                if any(status not in {"OPEN", "IN_PROGRESS", "COMPLETED", "DISMISSED"} for status in statuses):
+                    integrity_status = "FAILED"
+                    readiness_status = "INTEGRITY_FAILURE"
+                    integrity_failures.append("RECOVERY_FOLLOW_UP_STATUS_INVALID")
+                elif not follow_up_by_index:
+                    readiness_status = "AWAITING_HUMAN_DECISION"
+                elif any(status == "IN_PROGRESS" for status in statuses):
+                    readiness_status = "IN_PROGRESS"
+                elif any(status == "OPEN" for status in statuses) and not missing_indexes:
+                    readiness_status = "AWAITING_HUMAN_ACTION"
+                elif all(status == "COMPLETED" for status in statuses) and not missing_indexes:
+                    readiness_status = "REASSESSMENT_REQUIRED"
+                elif all(status == "DISMISSED" for status in statuses) and not missing_indexes:
+                    readiness_status = "HUMAN_REVIEW_REQUIRED"
+                elif all(status in {"COMPLETED", "DISMISSED"} for status in statuses) and not missing_indexes:
+                    readiness_status = "REASSESSMENT_REQUIRED"
+                elif follow_up_by_index:
+                    readiness_status = "PARTIALLY_ACCEPTED"
+                else:
+                    readiness_status = "AWAITING_HUMAN_DECISION"
+
+    actions_read: list[dict[str, Any]] = []
+    follow_up_by_index_for_read: dict[int, VisitFollowUp] = {}
+    if run is not None:
+        for row in follow_ups:
+            if row.source_agent_run_id == run.id and row.source_type == "APPOINTMENT_RECOVERY":
+                if row.source_index is not None:
+                    follow_up_by_index_for_read[row.source_index] = row
+    for index, action_item in enumerate(actions):
+        if not isinstance(action_item, dict):
+            continue
+        follow_up = follow_up_by_index_for_read.get(index)
+        actions_read.append(
+            {
+                "source_index": index,
+                "action_code": action_item.get("action_code"),
+                "visit_id": action_item.get("visit_id"),
+                "decision_status": action_item.get("decision_status"),
+                "follow_up_id": str(follow_up.id) if follow_up is not None else None,
+                "follow_up_status": follow_up.status if follow_up is not None else "AWAITING_HUMAN_DECISION",
+            }
+        )
+
+    accepted_count = len(follow_up_by_index_for_read)
+    active_count = sum(
+        row.status in ACTIVE_FOLLOW_UP_STATUSES for row in follow_up_by_index_for_read.values()
+    )
+    completed_count = sum(
+        row.status == "COMPLETED" for row in follow_up_by_index_for_read.values()
+    )
+    dismissed_count = sum(
+        row.status == "DISMISSED" for row in follow_up_by_index_for_read.values()
+    )
+    missing_action_indexes = sorted(set(range(len(actions))) - set(follow_up_by_index_for_read))
+    readiness: dict[str, Any] = {
+        "status": readiness_status,
+        "integrity_status": integrity_status,
+        "workflow_id": str(workflow.id) if workflow is not None else None,
+        "agent_run_id": str(run.id) if run is not None else None,
+        "brief_status": brief.get("status"),
+        "brief_sha256": hashlib.sha256(_canonical_json(brief).encode("utf-8")).hexdigest(),
+        "expected_action_count": len(actions),
+        "accepted_action_count": accepted_count,
+        "active_action_count": active_count,
+        "completed_action_count": completed_count,
+        "dismissed_action_count": dismissed_count,
+        "missing_action_indexes": missing_action_indexes,
+        "actions": actions_read,
+        "reasons": sorted(set(integrity_failures + stale_reasons)),
+    }
+    evidence = [
+        {
+            "type": "APPOINTMENT_RECOVERY_READINESS",
+            "id": str(run.id) if run is not None else expected_source_suggestion_id,
+            "status": readiness_status,
+            "integrity_status": integrity_status,
+            "sha256": readiness["brief_sha256"],
+        }
+    ]
+    if workflow is not None:
+        evidence.append({"type": "APPOINTMENT_RECOVERY_WORKFLOW", "id": str(workflow.id)})
+    if run is not None:
+        evidence.append({"type": "APPOINTMENT_RECOVERY_AGENT_RUN", "id": str(run.id)})
+    return readiness, evidence
+
 def _build_groups(
     session: Session,
     organization_id: UUID,
@@ -198,7 +525,45 @@ def _build_groups(
             )
         }
 
-    recovery_run_ids = {
+    recovery_workflows = list(
+        session.scalars(
+            select(WorkflowInstance)
+            .where(
+                WorkflowInstance.organization_id == organization_id,
+                WorkflowInstance.trip_id == trip.id,
+                WorkflowInstance.workflow_type == "APPOINTMENT_RECOVERY",
+            )
+            .order_by(WorkflowInstance.created_at, WorkflowInstance.id)
+        ).all()
+    )
+    recovery_workflows_by_suggestion: dict[str, list[WorkflowInstance]] = {}
+    recovery_run_ids: set[UUID] = set()
+    for recovery_workflow in recovery_workflows:
+        workflow_payload = (
+            recovery_workflow.payload if isinstance(recovery_workflow.payload, dict) else {}
+        )
+        source_suggestion_id = workflow_payload.get("source_suggestion_id")
+        if isinstance(source_suggestion_id, str):
+            recovery_workflows_by_suggestion.setdefault(source_suggestion_id, []).append(
+                recovery_workflow
+            )
+        raw_run_id = workflow_payload.get("agent_run_id")
+        if raw_run_id:
+            try:
+                recovery_run_ids.add(UUID(str(raw_run_id)))
+            except (TypeError, ValueError):
+                continue
+    for suggestion in suggestions:
+        action_for_run = (
+            suggestion.proposed_action if isinstance(suggestion.proposed_action, dict) else {}
+        )
+        params_for_run = action_for_run.get("params")
+        if isinstance(params_for_run, dict) and params_for_run.get("recovery_agent_run_id"):
+            try:
+                recovery_run_ids.add(UUID(str(params_for_run["recovery_agent_run_id"])))
+            except (TypeError, ValueError):
+                continue
+    recovery_run_ids.update({
         row.source_agent_run_id
         for row in session.scalars(
             select(VisitFollowUp).where(
@@ -208,7 +573,7 @@ def _build_groups(
             )
         ).all()
         if row.source_agent_run_id is not None
-    }
+    })
     runs = {}
     if recovery_run_ids:
         runs = {
@@ -674,6 +1039,27 @@ def _build_groups(
         )
         group["context"]["external_signal_count"] = len(assessments)
         existing_case_keys.add(case_key)
+
+    # Recovery readiness is a projection over the persisted AgentRun, Workflow and
+    # human-confirmed FollowUps. It does not execute actions or close a risk itself.
+    for group in groups.values():
+        source_suggestion = group.get("suggestion")
+        if source_suggestion is not None and (
+            source_suggestion.suggestion_type == "FLIGHT_STATUS_ALERT"
+            or isinstance(source_suggestion.proposed_action, dict)
+            and isinstance(source_suggestion.proposed_action.get("params"), dict)
+            and source_suggestion.proposed_action["params"].get("recovery_brief") is not None
+        ):
+            recovery_readiness, recovery_evidence = _recovery_readiness(
+                trip,
+                source_suggestion,
+                recovery_workflows_by_suggestion.get(str(source_suggestion.id), []),
+                runs,
+                group["follow_ups"],
+                group["context"].get("external_signal_assessments", []),
+            )
+            group["context"]["recovery_readiness"] = recovery_readiness
+            group["evidence_refs"].extend(recovery_evidence)
 
     # Stable order and no duplicated exact source reference.
     for group in groups.values():
