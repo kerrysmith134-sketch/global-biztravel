@@ -54,6 +54,9 @@ def assess_weather_signal_impact(
         "assessment_method": "EXACT_PLACE_ID_AND_TEMPORAL_OVERLAP",
         "plan_version_id": str(plan.id) if plan is not None else None,
         "plan_version_number": plan.version_number if plan is not None else None,
+        "trip_version": trip.version,
+        "plan_trip_version": plan.trip_version if plan is not None else None,
+        "plan_input_current": plan is not None and plan.trip_version == trip.version,
         "place_id": None,
         "matched_stop_count": 0,
         "affected_stop_count": 0,
@@ -68,6 +71,15 @@ def assess_weather_signal_impact(
             **base,
             "status": "NO_ACTIVE_PLAN",
             "explanation": "当前出行没有可验证的 ACTIVE 计划，无法评估天气信号与拜访时刻表的重叠。",
+        }
+    if plan.trip_version != trip.version:
+        return {
+            **base,
+            "status": "STALE_ACTIVE_PLAN_INPUT",
+            "explanation": (
+                "ACTIVE PlanVersion 所依据的 Trip Version 已落后于当前出行输入；"
+                "不能用旧计划计算天气与拜访的当前影响，必须先重新生成并激活计划。"
+            ),
         }
 
     raw_place_id = (signal.payload or {}).get("place_id")
@@ -361,6 +373,9 @@ def _assess_flight_operational_update(
         "assessment_method": "PROVIDER_OPERATIONAL_EVENT_AND_CURRENT_EXPLICIT_PLAN_BINDING",
         "plan_version_id": str(plan.id) if plan is not None else None,
         "plan_version_number": plan.version_number if plan is not None else None,
+        "trip_version": trip.version,
+        "plan_trip_version": plan.trip_version if plan is not None else None,
+        "plan_input_current": plan is not None and plan.trip_version == trip.version,
         "flight_segment_id": str(update.flight_segment_id),
         "flight_designator": update.flight_designator,
         "departure_airport_iata": update.departure_airport_iata,
@@ -383,6 +398,15 @@ def _assess_flight_operational_update(
         return {**base, "status": "FLIGHT_SEGMENT_NOT_FOUND", "explanation": "运营事件引用的机票段不在当前组织/出行内。"}
     if plan is None:
         return {**base, "status": "NO_ACTIVE_PLAN", "explanation": "没有 ACTIVE 计划，无法映射预约影响。"}
+    if plan.trip_version != trip.version:
+        return {
+            **base,
+            "status": "STALE_ACTIVE_PLAN_INPUT",
+            "explanation": (
+                "ACTIVE PlanVersion 所依据的 Trip Version 已过期；"
+                "拒绝基于旧拜访时刻表传播航班影响，必须先重新生成并激活计划。"
+            ),
+        }
 
     bindings = list(
         session.scalars(
@@ -727,6 +751,9 @@ def assess_flight_signal_impact(
         ),
         "plan_version_id": str(plan.id) if plan is not None else None,
         "plan_version_number": plan.version_number if plan is not None else None,
+        "trip_version": trip.version,
+        "plan_trip_version": plan.trip_version if plan is not None else None,
+        "plan_input_current": plan is not None and plan.trip_version == trip.version,
         "callsign": callsign.upper() if callsign and signal.provider.casefold() == "opensky" else callsign,
         "icao24": icao24,
         "flight_segment_id": None,
@@ -845,6 +872,28 @@ def assess_flight_signal_impact(
             **segment_fields,
             "status": "NO_ACTIVE_PLAN",
             "explanation": "航迹已通过机票段 tracking reference 校验，但当前出行没有 ACTIVE 计划可供交通段绑定。",
+        }
+    if plan.trip_version != trip.version:
+        segment_fields = (
+            {
+                "flight_segment_id": str(segment.id),
+                "flight_designator": segment.flight_designator,
+                "departure_airport_iata": segment.departure_airport_iata,
+                "arrival_airport_iata": segment.arrival_airport_iata,
+                "scheduled_departure_at": segment.scheduled_departure_at.isoformat(),
+                "scheduled_arrival_at": segment.scheduled_arrival_at.isoformat(),
+            }
+            if segment is not None
+            else {}
+        )
+        return {
+            **base,
+            **segment_fields,
+            "status": "STALE_ACTIVE_PLAN_INPUT",
+            "explanation": (
+                "当前 ACTIVE PlanVersion 所依据的 Trip Version 已过期；"
+                "不会将航迹快照与旧计划交通段建立当前行程影响关联。"
+            ),
         }
 
     if segment is not None:
