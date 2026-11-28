@@ -2040,6 +2040,15 @@ def _build_groups(
                     group["context"].get("external_signal_assessments", []),
                 )
                 action_item["reassessment"] = reassessment
+                plan_change, plan_change_evidence = _plan_change_readiness(
+                    session,
+                    organization_id,
+                    trip,
+                    follow_up,
+                    reassessment,
+                )
+                action_item["plan_change"] = plan_change
+                group["evidence_refs"].extend(plan_change_evidence)
                 if reassessment.get("status") != "NOT_REASSESSED":
                     group["evidence_refs"].append(
                         {
@@ -2087,6 +2096,45 @@ def _build_groups(
                     for item in reassessments
                 ):
                     recovery_readiness["status"] = "REASSESSMENT_REVIEW_REQUIRED"
+
+            plan_changes = [
+                item.get("plan_change")
+                for item in actions
+                if isinstance(item.get("plan_change"), dict)
+                and item["plan_change"].get("status") not in {None, "NOT_SUBMITTED"}
+            ]
+            if any(item.get("integrity_status") == "FAILED" for item in plan_changes):
+                recovery_readiness["integrity_status"] = "FAILED"
+                recovery_readiness["status"] = "INTEGRITY_FAILURE"
+                recovery_readiness.setdefault("reasons", []).append(
+                    "PLAN_CHANGE_EXECUTION_CHAIN_INTEGRITY_FAILURE"
+                )
+            elif recovery_readiness.get("integrity_status") == "VERIFIED":
+                plan_statuses = {item.get("status") for item in plan_changes}
+                if "PLAN_CHANGE_STALE" in plan_statuses:
+                    recovery_readiness["status"] = "PLAN_CHANGE_STALE"
+                elif "PLAN_CHANGE_OPTIMIZATION_FAILED" in plan_statuses:
+                    recovery_readiness["status"] = "PLAN_CHANGE_OPTIMIZATION_FAILED"
+                elif "PLAN_CHANGE_OPTIMIZATION_PENDING" in plan_statuses:
+                    recovery_readiness["status"] = "PLAN_CHANGE_OPTIMIZATION_PENDING"
+                elif "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION" in plan_statuses:
+                    recovery_readiness["status"] = "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION"
+                elif "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED" in plan_statuses:
+                    all_reassessed_after_activation = all(
+                        isinstance(action.get("reassessment"), dict)
+                        and action["reassessment"].get("status")
+                        in {
+                            "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION",
+                            "REASSESSMENT_REVIEW_REQUIRED",
+                        }
+                        for action in actions
+                        if action.get("plan_change", {}).get("status")
+                        == "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED"
+                    )
+                    if not all_reassessed_after_activation:
+                        recovery_readiness["status"] = (
+                            "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED"
+                        )
             group["context"]["recovery_readiness"] = recovery_readiness
             group["evidence_refs"].extend(recovery_evidence)
 
