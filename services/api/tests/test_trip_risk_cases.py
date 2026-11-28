@@ -432,7 +432,7 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
                         TripRiskCaseEvent.trip_id == UUID(trip_id),
                         TripRiskCaseEvent.case_id == UUID(case["id"]),
                     )
-                    .order_by(TripRiskCaseEvent.created_at, TripRiskCaseEvent.id)
+                    .order_by(TripRiskCaseEvent.case_version)
                 )
             )
             assert [row.event_type for row in case_events][0] == "OPENED"
