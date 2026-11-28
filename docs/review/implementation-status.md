@@ -579,3 +579,12 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 新增 PostgreSQL 集成回归：在真实航班事件和 ACTIVE Plan 已关联后递增 Trip Version，确认旧 ACTIVE Plan 的航班影响返回 `STALE_ACTIVE_PLAN_INPUT`，随后 Risk Case 将旧 Recovery Brief 标记为 `STALE_BRIEF`。
 - 无新增数据库迁移；PlanVersion 与 Trip 原有版本字段已经提供必要信息。
 - **验证状态：** 代码与回归测试已推送 main；以最新 HEAD 的 Backend Static/Contract/Docs、PostgreSQL migrations、pytest 与 iOS Build/XCTest 实际结论为准。
+### 2026-11-28 H2.26.4 — Deterministic Recovery Brief Reproduction & Signal Clock Consistency
+
+- Recovery Readiness 不再只验证 Suggestion.proposed_action.params.recovery_brief 与 AgentRun.output 两份可变 JSON 相互一致；它会基于当前已验证的 FlightOperationalUpdate、ExternalSignal 和 ACTIVE Plan impact snapshot，使用原始 generated_at 重新运行确定性 Recovery Brief builder，并对完整规范化 JSON 做逐字段比对。
+- 双份副本同时被改写、单个 action 的 rationale/visit/action code/candidate windows 等与当前影响快照不一致、或其他确定性字段无法重现时，Readiness 返回 INTEGRITY_FAILURE，并给出 RECOVERY_BRIEF_RECOMPUTATION_MISMATCH；算法版本已更新时返回 STALE_BRIEF，要求重新生成，不把历史版本当作当前执行授权。
+- 外部 Provider observed_at/valid_from 的未来时间容差集中到 signal_clock_policy.py，统一为最多 5 分钟时钟偏差；Appointment Recovery Reassessment 与 Trip Risk Reconciliation 共用同一常量。valid_until 仍按真实当前时钟判断；超出容差的未来天气/航班信号不会进入当前 Risk Case。
+- TripRiskCaseEvent API 时间线按唯一单调递增的 case_version 排序，不再依赖可能发生微秒碰撞的 created_at + 随机 UUID；唯一约束索引同时为该顺序提供稳定数据库访问路径。
+- 新增集成回归：同时篡改 Suggestion Recovery Brief 与 AgentRun output 仍需被确定性重建发现；恢复原始值后 Readiness 恢复 VERIFIED；未来 6 分钟的外部天气信号不进入当前 Risk Case；事件 API 返回 case_version 严格倒序。
+- 无新增数据库迁移或工作流实体；继续复用原有 ExternalSignal、FlightOperationalUpdate、PlanVersion、WorkflowInstance、AgentRun、VisitFollowUp、VisitFollowUpEvent 和 Evidence。
+- **验证状态：** 代码、集成测试与文档已推送 main；以最新 HEAD 的 GitHub Backend Static/Type/Contract/Docs、PostgreSQL Migration、pytest 和 iOS Build/XCTest 实际结论为准。不得在 Checks 完成前标记 CI 通过或生产就绪。
