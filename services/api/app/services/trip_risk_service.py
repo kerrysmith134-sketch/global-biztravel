@@ -789,6 +789,26 @@ def _recovery_readiness(
     if current_assessment is not None:
         if current_assessment.get("plan_input_current") is not True:
             stale_reasons.append("CURRENT_PLAN_INPUT_STALE")
+        source_flight_segment_id = source.get("flight_segment_id")
+        source_operational_update_id = source.get("operational_update_id")
+        if source_flight_segment_id and source_operational_update_id:
+            related_flight_assessments = [
+                item
+                for item in signal_assessments
+                if isinstance(item, dict)
+                and item.get("signal_type") == "FLIGHT_STATUS"
+                and isinstance(item.get("impact_assessment"), dict)
+                and item["impact_assessment"].get("flight_segment_id")
+                == source_flight_segment_id
+                and item["impact_assessment"].get("operational_update_id")
+            ]
+            if related_flight_assessments:
+                latest_flight_assessment = related_flight_assessments[-1]["impact_assessment"]
+                if (
+                    latest_flight_assessment.get("operational_update_id")
+                    != source_operational_update_id
+                ):
+                    stale_reasons.append("NEWER_FLIGHT_OPERATIONAL_EVENT_AVAILABLE")
         current_source_fields = {
             "operational_update_id": current_assessment.get("operational_update_id"),
             "content_sha256": current_assessment.get("content_sha256"),
@@ -1163,6 +1183,34 @@ def _build_groups(
             ).all()
         }
 
+    # A reassessment may be based on a newer provider event than the original
+    # Recovery Brief. Route that event into the same source-backed Case by
+    # following Reassessment Workflow -> source Recovery AgentRun -> original Signal.
+    reassessment_signal_case_keys: dict[str, str] = {}
+    for reassessment_workflow in reassessment_workflows:
+        workflow_payload = (
+            reassessment_workflow.payload
+            if isinstance(reassessment_workflow.payload, dict)
+            else {}
+        )
+        latest_signal_id = workflow_payload.get("source_signal_id")
+        raw_source_run_id = workflow_payload.get("source_recovery_agent_run_id")
+        if not latest_signal_id or not raw_source_run_id:
+            continue
+        try:
+            source_run_id = UUID(str(raw_source_run_id))
+        except (TypeError, ValueError):
+            continue
+        source_run = runs.get(source_run_id)
+        source_input = source_run.input if source_run is not None and isinstance(
+            source_run.input, dict
+        ) else {}
+        original_signal_id = source_input.get("signal_id")
+        if original_signal_id:
+            reassessment_signal_case_keys[str(latest_signal_id)] = (
+                f"external_signal:{str(original_signal_id)}"
+            )
+
     groups: dict[str, dict[str, Any]] = {}
     signal_group_keys: dict[str, str] = {}
     for suggestion in suggestions:
@@ -1377,7 +1425,13 @@ def _build_groups(
         signal_id = str(signal.id)
         signal_case_key = f"external_signal:{signal_id}"
         suggestion_key = signal_group_keys.get(signal_id)
-        if signal_case_key in existing_case_keys:
+        reassessment_case_key = reassessment_signal_case_keys.get(signal_id)
+        if reassessment_case_key and (
+            reassessment_case_key in existing_case_keys
+            or reassessment_case_key in groups
+        ):
+            case_key = reassessment_case_key
+        elif signal_case_key in existing_case_keys:
             case_key = signal_case_key
         elif suggestion_key and suggestion_key in existing_case_keys:
             # Preserve a suggestion-key Case created by the earlier projection version.
