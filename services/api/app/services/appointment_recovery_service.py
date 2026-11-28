@@ -329,6 +329,9 @@ def build_recovery_brief(
         "update_type": assessment.get("update_type"),
         "flight_segment_id": assessment.get("flight_segment_id"),
         "plan_version_id": assessment.get("plan_version_id"),
+        "trip_version": assessment.get("trip_version"),
+        "plan_trip_version": assessment.get("plan_trip_version"),
+        "plan_input_current": assessment.get("plan_input_current"),
         "binding_id": assessment.get("binding_id"),
     }
     unassessed_visit_ids = sorted(
