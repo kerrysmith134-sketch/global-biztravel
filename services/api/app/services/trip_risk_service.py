@@ -2144,18 +2144,39 @@ def _build_groups(
                 elif "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION" in plan_statuses:
                     recovery_readiness["status"] = "PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION"
                 elif "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED" in plan_statuses:
-                    all_reassessed_after_activation = all(
-                        isinstance(action.get("reassessment"), dict)
-                        and action["reassessment"].get("status")
-                        in {
-                            "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION",
-                            "REASSESSMENT_REVIEW_REQUIRED",
-                        }
+                    activated_actions = [
+                        action
                         for action in actions
                         if action.get("plan_change", {}).get("status")
                         == "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED"
-                    )
-                    if not all_reassessed_after_activation:
+                    ]
+                    activated_reassessments = [
+                        action.get("reassessment")
+                        for action in activated_actions
+                    ]
+                    if any(
+                        not isinstance(item, dict)
+                        or item.get("integrity_status") == "FAILED"
+                        or item.get("status") == "INTEGRITY_FAILURE"
+                        for item in activated_reassessments
+                    ):
+                        recovery_readiness["integrity_status"] = "FAILED"
+                        recovery_readiness["status"] = "INTEGRITY_FAILURE"
+                        recovery_readiness.setdefault("reasons", []).append(
+                            "POST_ACTIVATION_REASSESSMENT_INTEGRITY_FAILURE"
+                        )
+                    elif any(
+                        isinstance(item, dict)
+                        and item.get("status") == "REASSESSMENT_REVIEW_REQUIRED"
+                        for item in activated_reassessments
+                    ):
+                        recovery_readiness["status"] = "REASSESSMENT_REVIEW_REQUIRED"
+                    elif not all(
+                        isinstance(item, dict)
+                        and item.get("status")
+                        == "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION"
+                        for item in activated_reassessments
+                    ):
                         recovery_readiness["status"] = (
                             "PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED"
                         )
