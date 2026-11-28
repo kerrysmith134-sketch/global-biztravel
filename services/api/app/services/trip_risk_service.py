@@ -20,10 +20,10 @@ from app.api.errors import Conflict, NotFound, Unprocessable
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanVersion
 from app.models.proactive import ProactiveSuggestion
-from app.models.records import VisitFollowUp
+from app.models.records import VisitFollowUp, VisitFollowUpEvent
 from app.models.trip import Trip
 from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
-from app.models.workflow import AgentRun, WorkflowInstance
+from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import external_impact_service, notification_service
 
 TERMINAL_STATUSES = frozenset({"RESOLVED", "DISMISSED"})
@@ -142,6 +142,190 @@ def _source_ref(source_type: str, source_id: UUID, **fields: Any) -> dict[str, A
 
 
 
+
+
+
+def _follow_up_reassessment_readiness(
+    follow_up: VisitFollowUp,
+    source_run: AgentRun | None,
+    workflows: list[WorkflowInstance],
+    runs: dict[UUID, AgentRun],
+    events: list[VisitFollowUpEvent],
+    evidence_rows: list[Evidence],
+) -> dict[str, Any]:
+    """Verify one persisted, evidence-backed reassessment without treating attestation as proof."""
+    if not workflows:
+        if any(event.event_type == "REASSESSED" for event in events):
+            return {
+                "status": "INTEGRITY_FAILURE",
+                "integrity_status": "FAILED",
+                "reasons": ["REASSESSMENT_EVENT_WITHOUT_WORKFLOW"],
+            }
+        return {"status": "NOT_REASSESSED", "integrity_status": "NOT_APPLICABLE", "reasons": []}
+
+    workflow = max(workflows, key=lambda row: (row.created_at, str(row.id)))
+    payload = workflow.payload if isinstance(workflow.payload, dict) else {}
+    run_id = str(payload.get("agent_run_id") or "").strip()
+    try:
+        run_uuid = UUID(run_id) if run_id else None
+    except (TypeError, ValueError):
+        run_uuid = None
+    run = runs.get(run_uuid) if run_uuid is not None else None
+    failures: list[str] = []
+    output = run.output if run is not None and isinstance(run.output, dict) else {}
+    run_input = run.input if run is not None and isinstance(run.input, dict) else {}
+    input_snapshot = output.get("input_snapshot")
+    snapshot = input_snapshot if isinstance(input_snapshot, dict) else {}
+
+    if workflow.workflow_type != "APPOINTMENT_RECOVERY_REASSESSMENT":
+        failures.append("REASSESSMENT_WORKFLOW_TYPE_MISMATCH")
+    if workflow.organization_id != follow_up.organization_id or workflow.trip_id != follow_up.trip_id:
+        failures.append("REASSESSMENT_WORKFLOW_SCOPE_MISMATCH")
+    if workflow.status != "COMPLETED":
+        failures.append("REASSESSMENT_WORKFLOW_NOT_COMPLETED")
+    if payload.get("follow_up_id") != str(follow_up.id):
+        failures.append("REASSESSMENT_WORKFLOW_FOLLOW_UP_MISMATCH")
+    if payload.get("agent_type") != "APPOINTMENT_RECOVERY_REASSESSMENT":
+        failures.append("REASSESSMENT_WORKFLOW_AGENT_TYPE_MISMATCH")
+    if payload.get("agent_run_id") != run_id or run is None:
+        failures.append("REASSESSMENT_AGENT_RUN_MISSING_OR_MISMATCH")
+    if source_run is None:
+        failures.append("SOURCE_RECOVERY_AGENT_RUN_MISSING")
+    if run is not None:
+        if run.organization_id != follow_up.organization_id:
+            failures.append("REASSESSMENT_AGENT_RUN_ORG_MISMATCH")
+        if run.workflow_id != workflow.id:
+            failures.append("REASSESSMENT_AGENT_RUN_WORKFLOW_MISMATCH")
+        if run.agent_type != "APPOINTMENT_RECOVERY_REASSESSMENT" or run.status != "SUCCEEDED":
+            failures.append("REASSESSMENT_AGENT_RUN_NOT_SUCCEEDED")
+        if run.finished_at is None:
+            failures.append("REASSESSMENT_AGENT_RUN_FINISH_TIME_MISSING")
+        if run_input.get("trip_id") != str(follow_up.trip_id):
+            failures.append("REASSESSMENT_AGENT_RUN_TRIP_MISMATCH")
+        if run_input.get("follow_up_id") != str(follow_up.id):
+            failures.append("REASSESSMENT_AGENT_RUN_FOLLOW_UP_MISMATCH")
+        if run_input.get("visit_id") != str(follow_up.visit_id):
+            failures.append("REASSESSMENT_AGENT_RUN_VISIT_MISMATCH")
+        if source_run is not None:
+            if run_input.get("source_recovery_agent_run_id") != str(source_run.id):
+                failures.append("REASSESSMENT_SOURCE_RECOVERY_RUN_MISMATCH")
+            if snapshot.get("source_recovery_agent_run_id") != str(source_run.id):
+                failures.append("REASSESSMENT_SNAPSHOT_SOURCE_RUN_MISMATCH")
+            if snapshot.get("source_recovery_action_index") != follow_up.source_index:
+                failures.append("REASSESSMENT_SOURCE_ACTION_INDEX_MISMATCH")
+            source_input = source_run.input if isinstance(source_run.input, dict) else {}
+            if snapshot.get("source_operational_update_id") != source_input.get("operational_update_id"):
+                failures.append("REASSESSMENT_SOURCE_FLIGHT_EVENT_MISMATCH")
+            if snapshot.get("source_signal_id") != source_input.get("signal_id"):
+                failures.append("REASSESSMENT_SOURCE_SIGNAL_MISMATCH")
+        if run_input.get("operational_update_id") != output.get("flight_operational_update_id"):
+            failures.append("REASSESSMENT_LATEST_FLIGHT_EVENT_MISMATCH")
+        if run_input.get("signal_id") != output.get("source_signal_id"):
+            failures.append("REASSESSMENT_LATEST_SIGNAL_MISMATCH")
+        if run_input.get("plan_version_id") != output.get("current_plan_version_id"):
+            failures.append("REASSESSMENT_PLAN_VERSION_MISMATCH")
+        input_sha256 = output.get("input_sha256")
+        if (
+            not isinstance(input_sha256, str)
+            or _canonical_json(run_input.get("input_sha256")) != _canonical_json(input_sha256)
+            or payload.get("input_sha256") != input_sha256
+            or _canonical_json(snapshot) == _canonical_json({})
+            or hashlib.sha256(_canonical_json(snapshot).encode("utf-8")).hexdigest() != input_sha256
+        ):
+            failures.append("REASSESSMENT_INPUT_FINGERPRINT_MISMATCH")
+        if payload.get("decision") != output.get("decision") or payload.get("outcome") != output.get("outcome"):
+            failures.append("REASSESSMENT_WORKFLOW_OUTPUT_MISMATCH")
+
+    expected_event_note_prefix = f"AgentRun {run_id} · "
+    if run is not None and not any(
+        event.event_type == "REASSESSED"
+        and event.note is not None
+        and event.note.startswith(expected_event_note_prefix)
+        for event in events
+    ):
+        failures.append("REASSESSMENT_AUDIT_EVENT_MISSING")
+
+    evidence_by_ref = {
+        (row.kind, row.ref): row
+        for row in evidence_rows
+        if row.subject_type == "visit_follow_up" and row.subject_id == follow_up.id
+    }
+    expected_evidence = {
+        "FLIGHT_OPERATIONAL_UPDATE": f"flight-operational-update:{output.get('flight_operational_update_id')}",
+        "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT": f"reassessment-impact:{run_id}",
+        "APPOINTMENT_RECOVERY_REASSESSMENT": f"appointment-reassessment:{run_id}",
+    }
+    evidence_ids: set[str] = set()
+    for kind, ref in expected_evidence.items():
+        row = evidence_by_ref.get((kind, ref))
+        if row is None:
+            failures.append(f"REASSESSMENT_EVIDENCE_MISSING:{kind}")
+            continue
+        evidence_ids.add(str(row.id))
+        if hashlib.sha256(_canonical_json(row.payload).encode("utf-8")).hexdigest() != row.content_hash:
+            failures.append(f"REASSESSMENT_EVIDENCE_HASH_MISMATCH:{kind}")
+        if row.verification_status in {"DISPUTED", "REJECTED", "UNVERIFIED"}:
+            failures.append(f"REASSESSMENT_EVIDENCE_NOT_ACCEPTABLE:{kind}")
+    output_evidence_ids = output.get("evidence_ids")
+    if (
+        not isinstance(output_evidence_ids, list)
+        or not evidence_ids.issubset({str(item) for item in output_evidence_ids})
+    ):
+        failures.append("REASSESSMENT_EVIDENCE_MANIFEST_MISMATCH")
+
+    guardrails_value = output.get("guardrails")
+    guardrails = guardrails_value if isinstance(guardrails_value, dict) else {}
+    for key in (
+        "plan_mutated",
+        "visit_mutated",
+        "trip_mutated",
+        "booking_changed",
+        "customer_contacted",
+        "customer_message_sent",
+        "follow_up_completed",
+        "customer_window_independently_verified",
+    ):
+        if guardrails.get(key) is not False:
+            failures.append(f"REASSESSMENT_GUARDRAIL_FAILED:{key}")
+
+    assessment_value = output.get("impact_assessment")
+    assessment = assessment_value if isinstance(assessment_value, dict) else {}
+    data_gaps = output.get("data_gaps")
+    has_data_gaps = not isinstance(data_gaps, list) or bool(data_gaps)
+    if assessment.get("propagation_complete") is not True:
+        has_data_gaps = True
+    if failures:
+        status = "INTEGRITY_FAILURE"
+        integrity_status = "FAILED"
+    elif has_data_gaps:
+        status = "REASSESSMENT_REVIEW_REQUIRED"
+        integrity_status = "VERIFIED"
+    elif output.get("decision") == "PLAN_CHANGE_RECOMMENDATION_READY":
+        status = "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED"
+        integrity_status = "VERIFIED"
+    elif output.get("decision") == "REASSESSMENT_CLEARED":
+        # The customer-window value may be a traveler attestation; it is not independently
+        # verified and cannot close the Trip Risk Case by itself.
+        status = "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION"
+        integrity_status = "VERIFIED"
+    else:
+        status = "REASSESSMENT_REVIEW_REQUIRED"
+        integrity_status = "VERIFIED"
+
+    return {
+        "status": status,
+        "integrity_status": integrity_status,
+        "workflow_id": str(workflow.id),
+        "agent_run_id": str(run.id) if run is not None else None,
+        "decision": output.get("decision"),
+        "outcome": output.get("outcome"),
+        "latest_flight_operational_update_id": output.get("flight_operational_update_id"),
+        "latest_signal_id": output.get("source_signal_id"),
+        "plan_version_id": output.get("current_plan_version_id"),
+        "customer_window_verification_status": output.get("customer_window_verification_status"),
+        "evidence_ids": sorted(evidence_ids),
+        "reasons": sorted(set(failures)),
+    }
 
 def _recovery_readiness(
     trip: Trip,
@@ -524,6 +708,36 @@ def _build_groups(
                 signal.payload if isinstance(signal.payload, dict) else {}
             )
         }
+
+    reassessment_workflows = list(
+        session.scalars(
+            select(WorkflowInstance)
+            .where(
+                WorkflowInstance.organization_id == organization_id,
+                WorkflowInstance.trip_id == trip.id,
+                WorkflowInstance.workflow_type == "APPOINTMENT_RECOVERY_REASSESSMENT",
+            )
+            .order_by(WorkflowInstance.created_at, WorkflowInstance.id)
+        ).all()
+    )
+    reassessment_workflows_by_follow_up: dict[str, list[WorkflowInstance]] = {}
+    for reassessment_workflow in reassessment_workflows:
+        workflow_payload = (
+            reassessment_workflow.payload
+            if isinstance(reassessment_workflow.payload, dict)
+            else {}
+        )
+        follow_up_ref = workflow_payload.get("follow_up_id")
+        if isinstance(follow_up_ref, str):
+            reassessment_workflows_by_follow_up.setdefault(follow_up_ref, []).append(
+                reassessment_workflow
+            )
+        reassessment_run_id = workflow_payload.get("agent_run_id")
+        if reassessment_run_id:
+            try:
+                recovery_run_ids.add(UUID(str(reassessment_run_id)))
+            except (TypeError, ValueError):
+                continue
 
     recovery_workflows = list(
         session.scalars(
@@ -1040,6 +1254,41 @@ def _build_groups(
         group["context"]["external_signal_count"] = len(assessments)
         existing_case_keys.add(case_key)
 
+    recovery_follow_up_ids = [
+        row.id
+        for row in follow_ups
+        if row.source_type == "APPOINTMENT_RECOVERY"
+        and row.source_agent_run_id is not None
+    ]
+    reassessment_events_by_follow_up: dict[UUID, list[VisitFollowUpEvent]] = {}
+    reassessment_evidence_by_follow_up: dict[UUID, list[Evidence]] = {}
+    if recovery_follow_up_ids:
+        for event in session.scalars(
+            select(VisitFollowUpEvent).where(
+                VisitFollowUpEvent.organization_id == organization_id,
+                VisitFollowUpEvent.follow_up_id.in_(recovery_follow_up_ids),
+                VisitFollowUpEvent.event_type == "REASSESSED",
+            )
+        ).all():
+            reassessment_events_by_follow_up.setdefault(event.follow_up_id, []).append(event)
+        for evidence_row in session.scalars(
+            select(Evidence).where(
+                Evidence.organization_id == organization_id,
+                Evidence.subject_type == "visit_follow_up",
+                Evidence.subject_id.in_(recovery_follow_up_ids),
+                Evidence.kind.in_(
+                    [
+                        "FLIGHT_OPERATIONAL_UPDATE",
+                        "APPOINTMENT_RECOVERY_IMPACT_SNAPSHOT",
+                        "APPOINTMENT_RECOVERY_REASSESSMENT",
+                    ]
+                ),
+            )
+        ).all():
+            reassessment_evidence_by_follow_up.setdefault(
+                evidence_row.subject_id, []
+            ).append(evidence_row)
+
     # Recovery readiness is a projection over the persisted AgentRun, Workflow and
     # human-confirmed FollowUps. It does not execute actions or close a risk itself.
     for group in groups.values():
@@ -1058,6 +1307,59 @@ def _build_groups(
                 group["follow_ups"],
                 group["context"].get("external_signal_assessments", []),
             )
+            action_readiness = {
+                str(item.get("follow_up_id")): item
+                for item in recovery_readiness.get("actions", [])
+                if item.get("follow_up_id")
+            }
+            for follow_up in group["follow_ups"]:
+                if follow_up.source_type != "APPOINTMENT_RECOVERY":
+                    continue
+                action_item = action_readiness.get(str(follow_up.id))
+                if action_item is None:
+                    continue
+                source_run = runs.get(follow_up.source_agent_run_id)
+                action_item["reassessment"] = _follow_up_reassessment_readiness(
+                    follow_up,
+                    source_run,
+                    reassessment_workflows_by_follow_up.get(str(follow_up.id), []),
+                    runs,
+                    reassessment_events_by_follow_up.get(follow_up.id, []),
+                    reassessment_evidence_by_follow_up.get(follow_up.id, []),
+                )
+            actions = recovery_readiness.get("actions", [])
+            follow_up_statuses = [
+                item.get("follow_up_status")
+                for item in actions
+                if item.get("follow_up_id")
+            ]
+            if recovery_readiness.get("integrity_status") == "VERIFIED" and follow_up_statuses:
+                reassessments = [
+                    item.get("reassessment")
+                    for item in actions
+                    if item.get("follow_up_id")
+                ]
+                if (
+                    all(status == "COMPLETED" for status in follow_up_statuses)
+                    and all(
+                        isinstance(item, dict)
+                        and item.get("status") == "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION"
+                        for item in reassessments
+                    )
+                ):
+                    recovery_readiness["status"] = "REASSESSMENT_CLEARED_PENDING_HUMAN_RESOLUTION"
+                elif any(
+                    isinstance(item, dict)
+                    and item.get("status") == "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED"
+                    for item in reassessments
+                ):
+                    recovery_readiness["status"] = "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED"
+                elif any(
+                    isinstance(item, dict)
+                    and item.get("status") in {"REASSESSMENT_REVIEW_REQUIRED", "INTEGRITY_FAILURE"}
+                    for item in reassessments
+                ):
+                    recovery_readiness["status"] = "REASSESSMENT_REVIEW_REQUIRED"
             group["context"]["recovery_readiness"] = recovery_readiness
             group["evidence_refs"].extend(recovery_evidence)
 
