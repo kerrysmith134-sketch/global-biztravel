@@ -591,7 +591,7 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 ### 2026-11-28 H2.26.5 — Recovery Plan Change Execution & Activation Readiness
 
 - Trip Risk 对每个恢复 FollowUp 读取当前组织/行程范围内的 PLAN_CHANGE Workflow；要求 source、recovery_follow_up_id、Visit、操作类型、原重评建议中的基础 Plan/Trip 版本及客户预约起止时刻一致。时刻比较按具备时区的 UTC instant，而不是要求等价 offset 字符串完全相同。
-- Workflow 的 ACCEPTED 只说明计划变更输入已经提交并入队。Readiness 继续校验其 job_id、plan_trip Job 类型、Trip ID、结果 Trip Version，以及 Job 终态和 result.plan_version_id；Job SUCCEEDED 还必须解析同组织/同 Trip 的 PlanVersion，核对 version_number 和 trip_version。
+- Workflow 的 ACCEPTED 只说明计划变更输入已经提交并入队。Readiness 继续校验其 job_id、plan_trip Job 类型、Trip ID、结果 Trip Version，以及 Job 终态和 result.plan_version_id；Job SUCCEEDED 还必须解析同组织/同 Trip 的 PlanVersion，核对 PlanVersion.job_id、version_number 和 trip_version。候选生成时，原基础 ACTIVE Plan 必须仍是当前活动版本；候选已激活时则必须同时满足 PlanVersion.status=ACTIVE 与 Trip.active_plan_version_id 指针一致。
 - 明确区分 PLAN_CHANGE_OPTIMIZATION_PENDING、PLAN_CHANGE_OPTIMIZATION_FAILED、PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION、PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED、PLAN_CHANGE_STALE 与 PLAN_CHANGE_INTEGRITY_FAILURE；证据引用包含 Workflow、BackgroundJob 和结果 PlanVersion。
 - 只有 PlanVersion.status == ACTIVE 且 Trip.active_plan_version_id 指向同一版本，才认为人工已激活计划。激活后旧 Reassessment 因 PlanVersion/Trip 输入快照改变而过期，需要在当前计划下重新评估；激活不会自动完成 FollowUp 或关闭 Risk Case。
 - Post-activation 最新重评若仍有数据缺口/Integrity Failure，状态优先级保持 REASSESSMENT_REVIEW_REQUIRED / INTEGRITY_FAILURE，不会被计划激活状态覆盖。客户窗口仍是 PARTIALLY_VERIFIED，必须人工处理 FollowUp 与风险关闭。
