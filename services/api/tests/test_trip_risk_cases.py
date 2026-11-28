@@ -265,6 +265,9 @@ def test_trip_risk_reconciles_suggestion_and_follow_up_then_escalates_and_reopen
         )
         assert events_response.status_code == 200, events_response.text
         event_types = {item["event_type"] for item in events_response.json()}
+        event_versions_desc = [item["case_version"] for item in events_response.json()]
+        assert event_versions_desc == sorted(event_versions_desc, reverse=True)
+        assert len(event_versions_desc) == len(set(event_versions_desc))
         assert {"OPENED", "ACKNOWLEDGED"} <= event_types
         event_versions = {
             item["event_type"]: item["case_version"]
@@ -693,6 +696,55 @@ def test_trip_risk_does_not_promote_opensky_telemetry_to_flight_risk(
                 dedupe_key=f"opensky-suggestion:{uuid.uuid4().hex}",
                 push_status="PUSHED",
                 notified_at=observed_at,
+            )
+        )
+    try:
+        reconciled = client.post(
+            f"/v1/trips/{trip_id}/risk-cases:reconcile",
+            headers=headers(key=str(uuid.uuid4())),
+        )
+        assert reconciled.status_code == 200, reconciled.text
+        assert reconciled.json()["cases_created"] == 0
+        feed = client.get(f"/v1/trips/{trip_id}/risk-cases", headers=headers())
+        assert feed.status_code == 200, feed.text
+        assert feed.json()["items"] == []
+    finally:
+        with org_session(UUID(ORG_A)) as session:
+            session.execute(
+                delete(ExternalSignal).where(
+                    ExternalSignal.organization_id == UUID(ORG_A),
+                    ExternalSignal.id == signal_id,
+                )
+            )
+        cleanup(trip_id, place_id)
+
+
+
+def test_trip_risk_excludes_external_signals_beyond_future_clock_skew(
+    client: TestClient,
+) -> None:
+    trip_id, place_id, _visit_id = make_trip(client)
+    signal_id = uuid.uuid4()
+    now = datetime.now(UTC)
+    future_at = now + timedelta(minutes=6)
+    with org_session(UUID(ORG_A)) as session:
+        session.add(
+            ExternalSignal(
+                id=signal_id,
+                organization_id=UUID(ORG_A),
+                provider="open-meteo",
+                signal_type="WEATHER_DISRUPTION",
+                subject_type="TRIP",
+                subject_ref=trip_id,
+                payload={
+                    "summary": "A provider event is timestamped too far in the future.",
+                    "place_id": str(uuid.uuid4()),
+                },
+                confidence=0.8,
+                observed_at=future_at,
+                valid_from=future_at,
+                valid_until=future_at + timedelta(hours=1),
+                dedupe_key=f"future-weather:{uuid.uuid4().hex}",
             )
         )
     try:
