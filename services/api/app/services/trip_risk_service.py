@@ -519,6 +519,132 @@ def _recovery_readiness(
     else:
         actions_invalid = False
 
+
+    if not actions and brief.get("status") == "NO_RECOVERY_ACTION_REQUIRED":
+        source_value = brief.get("source")
+        source = source_value if isinstance(source_value, dict) else {}
+        guardrails_value = brief.get("guardrails")
+        guardrails = guardrails_value if isinstance(guardrails_value, dict) else {}
+        no_action_failures: list[str] = []
+        no_action_stale_reasons: list[str] = []
+        signal_id_value = params.get("signal_id")
+        signal_id = str(signal_id_value).strip() if signal_id_value else ""
+        if source.get("signal_id") != (signal_id or None):
+            no_action_failures.append("NO_ACTION_SIGNAL_REFERENCE_MISMATCH")
+        if brief.get("execution_mode") != "DETERMINISTIC":
+            no_action_failures.append("NO_ACTION_EXECUTION_MODE_INVALID")
+        if not isinstance(brief.get("agent_version"), str) or not brief.get("agent_version"):
+            no_action_failures.append("NO_ACTION_AGENT_VERSION_MISSING")
+        if not isinstance(brief.get("schema_version"), str) or not brief.get("schema_version"):
+            no_action_failures.append("NO_ACTION_SCHEMA_VERSION_MISSING")
+        if not isinstance(actions_value, list) or actions_invalid:
+            no_action_failures.append("NO_ACTION_LIST_INVALID")
+        if not isinstance(guardrails_value, dict):
+            no_action_failures.append("NO_ACTION_GUARDRAILS_MISSING")
+        else:
+            if guardrails.get("human_decision_required") is not False:
+                no_action_failures.append("NO_ACTION_HUMAN_DECISION_GUARDRAIL_MISMATCH")
+            for key in (
+                "plan_mutated",
+                "booking_changed",
+                "customer_contacted",
+                "customer_message_sent",
+                "candidate_windows_inferred",
+            ):
+                if guardrails.get(key) is not False:
+                    no_action_failures.append(f"NO_ACTION_SIDE_EFFECT_GUARDRAIL_FAILED:{key}")
+            if guardrails.get("candidate_windows") != []:
+                no_action_failures.append("NO_ACTION_CANDIDATE_WINDOWS_NOT_EMPTY")
+        if brief.get("propagation_complete") is not True:
+            no_action_failures.append("NO_ACTION_PROPAGATION_INCOMPLETE")
+        if brief.get("impact_snapshot_complete") is not True:
+            no_action_failures.append("NO_ACTION_IMPACT_SNAPSHOT_INCOMPLETE")
+        if brief.get("data_gaps") != []:
+            no_action_failures.append("NO_ACTION_DATA_GAPS_PRESENT")
+        assessments = [
+            item
+            for item in signal_assessments
+            if isinstance(item, dict)
+            and str(item.get("signal_id") or "") == signal_id
+        ]
+        current_impact = (
+            assessments[-1].get("impact_assessment")
+            if assessments and isinstance(assessments[-1].get("impact_assessment"), dict)
+            else None
+        )
+        if signal_id and current_impact is None:
+            no_action_stale_reasons.append("CURRENT_SIGNAL_IMPACT_NOT_AVAILABLE")
+        elif current_impact is None:
+            no_action_failures.append("NO_ACTION_CURRENT_IMPACT_MISSING")
+        else:
+            source_fields = {
+                "operational_update_id": current_impact.get("operational_update_id"),
+                "content_sha256": current_impact.get("content_sha256"),
+                "plan_version_id": current_impact.get("plan_version_id"),
+                "binding_id": current_impact.get("binding_id"),
+                "flight_segment_id": current_impact.get("flight_segment_id"),
+            }
+            for field_name, current_value in source_fields.items():
+                if source.get(field_name) != current_value:
+                    no_action_stale_reasons.append(
+                        f"NO_ACTION_CURRENT_{field_name.upper()}_CHANGED"
+                    )
+            if current_impact.get("propagation_complete") is not True:
+                no_action_stale_reasons.append("NO_ACTION_CURRENT_PROPAGATION_INCOMPLETE")
+            if current_impact.get("status") not in {
+                "OPERATIONAL_DELAY_ASSESSED",
+                "NO_OPERATIONAL_DELAY",
+            }:
+                no_action_stale_reasons.append("NO_ACTION_CURRENT_IMPACT_NOT_ASSESSABLE")
+            for field_name in (
+                "affected_visit_ids",
+                "missed_visit_ids",
+                "unassessed_visit_ids",
+            ):
+                if set(brief.get(field_name) or []) != set(current_impact.get(field_name) or []):
+                    no_action_stale_reasons.append(
+                        f"NO_ACTION_CURRENT_{field_name.upper()}_CHANGED"
+                    )
+
+        if no_action_failures:
+            no_action_status = "INTEGRITY_FAILURE"
+            no_action_integrity = "FAILED"
+        elif no_action_stale_reasons:
+            no_action_status = "STALE_BRIEF"
+            no_action_integrity = "VERIFIED"
+        else:
+            no_action_status = "NO_ACTION_REQUIRED_VERIFIED"
+            no_action_integrity = "VERIFIED"
+        no_action_hash = hashlib.sha256(
+            _canonical_json(brief).encode("utf-8")
+        ).hexdigest()
+        no_action_readiness = {
+            "status": no_action_status,
+            "integrity_status": no_action_integrity,
+            "workflow_id": None,
+            "agent_run_id": None,
+            "brief_status": brief.get("status"),
+            "brief_sha256": no_action_hash,
+            "expected_action_count": 0,
+            "accepted_action_count": 0,
+            "active_action_count": 0,
+            "completed_action_count": 0,
+            "dismissed_action_count": 0,
+            "missing_action_indexes": [],
+            "actions": [],
+            "reasons": sorted(set(no_action_failures + no_action_stale_reasons)),
+        }
+        no_action_evidence = [
+            {
+                "type": "APPOINTMENT_RECOVERY_READINESS",
+                "id": expected_source_suggestion_id,
+                "status": no_action_status,
+                "integrity_status": no_action_integrity,
+                "sha256": no_action_hash,
+            }
+        ]
+        return no_action_readiness, no_action_evidence
+
     expected_source_suggestion_id = str(suggestion.id)
     workflow_by_id: dict[str, WorkflowInstance] = {str(row.id): row for row in workflows}
     workflows_for_suggestion = [
