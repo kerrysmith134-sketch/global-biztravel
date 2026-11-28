@@ -670,8 +670,6 @@ def _plan_change_readiness(
             failures.append("PLAN_CHANGE_BASE_PLAN_TRIP_VERSION_MISMATCH")
     if trip.version != result_trip_version:
         stale_reasons.append("PLAN_CHANGE_INPUT_CHANGED_AFTER_SUBMISSION")
-    elif base_plan_id is not None and trip.active_plan_version_id != base_plan_id:
-        stale_reasons.append("PLAN_CHANGE_BASE_PLAN_NO_LONGER_ACTIVE")
 
     job: BackgroundJob | None = None
     if workflow.job_id is not None:
@@ -698,11 +696,17 @@ def _plan_change_readiness(
     integrity_status = "FAILED"
     if not failures and not stale_reasons and job is not None:
         if job.status in {"PENDING", "RUNNING"}:
-            readiness_status = "PLAN_CHANGE_OPTIMIZATION_PENDING"
-            integrity_status = "VERIFIED"
+            if trip.active_plan_version_id != base_plan_id:
+                stale_reasons.append("PLAN_CHANGE_BASE_PLAN_NO_LONGER_ACTIVE")
+            else:
+                readiness_status = "PLAN_CHANGE_OPTIMIZATION_PENDING"
+                integrity_status = "VERIFIED"
         elif job.status in {"FAILED", "DEAD", "CANCELLED"}:
-            readiness_status = "PLAN_CHANGE_OPTIMIZATION_FAILED"
-            integrity_status = "VERIFIED"
+            if trip.active_plan_version_id != base_plan_id:
+                stale_reasons.append("PLAN_CHANGE_BASE_PLAN_NO_LONGER_ACTIVE")
+            else:
+                readiness_status = "PLAN_CHANGE_OPTIMIZATION_FAILED"
+                integrity_status = "VERIFIED"
         elif job.status == "SUCCEEDED":
             result = job.result if isinstance(job.result, dict) else {}
             raw_plan_id = result.get("plan_version_id")
