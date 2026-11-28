@@ -571,3 +571,11 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - iOS Risk Case 详情新增“恢复就绪度”区，展示恢复链完整性、动作确认/完成数、FollowUp 状态及重评结果；过期重评显式展示为需重新评估。
 - 不新增实体表、不新增数据库迁移，不复制 Appointment Recovery 或 Reassessment 工作流；继续复用现有 WorkflowInstance、AgentRun、VisitFollowUp、VisitFollowUpEvent 与 Evidence。
 - **验证状态：** 本轮代码与集成/单元测试已推送 main。GitHub Actions 以最新 HEAD 的 Backend PostgreSQL/pytest 和 iOS Build/XCTest 实际结论为准；在其全部完成前不标记通过或生产就绪。
+### 2026-11-28 H2.26.3 — Active Plan input freshness guard
+
+- `PlanVersion.status == ACTIVE` 不再被视为计划输入仍然新鲜的充分条件。Weather/Flight impact assessment 同时核验 `PlanVersion.trip_version == Trip.version`；版本不一致返回 `STALE_ACTIVE_PLAN_INPUT`，不继续读取旧 PlanStop / PlanTravelLeg 计算当前影响。
+- 影响快照显式记录 `trip_version`、`plan_trip_version`、`plan_input_current`。Appointment Recovery Brief、WorkflowInstance 与 AgentRun input 都持久化这些字段，Risk Readiness 重新解析当前 Signal 后逐项比较；任何版本变化都会使旧 Brief / Reassessment 过期。
+- Appointment Recovery Reassessment 对当前 ACTIVE Plan 的输入版本再做服务端检查；即使数据库生命周期状态仍为 ACTIVE，只要输入版本落后当前 Trip，就增加数据缺口，不生成可提交的计划变更建议。
+- 新增 PostgreSQL 集成回归：在真实航班事件和 ACTIVE Plan 已关联后递增 Trip Version，确认旧 ACTIVE Plan 的航班影响返回 `STALE_ACTIVE_PLAN_INPUT`，随后 Risk Case 将旧 Recovery Brief 标记为 `STALE_BRIEF`。
+- 无新增数据库迁移；PlanVersion 与 Trip 原有版本字段已经提供必要信息。
+- **验证状态：** 代码与回归测试已推送 main；以最新 HEAD 的 Backend Static/Contract/Docs、PostgreSQL migrations、pytest 与 iOS Build/XCTest 实际结论为准。
