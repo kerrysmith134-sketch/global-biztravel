@@ -123,6 +123,8 @@ struct TripRiskCase: Codable, Equatable, Identifiable {
                  "OPERATIONAL_UPDATE_ENVELOPE_MISMATCH":
                 statusLabel = "运营事件证据不一致"
             case "NO_ACTIVE_PLAN": statusLabel = "缺少有效计划，影响未评估"
+            case "STALE_ACTIVE_PLAN_INPUT":
+                statusLabel = "生效计划基于过期行程输入，需要重新规划"
             default: statusLabel = status
             }
 
