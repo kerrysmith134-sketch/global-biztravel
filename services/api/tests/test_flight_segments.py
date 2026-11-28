@@ -1338,7 +1338,9 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
             if item["case_key"] == f"external_signal:{original_signal_id}"
         )
         reassessed_readiness = reassessed_case["context"]["recovery_readiness"]
-        assert reassessed_readiness["status"] == "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED"
+        assert (
+            reassessed_readiness["status"] == "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED"
+        ), reassessed_readiness
         reassessment = reassessed_readiness["actions"][0]["reassessment"]
         assert reassessment["integrity_status"] == "VERIFIED"
         assert reassessment["decision"] == "PLAN_CHANGE_RECOMMENDATION_READY"
