@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 from uuid import UUID
@@ -21,6 +21,7 @@ from app.models.records import VisitFollowUp, VisitFollowUpEvent
 from app.models.trip import Trip, Visit
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
 from app.services import external_impact_service, visit_follow_up_service
+from app.services.signal_clock_policy import MAX_FUTURE_OBSERVED_AT_SKEW
 
 AGENT_TYPE = "APPOINTMENT_RECOVERY_REASSESSMENT"
 AGENT_VERSION = "appointment-recovery-reassessment-v1.0"
@@ -291,7 +292,7 @@ def reassess_follow_up(
         raise Conflict("最新航班事件观察时间没有晚于原始事件")
     if signal.valid_until is None or signal.valid_until <= now:
         raise Conflict("最新航班运营事件已过期", details={"signal_id": str(signal.id)})
-    if signal.observed_at > now + timedelta(minutes=5):
+    if signal.observed_at > now + MAX_FUTURE_OBSERVED_AT_SKEW:
         raise Conflict("航班事件观察时间超出当前时间容差")
 
     assessment = external_impact_service.assess_flight_signal_impact(session, org, trip, signal)
