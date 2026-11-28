@@ -325,7 +325,14 @@ def reassess_follow_up(
     impact_status = str(assessment.get("status") or "UNKNOWN")
     if active_plan is None:
         gaps.append("CURRENT_ACTIVE_PLAN_MISSING")
-    elif assessment.get("plan_version_id") != str(active_plan.id):
+    elif active_plan.trip_version != trip.version:
+        gaps.append("CURRENT_ACTIVE_PLAN_INPUT_STALE")
+    if assessment.get("plan_input_current") is not True:
+        gaps.append("CURRENT_ACTIVE_PLAN_INPUT_STALE")
+    if (
+        active_plan is not None
+        and assessment.get("plan_version_id") != str(active_plan.id)
+    ):
         gaps.append("IMPACT_PLAN_VERSION_NOT_CURRENT")
     if impact_status not in _ASSESSABLE_STATUSES:
         gaps.append(f"FLIGHT_IMPACT_NOT_ASSESSABLE:{impact_status}")
