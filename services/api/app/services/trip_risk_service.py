@@ -601,7 +601,18 @@ def _recovery_readiness(
                 "missed_visit_ids",
                 "unassessed_visit_ids",
             ):
-                if set(brief.get(field_name) or []) != set(current_impact.get(field_name) or []):
+                brief_ids = brief.get(field_name)
+                current_ids = current_impact.get(field_name)
+                if (
+                    not isinstance(brief_ids, list)
+                    or not isinstance(current_ids, list)
+                    or any(not isinstance(value, str) for value in brief_ids)
+                    or any(not isinstance(value, str) for value in current_ids)
+                ):
+                    no_action_failures.append(
+                        f"NO_ACTION_{field_name.upper()}_INVALID"
+                    )
+                elif set(brief_ids) != set(current_ids):
                     no_action_stale_reasons.append(
                         f"NO_ACTION_CURRENT_{field_name.upper()}_CHANGED"
                     )
