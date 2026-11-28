@@ -292,6 +292,21 @@ def _follow_up_reassessment_readiness(
                 else None
             ),
             "plan_version_id": output.get("current_plan_version_id"),
+            "trip_version": (
+                output.get("input_snapshot", {}).get("base_trip_version")
+                if isinstance(output.get("input_snapshot"), dict)
+                else None
+            ),
+            "plan_trip_version": (
+                output.get("impact_assessment", {}).get("plan_trip_version")
+                if isinstance(output.get("impact_assessment"), dict)
+                else None
+            ),
+            "plan_input_current": (
+                output.get("impact_assessment", {}).get("plan_input_current")
+                if isinstance(output.get("impact_assessment"), dict)
+                else None
+            ),
             "flight_segment_id": output.get("flight_segment_id"),
         }
         for field_name, recorded_value in reassessment_source_fields.items():
@@ -581,6 +596,9 @@ def _recovery_readiness(
                 "operational_update_id": current_impact.get("operational_update_id"),
                 "content_sha256": current_impact.get("content_sha256"),
                 "plan_version_id": current_impact.get("plan_version_id"),
+                "trip_version": current_impact.get("trip_version"),
+                "plan_trip_version": current_impact.get("plan_trip_version"),
+                "plan_input_current": current_impact.get("plan_input_current"),
                 "binding_id": current_impact.get("binding_id"),
                 "flight_segment_id": current_impact.get("flight_segment_id"),
             }
@@ -773,6 +791,9 @@ def _recovery_readiness(
             "operational_update_id": current_assessment.get("operational_update_id"),
             "content_sha256": current_assessment.get("content_sha256"),
             "plan_version_id": current_assessment.get("plan_version_id"),
+            "trip_version": current_assessment.get("trip_version"),
+            "plan_trip_version": current_assessment.get("plan_trip_version"),
+            "plan_input_current": current_assessment.get("plan_input_current"),
             "binding_id": current_assessment.get("binding_id"),
             "flight_segment_id": current_assessment.get("flight_segment_id"),
         }
