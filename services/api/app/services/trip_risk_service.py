@@ -19,9 +19,9 @@ from sqlalchemy.orm import Session
 from app.api.errors import Conflict, NotFound, Unprocessable
 from app.models.integrations import ExternalSignal
 from app.models.planning import PlanVersion
-from app.models.reliability import BackgroundJob
 from app.models.proactive import ProactiveSuggestion
 from app.models.records import VisitFollowUp, VisitFollowUpEvent
+from app.models.reliability import BackgroundJob
 from app.models.trip import Trip
 from app.models.trip_risks import TripRiskCase, TripRiskCaseEvent
 from app.models.workflow import AgentRun, Evidence, WorkflowInstance
