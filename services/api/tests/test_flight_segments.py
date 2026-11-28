@@ -1338,6 +1338,15 @@ def test_accepted_recovery_follow_up_reassesses_with_fresh_flight_and_attested_w
             if item["case_key"] == f"external_signal:{original_signal_id}"
         )
         reassessed_readiness = reassessed_case["context"]["recovery_readiness"]
+        reassessed_signal_ids = {
+            item["id"]
+            for item in reassessed_case["source_refs"]
+            if item["type"] == "EXTERNAL_SIGNAL"
+        }
+        assert {
+            original_signal_id,
+            fresh_response.json()["id"],
+        } <= reassessed_signal_ids
         assert (
             reassessed_readiness["status"] == "PLAN_CHANGE_HUMAN_SUBMISSION_REQUIRED"
         ), reassessed_readiness
