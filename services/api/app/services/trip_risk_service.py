@@ -360,7 +360,7 @@ def _recovery_readiness(
             follow_up_by_index: dict[int, VisitFollowUp] = {}
             duplicate_indexes: set[int] = set()
             for row in follow_ups:
-                if row.source_agent_run_id != run.id if run is not None else True:
+                if run is None or row.source_agent_run_id != run.id:
                     continue
                 if row.source_type != "APPOINTMENT_RECOVERY":
                     integrity_failures.append("RECOVERY_FOLLOW_UP_SOURCE_TYPE_MISMATCH")
