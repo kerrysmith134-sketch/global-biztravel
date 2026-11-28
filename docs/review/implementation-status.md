@@ -588,3 +588,13 @@ H1.9 在 H1.8 的 Evidence 版本和 H1.7 的答案版本上构建原子主张�
 - 新增集成回归：同时篡改 Suggestion Recovery Brief 与 AgentRun output 仍需被确定性重建发现；恢复原始值后 Readiness 恢复 VERIFIED；未来 6 分钟的外部天气信号不进入当前 Risk Case；事件 API 返回 case_version 严格倒序。
 - 无新增数据库迁移或工作流实体；继续复用原有 ExternalSignal、FlightOperationalUpdate、PlanVersion、WorkflowInstance、AgentRun、VisitFollowUp、VisitFollowUpEvent 和 Evidence。
 - **验证状态：** 代码、集成测试与文档已推送 main；以最新 HEAD 的 GitHub Backend Static/Type/Contract/Docs、PostgreSQL Migration、pytest 和 iOS Build/XCTest 实际结论为准。不得在 Checks 完成前标记 CI 通过或生产就绪。
+### 2026-11-28 H2.26.5 — Recovery Plan Change Execution & Activation Readiness
+
+- Trip Risk 对每个恢复 FollowUp 读取当前组织/行程范围内的 PLAN_CHANGE Workflow；要求 source、recovery_follow_up_id、Visit、操作类型、原重评建议中的基础 Plan/Trip 版本及客户预约起止时刻一致。时刻比较按具备时区的 UTC instant，而不是要求等价 offset 字符串完全相同。
+- Workflow 的 ACCEPTED 只说明计划变更输入已经提交并入队。Readiness 继续校验其 job_id、plan_trip Job 类型、Trip ID、结果 Trip Version，以及 Job 终态和 result.plan_version_id；Job SUCCEEDED 还必须解析同组织/同 Trip 的 PlanVersion，核对 version_number 和 trip_version。
+- 明确区分 PLAN_CHANGE_OPTIMIZATION_PENDING、PLAN_CHANGE_OPTIMIZATION_FAILED、PLAN_CHANGE_CANDIDATE_READY_FOR_ACTIVATION、PLAN_CHANGE_ACTIVATED_REASSESSMENT_REQUIRED、PLAN_CHANGE_STALE 与 PLAN_CHANGE_INTEGRITY_FAILURE；证据引用包含 Workflow、BackgroundJob 和结果 PlanVersion。
+- 只有 PlanVersion.status == ACTIVE 且 Trip.active_plan_version_id 指向同一版本，才认为人工已激活计划。激活后旧 Reassessment 因 PlanVersion/Trip 输入快照改变而过期，需要在当前计划下重新评估；激活不会自动完成 FollowUp 或关闭 Risk Case。
+- Post-activation 最新重评若仍有数据缺口/Integrity Failure，状态优先级保持 REASSESSMENT_REVIEW_REQUIRED / INTEGRITY_FAILURE，不会被计划激活状态覆盖。客户窗口仍是 PARTIALLY_VERIFIED，必须人工处理 FollowUp 与风险关闭。
+- 新增真实集成流程：验证计划变更排队 → 注入已完成 Job 及 DRAFT PlanVersion → 对账验证候选计划待激活 → 调用真实 plans/:activate API → 对账验证激活后待重评，期间 Risk Case 与 FollowUp 都不得自动关闭。iOS 新增本地化阶段与候选计划版本号展示。
+- 无新增数据库迁移或实体；复用 PLAN_CHANGE Workflow、BackgroundJob、PlanVersion、Trip、VisitFollowUp、Reassessment AgentRun 和现有证据链。
+- **验证状态：** 代码、集成测试、iOS 展示与文档已推送 main。以最新 HEAD 的 GitHub Backend Static/Type/Contract/Docs、PostgreSQL Migration/pytest 和 iOS SwiftLint/Build/XCTest 实际结果为准；Checks 完成前不标记通过或生产就绪。
